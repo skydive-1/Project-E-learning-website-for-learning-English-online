@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ELearning.API/ELearning.API.csproj" />
+    <Project Path="src/ELearning.Application/ELearning.Application.csproj" />
+    <Project Path="src/ELearning.Domain/ELearning.Domain.csproj" />
+    <Project Path="src/ELearning.Infrastructure/ELearning.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ELearning.Tests/ELearning.Tests.csproj" />
+  </Folder>
+</Solution>
