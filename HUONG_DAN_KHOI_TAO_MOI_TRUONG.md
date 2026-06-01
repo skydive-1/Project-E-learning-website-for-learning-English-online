@@ -8,7 +8,7 @@
 
 **Công nghệ:**
 - **Frontend:** ReactJS (JavaScript thuần)
-- **Backend:** Node.js/Express (JavaScript)
+- **Backend:** Node.js/Express (JavaScript) + MyCliaude AI Assistant
 - **Database:** PostgreSQL + pgvector
 
 **Cấu trúc nhóm:**
@@ -322,6 +322,8 @@ Rồi tìm Stack Builder (được cài lúc nước nước):
 
 # 🔧 HƯỚNG DẪN CHI TIẾT CHO LIÊM (BACKEND)
 
+## 🎓 PHẦN A: SETUP CƠ BẢN (LẦN ĐẦU)
+
 ## 1️⃣ TẠO PROJECT NODE.JS
 
 ### Bước 1: Tạo thư mục dự án Backend
@@ -393,7 +395,7 @@ npm install express
 
 ---
 
-## 2️⃣ TẠO FILE SERVER.JS ĐỦ ĐƠN GIẢN
+## 2️⃣ TẠO FILE SERVER.JS ĐƠN GIẢN
 
 ### Bước 4: Tạo file `server.js`
 
@@ -483,7 +485,7 @@ Khi muốn dừng server, nhấn **Ctrl+C** trong Command Prompt.
 
 ---
 
-## 📋 TỔNG KẾT LỆNH CHO LIÊM
+## 📋 TỔNG KẾT LỆNH CHO LIÊM (PHẦN A - CƠ BẢN)
 
 ```bash
 # 1. Tạo thư mục backend
@@ -506,38 +508,244 @@ node server.js
 
 ---
 
-## 💡 PROMPT MẪU CHO LIÊM HỎI VỀ KẾT NỐI POSTGRESQL
+---
 
-**Ngày mai khi cần kết nối Backend với Database, Liêm có thể hỏi như sau:**
+## 🚀 PHẦN B: SỬ DỤNG MYCLAUDE ĐỂ TỚI ĨU HÓA BACKEND (NÂNG CAO)
+
+### MyCliaude là gì?
+
+**MyCliaude** (stellarlinkco/myclaude) là một công cụ **AI-powered development automation** giúp bạn:
+- ✅ Viết code nhanh hơn bằng cách sử dụng AI (Claude, GPT-4, Gemini, v.v.)
+- ✅ Tự động refactor, optimize, debug code
+- ✅ Tạo test cases, documentation tự động
+- ✅ Giải pháp phức tạp mà bạn có thể không biết cách làm
+
+**Tại sao Liêm cần MyCliaude?**
+- Backend cần nhiều APIs phức tạp: xác thực người dùng, kết nối database, xử lý dữ liệu, v.v.
+- Thay vì Google từng lỗi, Liêm có thể hỏi AI để tạo code sẵn sàng
+- MyCliaude sẽ giúp code của bạn tuân theo **best practices** (cách làm tốt nhất)
 
 ---
 
-### 📝 PROMPT MẪU:
+### Bước 1: Cài đặt MyCliaude
+
+```bash
+# Cài đặt (chọn codeagent-wrapper và do module)
+npx github:stellarlinkco/myclaude
+```
+
+**Giải thích:**
+- Lệnh này sẽ tải công cụ MyCliaude về máy
+- Chọn các module theo hướng dẫn (recommend: `codeagent-wrapper` + `do` module)
+- Sau khi cài xong, bạn có thể dùng lệnh `codeagent-wrapper`
+
+---
+
+### Bước 2: Kiểm tra cài đặt thành công
+
+```bash
+codeagent-wrapper --version
+```
+
+**Kết quả:**
+- Nếu hiện ra version (ví dụ: `1.0.0`) = cài đặt thành công ✅
+- Nếu lỗi "command not found" = chưa cài đúng, cài lại từ bước 1
+
+---
+
+### Bước 3: Sử dụng MyCliaude để tạo APIs
+
+**Ví dụ 1: Tạo API xác thực người dùng (User Authentication)**
+
+Trong thư mục `backend`, gõ:
+
+```bash
+codeagent-wrapper --backend claude "Tạo API xác thực người dùng cho dự án E-learning:
+- Endpoint POST /auth/register: Đăng ký tài khoản mới
+- Endpoint POST /auth/login: Đăng nhập bằng email + password
+- Sử dụng JWT token để xác thực
+- Hash password bằng bcrypt
+- Database sử dụng PostgreSQL
+- Trả về JSON responses (success/error)"
+```
+
+**MyCliaude sẽ:**
+1. ✅ Phân tích yêu cầu của bạn
+2. ✅ Viết code xác thực hoàn chỉnh
+3. ✅ Tạo middleware JWT
+4. ✅ Thêm error handling
+5. ✅ Tạo comments giải thích code
+
+---
+
+**Ví dụ 2: Kết nối PostgreSQL vào Backend**
+
+```bash
+codeagent-wrapper --backend claude "Tạo module kết nối PostgreSQL cho Node.js Express:
+- Sử dụng pg package (npm install pg)
+- Cấu hình connection pool
+- Tạo hàm execute queries an toàn
+- Có error handling và logging
+- File: src/db/connection.js"
+```
+
+---
+
+**Ví dụ 3: Tạo API Chatbot (RAG)**
+
+```bash
+codeagent-wrapper --backend claude "Tạo API Chatbot RAG cho dự án E-learning:
+- Endpoint POST /api/chatbot/ask
+- Input: câu hỏi tiếng Anh từ user
+- Output: trả lời từ LLM (Claude/GPT-4)
+- Kết nối với pgvector để tìm kiếm context từ database
+- Có rate limiting (giới hạn số lần hỏi)
+- Trả về JSON response"
+```
+
+---
+
+### Bước 4: Sử dụng MyCliaude để Debug/Fix Lỗi
+
+**Nếu Liêm gặp lỗi:**
+
+```bash
+codeagent-wrapper --backend claude - <<'EOF'
+Lỗi trong code Express của em:
+Error: Cannot read property 'email' of undefined
+Ở file routes/auth.js, dòng 15
+
+Code hiện tại:
+```javascript
+app.post('/auth/register', (req, res) => {
+  const email = req.body.email;
+  // ...
+});
+```
+
+Hãy giúp em fix lỗi này và giải thích tại sao?
+EOF
+```
+
+**MyCliaude sẽ:**
+- ✅ Phân tích lỗi
+- ✅ Gợi ý fix
+- ✅ Giải thích nguyên nhân
+- ✅ Cung cấp code cải tiến
+
+---
+
+### Bước 5: Chạy code được tạo bởi MyCliaude
+
+**Sau khi MyCliaude tạo code xong:**
+
+1. Copy code được tạo vào file `server.js` hoặc tạo file mới (ví dụ: `auth.js`)
+2. Cài đặt dependencies cần thiết:
+   ```bash
+   npm install pg bcryptjs jsonwebtoken
+   ```
+3. Chạy server:
+   ```bash
+   node server.js
+   ```
+4. Test APIs bằng Postman hoặc cURL:
+   ```bash
+   curl -X POST http://localhost:5000/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"email":"user@example.com","password":"123456"}'
+   ```
+
+---
+
+## 💡 PROMPT MẪU CHO LIÊM SỬ DỤNG MYCLAUDE
+
+### Prompt mẫu 1: Tạo feature hoàn chỉnh
 
 ```
-"Tech Lead ơi, em muốn kết nối Node.js/Express server của em 
-vào PostgreSQL database. Em hiểu rằng:
+"Tạo feature hoàn chỉnh cho dự án E-learning:
+- Tên: Quản lý khóa học (Course Management)
+- Endpoints cần có:
+  * GET /api/courses - Lấy danh sách khóa học
+  * POST /api/courses - Tạo khóa học mới (chỉ admin)
+  * GET /api/courses/:id - Lấy chi tiết khóa học
+  * PUT /api/courses/:id - Cập nhật khóa học
+  * DELETE /api/courses/:id - Xóa khóa học
+- Database: PostgreSQL, bảng 'courses'
+- Authentication: Sử dụng JWT token
+- Validation: Kiểm tra input trước khi save
+- Error handling: Trả về HTTP status code đúng
+- Comments: Giải thích tiếng Việt từng phần"
+```
 
-1. Chương đã tạo database PostgreSQL với extension pgvector
-2. Mất khẩu PostgreSQL là: postgres123
-3. Database tên: elearning_db (mà Chương sẽ tạo)
-4. Server sẽ chạy trên localhost:5000
+---
+
+### Prompt mẫu 2: Fix lỗi + explain
+
+```
+"Lỗi trong code backend của em:
+[PASTE LỖI VÀ CODE]
 
 Hỏi:
-- Em cần cài đặt package npm nào để kết nối?
-- Code sẽ như thế nào?
-- Làm sao để test xem kết nối có thành công không?
-
-Em cần Tech Lead hướng dẫn chi tiết từng bước giống như hôm nay ạ."
+1. Tại sao bị lỗi?
+2. Cách fix?
+3. Cách phòng tránh lần sau?"
 ```
 
 ---
 
-**Hoặc đơn giản hơn:**
+### Prompt mẫu 3: Tối ưu hóa (Optimize)
 
 ```
-"Hướng dẫn em cách setup kết nối Node.js với PostgreSQL 
-từng bước một, có comment tiếng Việt."
+"Tối ưu hóa code này để performance tốt hơn:
+[PASTE CODE]
+
+Yêu cầu:
+- Thêm caching (Redis tuỳ chọn)
+- Giảm số lần query database
+- Thêm pagination nếu query nhiều records
+- Có comments giải thích"
+```
+
+---
+
+### Prompt mẫu 4: Test cases
+
+```
+"Viết test cases cho API này:
+- Endpoint: POST /api/auth/login
+- Input: email + password
+- Expected: Trả về JWT token nếu đúng
+- Use Jest + Supertest
+- Test cases: valid credentials, invalid email, wrong password, user not found"
+```
+
+---
+
+## 📋 TỔNG KẾT LỆNH CHO LIÊM (PHẦN B - MYCLAUDE)
+
+```bash
+# 1. Cài đặt MyCliaude
+npx github:stellarlinkco/myclaude
+
+# 2. Kiểm tra cài đặt
+codeagent-wrapper --version
+
+# 3. Tạo feature (ví dụ: authentication)
+codeagent-wrapper --backend claude "Tạo API xác thực người dùng..."
+
+# 4. Tạo API (ví dụ: chatbot)
+codeagent-wrapper --backend claude "Tạo API Chatbot RAG..."
+
+# 5. Debug lỗi (dùng HEREDOC)
+codeagent-wrapper --backend claude - <<'EOF'
+[PASTE LỖI VÀ CODE]
+EOF
+
+# 6. Cài dependencies
+npm install pg bcryptjs jsonwebtoken
+
+# 7. Chạy server
+node server.js
 ```
 
 ---
@@ -561,6 +769,12 @@ rmdir tên_thư_mục
 
 # Xóa file
 del tên_file
+
+# Kiểm tra port đang được sử dụng (Windows)
+netstat -ano | findstr :5000
+
+# Kill process đang chạy trên port
+taskkill /PID <PID> /F
 ```
 
 ---
@@ -580,6 +794,12 @@ Project-E-learning-website-for-learning-English-online/
 │   ├── node_modules/
 │   ├── server.js
 │   ├── package.json
+│   ├── routes/              (Tạo sau khi dùng MyCliaude)
+│   │   ├── auth.js
+│   │   ├── courses.js
+│   │   └── chatbot.js
+│   ├── middlewares/         (JWT, validation, v.v.)
+│   ├── db/                  (PostgreSQL connection)
 │   └── ...
 │
 ├── database/                 (PostgreSQL - Chương)
@@ -601,15 +821,42 @@ A: Thay đổi số port trong code. Ví dụ: `const PORT = 8000;`
 **Q: Quên mật khẩu PostgreSQL?**
 A: Phải cài lại PostgreSQL. Cài đặt sẽ hỏi lại mật khẩu.
 
+**Q: MyCliaude command không hoạt động?**
+A: 
+1. Kiểm tra lại cài đặt: `codeagent-wrapper --version`
+2. Nếu lỗi, cài lại: `npx github:stellarlinkco/myclaude --force`
+3. Đảm bảo máy có kết nối internet
+
+**Q: MyCliaude tạo code nhưng chạy có lỗi?**
+A: 
+1. Kiểm tra có cài đủ dependencies: `npm install`
+2. Xem lỗi cụ thể: `node server.js`
+3. Hỏi MyCliaude để debug: `codeagent-wrapper --backend claude - <<'EOF' [PASTE LỖI] EOF`
+
 ---
 
 ## Tiếp theo (Bước 2)
 
 Sau khi tất cả thành viên khởi tạo xong, Tech Lead sẽ hướng dẫn:
 
-1. **Q.Anh:** Học React cơ bản (Component, State, Props)
-2. **Chương:** Thiết kế Schema Database (tạo các bảng)
-3. **Liêm:** Tạo API endpoints đầu tiên (GET, POST)
+1. **Q.Anh:** Học React cơ bản (Component, State, Props) + kết nối Frontend với Backend
+2. **Chương:** Thiết kế Schema Database (tạo các bảng cho courses, users, vectors, v.v.)
+3. **Liêm:** Tạo thêm APIs (Courses, Lessons, User Progress) + kết nối pgvector cho Chatbot
+
+---
+
+## Mẹo nhỏ cho Liêm: Dùng MyCliaude hiệu quả
+
+✅ **Nên làm:**
+- Hỏi MyCliaude các task cụ thể (tạo API, debug lỗi, refactor)
+- Giải thích rõ ràng yêu cầu (input, output, database schema)
+- Để MyCliaude tạo code, rồi bạn review và adjust nhỏ
+- Hỏi lại nếu không hiểu code được tạo
+
+❌ **Không nên:**
+- Hỏi quá chung chung ("Làm backend")
+- Copy-paste code mà không hiểu
+- Dùng MyCliaude thay vì tự học (balance learning + productivity)
 
 ---
 
@@ -617,3 +864,4 @@ Sau khi tất cả thành viên khởi tạo xong, Tech Lead sẽ hướng dẫn
 
 *Generated by: Tech Lead*
 *Date: 2026-06-01*
+*Updated: 2026-06-01 - Added MyCliaude Integration Guide*
