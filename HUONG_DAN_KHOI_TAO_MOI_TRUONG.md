@@ -8,14 +8,16 @@
 
 **Công nghệ:**
 - **Frontend:** ReactJS (JavaScript thuần) + **Train AI RAG**
-- **Backend:** Node.js/Express (JavaScript) + MyCliaude AI Assistant
-- **Database:** PostgreSQL + pgvector
-- **RAG Engine:** LangChain + Google Gemini + Pinecone (Vector Store)
+- **Backend:** Node.js/Express (JavaScript) + **Modular Monolith Architecture**
+- **Database:** PostgreSQL + Pinecone (RAG Vector Store)
+- **RAG Engine:** LangChain + Google Gemini + Pinecone
+
+**Kiến trúc:** Modular Monolith (tất cả dùng chung 1 server, nhưng code chia thành modules riêng biệt)
 
 **Cấu trúc nhóm & Trách nhiệm:**
 - **Q.Anh:** Frontend + **Train & Deploy RAG Model**
 - **Chương:** Database (PostgreSQL)
-- **Liêm:** Backend (APIs) + **MyCliaude**
+- **Liêm:** Backend (APIs + Modular Architecture) + **MyCliaude**
 
 ---
 
@@ -107,45 +109,155 @@ npx create-react-app frontend
 
 ---
 
-## 3️⃣ CHẠY PROJECT LẦN ĐẦU TIÊN
+## 3️⃣ SETUP CẤU TRÚC FRONTEND (MODULAR STRUCTURE)
 
-### Bước 4: Vào thư mục project
+### Bước 4: Tổ chức folder Frontend theo Modular Pattern
+
+Sau khi tạo project React, hãy tạo cấu trúc folder như sau:
 
 ```bash
 cd frontend
+# Các lệnh tạo folder
+mkdir -p src/modules
+mkdir -p src/modules/auth
+mkdir -p src/modules/lessons
+mkdir -p src/modules/chatbot
+mkdir -p src/modules/progress
+mkdir -p src/components/common
+mkdir -p src/services
+mkdir -p src/hooks
+mkdir -p src/utils
+mkdir -p src/styles
+mkdir -p src/config
 ```
 
-**Giải thích:**
-- `cd` = Change Directory (đi vào thư mục)
-- `frontend` = Tên thư mục bạn vừa tạo
-- Lệnh này khiến bạn "đi vào" thư mục project
+**Cấu trúc folder hoàn chỉnh:**
 
-### Bước 5: Chạy server phát triển
+```
+frontend/
+├── node_modules/
+├── public/
+├── src/
+│   ├── modules/                    # 🎯 Các tính năng chính (Modular)
+│   │   ├── auth/
+│   │   │   ├── components/
+│   │   │   │   ├── LoginForm.jsx
+│   │   │   │   ├── RegisterForm.jsx
+│   │   │   │   └── ProfileCard.jsx
+│   │   │   ├── pages/
+│   │   │   │   ├── LoginPage.jsx
+│   │   │   │   └── RegisterPage.jsx
+│   │   │   ├── hooks/
+│   │   │   │   └── useAuth.js
+│   │   │   ├── services/
+│   │   │   │   └── authService.js
+│   │   │   └── auth.module.scss
+│   │   │
+│   │   ├── lessons/
+│   │   │   ├── components/
+│   │   │   │   ├── LessonCard.jsx
+│   │   │   │   ├── LessonList.jsx
+│   │   │   │   └── LessonDetail.jsx
+│   │   │   ├── pages/
+│   │   │   │   ├── LessonsPage.jsx
+│   │   │   │   └── LessonDetailPage.jsx
+│   │   │   ├── services/
+│   │   │   │   └── lessonService.js
+│   │   │   └── lessons.module.scss
+│   │   │
+│   │   ├── chatbot/
+│   │   │   ├── components/
+│   │   │   │   ├── ChatBox.jsx
+│   │   │   │   ├── ChatMessage.jsx
+│   │   │   │   └── ChatInput.jsx
+│   │   │   ├── pages/
+│   │   │   │   └── ChatbotPage.jsx
+│   │   │   ├── services/
+│   │   │   │   └── chatbotService.js
+│   │   │   ├── hooks/
+│   │   │   │   └── useChat.js
+│   │   │   └── chatbot.module.scss
+│   │   │
+│   │   └── progress/
+│   │       ├── components/
+│   │       │   ├── ProgressBar.jsx
+│   │       │   └── ProgressChart.jsx
+│   │       ├── pages/
+│   │       │   └── ProgressPage.jsx
+│   │       ├── services/
+│   │       │   └── progressService.js
+│   │       └── progress.module.scss
+│   │
+│   ├── components/                 # 🔧 Shared Components
+│   │   └── common/
+│   │       ├── Header.jsx
+│   │       ├── Footer.jsx
+│   │       ├── Navbar.jsx
+│   │       ├── Button.jsx
+│   │       ├── Loading.jsx
+│   │       └── ErrorBoundary.jsx
+│   │
+│   ├── services/                   # 🌐 API Services
+│   │   ├── api.js                  # Cấu hình axios/fetch
+│   │   └── constants.js
+│   │
+│   ├── hooks/                      # 🎣 Custom Hooks
+│   │   ├── useFetch.js
+│   │   └── useLocalStorage.js
+│   │
+│   ├── utils/                      # 🛠️ Utilities
+│   │   ├── helpers.js
+│   │   ├── validators.js
+│   │   └── formatters.js
+│   │
+│   ├── styles/                     # 🎨 Global Styles
+│   │   ├── globals.scss
+│   │   ├── variables.scss
+│   │   └── mixins.scss
+│   │
+│   ├── config/                     # ⚙️ Configuration
+│   │   └── config.js
+│   │
+│   ├── App.jsx                     # Main App Component
+│   ├── App.scss
+│   └── index.js
+│
+├── package.json
+└── README.md
+```
+
+---
+
+## 4️⃣ CHẠY PROJECT LẦN ĐẦU TIÊN
+
+### Bước 5: Vào thư mục project và chạy
 
 ```bash
+cd frontend
 npm start
 ```
 
-**Câu lệnh này sẽ:**
-1. Khởi động một máy chủ phát triển trên máy tính bạn
-2. Tự động mở trình duyệt và hiển thị trang web React
-3. Theo dõi các thay đổi code của bạn - nếu bạn sửa file, trang web tự động cập nhật (hot reload)
-
-**Kết quả bạn sẽ thấy:**
-- Trình duyệt hiện ra trang có logo React quay vòng
-- Địa chỉ: `http://localhost:3000`
-- `localhost:3000` = "Máy tính của tôi, cổng 3000" - máy chủ chạy trên máy bạn
+**Kết quả:**
+- Trình duyệt tự động mở tại `http://localhost:3000`
+- Bạn sẽ thấy trang React mặc định
 
 ---
 
 ## 📋 TỔNG KẾT LỆNH CHO Q.ANH (PHẦN FRONTEND)
 
 ```bash
-# 1. Tạo project React trống
+# 1. Tạo project React
 npx create-react-app frontend
 
-# 2. Vào thư mục project
+# 2. Tạo cấu trúc thư mục modular
 cd frontend
+mkdir -p src/modules/{auth,lessons,chatbot,progress}
+mkdir -p src/components/common
+mkdir -p src/services
+mkdir -p src/hooks
+mkdir -p src/utils
+mkdir -p src/styles
+mkdir -p src/config
 
 # 3. Chạy server phát triển
 npm start
@@ -253,6 +365,94 @@ npm start
 
 ---
 
+### Bước 5: Thiết kế Schema Database
+
+**Hãy tạo các bảng sau (trong pgAdmin):**
+
+#### **Bảng 1: users (Người dùng)**
+```sql
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  username VARCHAR(100) NOT NULL,
+  full_name VARCHAR(255),
+  profile_picture_url VARCHAR(500),
+  account_type VARCHAR(50) DEFAULT 'free',  -- 'free' hoặc 'vip'
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### **Bảng 2: courses (Khóa học)**
+```sql
+CREATE TABLE courses (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  instructor VARCHAR(255),
+  level VARCHAR(50),  -- 'beginner', 'intermediate', 'advanced'
+  thumbnail_url VARCHAR(500),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### **Bảng 3: lessons (Bài học)**
+```sql
+CREATE TABLE lessons (
+  id SERIAL PRIMARY KEY,
+  course_id INTEGER NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  content TEXT,
+  video_url VARCHAR(500),
+  order_number INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (course_id) REFERENCES courses(id)
+);
+```
+
+#### **Bảng 4: user_progress (Tiến độ học)**
+```sql
+CREATE TABLE user_progress (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  course_id INTEGER NOT NULL,
+  lesson_id INTEGER NOT NULL,
+  completed BOOLEAN DEFAULT FALSE,
+  progress_percentage NUMERIC(5,2) DEFAULT 0,
+  completed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (course_id) REFERENCES courses(id),
+  FOREIGN KEY (lesson_id) REFERENCES lessons(id)
+);
+```
+
+#### **Bảng 5: chat_history (Lịch sử Chatbot)**
+```sql
+CREATE TABLE chat_history (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  ai_model VARCHAR(100),  -- 'gemini', 'chatgpt', etc.
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+```
+
+**Cách thực hiện trong pgAdmin:**
+1. Mở **pgAdmin 4**
+2. Vào **Databases** → **elearning_db**
+3. Click vào **Query Tool** (biểu tượng SQL)
+4. Copy-paste từng bảng SQL ở trên
+5. Click **Execute** (hoặc F5)
+
+---
+
 ## 📋 TỔNG KẾT CÀI ĐẶT CHO CHƯƠNG
 
 | Bước | Hành động | Lý do |
@@ -261,14 +461,31 @@ npm start
 | 2 | Cài PostgreSQL + pgAdmin | pgAdmin để quản lý database dễ dàng |
 | 3 | Ghi nhớ mật khẩu `postgres` | Cần để kết nối từ Backend |
 | 4 | Tạo database `elearning_db` | Nơi lưu data ứng dụng |
+| 5 | Tạo 5 bảng (users, courses, lessons, progress, chat) | Schema database hoàn chỉnh |
 
 ---
 
 ---
 
-# 🔧 HƯỚNG DẪN CHI TIẾT CHO LIÊM (BACKEND)
+# 🔧 HƯỚNG DẪN CHI TIẾT CHO LIÊM (BACKEND - MODULAR MONOLITH)
 
-## PHẦN A: SETUP CƠ BẢN (LẦN ĐẦU)
+## ⚠️ KIẾN TRÚC BACKEND: MODULAR MONOLITH
+
+**Tại sao chọn Modular Monolith?**
+- ✅ Dễ setup (1 server = tất cả)
+- ✅ Dễ development (3 sinh viên làm cùng)
+- ✅ Dễ deploy + bảo trì
+- ✅ Chi phí thấp (1 server)
+- ⚠️ Không scale độc lập (nhưng không cần lúc này)
+
+**Cách giảm thiểu nhược điểm:**
+- ✅ Error handling tốt
+- ✅ Logging + monitoring
+- ✅ Caching (Redis tuỳ chọn)
+
+---
+
+## PHẦN A: SETUP CƠ BẢN
 
 ## 1️⃣ TẠO PROJECT NODE.JS
 
@@ -281,11 +498,6 @@ mkdir backend
 cd backend
 ```
 
-**Giải thích:**
-- `mkdir` = Make Directory (tạo thư mục)
-- `backend` = Tên thư mục dự án
-- `cd backend` = Đi vào thư mục vừa tạo
-
 ---
 
 ### Bước 2: Khởi tạo project Node.js
@@ -294,144 +506,401 @@ cd backend
 npm init -y
 ```
 
-**Giải thích:**
-- `npm init` = Khởi tạo project Node.js mới
-- `-y` = "Yes" tự động chấp nhận tất cả cài đặt mặc định
-- Lệnh này sẽ tạo file **`package.json`** - file này chứa danh sách tất cả thư viện mà dự án cần
-
-**File `package.json` trông như nào:**
-```json
-{
-  "name": "backend",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
-}
-```
-
 ---
 
-### Bước 3: Cài đặt Express (Framework Backend)
+### Bước 3: Cài đặt các packages cần thiết
 
 ```bash
-npm install express
+npm install express dotenv pg cors bcryptjs jsonwebtoken
+npm install --save-dev nodemon
 ```
 
-**Giải thích:**
-- `npm install` = Cài đặt package
-- `express` = Tên package (framework để tạo server web)
+**Giải thích từng package:**
+- `express` = Framework web
+- `dotenv` = Đọc biến từ `.env`
+- `pg` = PostgreSQL client
+- `cors` = Cho phép requests từ frontend
+- `bcryptjs` = Hash password
+- `jsonwebtoken` = JWT authentication
+- `nodemon` = Auto-restart server khi code thay đổi
 
-**Lệnh này sẽ:**
-1. Tải file Express từ npm repository (kho lưu trữ online)
-2. Lưu vào thư mục **`node_modules`** trên máy bạn
-3. Cập nhật file **`package.json`** để ghi nhớ rằng dự án cần Express
+---
 
-**Sau khi cài xong, `package.json` sẽ có thêm:**
-```json
-"dependencies": {
-  "express": "^4.18.2"
-}
+## 2️⃣ SETUP CẤU TRÚC BACKEND (MODULAR MONOLITH)
+
+### Bước 4: Tạo cấu trúc folder
+
+```bash
+# Tạo folder structure
+mkdir -p src/modules
+mkdir -p src/modules/auth
+mkdir -p src/modules/auth/controllers
+mkdir -p src/modules/auth/services
+mkdir -p src/modules/auth/routes
+mkdir -p src/modules/auth/models
+
+mkdir -p src/modules/courses
+mkdir -p src/modules/courses/controllers
+mkdir -p src/modules/courses/services
+mkdir -p src/modules/courses/routes
+mkdir -p src/modules/courses/models
+
+mkdir -p src/modules/chatbot
+mkdir -p src/modules/chatbot/controllers
+mkdir -p src/modules/chatbot/services
+mkdir -p src/modules/chatbot/routes
+
+mkdir -p src/modules/progress
+mkdir -p src/modules/progress/controllers
+mkdir -p src/modules/progress/services
+mkdir -p src/modules/progress/routes
+
+mkdir -p src/middleware
+mkdir -p src/config
+mkdir -p src/utils
+```
+
+**Cấu trúc folder hoàn chỉnh:**
+
+```
+backend/
+├── node_modules/
+├── src/
+│   ├── modules/                    # 🎯 Các modules (Modular Pattern)
+│   │   │
+│   │   ├── auth/
+│   │   │   ├── controllers/
+│   │   │   │   └── auth.controller.js      # Xử lý requests
+│   │   │   ├── services/
+│   │   │   │   └── auth.service.js         # Business logic
+│   │   │   ├── models/
+│   │   │   │   └── User.js                 # Database model
+│   │   │   ├── routes/
+│   │   │   │   └── auth.routes.js          # API routes
+│   │   │   └── auth.module.js              # Module entry point
+│   │   │
+│   │   ├── courses/
+│   │   │   ├── controllers/
+│   │   │   │   └── courses.controller.js
+│   │   │   ├── services/
+│   │   │   │   └── courses.service.js
+│   │   │   ├── models/
+│   │   │   │   ├── Course.js
+│   │   │   │   └── Lesson.js
+│   │   │   ├── routes/
+│   │   │   │   └── courses.routes.js
+│   │   │   └── courses.module.js
+│   │   │
+│   │   ├── chatbot/
+│   │   │   ├── controllers/
+│   │   │   │   └── chatbot.controller.js
+│   │   │   ├── services/
+│   │   │   │   ├── chatbot.service.js
+│   │   │   │   └── pinecone.service.js     # Tích hợp Pinecone
+│   │   │   ├── routes/
+│   │   │   │   └── chatbot.routes.js
+│   │   │   └── chatbot.module.js
+│   │   │
+│   │   └── progress/
+│   │       ├── controllers/
+│   │       │   └── progress.controller.js
+│   │       ├── services/
+│   │       │   └── progress.service.js
+│   │       ├── models/
+│   │       │   └── Progress.js
+│   │       ├── routes/
+│   │       │   └── progress.routes.js
+│   │       └── progress.module.js
+│   │
+│   ├── middleware/                 # 🔧 Shared Middleware
+│   │   ├── auth.middleware.js       # JWT verification
+│   │   ├── error.middleware.js      # Error handling
+│   │   └── logger.middleware.js     # Logging
+│   │
+│   ├── config/                     # ⚙️ Configuration
+│   │   ├── database.js             # Database connection
+│   │   ├── pinecone.js             # Pinecone config
+│   │   └── gemini.js               # Gemini config
+│   │
+│   ├── utils/                      # 🛠️ Utilities
+│   │   ├── response.js             # Response formatting
+│   │   ├── validators.js           # Input validation
+│   │   └── helpers.js              # Helper functions
+│   │
+│   └── server.js                   # Main Express app
+│
+├── .env                            # Environment variables (GHI NHỚ: không commit!)
+├── .gitignore
+├── package.json
+└── README.md
 ```
 
 ---
 
-## 2️⃣ TẠO FILE SERVER.JS ĐƠN GIẢN
+## 3️⃣ TẠO FILE `.env`
 
-### Bước 4: Tạo file `server.js`
+Trong folder `backend`, tạo file `.env`:
 
-**Tại sao tên là `server.js`?**
-- `server.js` là tên quy ước cho file chính của backend
-- Nó chứa code để khởi động máy chủ
+```env
+# Server
+NODE_ENV=development
+PORT=5000
 
-**Cách tạo:**
-1. Mở **VS Code**
-2. Mở thư mục **`backend`** vào VS Code (File → Open Folder)
-3. Tạo file mới: **Ctrl+N** hoặc Right-click → New File
-4. Đặt tên: `server.js`
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=elearning_db
+DB_USER=postgres
+DB_PASSWORD=postgres123
+
+# JWT
+JWT_SECRET=your-super-secret-key-change-this
+JWT_EXPIRE=7d
+
+# Pinecone (RAG)
+PINECONE_API_KEY=your-pinecone-api-key
+PINECONE_ENV=us-east-1-aws
+PINECONE_INDEX=elearning-rag
+
+# Google Gemini
+GEMINI_API_KEY=your-gemini-api-key
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3000
+```
+
+**Tạo `.gitignore`:**
+
+```
+node_modules/
+.env
+.DS_Store
+dist/
+build/
+*.log
+```
 
 ---
 
-### Bước 5: Viết code "Hello World" đầu tiên
+## 4️⃣ TẠO FILE SERVER.JS (MAIN APP)
 
-**Sao chép đoạn code này vào `server.js`:**
+Tạo file `src/server.js`:
 
 ```javascript
-// 1. Import thư viện Express
-// - Lệnh này tải module Express vừa cài đặt
+/**
+ * Main Server File - E-learning Backend (Modular Monolith)
+ * Architecture: Modular Monolith
+ * - Tất cả modules dùng chung 1 server
+ * - Mỗi module là một đơn vị độc lập
+ * - Error handling tại từng layer
+ */
+
+require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
+const path = require('path');
 
-// 2. Tạo ứng dụng Express
-// - app là đối tượng chứa tất cả cài đặt server
+// ===== 1. IMPORT MODULES =====
+// Mỗi module có entry point (module.js)
+const authModule = require('./modules/auth/auth.module');
+const coursesModule = require('./modules/courses/courses.module');
+const chatbotModule = require('./modules/chatbot/chatbot.module');
+const progressModule = require('./modules/progress/progress.module');
+
+// ===== 2. IMPORT MIDDLEWARE =====
+const errorHandler = require('./middleware/error.middleware');
+const loggerMiddleware = require('./middleware/logger.middleware');
+
+// ===== 3. KHỞI TẠO EXPRESS APP =====
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// 3. Định nghĩa cổng (port) mà server sẽ chạy
-// - Port 5000 = "cửa" của máy chủ
-// - Những request từ client sẽ gọi vào cổng này
-const PORT = 5000;
+// ===== 4. GLOBAL MIDDLEWARE =====
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
 
-// 4. Tạo route GET cho đường dẫn "/"
-// - app.get(đường dẫn, hàm xử lý)
-// - Khi người dùng truy cập http://localhost:5000, code này chạy
-app.get('/', (req, res) => {
-  // req = request (yêu cầu từ client)
-  // res = response (trả lời từ server)
-  
-  // 5. Gửi lại dòng chữ "Hello World" cho client
-  res.send('Hello World! Đây là Backend của dự án E-learning');
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Logging middleware
+app.use(loggerMiddleware);
+
+// ===== 5. MOUNT MODULES (ROUTES) =====
+// Cấu trúc: /api/<module-name>
+app.use('/api/auth', authModule);
+app.use('/api/courses', coursesModule);
+app.use('/api/chatbot', chatbotModule);
+app.use('/api/progress', progressModule);
+
+// ===== 6. HEALTH CHECK ENDPOINT =====
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'E-learning backend is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// 6. Khởi động server
-// - Lệnh này để server lắng nghe các yêu cầu từ client
-// - app.listen(port, hàm callback chạy khi server khởi động)
+// ===== 7. GLOBAL ERROR HANDLER =====
+// Phải là middleware cuối cùng
+app.use(errorHandler);
+
+// ===== 8. START SERVER =====
 app.listen(PORT, () => {
-  // 7. In ra console để biết server đã khởi động thành công
-  console.log(`Server đang chạy tại http://localhost:${PORT}`);
+  console.log(`
+    ╔═══════════════════════════════════════════╗
+    ║   🚀 E-LEARNING BACKEND SERVER STARTED   ║
+    ║   🌐 http://localhost:${PORT}                    ║
+    ║   🏗️  Architecture: Modular Monolith      ║
+    ║   ✅ Database: PostgreSQL                ║
+    ║   🤖 RAG: Pinecone + Gemini              ║
+    ╚═══════════════════════════════════════════╝
+  `);
+  console.log('✅ Available endpoints:');
+  console.log('   - POST   /api/auth/register');
+  console.log('   - POST   /api/auth/login');
+  console.log('   - GET    /api/courses');
+  console.log('   - POST   /api/chatbot/ask');
+  console.log('   - GET    /api/progress/:userId');
+  console.log('   - GET    /api/health');
 });
+
+module.exports = app;
 ```
 
 ---
 
-### Bước 6: Chạy server
+## 5️⃣ TẠO ERROR HANDLER MIDDLEWARE
 
-Gõ lệnh trong **Command Prompt** (ở thư mục `backend`):
+Tạo file `src/middleware/error.middleware.js`:
+
+```javascript
+/**
+ * Global Error Handler Middleware
+ * - Xử lý tất cả lỗi từ các modules
+ * - Không để lỗi 1 module crash cả app
+ * - Centralized error handling
+ */
+
+const errorHandler = (err, req, res, next) => {
+  const status = err.status || 500;
+  const message = err.message || 'Internal Server Error';
+
+  console.error(`
+    ❌ ERROR [${status}]:
+    - Message: ${message}
+    - URL: ${req.method} ${req.url}
+    - Time: ${new Date().toISOString()}
+  `);
+
+  // Auth errors
+  if (err.name === 'AuthError') {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication failed',
+      message: message
+    });
+  }
+
+  // Validation errors
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      message: message
+    });
+  }
+
+  // Database errors
+  if (err.name === 'DatabaseError') {
+    return res.status(503).json({
+      success: false,
+      error: 'Database connection error',
+      message: 'Vui lòng thử lại sau'
+    });
+  }
+
+  // Chatbot errors (không crash cả app)
+  if (err.name === 'ChatbotError') {
+    return res.status(503).json({
+      success: false,
+      error: 'Chatbot service unavailable',
+      message: 'Tính năng chatbot hiện tạm thời không có sẵn'
+    });
+  }
+
+  // Default error
+  res.status(status).json({
+    success: false,
+    error: message,
+    timestamp: new Date().toISOString()
+  });
+};
+
+module.exports = errorHandler;
+```
+
+---
+
+## 6️⃣ TẠO MODULE ENTRY POINT (AUTH MODULE)
+
+Tạo file `src/modules/auth/auth.module.js`:
+
+```javascript
+/**
+ * Auth Module - Xác thực người dùng
+ * - Login
+ * - Register
+ * - JWT verification
+ */
+
+const express = require('express');
+const router = express.Router();
+const authController = require('./controllers/auth.controller');
+const authMiddleware = require('../../middleware/auth.middleware');
+
+// Routes
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/logout', authMiddleware, authController.logout);
+router.get('/profile', authMiddleware, authController.getProfile);
+
+module.exports = router;
+```
+
+---
+
+## 7️⃣ CHẠY SERVER
 
 ```bash
-node server.js
+# Cập nhật package.json scripts
+# Thêm vào "scripts":
+"start": "node src/server.js",
+"dev": "nodemon src/server.js"
 ```
 
-**Giải thích:**
-- `node` = Chương trình để chạy file JavaScript
-- `server.js` = File cần chạy
+Chạy server:
+
+```bash
+npm run dev
+```
 
 **Kết quả:**
-- Console sẽ in: `Server đang chạy tại http://localhost:5000`
-- Server đang hoạt động! ✅
+```
+╔═══════════════════════════════════════════╗
+║   🚀 E-LEARNING BACKEND SERVER STARTED   ║
+║   🌐 http://localhost:5000                ║
+║   🏗️  Architecture: Modular Monolith      ║
+║   ✅ Database: PostgreSQL                ║
+║   🤖 RAG: Pinecone + Gemini              ║
+╚═══════════════════════════════════════════╝
+```
 
 ---
 
-### Bước 7: Kiểm tra trong trình duyệt
-
-1. Mở **trình duyệt** (Chrome, Firefox, Edge)
-2. Gõ vào thanh địa chỉ: `http://localhost:5000`
-3. Bạn sẽ thấy: **"Hello World! Đây là Backend của dự án E-learning"**
-
-🎉 **Chúc mừng! Bạn vừa tạo xong server backend đầu tiên!**
-
----
-
-### Bước 8: Dừng server
-
-Khi muốn dừng server, nhấn **Ctrl+C** trong Command Prompt.
-
----
-
-## 📋 TỔNG KẾT LỆNH CHO LIÊM (PHẦN A - CƠ BẢN)
+## 📋 TỔNG KẾT LỆNH CHO LIÊM (BACKEND MODULAR MONOLITH)
 
 ```bash
 # 1. Tạo thư mục backend
@@ -441,38 +910,95 @@ cd backend
 # 2. Khởi tạo project Node.js
 npm init -y
 
-# 3. Cài đặt Express
-npm install express
+# 3. Cài đặt packages
+npm install express dotenv pg cors bcryptjs jsonwebtoken
+npm install --save-dev nodemon
 
-# 4. Tạo file server.js (xem ở trên để copy code)
+# 4. Tạo cấu trúc folder
+mkdir -p src/modules/{auth,courses,chatbot,progress}
+mkdir -p src/{middleware,config,utils}
 
-# 5. Chạy server
-node server.js
+# 5. Tạo .env file (copy nội dung ở trên)
+
+# 6. Tạo server.js (copy code ở trên)
+
+# 7. Chạy server
+npm run dev
 
 # Kết quả: Server chạy tại http://localhost:5000
 ```
 
 ---
 
-## 🚀 PHẦN B: SỬ DỤNG MYCLAUDE ĐỂ TỚI ĨU HÓA BACKEND
+## 🎯 KIẾN TRÚC MODULAR MONOLITH CHI TIẾT
 
-**👉 Hãy xem file hướng dẫn riêng:** [HUONG_DAN_KHOI_TAO_MOI_TRUONG.md](./HUONG_DAN_KHOI_TAO_MOI_TRUONG_BACKEND.md) (phần MyCliaude - tương tự như phiên bản trước)
+### **Quy trình Request trong Modular Monolith:**
+
+```
+┌─────────────────────────────────────┐
+│      Frontend (React)                │
+│      POST /api/chatbot/ask           │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│      Express App (server.js)         │
+│      - Global middleware             │
+│      - Error handling                │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│      Chatbot Module                  │
+│  ├─ Route: /api/chatbot/ask          │
+│  ├─ Controller: validate request     │
+│  └─ Service: process question        │
+└──────────────┬──────────────────────┘
+               │
+      ┌────────┴─────────┐
+      │                  │
+      ▼                  ▼
+   Pinecone         Google Gemini
+   (Search)         (Generate Response)
+      │                  │
+      └────────┬─────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│      Response to Frontend            │
+│      { answer, sources }             │
+└─────────────────────────────────────┘
+```
 
 ---
 
-## 🔌 PHẦN C: API CHATBOT ENDPOINT
+## ⚠️ LƯU Ý QUAN TRỌNG (ERROR HANDLING)
 
-**Liêm cần tạo 1 API endpoint quan trọng:**
+**Để không crash cả app khi chatbot lỗi:**
 
 ```javascript
-// POST /api/chatbot/ask
-// - Nhận câu hỏi từ frontend
-// - Gọi Pinecone tìm documents liên quan
-// - Gọi Gemini tạo trả lời
-// - Trả lời cho frontend
+// chatbot.service.js
+async function askChatbot(question) {
+  try {
+    // 1. Search vectors từ Pinecone
+    const context = await pinecone.search(question);
+    
+    // 2. Generate response từ Gemini
+    const response = await gemini.ask(question, context);
+    
+    return response;
+  } catch (error) {
+    console.error('Chatbot error:', error);
+    
+    // 3. Không throw, return error response
+    return {
+      error: true,
+      message: 'Chatbot hiện tạm thời không khả dụng',
+      fallback: 'Vui lòng thử lại sau hoặc liên hệ support'
+    };
+  }
+}
 ```
-
-**Hướng dẫn chi tiết sẽ được cập nhật sau khi Q.Anh setup Pinecone xong!**
 
 ---
 
@@ -480,68 +1006,125 @@ node server.js
 
 # 🎓 GHI CHÚ CHUNG CHO CẢ NHÓ
 
-## Cấu trúc dự án sau khi khởi tạo
+## Cấu trúc dự án hoàn chỉnh sau khi khởi tạo
 
 ```
 Project-E-learning-website-for-learning-English-online/
-├── frontend/                 (ReactJS - Q.Anh)
-│   ├── node_modules/
-│   ├── public/
+├── frontend/                         (ReactJS - Q.Anh)
 │   ├── src/
+│   │   ├── modules/
+│   │   │   ├── auth/
+│   │   │   ├── lessons/
+│   │   │   ├── chatbot/
+│   │   │   └── progress/
+│   │   ├── components/common/
+│   │   ├── services/
+│   │   ├── hooks/
+│   │   ├── styles/
+│   │   └── config/
+│   ├── public/
 │   ├── package.json
 │   └── ...
 │
-├── backend/                  (Node.js/Express - Liêm)
-│   ├── node_modules/
-│   ├── server.js
+├── backend/                          (Node.js/Express - Liêm)
+│   ├── src/
+│   │   ├── modules/
+│   │   │   ├── auth/
+│   │   │   │   ├── controllers/
+│   │   │   │   ├── services/
+│   │   │   │   ├── models/
+│   │   │   │   ├── routes/
+│   │   │   │   └── auth.module.js
+│   │   │   ├── courses/
+│   │   │   ├── chatbot/
+│   │   │   │   ├── services/
+│   │   │   │   │   ├── chatbot.service.js
+│   │   │   │   │   └── pinecone.service.js
+│   │   │   │   └── chatbot.module.js
+│   │   │   └── progress/
+│   │   ├── middleware/
+│   │   │   ├── auth.middleware.js
+│   │   │   ├── error.middleware.js
+│   │   │   └── logger.middleware.js
+│   │   ├── config/
+│   │   │   ├── database.js
+│   │   │   ├── pinecone.js
+│   │   │   └── gemini.js
+│   │   ├── utils/
+│   │   └── server.js
+│   ├── .env
+│   ├── .gitignore
 │   ├── package.json
-│   ├── routes/
-│   ├── middlewares/
 │   └── ...
 │
-├── rag-training/             (RAG Training - Q.Anh)
-│   ├── train-rag.py          (hoặc train-rag.js)
-│   ├── requirements.txt      (hoặc package.json)
+├── rag-training/                     (RAG Training - Q.Anh)
+│   ├── data/
+│   ├── train-rag.py (hoặc train-rag.js)
+│   ├── requirements.txt (hoặc package.json)
 │   ├── .env
 │   └── ...
 │
-├── .env.example              (Template biến môi trường)
-├── HUONG_DAN_KHOI_TAO_MOI_TRUONG.md (File này)
-├── HUONG_DAN_RAG_PYTHON.md   (Option A - Python)
-├── HUONG_DAN_RAG_NODEJS.md   (Option B - Node.js)
+├── HUONG_DAN_KHOI_TAO_MOI_TRUONG.md
+├── HUONG_DAN_RAG_PYTHON.md
+├── HUONG_DAN_RAG_NODEJS.md
+├── NOTION_AI_PROMPT.md
 └── ...
 ```
 
 ---
 
-## 📞 Q&A thường gặp
+## 📊 SO SÁNH KIẾN TRÚC
 
-**Q: Q.Anh nên chọn Python hay Node.js để train RAG?**
-A: 
-- **Python** = Dễ hơn, nhiều tutorial, nhưng cần cài Python riêng
-- **Node.js** = Cùng stack với frontend/backend, nhưng phức tạp hơn
-- **Khuyến nghị:** Chọn Python (dễ hơn cho newbie)
-
-**Q: Pinecone là gì? Có miễn phí không?**
-A: Pinecone là vector database (lưu trữ vectors). Có free tier với:
-- 100,000 vectors miễn phí
-- 900 bài × 2000 embeddings/bài = ~1.8M embeddings (cần upgrade)
-
-**Q: Tại sao không dùng pgvector?**
-A: pgvector chậm hơn Pinecone cho 900+ documents. Pinecone được tối ưu hóa cho RAG.
-
-**Q: API key Google Gemini có bao nhiêu free quota?**
-A: 60 requests/phút miễn phí. Đủ cho dự án nhỏ.
+| Tiêu chí | Modular Monolith | Microservices |
+|----------|-----------------|---------------|
+| **Độ phức tạp** | ⭐⭐ (Dễ) | ⭐⭐⭐⭐⭐ (Rất khó) |
+| **Setup** | 1-2 tuần | 3-4 tuần |
+| **Chi phí** | 💰 Thấp | 💰💰💰 Cao |
+| **Phù hợp dự án?** | ✅✅✅ Tuyệt | ❌ Overkill |
 
 ---
 
-## Tiếp theo (Bước 2)
+## 📞 Q&A thường gặp
 
-Sau khi setup xong bước 1:
+**Q: Liêm nên bắt đầu từ đâu?**
+A: 
+1. Setup backend cơ bản (server.js, Express)
+2. Tạo cấu trúc folder modular
+3. Tạo auth module trước (login/register)
+4. Sau đó tạo courses module
+5. Cuối cùng tạo chatbot module (sau khi Q.Anh train RAG xong)
 
-1. **Q.Anh:** Train RAG model (xem HUONG_DAN_RAG_*.md)
-2. **Chương:** Thiết kế Schema Database (tạo bảng)
-3. **Liêm:** Tạo API Chatbot + kết nối Pinecone
+**Q: Nếu chatbot lỗi, toàn bộ app sẽ crash không?**
+A: KHÔNG, nếu error handling tốt:
+- Try-catch ở chatbot service
+- Global error handler middleware
+- Return fallback response thay vì throw error
+
+**Q: Database connection fail sẽ ảnh hưởng gì?**
+A: Chỉ ảnh hưởng các APIs dùng database (auth, courses)
+- Chatbot có thể vẫn hoạt động (nếu data cached)
+- Health check endpoint có thể báo status
+
+---
+
+## 🚀 TIẾP THEO (BƯỚC 2)
+
+Sau khi setup xong:
+
+1. **Q.Anh:** 
+   - Build React components (auth, lessons, chatbot)
+   - Train RAG model
+   - Upload embeddings lên Pinecone
+
+2. **Chương:** 
+   - Seed database (thêm data demo)
+   - Tối ưu queries
+   - Backup strategy
+
+3. **Liêm:** 
+   - Implement auth module
+   - Implement courses module
+   - Implement chatbot module (tích hợp Pinecone + Gemini)
 
 ---
 
@@ -549,4 +1132,4 @@ Sau khi setup xong bước 1:
 
 *Generated by: Tech Lead*
 *Date: 2026-06-01*
-*Updated: 2026-06-01 - Full RAG Integration Guide*
+*Updated: 2026-06-02 - Added Modular Monolith Architecture Guide for Frontend & Backend*
