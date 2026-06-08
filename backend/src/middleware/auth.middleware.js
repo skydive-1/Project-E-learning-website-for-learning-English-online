@@ -16,15 +16,24 @@ const authMiddleware = (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-super-secret-key-change-this');
+    
+    if (!process.env.JWT_SECRET) {
+      const error = new Error('JWT_SECRET chưa được cấu hình trên hệ thống');
+      error.name = 'AuthError';
+      error.status = 500;
+      throw error;
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     req.user = decoded;
     next();
   } catch (error) {
-    return res.status(401).json({
+    const status = error.status || 401;
+    return res.status(status).json({
       success: false,
       error: 'AuthError',
-      message: 'Token không hợp lệ hoặc đã hết hạn'
+      message: error.message || 'Token không hợp lệ hoặc đã hết hạn'
     });
   }
 };

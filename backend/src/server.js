@@ -12,11 +12,18 @@ const cors = require('cors');
 const path = require('path');
 
 // ===== 1. IMPORT MODULES =====
-// Mỗi module có entry point (module.js)
-const authModule = require('./modules/auth/auth.module');
-const coursesModule = require('./modules/courses/courses.module');
-const chatbotModule = require('./modules/chatbot/chatbot.module');
-const progressModule = require('./modules/progress/progress.module');
+// Mỗi module có entry point (routes.js)
+const authRoutes = require('./modules/auth/auth.routes');
+const coursesRoutes = require('./modules/courses/courses.routes');
+const chatbotRoutes = require('./modules/chatbot/chatbot.routes');
+const progressRoutes = require('./modules/progress/progress.routes');
+
+// Ràng buộc bảo mật: JWT_SECRET là bắt buộc để khởi chạy ứng dụng an toàn
+if (!process.env.JWT_SECRET) {
+  console.error('\n❌ FATAL ERROR: JWT_SECRET không được định nghĩa trong biến môi trường.');
+  console.error('Hệ thống dừng khởi động để đảm bảo an ninh.\n');
+  process.exit(1);
+}
 
 // ===== 2. IMPORT MIDDLEWARE =====
 const errorHandler = require('./middleware/error.middleware');
@@ -32,18 +39,19 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Giới hạn payload JSON và urlencoded ở mức 1mb để ngăn chặn tấn công DoS OOM
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
 // Logging middleware
 app.use(loggerMiddleware);
 
 // ===== 5. MOUNT MODULES (ROUTES) =====
 // Cấu trúc: /api/<module-name>
-app.use('/api/auth', authModule);
-app.use('/api/courses', coursesModule);
-app.use('/api/chatbot', chatbotModule);
-app.use('/api/progress', progressModule);
+app.use('/api/auth', authRoutes);
+app.use('/api/courses', coursesRoutes);
+app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/progress', progressRoutes);
 
 // ===== 6. HEALTH CHECK ENDPOINT =====
 app.get('/api/health', (req, res) => {

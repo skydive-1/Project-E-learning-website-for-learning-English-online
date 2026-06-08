@@ -1,0 +1,33 @@
+/**
+ * Auth Routes - Định nghĩa endpoints cho module Auth
+ */
+
+const express = require('express');
+const router = express.Router();
+const authController = require('./controllers/auth.controller');
+const authMiddleware = require('../../middleware/auth.middleware');
+const validate = require('../../middleware/validation.middleware');
+
+// Schemas Validation
+const registerSchema = {
+  body: {
+    email: { required: true, isEmail: true },
+    password: { required: true, minLength: 6 },
+    username: { required: true, minLength: 3 }
+  }
+};
+
+const loginSchema = {
+  body: {
+    email: { required: true, isEmail: true },
+    password: { required: true }
+  }
+};
+
+// Routes
+router.post('/register', validate(registerSchema), authController.register);
+router.post('/login', validate(loginSchema), authController.login);
+router.post('/logout', authMiddleware, authController.logout);
+router.get('/profile', authMiddleware, authController.getProfile);
+
+module.exports = router;

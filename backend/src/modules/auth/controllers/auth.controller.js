@@ -1,15 +1,18 @@
 /**
- * Auth Controller - Xử lý đăng ký, đăng nhập, đăng xuất, thông tin người dùng
+ * Auth Controller - Chỉ tiếp nhận request và trả về response
  */
+
+const authService = require('../services/auth.service');
 
 exports.register = async (req, res, next) => {
   try {
     const { email, password, username } = req.body;
-    // TODO: Triển khai lưu người dùng vào database (PostgreSQL)
+    const user = await authService.register({ email, password, username });
+    
     res.status(201).json({
       success: true,
-      message: 'Đăng ký tài khoản mới thành công (Placeholder)',
-      data: { email, username }
+      message: 'Đăng ký tài khoản mới thành công',
+      data: user
     });
   } catch (error) {
     next(error);
@@ -19,11 +22,12 @@ exports.register = async (req, res, next) => {
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    // TODO: Triển khai kiểm tra thông tin đăng nhập và sinh JWT Token
+    const result = await authService.login({ email, password });
+    
     res.status(200).json({
       success: true,
-      message: 'Đăng nhập thành công (Placeholder)',
-      token: 'dummy-jwt-token'
+      message: 'Đăng nhập thành công',
+      data: result
     });
   } catch (error) {
     next(error);
@@ -32,9 +36,10 @@ exports.login = async (req, res, next) => {
 
 exports.logout = async (req, res, next) => {
   try {
+    // TODO: Triển khai thu hồi token/blacklist token nếu cần
     res.status(200).json({
       success: true,
-      message: 'Đăng xuất thành công (Placeholder)'
+      message: 'Đăng xuất thành công'
     });
   } catch (error) {
     next(error);
@@ -46,7 +51,7 @@ exports.getProfile = async (req, res, next) => {
     // req.user được gán từ authMiddleware
     res.status(200).json({
       success: true,
-      message: 'Lấy thông tin cá nhân thành công (Placeholder)',
+      message: 'Lấy thông tin cá nhân thành công',
       user: req.user
     });
   } catch (error) {
