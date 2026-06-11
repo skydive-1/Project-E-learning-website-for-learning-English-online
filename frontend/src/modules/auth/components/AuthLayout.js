@@ -1,7 +1,6 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { FiArrowRight } from 'react-icons/fi';
-import loginIllustration from '../assets/login_illustration.png';
 import '../styles/auth.scss';
 
 const AuthLayout = () => {
@@ -13,7 +12,14 @@ const AuthLayout = () => {
         {/* Left Pane - Branding & Illustration (Stays mounted, animation runs once) */}
         <div className="auth-left-pane">
           <div className="illustration-card">
-            <img src={loginIllustration} alt="Master English Illustration" />
+            <img 
+              src="/images/login_illustration.png" 
+              alt="Master English Illustration" 
+              onError={(e) => {
+                // Fallback to a professional placeholder if image is missing
+                e.target.src = 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&q=80&w=600';
+              }}
+            />
           </div>
           <h3>Master English with Guided Clarity</h3>
           <p>Join E-Learn today and accelerate your language journey with our supportive AI tools.</p>
