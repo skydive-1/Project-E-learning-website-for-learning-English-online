@@ -48,11 +48,29 @@ exports.logout = async (req, res, next) => {
 
 exports.getProfile = async (req, res, next) => {
   try {
-    // req.user được gán từ authMiddleware
+    // req.user được gán từ authMiddleware (chứa id, email, username, role)
+    const user = await authService.getProfile(req.user.id);
+    
     res.status(200).json({
       success: true,
       message: 'Lấy thông tin cá nhân thành công',
-      user: req.user
+      data: user
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id;
+    
+    await authService.changePassword({ userId, oldPassword, newPassword });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Mật khẩu đã được thay đổi thành công'
     });
   } catch (error) {
     next(error);

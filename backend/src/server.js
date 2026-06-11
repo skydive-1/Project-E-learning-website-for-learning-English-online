@@ -67,7 +67,12 @@ app.get('/api/health', (req, res) => {
 app.use(errorHandler);
 
 // ===== 8. START SERVER =====
-app.listen(PORT, () => {
+const { testConnection } = require('./config/database');
+
+app.listen(PORT, async () => {
+  // Kiểm tra kết nối Database khi khởi chạy
+  await testConnection();
+
   console.log(`
     ╔═══════════════════════════════════════════╗
     ║   🚀 E-LEARNING BACKEND SERVER STARTED   ║
