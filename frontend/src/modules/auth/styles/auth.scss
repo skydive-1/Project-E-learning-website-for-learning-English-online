@@ -126,6 +126,26 @@ h3 {
       flex-direction: column;
       justify-content: center;
       box-sizing: border-box;
+      position: relative;
+
+      .auth-back-nav {
+        position: absolute;
+        top: 24px;
+        left: 48px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover {
+          color: var(--primary-blue);
+          transform: translateX(-4px);
+        }
+      }
 
       .welcome-title {
         font-size: 32px;

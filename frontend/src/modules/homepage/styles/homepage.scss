@@ -1000,134 +1000,107 @@ body {
   }
 }
 
-// ---------------- DETAILED ROADMAP TIMELINE ----------------
+// ---------------- DETAILED ROADMAP (Redesigned Grid) ----------------
 .detailed-roadmap-section {
-  padding: 80px 0;
-  background-color: $light-blue-bg;
+  padding: 100px 0;
+  background-color: #f8fafc;
 
-  .timeline-wrapper {
-    position: relative;
-    max-width: 900px;
-    margin: 40px auto 0 auto;
-    padding: 20px 0;
+  .roadmap-grid-modern {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 30px;
+    margin-top: 50px;
   }
 
-  .timeline-line {
-    position: absolute;
-    width: 4px;
-    background: linear-gradient(to bottom, $primary-blue, #6366f1, #a855f7, $accent-orange);
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: 4px;
-  }
-
-  .timeline-item {
+  .roadmap-card-new {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 32px;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
     position: relative;
-    width: 50%;
-    padding: 20px 40px;
-    box-sizing: border-box;
-
-    &.left {
-      left: 0;
-      text-align: right;
-
-      .timeline-dot {
-        right: -16px;
-      }
-
-      .timeline-box {
-        align-items: flex-end;
-      }
-    }
-
-    &.right {
-      left: 50%;
-      text-align: left;
-
-      .timeline-dot {
-        left: -16px;
-      }
-
-      .timeline-box {
-        align-items: flex-start;
-      }
-    }
-
-    .timeline-dot {
-      position: absolute;
-      top: 32px;
-      width: 32px;
-      height: 32px;
-      background-color: #ffffff;
-      border: 4px solid $primary-blue;
-      color: $primary-blue;
-      border-radius: 50%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-weight: 700;
-      font-size: 12px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-      z-index: 10;
-      transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
-    }
+    overflow: hidden;
 
     &:hover {
-      .timeline-dot {
-        background-color: $accent-orange;
-        border-color: $accent-orange;
-        color: #ffffff;
-        box-shadow: 0 0 10px rgba(255, 122, 48, 0.5);
-      }
-      .timeline-box {
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-        border-color: rgba(29, 78, 216, 0.15);
-        transform: translateY(-2px);
+      transform: translateY(-10px);
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+      border-color: $primary-blue;
+
+      .stage-icon-box {
+        transform: scale(1.1) rotate(5deg);
       }
     }
 
-    .timeline-box {
-      background-color: #ffffff;
-      border-radius: 16px;
-      padding: 28px;
-      border: 1px solid rgba(226, 232, 240, 0.6);
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+
+      .stage-label {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        color: $text-light;
+        background: $light-blue-bg;
+        padding: 4px 10px;
+        border-radius: 6px;
+      }
+
+      .stage-icon-box {
+        width: 54px;
+        height: 54px;
+        border-radius: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 24px;
+        transition: transform 0.3s ease;
+
+        &.blue { background: rgba(29, 78, 216, 0.1); color: $primary-blue; }
+        &.orange { background: rgba(255, 122, 48, 0.1); color: $accent-orange; }
+        &.purple { background: rgba(168, 85, 247, 0.1); color: #a855f7; }
+        &.teal { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }
+      }
+    }
+
+    h3 {
+      font-size: 20px;
+      font-weight: 700;
+      color: $text-dark;
+      margin-bottom: 4px;
+    }
+
+    .level-tag {
+      font-size: 13px;
+      font-weight: 600;
+      color: $primary-blue;
+      display: block;
+      margin-bottom: 24px;
+    }
+
+    .stage-features {
+      list-style: none;
+      padding: 0;
+      margin: 0;
       display: flex;
       flex-direction: column;
-      transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+      gap: 12px;
 
-      .stage-tag {
-        font-size: 11px;
-        font-weight: 700;
-        color: $accent-orange;
-        letter-spacing: 1px;
-        margin-bottom: 6px;
-      }
-
-      h3 {
-        font-size: 18px;
-        font-weight: 700;
-        color: $primary-blue;
-        margin-bottom: 8px;
-      }
-
-      .level-badge {
-        font-size: 12px;
-        font-weight: 700;
-        color: $text-light;
-        background-color: $light-blue-bg;
-        padding: 4px 12px;
-        border-radius: 12px;
-        margin-bottom: 16px;
-        display: inline-block;
-      }
-
-      p {
+      li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         font-size: 14px;
         color: $text-light;
-        line-height: 1.6;
+        font-weight: 500;
+
+        svg {
+          font-size: 14px;
+          color: #10b981;
+          flex-shrink: 0;
+        }
       }
     }
   }

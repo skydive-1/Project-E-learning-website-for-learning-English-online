@@ -4,6 +4,7 @@ import LoginPage from './modules/auth/pages/LoginPage';
 import RegisterPage from './modules/auth/pages/RegisterPage';
 import DashboardPage from './modules/dashboard/pages/DashboardPage';
 import HomePage from './modules/homepage/pages/HomePage';
+import AuthLayout from './modules/auth/components/AuthLayout';
 
 // Component Bảo vệ Route (Protected Route)
 const ProtectedRoute = ({ children }) => {
@@ -18,9 +19,11 @@ function App() {
         {/* Public Landing Route */}
         <Route path="/" element={<HomePage />} />
 
-        {/* Auth Routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        {/* Auth Routes with Shared Layout */}
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+        </Route>
 
         {/* Protected Routes */}
         <Route

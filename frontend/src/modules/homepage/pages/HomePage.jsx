@@ -396,59 +396,69 @@ const HomePage = () => {
           </div>
         </section>
 
-        {/* DETAILED ROADMAP TIMELINE */}
+        {/* DETAILED ROADMAP (Redesigned) */}
         <section className="detailed-roadmap-section">
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Lộ trình học tập chi tiết</h2>
-              <p>Hành trình 4 giai đoạn cụ thể giúp bạn tiến bước vững chắc từ con số 0 đến làm chủ tiếng Anh</p>
+              <h2>Lộ trình học bài bản</h2>
+              <p>Hành trình cá nhân hóa giúp bạn làm chủ tiếng Anh từ con số 0</p>
             </div>
 
-            <div className="timeline-wrapper">
-              <div className="timeline-line"></div>
-              
-              {/* TIMELINE ITEM 1 */}
-              <div className="timeline-item left scroll-animate">
-                <div className="timeline-dot">1</div>
-                <div className="timeline-box">
-                  <span className="stage-tag">GIAI ĐOẠN 1</span>
-                  <h3>Khởi động (Beginner)</h3>
-                  <span className="level-badge">Mục tiêu: A1</span>
-                  <p>Học viên nắm vững bảng phiên âm quốc tế IPA, các cấu trúc câu ngữ pháp nền tảng, vốn từ vựng thông dụng cơ bản nhất để giao lưu giao tiếp giới thiệu bản thân đơn giản.</p>
+            <div className="roadmap-grid-modern">
+              <div className="roadmap-card-new scroll-animate">
+                <div className="card-header">
+                  <span className="stage-label">GIAI ĐOẠN 1</span>
+                  <div className="stage-icon-box blue"><FiFileText /></div>
                 </div>
+                <h3>Khởi động</h3>
+                <span className="level-tag">Beginner (A1)</span>
+                <ul className="stage-features">
+                  <li><FiCheck /> Chuẩn hóa phát âm IPA</li>
+                  <li><FiCheck /> Ngữ pháp nền tảng</li>
+                  <li><FiCheck /> Giao tiếp cơ bản</li>
+                </ul>
               </div>
 
-              {/* TIMELINE ITEM 2 */}
-              <div className="timeline-item right scroll-animate">
-                <div className="timeline-dot">2</div>
-                <div className="timeline-box">
-                  <span className="stage-tag">GIAI ĐOẠN 2</span>
-                  <h3>Sức bền (Intermediate)</h3>
-                  <span className="level-badge">Mục tiêu: A2 - B1</span>
-                  <p>Mở rộng lượng từ vựng đa dạng chủ đề cuộc sống. Luyện nghe các đoạn hội thoại thường nhật và bắt đầu hình thành phản xạ nói trôi chảy mà không cần dịch từ tiếng Việt.</p>
+              <div className="roadmap-card-new scroll-animate">
+                <div className="card-header">
+                  <span className="stage-label">GIAI ĐOẠN 2</span>
+                  <div className="stage-icon-box orange"><FiMic /></div>
                 </div>
+                <h3>Sức bền</h3>
+                <span className="level-tag">Intermediate (A2-B1)</span>
+                <ul className="stage-features">
+                  <li><FiCheck /> Phản xạ nghe nói</li>
+                  <li><FiCheck /> Từ vựng đa chủ đề</li>
+                  <li><FiCheck /> Tư duy tiếng Anh</li>
+                </ul>
               </div>
 
-              {/* TIMELINE ITEM 3 */}
-              <div className="timeline-item left scroll-animate">
-                <div className="timeline-dot">3</div>
-                <div className="timeline-box">
-                  <span className="stage-tag">GIAI ĐOẠN 3</span>
-                  <h3>Bứt phá (Advanced)</h3>
-                  <span className="level-badge">Mục tiêu: B2 - C1</span>
-                  <p>Tập trung học các dạng cấu trúc câu phức tạp, thành ngữ, nâng cao khả năng thuyết trình trước đám đông, thảo luận tranh biện và viết luận học thuật sắc bén trôi chảy.</p>
+              <div className="roadmap-card-new scroll-animate">
+                <div className="card-header">
+                  <span className="stage-label">GIAI ĐOẠN 3</span>
+                  <div className="stage-icon-box purple"><FiTrendingUp /></div>
                 </div>
+                <h3>Bứt phá</h3>
+                <span className="level-tag">Advanced (B2-C1)</span>
+                <ul className="stage-features">
+                  <li><FiCheck /> Thuyết trình chuyên sâu</li>
+                  <li><FiCheck /> Viết luận sắc bén</li>
+                  <li><FiCheck /> Tranh biện tiếng Anh</li>
+                </ul>
               </div>
 
-              {/* TIMELINE ITEM 4 */}
-              <div className="timeline-item right scroll-animate">
-                <div className="timeline-dot">4</div>
-                <div className="timeline-box">
-                  <span className="stage-tag">GIAI ĐOẠN 4</span>
-                  <h3>Về đích (Master/VIP)</h3>
-                  <span className="level-badge">Mục tiêu: C2</span>
-                  <p>Đạt năng lực sử dụng tiếng Anh gần như người bản xứ. Làm chủ hoàn toàn ngôn ngữ để nghiên cứu khoa học, làm việc trong môi trường đa quốc gia toàn cầu.</p>
+              <div className="roadmap-card-new scroll-animate">
+                <div className="card-header">
+                  <span className="stage-label">GIAI ĐOẠN 4</span>
+                  <div className="stage-icon-box teal"><FiAward /></div>
                 </div>
+                <h3>Về đích</h3>
+                <span className="level-tag">Master (C2)</span>
+                <ul className="stage-features">
+                  <li><FiCheck /> Làm chủ ngôn ngữ</li>
+                  <li><FiCheck /> Nghiên cứu khoa học</li>
+                  <li><FiCheck /> Môi trường toàn cầu</li>
+                </ul>
               </div>
             </div>
           </div>
