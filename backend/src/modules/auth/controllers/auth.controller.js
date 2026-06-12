@@ -76,3 +76,20 @@ exports.changePassword = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const { username, fullName, profilePictureUrl } = req.body;
+    const userId = req.user.id;
+    
+    const updatedUser = await authService.updateProfile({ userId, username, fullName, profilePictureUrl });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật thông tin cá nhân thành công',
+      data: updatedUser
+    });
+  } catch (error) {
+    next(error);
+  }
+};

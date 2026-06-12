@@ -40,7 +40,7 @@ const LoginPage = () => {
       setMessage({ type: 'success', text: 'Đăng nhập thành công! Đang chuyển hướng...' });
       
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate('/');
       }, 1000);
     } catch (error) {
       const errMsg = error.response?.data?.message || 'Email hoặc mật khẩu không chính xác';

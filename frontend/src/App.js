@@ -5,6 +5,7 @@ import RegisterPage from './modules/auth/pages/RegisterPage';
 import DashboardPage from './modules/dashboard/pages/DashboardPage';
 import HomePage from './modules/homepage/pages/HomePage';
 import AuthLayout from './modules/auth/components/AuthLayout';
+import ProfilePage from './modules/profile/pages/ProfilePage';
 
 // Component Bảo vệ Route (Protected Route)
 const ProtectedRoute = ({ children }) => {
@@ -31,6 +32,14 @@ function App() {
           element={
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
             </ProtectedRoute>
           }
         />

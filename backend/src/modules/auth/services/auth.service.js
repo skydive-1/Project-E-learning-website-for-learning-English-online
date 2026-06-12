@@ -198,6 +198,81 @@ class AuthService {
       throw dbError;
     }
   }
+
+  async updateProfile({ userId, username, fullName, profilePictureUrl }) {
+    try {
+      // 1. Kiểm tra username trùng lặp nếu có đổi
+      if (username) {
+        const existingUser = await db.query('SELECT user_id FROM users WHERE username = $1 AND user_id != $2', [username, userId]);
+        if (existingUser.rows.length > 0) {
+          const error = new Error('Tên người dùng đã được sử dụng');
+          error.name = 'ValidationError';
+          error.status = 400;
+          throw error;
+        }
+      }
+
+      // 2. Tạo câu query động để cập nhật
+      const updates = [];
+      const values = [];
+      let paramIndex = 1;
+
+      if (username) {
+        updates.push(`username = $${paramIndex++}`);
+        values.push(username);
+      }
+      if (fullName) {
+        updates.push(`full_name = $${paramIndex++}`);
+        values.push(fullName);
+      }
+      if (profilePictureUrl !== undefined) {
+        updates.push(`profile_picture_url = $${paramIndex++}`);
+        values.push(profilePictureUrl);
+      }
+
+      if (updates.length === 0) {
+        const error = new Error('Không có thông tin nào để cập nhật');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      values.push(userId);
+      const queryText = `
+        UPDATE users 
+        SET ${updates.join(', ')} 
+        WHERE user_id = $${paramIndex}
+        RETURNING user_id, email, username, full_name, profile_picture_url, role_id
+      `;
+
+      const result = await db.query(queryText, values);
+      if (result.rows.length === 0) {
+        const error = new Error('Không tìm thấy tài khoản người dùng');
+        error.name = 'AuthError';
+        error.status = 404;
+        throw error;
+      }
+
+      const updatedUser = result.rows[0];
+      return {
+        userId: updatedUser.user_id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+        fullName: updatedUser.full_name,
+        profilePictureUrl: updatedUser.profile_picture_url,
+        roleId: updatedUser.role_id
+      };
+    } catch (error) {
+      if (error.name === 'ValidationError' || error.name === 'AuthError') {
+        throw error;
+      }
+      console.error('Lỗi cập nhật profile trong AuthService:', error);
+      const dbError = new Error('Có lỗi xảy ra trong quá trình cập nhật hoặc kết nối cơ sở dữ liệu');
+      dbError.name = 'DatabaseError';
+      dbError.status = 503;
+      throw dbError;
+    }
+  }
 }
 
 module.exports = new AuthService();

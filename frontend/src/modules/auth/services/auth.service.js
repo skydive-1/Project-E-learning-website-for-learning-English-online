@@ -23,3 +23,19 @@ export const getProfile = async () => {
   const response = await apiClient.get('/auth/profile');
   return response.data;
 };
+
+/**
+ * Đổi mật khẩu
+ */
+export const changePasswordApi = async ({ oldPassword, newPassword }) => {
+  const response = await apiClient.put('/auth/change-password', { oldPassword, newPassword });
+  return response.data;
+};
+
+/**
+ * Cập nhật thông tin cá nhân
+ */
+export const updateProfileApi = async ({ username, fullName, profilePictureUrl }) => {
+  const response = await apiClient.put('/auth/profile', { username, fullName, profilePictureUrl });
+  return response.data;
+};
