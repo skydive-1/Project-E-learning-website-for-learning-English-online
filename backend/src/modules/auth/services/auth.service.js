@@ -27,7 +27,7 @@ class AuthService {
         VALUES ($1, $2, $3, $4, $5)
         RETURNING user_id, email, username, full_name, role_id, created_date
       `;
-      const values = [email, hashedPassword, username, fullName, 2];
+      const values = [email, hashedPassword, username, fullName || username, 2];
       const result = await db.query(queryText, values);
 
       const newUser = result.rows[0];
