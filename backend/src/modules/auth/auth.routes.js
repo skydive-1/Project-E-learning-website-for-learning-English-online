@@ -13,7 +13,8 @@ const registerSchema = {
   body: {
     email: { required: true, isEmail: true },
     password: { required: true, minLength: 6 },
-    username: { required: true, minLength: 3 }
+    username: { required: true, minLength: 3 },
+    fullName: { required: true, minLength: 2 }
   }
 };
 
