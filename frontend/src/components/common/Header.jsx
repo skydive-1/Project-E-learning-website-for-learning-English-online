@@ -61,8 +61,8 @@ const Header = () => {
         </Link>
 
         <nav className="nav-menu">
-          <a href="#programs">Programs</a>
-          <a href="#about">Academy</a>
+          <Link to="/courses">Programs</Link>
+          <Link to="/academy">Academy</Link>
           <a href="#features">Featured</a>
           <a href="#pricing">Pricing</a>
         </nav>
@@ -98,9 +98,9 @@ const Header = () => {
                     <span>Trang cá nhân</span>
                   </Link>
 
-                  <Link to="/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
-                    <FiLayout className="dropdown-icon" />
-                    <span>Bảng điều khiển</span>
+                  <Link to="/lessons" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
+                    <FiBookOpen className="dropdown-icon" />
+                    <span>Bài học của tôi</span>
                   </Link>
 
                   <div className="dropdown-divider"></div>

@@ -2,10 +2,12 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './modules/auth/pages/LoginPage';
 import RegisterPage from './modules/auth/pages/RegisterPage';
-import DashboardPage from './modules/dashboard/pages/DashboardPage';
 import HomePage from './modules/homepage/pages/HomePage';
 import AuthLayout from './modules/auth/components/AuthLayout';
 import ProfilePage from './modules/profile/pages/ProfilePage';
+import LessonDetailPage from './modules/lessons/pages/LessonDetailPage';
+import CourseListPage from './modules/courses/pages/CourseListPage';
+import RoadmapPage from './modules/academy/pages/RoadmapPage';
 
 // Component Bảo vệ Route (Protected Route)
 const ProtectedRoute = ({ children }) => {
@@ -19,6 +21,8 @@ function App() {
       <Routes>
         {/* Public Landing Route */}
         <Route path="/" element={<HomePage />} />
+        <Route path="/courses" element={<CourseListPage />} />
+        <Route path="/academy" element={<RoadmapPage />} />
 
         {/* Auth Routes with Shared Layout */}
         <Route element={<AuthLayout />}>
@@ -28,18 +32,26 @@ function App() {
 
         {/* Protected Routes */}
         <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <DashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/profile"
           element={
             <ProtectedRoute>
               <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lessons"
+          element={
+            <ProtectedRoute>
+              <LessonDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lessons/:lessonId"
+          element={
+            <ProtectedRoute>
+              <LessonDetailPage />
             </ProtectedRoute>
           }
         />
