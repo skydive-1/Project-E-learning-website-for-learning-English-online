@@ -8,6 +8,8 @@ import ProfilePage from './modules/profile/pages/ProfilePage';
 import LessonDetailPage from './modules/lessons/pages/LessonDetailPage';
 import CourseListPage from './modules/courses/pages/CourseListPage';
 import RoadmapPage from './modules/academy/pages/RoadmapPage';
+import InstructorDashboard from './modules/instructor/pages/InstructorDashboard';
+import CourseEditor from './modules/instructor/pages/CourseEditor';
 
 // Component Bảo vệ Route (Protected Route)
 const ProtectedRoute = ({ children }) => {
@@ -52,6 +54,24 @@ function App() {
           element={
             <ProtectedRoute>
               <LessonDetailPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Instructor Routes */}
+        <Route
+          path="/instructor/dashboard"
+          element={
+            <ProtectedRoute>
+              <InstructorDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/instructor/create-course"
+          element={
+            <ProtectedRoute>
+              <CourseEditor />
             </ProtectedRoute>
           }
         />

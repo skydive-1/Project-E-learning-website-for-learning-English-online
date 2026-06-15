@@ -98,6 +98,13 @@ const Header = () => {
                     <span>Trang cá nhân</span>
                   </Link>
 
+                  {parseInt(user?.role_id || user?.role) === 2 && (
+                    <Link to="/instructor/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
+                      <FiLayout className="dropdown-icon" />
+                      <span>Quản lý khóa học</span>
+                    </Link>
+                  )}
+
                   <Link to="/lessons" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                     <FiBookOpen className="dropdown-icon" />
                     <span>Bài học của tôi</span>

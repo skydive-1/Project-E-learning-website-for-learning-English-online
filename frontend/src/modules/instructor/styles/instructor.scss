@@ -1,0 +1,426 @@
+// Instructor Dashboard Styles
+$primary-blue: #1d4ed8;
+$hover-blue: #1e40af;
+$light-blue-bg: #f3f7fe;
+$text-dark: #0f172a;
+$text-muted: #64748b;
+$border-light: #e2e8f0;
+
+.instructor-page {
+  background-color: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+
+  .instructor-container {
+    flex: 1;
+    display: flex;
+    max-width: 1400px;
+    margin: 80px auto 0;
+    width: 100%;
+    padding: 24px;
+    gap: 32px;
+  }
+
+  // Sidebar
+  .instructor-sidebar {
+    width: 260px;
+    background: #fff;
+    border-radius: 24px;
+    padding: 32px 16px;
+    border: 1px solid $border-light;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+    display: flex;
+    flex-direction: column;
+    height: fit-content;
+
+    .sidebar-brand h2 {
+      font-size: 18px;
+      font-weight: 800;
+      color: $primary-blue;
+      margin-bottom: 32px;
+      padding: 0 16px;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      button {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border: none;
+        background: none;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: $text-muted;
+        cursor: pointer;
+        transition: all 0.2s;
+
+        svg { font-size: 18px; }
+
+        &:hover { background: #f1f5f9; color: $text-dark; }
+        &.active { background: $primary-blue; color: #fff; }
+      }
+    }
+  }
+
+  // Main Content Area
+  .instructor-content {
+    flex: 1;
+
+    .content-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+
+      h1 { font-size: 28px; font-weight: 800; color: $text-dark; margin-bottom: 4px; }
+      p { color: $text-muted; font-size: 14px; }
+
+      .header-actions {
+        display: flex;
+        gap: 12px;
+      }
+
+      .btn-create-course, .btn-publish {
+        background: $primary-blue;
+        color: #fff;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        &:hover { background: $hover-blue; transform: translateY(-2px); }
+      }
+
+      .btn-save-draft {
+        background: #fff;
+        color: $text-dark;
+        border: 1px solid $border-light;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        &:hover { background: #f8fafc; }
+      }
+    }
+  }
+
+  // Editor specific
+  .editor-sidebar {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+
+    .btn-back {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0;
+      border: none;
+      background: none;
+      font-size: 14px;
+      font-weight: 700;
+      color: $text-muted;
+      cursor: pointer;
+      &:hover { color: $primary-blue; }
+    }
+
+    .course-nav-guide {
+      background: #fff;
+      padding: 24px;
+      border-radius: 20px;
+      border: 1px solid $border-light;
+
+      h3 { font-size: 13px; font-weight: 800; text-transform: uppercase; color: $text-muted; margin-bottom: 20px; }
+      ul {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        li {
+          font-size: 14px;
+          font-weight: 600;
+          color: $text-muted;
+          padding-left: 24px;
+          position: relative;
+          &.active { color: $primary-blue; &::before { background: $primary-blue; } }
+          &.completed { color: $text-dark; &::before { background: #10b981; border-color: #10b981; } }
+          &::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid $border-light;
+          }
+        }
+      }
+    }
+  }
+
+  .curriculum-builder {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+
+    .section-container {
+      background: #fff;
+      border-radius: 20px;
+      border: 1px solid $border-light;
+      overflow: hidden;
+    }
+
+    .section-header-edit {
+      padding: 16px 24px;
+      background: #fcfdfe;
+      border-bottom: 1px solid $border-light;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .title-area {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        .drag-handle { color: $text-muted; cursor: move; }
+        input {
+          background: none;
+          border: none;
+          font-size: 16px;
+          font-weight: 700;
+          color: $text-dark;
+          width: 100%;
+          padding: 4px 8px;
+          border-radius: 4px;
+          &:focus { background: #fff; box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.1); }
+        }
+      }
+    }
+
+    .lessons-list {
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+
+      .lesson-item-edit {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: #f8fafc;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+
+        &:hover { border-color: $border-light; background: #fff; }
+
+        .lesson-main {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          .drag-handle-small { color: #cbd5e1; cursor: move; }
+          svg { color: $text-muted; }
+          .lesson-title { font-size: 14px; font-weight: 500; color: $text-dark; }
+        }
+
+        .lesson-actions {
+          display: flex;
+          gap: 8px;
+          .btn-edit-content {
+            background: none;
+            border: 1px solid $border-light;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: $text-muted;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            &:hover { background: #f1f5f9; color: $primary-blue; border-color: $primary-blue; }
+          }
+        }
+      }
+
+      .btn-add-lesson {
+        margin-top: 8px;
+        background: none;
+        border: 1px dashed $border-light;
+        padding: 10px;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 700;
+        color: $text-muted;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        &:hover { border-color: $primary-blue; color: $primary-blue; background: rgba(29, 78, 216, 0.02); }
+      }
+    }
+
+    .btn-add-section {
+      background: #fff;
+      border: 2px dashed $border-light;
+      padding: 20px;
+      border-radius: 20px;
+      font-size: 15px;
+      font-weight: 700;
+      color: $text-muted;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: all 0.2s;
+      &:hover { border-color: $primary-blue; color: $primary-blue; box-shadow: 0 10px 25px rgba(29, 78, 216, 0.05); }
+    }
+  }
+
+  .btn-icon, .btn-icon-small {
+    background: none;
+    border: none;
+    color: $text-muted;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    &:hover { color: #ef4444; }
+  }
+
+  // Stats
+  .stats-overview {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 32px;
+
+    .stat-card {
+      background: #fff;
+      padding: 24px;
+      border-radius: 20px;
+      border: 1px solid $border-light;
+      display: flex;
+      flex-direction: column;
+
+      .stat-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: $text-muted; margin-bottom: 8px; }
+      .stat-value { font-size: 28px; font-weight: 800; color: $text-dark; margin-bottom: 4px; }
+      .stat-change { 
+        font-size: 12px; font-weight: 600; 
+        &.positive { color: #10b981; }
+      }
+    }
+  }
+
+  // Table
+  .course-list-table-wrapper {
+    background: #fff;
+    border-radius: 24px;
+    border: 1px solid $border-light;
+    overflow: hidden;
+  }
+
+  .course-list-table {
+    width: 100%;
+    border-collapse: collapse;
+    
+    th {
+      text-align: left;
+      padding: 16px 24px;
+      background: #fcfdfe;
+      border-bottom: 1px solid $border-light;
+      font-size: 13px;
+      font-weight: 700;
+      color: $text-muted;
+    }
+
+    td {
+      padding: 16px 24px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 14px;
+      color: $text-dark;
+      vertical-align: middle;
+    }
+
+    .course-info-cell {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
+      .course-thumb-mini {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        overflow: hidden;
+        img { width: 100%; height: 100%; object-fit: cover; }
+      }
+
+      .course-details {
+        display: flex;
+        flex-direction: column;
+        .course-name { font-weight: 700; color: $text-dark; }
+        .course-date { font-size: 12px; color: $text-muted; }
+      }
+    }
+
+    .star-icon { color: #f59e0b; margin-right: 4px; vertical-align: middle; }
+
+    .status-badge {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 50px;
+      &.published { background: #ecfdf5; color: #059669; }
+    }
+
+    .actions-cell {
+      display: flex;
+      gap: 8px;
+
+      .action-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        border: 1px solid $border-light;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: $text-muted;
+        transition: all 0.2s;
+        
+        &:hover { border-color: $primary-blue; color: $primary-blue; }
+        &.delete:hover { border-color: #ef4444; color: #ef4444; }
+      }
+    }
+  }
+}
+
+@media (max-width: 992px) {
+  .instructor-page {
+    .instructor-container { flex-direction: column; }
+    .instructor-sidebar { width: 100%; }
+    .stats-overview { grid-template-columns: 1fr; }
+  }
+}

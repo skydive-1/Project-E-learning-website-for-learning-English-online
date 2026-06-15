@@ -1,10 +1,13 @@
 /**
- * Auth Middleware - Xác thực JWT Token
+ * Auth Middleware - Xác thực JWT Token và Phân quyền
  */
 
 const jwt = require('jsonwebtoken');
 
-const authMiddleware = (req, res, next) => {
+/**
+ * Middleware xác thực người dùng đã đăng nhập (kiểm tra JWT)
+ */
+const authenticate = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,6 +29,7 @@ const authMiddleware = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
+    // decoded sẽ chứa: { id, email, username, role }
     req.user = decoded;
     next();
   } catch (error) {
@@ -38,4 +42,38 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-module.exports = authMiddleware;
+/**
+ * Middleware phân quyền (Kiểm tra vai trò người dùng)
+ * @param {Array} roles - Danh sách các role ID được phép (1: Admin, 2: Instructor, 3: Student)
+ */
+const authorize = (roles = []) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Người dùng chưa được xác thực'
+      });
+    }
+
+    // Nếu không truyền roles hoặc roles rỗng, cho phép tất cả đã đăng nhập
+    if (roles.length === 0) return next();
+
+    // Chuyển role về số để so sánh chính xác
+    const userRole = parseInt(req.user.role);
+
+    if (!roles.includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: 'PermissionError',
+        message: 'Bạn không có quyền thực hiện hành động này'
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = {
+  authenticate,
+  authorize
+};

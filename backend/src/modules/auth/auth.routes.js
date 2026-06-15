@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('./controllers/auth.controller');
-const authMiddleware = require('../../middleware/auth.middleware');
+const { authenticate } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validation.middleware');
 
 // Schemas Validation
@@ -42,9 +42,9 @@ const updateProfileSchema = {
 // Routes
 router.post('/register', validate(registerSchema), authController.register);
 router.post('/login', validate(loginSchema), authController.login);
-router.post('/logout', authMiddleware, authController.logout);
-router.get('/profile', authMiddleware, authController.getProfile);
-router.put('/change-password', authMiddleware, validate(changePasswordSchema), authController.changePassword);
-router.put('/profile', authMiddleware, validate(updateProfileSchema), authController.updateProfile);
+router.post('/logout', authenticate, authController.logout);
+router.get('/profile', authenticate, authController.getProfile);
+router.put('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
+router.put('/profile', authenticate, validate(updateProfileSchema), authController.updateProfile);
 
 module.exports = router;
