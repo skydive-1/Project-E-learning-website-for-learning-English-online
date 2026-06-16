@@ -8,8 +8,29 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import '../styles/instructor.scss';
 
+const getRoleFromToken = () => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const payloadBase64 = token.split('.')[1];
+    const payloadJson = atob(payloadBase64);
+    const payload = JSON.parse(payloadJson);
+    return parseInt(payload.roleId || payload.role);
+  } catch (e) {
+    return null;
+  }
+};
+
 const CourseEditor = () => {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const role = getRoleFromToken();
+    if (role !== 2) {
+      navigate('/');
+    }
+  }, [navigate]);
+
   const [sections, setSections] = useState([
     {
       id: 1,

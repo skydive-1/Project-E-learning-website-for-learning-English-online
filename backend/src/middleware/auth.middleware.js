@@ -59,7 +59,7 @@ const authorize = (roles = []) => {
     if (roles.length === 0) return next();
 
     // Chuyển role về số để so sánh chính xác
-    const userRole = parseInt(req.user.role);
+    const userRole = parseInt(req.user.roleId);
 
     if (!roles.includes(userRole)) {
       return res.status(403).json({

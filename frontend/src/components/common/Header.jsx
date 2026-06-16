@@ -16,7 +16,7 @@ const Header = () => {
         try {
           const res = await getProfile();
           // Backend returns either { user } or direct user object
-          setUser(res.user || res);
+          setUser(res.data || res.user || res);
         } catch (error) {
           console.error("Error loading user profile in header:", error);
           localStorage.removeItem('token');
@@ -98,7 +98,7 @@ const Header = () => {
                     <span>Trang cá nhân</span>
                   </Link>
 
-                  {parseInt(user?.role_id || user?.role) === 2 && (
+                  {parseInt(user?.roleId || user?.role_id || user?.role) === 2 && (
                     <Link to="/instructor/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                       <FiLayout className="dropdown-icon" />
                       <span>Quản lý khóa học</span>

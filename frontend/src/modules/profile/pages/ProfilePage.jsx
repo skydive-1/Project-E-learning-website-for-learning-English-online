@@ -47,7 +47,7 @@ const ProfilePage = () => {
         }
 
         const res = await getProfile();
-        const userData = res.user || res;
+        const userData = res.data || res.user || res;
         setUser(userData);
         setProfileData({
           username: userData.username || '',
@@ -197,7 +197,13 @@ const ProfilePage = () => {
                   </div>
                   <h3>{profileData.fullName || user?.username || 'Học viên'}</h3>
                   <span className="role-tag">
-                    <FiShield /> {user?.role_id === 1 ? 'Quản trị viên' : 'Học viên'}
+                    <FiShield /> {
+                      (user?.roleId || user?.role_id) === 1 
+                        ? 'Quản trị viên' 
+                        : (user?.roleId || user?.role_id) === 2 
+                          ? 'Giảng viên' 
+                          : 'Học viên'
+                    }
                   </span>
                 </div>
 

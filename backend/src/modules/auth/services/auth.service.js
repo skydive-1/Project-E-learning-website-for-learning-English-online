@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../../../config/database');
 
 class AuthService {
-  async register({ email, username, password, fullName }) {
+  async register({ email, username, password, fullName, roleId }) {
     try {
       // 1. Kiểm tra email trùng lặp
       const existingUser = await db.query('SELECT user_id FROM users WHERE email = $1', [email]);
@@ -21,13 +21,13 @@ class AuthService {
       // 2. Hash mật khẩu trước khi lưu
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // 3. Lưu thông tin người dùng vào database PostgreSQL (mặc định role_id = 2 là User/Student)
+      // 3. Lưu thông tin người dùng vào database PostgreSQL (mặc định role_id = 3 là Student)
       const queryText = `
         INSERT INTO users (email, password_hash, username, full_name, role_id)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING user_id, email, username, full_name, role_id, created_date
       `;
-      const values = [email, hashedPassword, username, fullName || username, 2];
+      const values = [email, hashedPassword, username, fullName || username, parseInt(roleId, 10) || 3];
       const result = await db.query(queryText, values);
 
       const newUser = result.rows[0];

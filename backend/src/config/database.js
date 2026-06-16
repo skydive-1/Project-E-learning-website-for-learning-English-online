@@ -50,8 +50,8 @@ const testConnection = async () => {
     // Chèn vai trò mặc định nếu chưa có
     await client.query(`
       INSERT INTO roles (role_id, role_name) 
-      VALUES (1, 'Admin'), (2, 'User') 
-      ON CONFLICT (role_id) DO NOTHING;
+      VALUES (1, 'Admin'), (2, 'Instructor'), (3, 'Student') 
+      ON CONFLICT (role_id) DO UPDATE SET role_name = EXCLUDED.role_name;
     `);
 
     // Tạo bảng users theo cấu trúc mới của bạn
@@ -65,7 +65,7 @@ const testConnection = async () => {
         birth_date DATE,
         email VARCHAR(255) NOT NULL UNIQUE,
         phone VARCHAR(15) UNIQUE,
-        role_id INT NOT NULL DEFAULT 2,
+        role_id INT NOT NULL DEFAULT 3,
         gender VARCHAR(10) CHECK (gender IN ('Male','Female','Other')),
         CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(role_id)
       );
@@ -74,6 +74,11 @@ const testConnection = async () => {
     // Tự động nâng cấp độ dài cột username nếu bảng đã tồn tại trước đó với VARCHAR(20)
     await client.query(`
       ALTER TABLE users ALTER COLUMN username TYPE VARCHAR(50);
+    `);
+    
+    // Tự động thay đổi default role_id sang 3 (Student) cho bảng đã tồn tại
+    await client.query(`
+      ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 3;
     `);
     console.log('✅ Đã kiểm tra/khởi tạo các bảng "roles" và "users" thành công.');
 

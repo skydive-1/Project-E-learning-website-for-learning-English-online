@@ -11,6 +11,7 @@ const RegisterPage = () => {
     email: '',
     password: '',
     confirmPassword: '',
+    roleId: 3, // Mặc định là Student (Học viên)
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -41,6 +42,7 @@ const RegisterPage = () => {
         email: formData.email,
         username: formData.username,
         password: formData.password,
+        roleId: formData.roleId,
       });
 
       setMessage({ 
@@ -152,6 +154,21 @@ const RegisterPage = () => {
             >
               {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
             </button>
+          </div>
+        </div>
+        <div className="form-group">
+          <div className="input-wrapper relative flex items-center">
+            <FiUser className="input-icon absolute left-4 text-slate-400" />
+            <select
+              id="roleId"
+              name="roleId"
+              value={formData.roleId}
+              onChange={handleChange}
+              className="w-full pl-12 pr-8 py-3.5 bg-[#fafbfc] border border-[#e2e8f0] rounded-[20px] focus:outline-none focus:border-smart-indigo text-[14.5px] text-slate-700 font-sans cursor-pointer"
+            >
+              <option value={3}>Học viên (Student)</option>
+              <option value={2}>Giảng viên (Instructor)</option>
+            </select>
           </div>
         </div>
 

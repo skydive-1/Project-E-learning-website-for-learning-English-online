@@ -3,8 +3,8 @@ import apiClient from '../../../config/api.config';
 /**
  * Đăng ký tài khoản mới
  */
-export const registerUser = async ({ email, username, password }) => {
-  const response = await apiClient.post('/auth/register', { email, username, password });
+export const registerUser = async ({ email, username, password, roleId }) => {
+  const response = await apiClient.post('/auth/register', { email, username, password, roleId });
   return response.data;
 };
 
