@@ -39,9 +39,12 @@ app.use(cors({
   credentials: true
 }));
 
-// Giới hạn payload JSON và urlencoded ở mức 1mb để ngăn chặn tấn công DoS OOM
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ limit: '1mb', extended: true }));
+// Giới hạn payload JSON và urlencoded ở mức 10mb (điều chỉnh cho metadata khóa học lớn)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Serve static files (uploads)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logging middleware
 app.use(loggerMiddleware);

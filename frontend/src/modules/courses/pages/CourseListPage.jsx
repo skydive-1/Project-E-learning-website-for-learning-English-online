@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter } from 'react-icons/fi';
+import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiLoader } from 'react-icons/fi';
 import '../styles/courses.scss';
 
-const coursesData = [
+const mockCoursesData = [
   {
     id: 'course-1',
     title: 'IELTS Masterclass: Target Band 7.5+',
@@ -70,12 +71,12 @@ const coursesData = [
   }
 ];
 
+const API_BASE_URL = 'http://localhost:5000/api';
+
 const CourseCard = ({ course }) => {
   const navigate = useNavigate();
 
   const handleStartLearning = () => {
-    // Navigate to lessons page. In a real app, we would pass the course ID.
-    // For now, it will open the default lesson detail page.
     navigate('/lessons');
   };
 
@@ -113,28 +114,80 @@ const CourseCard = ({ course }) => {
 };
 
 const CourseListPage = () => {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchText] = useState('');
 
-  // Scroll animation observer
-  React.useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('animate-in');
+  // Fetch courses from DB
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/courses`);
+        if (response.data && response.data.courses && response.data.courses.length > 0) {
+          // Map DB courses to view model structure
+          const dbCoursesMapped = response.data.courses.map(c => ({
+            id: `db-${c.course_id}`,
+            title: c.course_name,
+            instructor: 'Hệ thống E-Learning',
+            rating: 4.8,
+            reviews: 15,
+            students: 120,
+            price: 'Miễn phí',
+            image: '/images/hero_illustration.png',
+            badge: 'Thực tế',
+            level: c.subject_name,
+            duration: `${c.lessons_count || 0} bài giảng`
+          }));
+          // Combine DB courses and mock courses for rich UI
+          setCourses([...dbCoursesMapped, ...mockCoursesData]);
+        } else {
+          setCourses(mockCoursesData);
         }
-      });
-    }, { threshold: 0.1 });
-
-    document.querySelectorAll('.scroll-animate').forEach(el => observer.observe(el));
-    return () => observer.disconnect();
+      } catch (err) {
+        console.error('Lỗi fetch courses từ DB:', err);
+        setCourses(mockCoursesData);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCourses();
   }, []);
+
+  // Scroll animation observer
+  useEffect(() => {
+    if (courses.length > 0) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-in');
+          }
+        });
+      }, { threshold: 0.1 });
+
+      // Timeout to ensure DOM nodes are rendered
+      const timer = setTimeout(() => {
+        document.querySelectorAll('.scroll-animate').forEach(el => observer.observe(el));
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        observer.disconnect();
+      };
+    }
+  }, [courses]);
+
+  // Filter based on search term
+  const filteredCourses = courses.filter(course => 
+    course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    course.level.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="courses-page-new">
       <Header />
       
       <main className="courses-main">
-        {/* F8 Style Hero with Udemy Search functionality */}
+        {/* Hero Section */}
         <section className="courses-hero-section">
           <div className="container">
             <div className="hero-flex">
@@ -166,11 +219,11 @@ const CourseListPage = () => {
           <div className="container">
             <div className="filter-list">
               <button className="active"><FiFilter /> Tất cả</button>
-              <button>Giao tiếp</button>
-              <button>IELTS</button>
-              <button>TOEIC</button>
-              <button>Ngữ pháp</button>
-              <button>Phát âm</button>
+              <button onClick={() => setSearchText('giao tiếp')}>Giao tiếp</button>
+              <button onClick={() => setSearchText('ielts')}>IELTS</button>
+              <button onClick={() => setSearchText('toeic')}>TOEIC</button>
+              <button onClick={() => setSearchText('grammar')}>Ngữ pháp</button>
+              <button onClick={() => setSearchText('pronunciation')}>Phát âm</button>
             </div>
           </div>
         </nav>
@@ -182,9 +235,21 @@ const CourseListPage = () => {
               <h2>Tất cả khóa học</h2>
               <p>Danh sách các khóa học trực tuyến dành cho mọi cấp độ.</p>
             </div>
-            <div className="course-grid">
-              {coursesData.map(course => <CourseCard key={course.id} course={course} />)}
-            </div>
+
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px', gap: '10px', color: '#64748b' }}>
+                <FiLoader className="spin" style={{ fontSize: '28px' }} />
+                <span>Đang tải danh sách khóa học...</span>
+              </div>
+            ) : filteredCourses.length === 0 ? (
+              <div style={{ padding: '80px', textAlign: 'center', color: '#64748b' }}>
+                Không tìm thấy khóa học nào phù hợp với tìm kiếm của bạn.
+              </div>
+            ) : (
+              <div className="course-grid">
+                {filteredCourses.map(course => <CourseCard key={course.id} course={course} />)}
+              </div>
+            )}
           </div>
         </section>
       </main>

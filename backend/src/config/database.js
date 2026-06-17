@@ -80,7 +80,71 @@ const testConnection = async () => {
     await client.query(`
       ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 3;
     `);
-    console.log('✅ Đã kiểm tra/khởi tạo các bảng "roles" và "users" thành công.');
+
+    // Tự động khởi tạo/kiểm tra các môn học mẫu trong bảng subjects
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subjects (
+        subject_id SERIAL PRIMARY KEY,
+        subject_name VARCHAR(100) NOT NULL UNIQUE,
+        credits INT NOT NULL DEFAULT 3
+      );
+    `);
+
+    await client.query(`
+      INSERT INTO subjects (subject_id, subject_name, credits) 
+      VALUES 
+        (1, 'IELTS Masterclass', 4),
+        (2, 'TOEIC Prep', 3),
+        (3, 'Business English', 3),
+        (4, 'General English Communication', 2),
+        (5, 'English Grammar Essentials', 2)
+      ON CONFLICT (subject_id) DO UPDATE 
+      SET subject_name = EXCLUDED.subject_name, credits = EXCLUDED.credits;
+    `);
+
+    console.log('✅ Đã kiểm tra/khởi tạo các bảng "roles", "users" và "subjects" thành công.');
+
+    // Tạo bảng courses
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS courses (
+        course_id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        instructor_id INT NOT NULL,
+        thumbnail_url VARCHAR(255),
+        price DECIMAL(10, 2) DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'draft', -- draft, published, archived
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_course_instructor FOREIGN KEY (instructor_id) REFERENCES users(user_id)
+      );
+    `);
+
+    // Tạo bảng sections
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sections (
+        section_id SERIAL PRIMARY KEY,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        order_index INT NOT NULL,
+        CONSTRAINT fk_section_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
+      );
+    `);
+
+    // Tạo bảng lessons
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS lessons (
+        lesson_id SERIAL PRIMARY KEY,
+        section_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        content_type VARCHAR(20) NOT NULL, -- video, pdf, quiz, text
+        content_url TEXT,
+        order_index INT NOT NULL,
+        CONSTRAINT fk_lesson_section FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE CASCADE
+      );
+    `);
+
+    console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons" thành công.');
 
     client.release();
     return true;
