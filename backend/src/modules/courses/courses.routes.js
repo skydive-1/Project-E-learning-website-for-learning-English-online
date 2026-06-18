@@ -14,6 +14,9 @@ router.get('/', coursesController.getAllCourses);
 // GET /api/courses/subjects - Lấy danh sách môn học
 router.get('/subjects', coursesController.getSubjects);
 
+// GET /api/courses/lessons/:lessonId - Lấy chi tiết bài học
+router.get('/lessons/:lessonId', authenticate, coursesController.getLessonById);
+
 // POST /api/courses/upload - Tải lên bài giảng (video/pdf)
 router.post('/upload', authenticate, authorize([1, 2]), upload.single('file'), coursesController.uploadFile);
 

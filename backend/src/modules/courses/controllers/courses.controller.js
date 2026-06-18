@@ -84,3 +84,23 @@ exports.uploadMedia = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.getLessonById = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const lesson = await coursesService.getLessonById(lessonId);
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy bài học'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: 'Lấy chi tiết bài học thành công',
+      lesson
+    });
+  } catch (error) {
+    next(error);
+  }
+};

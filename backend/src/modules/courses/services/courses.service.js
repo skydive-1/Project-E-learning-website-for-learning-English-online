@@ -138,6 +138,15 @@ class CoursesService {
       VALUES ($1, $2, $3, $4, $5)
     `, [sectionId, lessonData.title, contentType, contentUrl, orderIndex]);
   }
+
+  async getLessonById(lessonId) {
+    try {
+      const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [lessonId]);
+      return result.rows[0];
+    } catch (error) {
+      handleServiceError(error, 'Lỗi lấy chi tiết bài học');
+    }
+  }
 }
 
 module.exports = new CoursesService();

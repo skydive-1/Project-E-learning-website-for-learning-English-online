@@ -7,19 +7,19 @@ const { Pool } = require('pg');
 
 const poolConfig = process.env.DATABASE_URL
   ? {
-      connectionString: process.env.DATABASE_URL,
-      ssl: {
-        rejectUnauthorized: false
-      }
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
     }
+  }
   : {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      database: process.env.DB_NAME || 'elearning_db',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres123',
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
-    };
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432', 10),
+    database: process.env.DB_NAME || 'elearning_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres123',
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
+  };
 
 const pool = new Pool({
   ...poolConfig,
@@ -75,7 +75,7 @@ const testConnection = async () => {
     await client.query(`
       ALTER TABLE users ALTER COLUMN username TYPE VARCHAR(50);
     `);
-    
+
     // Tự động thay đổi default role_id sang 3 (Student) cho bảng đã tồn tại
     await client.query(`
       ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 3;
@@ -148,7 +148,22 @@ const testConnection = async () => {
       );
     `);
 
-    console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons" thành công.');
+    // Tạo bảng user_progress để lưu tiến độ học tập
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_progress (
+        progress_id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL,
+        lesson_id INT NOT NULL,
+        is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_progress_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        CONSTRAINT fk_progress_lesson FOREIGN KEY (lesson_id) REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+        CONSTRAINT uq_user_lesson UNIQUE (user_id, lesson_id)
+      );
+    `);
+
+    console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons", "user_progress" thành công.');
 
     client.release();
     return true;
