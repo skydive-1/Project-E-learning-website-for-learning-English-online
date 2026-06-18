@@ -108,15 +108,19 @@ const testConnection = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS courses (
         course_id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
+        subject_id INT,
+        course_name VARCHAR(255) NOT NULL,
         description TEXT,
         instructor_id INT NOT NULL,
         thumbnail_url VARCHAR(255),
         price DECIMAL(10, 2) DEFAULT 0,
         status VARCHAR(20) DEFAULT 'draft', -- draft, published, archived
+        start_date TIMESTAMP,
+        end_date TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_course_instructor FOREIGN KEY (instructor_id) REFERENCES users(user_id)
+        CONSTRAINT fk_course_instructor FOREIGN KEY (instructor_id) REFERENCES users(user_id),
+        CONSTRAINT fk_course_subject FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
       );
     `);
 

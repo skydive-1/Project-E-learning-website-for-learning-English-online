@@ -10,12 +10,7 @@ import CourseListPage from './modules/courses/pages/CourseListPage';
 import RoadmapPage from './modules/academy/pages/RoadmapPage';
 import InstructorDashboard from './modules/instructor/pages/InstructorDashboard';
 import CourseEditor from './modules/instructor/pages/CourseEditor';
-
-// Component Bảo vệ Route (Protected Route)
-const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" replace />;
-};
+import ProtectedRoute from './components/common/ProtectedRoute';
 
 function App() {
   return (

@@ -35,7 +35,19 @@ const PORT = process.env.PORT || 5000;
 
 // ===== 4. GLOBAL MIDDLEWARE =====
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Trong phát triển (development), phản hồi động origin của client để tiện test qua WSL / IP mạng nội bộ
+    if (!origin || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      const allowed = process.env.FRONTEND_URL || 'http://localhost:3000';
+      if (origin === allowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Blocked by CORS'));
+      }
+    }
+  },
   credentials: true
 }));
 

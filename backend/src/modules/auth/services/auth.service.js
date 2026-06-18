@@ -5,6 +5,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const db = require('../../../config/database');
+const { handleServiceError } = require('../../../utils/service-errors');
 
 class AuthService {
   async register({ email, username, password, fullName, roleId }) {
@@ -41,15 +42,7 @@ class AuthService {
         createdDate: newUser.created_date
       };
     } catch (error) {
-      if (error.name === 'ValidationError') {
-        throw error;
-      }
-
-      console.error('Lỗi đăng ký trong AuthService:', error);
-      const dbError = new Error('Có lỗi xảy ra trong quá trình đăng ký hoặc kết nối cơ sở dữ liệu');
-      dbError.name = 'DatabaseError';
-      dbError.status = 503;
-      throw dbError;
+      handleServiceError(error, 'Lỗi đăng ký trong AuthService');
     }
   }
 
@@ -104,15 +97,7 @@ class AuthService {
         }
       };
     } catch (error) {
-      if (error.name === 'AuthError' || error.message.includes('JWT_SECRET')) {
-        throw error;
-      }
-
-      console.error('Lỗi đăng nhập trong AuthService:', error);
-      const dbError = new Error('Có lỗi xảy ra trong quá trình đăng nhập hoặc kết nối cơ sở dữ liệu');
-      dbError.name = 'DatabaseError';
-      dbError.status = 503;
-      throw dbError;
+      handleServiceError(error, 'Lỗi đăng nhập trong AuthService');
     }
   }
 
@@ -142,15 +127,7 @@ class AuthService {
         createdDate: user.created_date
       };
     } catch (error) {
-      if (error.name === 'AuthError') {
-        throw error;
-      }
-
-      console.error('Lỗi lấy thông tin cá nhân trong AuthService:', error);
-      const dbError = new Error('Có lỗi xảy ra trong quá trình xử lý hoặc kết nối cơ sở dữ liệu');
-      dbError.name = 'DatabaseError';
-      dbError.status = 503;
-      throw dbError;
+      handleServiceError(error, 'Lỗi lấy thông tin cá nhân trong AuthService');
     }
   }
 
@@ -187,15 +164,7 @@ class AuthService {
 
       return true;
     } catch (error) {
-      if (error.name === 'ValidationError' || error.name === 'AuthError') {
-        throw error;
-      }
-
-      console.error('Lỗi khi thay đổi mật khẩu trong AuthService:', error);
-      const dbError = new Error('Có lỗi xảy ra trong quá trình xử lý hoặc kết nối cơ sở dữ liệu');
-      dbError.name = 'DatabaseError';
-      dbError.status = 503;
-      throw dbError;
+      handleServiceError(error, 'Lỗi khi thay đổi mật khẩu trong AuthService');
     }
   }
 
@@ -263,14 +232,7 @@ class AuthService {
         roleId: updatedUser.role_id
       };
     } catch (error) {
-      if (error.name === 'ValidationError' || error.name === 'AuthError') {
-        throw error;
-      }
-      console.error('Lỗi cập nhật profile trong AuthService:', error);
-      const dbError = new Error('Có lỗi xảy ra trong quá trình cập nhật hoặc kết nối cơ sở dữ liệu');
-      dbError.name = 'DatabaseError';
-      dbError.status = 503;
-      throw dbError;
+      handleServiceError(error, 'Lỗi cập nhật profile trong AuthService');
     }
   }
 }

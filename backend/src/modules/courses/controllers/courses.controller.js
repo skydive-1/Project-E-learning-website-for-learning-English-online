@@ -53,8 +53,8 @@ exports.uploadFile = async (req, res, next) => {
 
 exports.createCourse = async (req, res, next) => {
   try {
-    // instructor_id lấy từ auth middleware (req.user.user_id)
-    const instructorId = req.user.user_id;
+    // instructor_id lấy từ auth middleware (req.user.id)
+    const instructorId = req.user.id;
     const course = await coursesService.createCourse(req.body, instructorId);
     
     res.status(201).json({
