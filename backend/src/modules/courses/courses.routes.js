@@ -14,6 +14,9 @@ router.get('/', coursesController.getAllCourses);
 // GET /api/courses/subjects - Lấy danh sách môn học
 router.get('/subjects', coursesController.getSubjects);
 
+// GET /api/courses/:courseId - Lấy chi tiết khóa học kèm chương và bài học
+router.get('/:courseId', coursesController.getCourseById);
+
 // GET /api/courses/lessons/:lessonId - Lấy chi tiết bài học
 router.get('/lessons/:lessonId', authenticate, coursesController.getLessonById);
 

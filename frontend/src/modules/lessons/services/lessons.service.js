@@ -1,6 +1,4 @@
-/**
- * Lessons Service - Quản lý và cung cấp dữ liệu bài học giả lập phong phú kiểu Udemy
- */
+import apiClient from '../../../config/api.config';
 
 const mockCourseData = {
   id: "course-1",
@@ -115,84 +113,195 @@ Hãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem 
   ]
 };
 
-// Lưu tiến độ trong bộ nhớ cục bộ (localStorage)
-const getLocalProgress = () => {
-  const saved = localStorage.getItem("lessons_progress");
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch (e) {
-      return {};
-    }
+// Hàm giải mã JWT token để lấy userId
+export const getUserIdFromToken = () => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const payload = token.split('.')[1];
+    const decoded = JSON.parse(atob(payload));
+    return decoded.id;
+  } catch (e) {
+    console.error('Lỗi giải mã token:', e);
+    return null;
   }
-  
-  // Khởi tạo tiến độ mặc định từ dữ liệu gốc
-  const initialProgress = {};
-  mockCourseData.sections.forEach(sec => {
-    sec.lessons.forEach(l => {
-      initialProgress[l.id] = l.completed;
-    });
-  });
-  localStorage.setItem("lessons_progress", JSON.stringify(initialProgress));
-  return initialProgress;
-};
-
-const saveLocalProgress = (progress) => {
-  localStorage.setItem("lessons_progress", JSON.stringify(progress));
 };
 
 export const getCourseDetails = async () => {
-  // Giả lập độ trễ mạng
-  await new Promise(resolve => setTimeout(resolve, 300));
-  
-  const progressState = getLocalProgress();
-  
-  // Áp dụng tiến độ mới nhất vào dữ liệu khóa học
-  const updatedSections = mockCourseData.sections.map(sec => ({
-    ...sec,
-    lessons: sec.lessons.map(l => ({
-      ...l,
-      completed: !!progressState[l.id]
-    }))
-  }));
-  
-  // Tính toán lại tỷ lệ phần trăm tiến độ
-  const allLessons = updatedSections.flatMap(s => s.lessons);
-  const completedCount = allLessons.filter(l => l.completed).length;
-  const progressPercent = Math.round((completedCount / allLessons.length) * 100);
-  
-  return {
-    ...mockCourseData,
-    progress: progressPercent,
-    sections: updatedSections
-  };
+  try {
+    // 1. Gọi API lấy chi tiết khóa học mẫu (ID = 2) từ backend
+    const courseResponse = await apiClient.get('/courses/2');
+    const dbCourse = courseResponse.data.course;
+
+    // 2. Lấy userId từ JWT token
+    const userId = getUserIdFromToken();
+    let completedLessonIds = [];
+
+    // 3. Nếu có user, lấy danh sách tiến trình hoàn thành từ backend
+    if (userId) {
+      try {
+        const progressResponse = await apiClient.get(`/progress/${userId}`);
+        const progressList = progressResponse.data.progress || [];
+        completedLessonIds = progressList
+          .filter(p => p.is_completed)
+          .map(p => p.lesson_id);
+      } catch (err) {
+        console.error("Lỗi lấy tiến trình từ backend:", err);
+      }
+    }
+
+    // 4. Map dữ liệu từ DB sang định dạng Frontend mong đợi
+    const mappedSections = dbCourse.sections.map((sec, secIdx) => {
+      return {
+        id: String(sec.section_id),
+        title: sec.title,
+        lessons: sec.lessons.map(l => {
+          // Bổ sung các thông tin mô tả chi tiết mặc định nếu DB không lưu trữ
+          let description = 'Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Assistant.';
+          let content = 'Chào mừng bạn đến với lớp học English for Communication! Hãy sử dụng Chatbot AI ở góc bên phải để tương tác.';
+          let duration = '05:00';
+
+          // Giữ nguyên các tóm tắt mô tả phong phú cho 5 bài học mẫu
+          if (l.order_index === 1 && secIdx === 0) {
+            duration = '03:15';
+            description = 'Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Chatbot ở thanh bên phải để sửa lỗi phát âm và ngữ pháp.';
+            content = `Chào mừng bạn đến với khóa học English for Communication!\n\nTrong bài đầu tiên này, chúng ta sẽ tìm hiểu:\n- Cách thiết lập mục tiêu học tiếng Anh giao tiếp hàng ngày.\n- Cách tận dụng Trợ lý AI (AI Assistant) bên cạnh video để đặt câu hỏi trực tiếp khi gặp cấu trúc ngữ pháp khó.\n- Cách thực hành luyện nói và đặt câu hỏi cho AI để ghi nhớ từ vựng.`;
+          } else if (l.order_index === 2 && secIdx === 0) {
+            duration = '05:42';
+            description = 'Làm thế nào để dừng việc dịch nhẩm từ tiếng Việt sang tiếng Anh trước khi nói? Bài học sẽ chỉ ra tư duy suy nghĩ bằng tiếng Anh.';
+            content = `Để giao tiếp trôi chảy, điều quan trọng nhất là loại bỏ thói quen dịch nhẩm:\n1. Liên kết trực tiếp hình ảnh/khái niệm với từ tiếng Anh (ví dụ nghĩ đến 'quả táo' -> thấy hình ảnh quả táo và bật ra 'apple' chứ không qua chữ tiếng Việt).\n2. Chấp nhận mắc lỗi: Đừng sợ sai ngữ pháp ở giai đoạn đầu.\n3. Đắm chìm trong ngôn ngữ: Sử dụng trợ lý AI để chat hội thoại hàng ngày.\n\n*Bài tập thực hành*: Hãy viết ra 5 câu đơn giản mô tả những vật dụng xung quanh bạn ngay bây giờ bằng tiếng Anh.`;
+          } else if (l.order_index === 1 && secIdx === 1) {
+            duration = '08:12';
+            description = 'Trong văn nói, bạn không cần dùng hết 12 thì. Hãy tập trung làm chủ 3 thì cốt lõi: Hiện tại đơn, Quá khứ đơn, Tương lai đơn.';
+            content = `Ba thì cốt lõi chiếm hơn 80% thời lượng giao tiếp hàng ngày:\n1. **Hiện tại đơn (Simple Present)**: Diễn tả thói quen, chân lý. (Ví dụ: I study English every day).\n2. **Quá khứ đơn (Simple Past)**: Diễn tả việc đã kết thúc. (Ví dụ: I learned 10 new words yesterday).\n3. **Tương lai đơn (Simple Future)**: Diễn tả dự định tức thời. (Ví dụ: I will call you tonight).\n\nHãy dùng Tab AI Assistant bên cạnh để gõ thử 3 câu ví dụ về cuộc sống của bạn sử dụng 3 thì trên và nhờ AI sửa lỗi ngữ pháp.`;
+          } else if (l.order_index === 2 && secIdx === 1) {
+            duration = '06:30';
+            description = 'Cách đặt câu hỏi lịch sự, câu hỏi lựa chọn và cách lên giọng cuối câu hỏi để cuộc trò chuyện tự nhiên hơn.';
+            content = `Luyện tập cách đặt câu hỏi:\n- Yes/No questions: Lên giọng ở cuối câu. (e.g., Do you like coffee? ↗)\n- Wh-questions: Xuống giọng ở cuối câu. (e.g., What is your favorite food? ↘)\n- Tag questions (Câu hỏi đuôi): Dùng để xác nhận thông tin. (e.g., You are a student, aren't you?)\n\n*Thực hành*: Nhờ AI Assistant đóng vai làm người bản xứ và đặt câu hỏi phỏng vấn bạn nhé.`;
+          } else if (l.order_index === 1 && secIdx === 2) {
+            duration = '10:15';
+            description = 'Phân biệt nghe chủ động và nghe thụ động. Cách áp dụng phương pháp shadowing để rèn giọng điệu nói tiếng Anh.';
+            content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
+          }
+
+          return {
+            id: String(l.lesson_id),
+            title: l.title,
+            duration: duration,
+            videoUrl: l.content_url,
+            description: description,
+            content: content,
+            resources: [],
+            completed: completedLessonIds.includes(l.lesson_id)
+          };
+        })
+      };
+    });
+
+    // 5. Tính toán tiến trình hoàn thành (%)
+    const allLessons = mappedSections.flatMap(s => s.lessons);
+    const completedCount = allLessons.filter(l => l.completed).length;
+    const progressPercent = allLessons.length > 0 ? Math.round((completedCount / allLessons.length) * 100) : 0;
+
+    return {
+      id: String(dbCourse.course_id),
+      title: dbCourse.course_name,
+      instructor: "Dr. Alexander Wright",
+      progress: progressPercent,
+      sections: mappedSections
+    };
+
+  } catch (error) {
+    console.error("Lỗi getCourseDetails từ Backend:", error);
+    throw error;
+  }
 };
 
 export const toggleLessonCompletion = async (lessonId) => {
-  const progressState = getLocalProgress();
-  progressState[lessonId] = !progressState[lessonId];
-  saveLocalProgress(progressState);
-  
-  return progressState;
+  try {
+    const userId = getUserIdFromToken();
+    if (!userId) throw new Error("Chưa đăng nhập");
+
+    // Lấy tiến trình hiện tại để tìm trạng thái hoàn thành hiện tại
+    const progressResponse = await apiClient.get(`/progress/${userId}`);
+    const progressList = progressResponse.data.progress || [];
+    const currentProgress = progressList.find(p => String(p.lesson_id) === String(lessonId));
+    
+    const newCompletedState = currentProgress ? !currentProgress.is_completed : true;
+
+    // Gửi cập nhật lên backend
+    await apiClient.post('/progress', {
+      userId: userId,
+      lessonId: parseInt(lessonId, 10),
+      isCompleted: newCompletedState
+    });
+
+    return newCompletedState;
+  } catch (error) {
+    console.error("Lỗi toggleLessonCompletion lên backend:", error);
+    throw error;
+  }
 };
 
 export const getLessonById = async (lessonId) => {
-  await new Promise(resolve => setTimeout(resolve, 200));
-  const progressState = getLocalProgress();
-  
-  for (const sec of mockCourseData.sections) {
-    const lesson = sec.lessons.find(l => l.id === lessonId);
-    if (lesson) {
-      return {
-        ...lesson,
-        completed: !!progressState[lesson.id]
-      };
+  try {
+    // 1. Lấy chi tiết bài học từ API backend
+    const response = await apiClient.get(`/courses/lessons/${lessonId}`);
+    const l = response.data.lesson;
+
+    // 2. Lấy trạng thái hoàn thành từ backend
+    const userId = getUserIdFromToken();
+    let completed = false;
+    if (userId) {
+      try {
+        const progressResponse = await apiClient.get(`/progress/${userId}`);
+        const progressList = progressResponse.data.progress || [];
+        const currentProgress = progressList.find(p => String(p.lesson_id) === String(lessonId));
+        completed = currentProgress ? currentProgress.is_completed : false;
+      } catch (err) {
+        console.error("Lỗi lấy tiến trình của bài học:", err);
+      }
     }
+
+    // 3. Khớp nội dung tóm tắt giàu ngữ cảnh cho các bài học mẫu
+    let description = 'Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Assistant.';
+    let content = 'Chào mừng bạn đến với lớp học English for Communication! Hãy sử dụng Chatbot AI ở góc bên phải để tương tác.';
+    let duration = '05:00';
+
+    if (String(lessonId) === '2') {
+      duration = '03:15';
+      description = 'Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Chatbot ở thanh bên phải để sửa lỗi phát âm và ngữ pháp.';
+      content = `Chào mừng bạn đến với khóa học English for Communication!\n\nTrong bài đầu tiên này, chúng ta sẽ tìm hiểu:\n- Cách thiết lập mục tiêu học tiếng Anh giao tiếp hàng ngày.\n- Cách tận dụng Trợ lý AI (AI Assistant) bên cạnh video để đặt câu hỏi trực tiếp khi gặp cấu trúc ngữ pháp khó.\n- Cách thực hành luyện nói và đặt câu hỏi cho AI để ghi nhớ từ vựng.`;
+    } else if (String(lessonId) === '3') {
+      duration = '05:42';
+      description = 'Làm thế nào để dừng việc dịch nhẩm từ tiếng Việt sang tiếng Anh trước khi nói? Bài học sẽ chỉ ra tư duy suy nghĩ bằng tiếng Anh.';
+      content = `Để giao tiếp trôi chảy, điều quan trọng nhất là loại bỏ thói quen dịch nhẩm:\n1. Liên kết trực tiếp hình ảnh/khái niệm với từ tiếng Anh (ví dụ nghĩ đến 'quả táo' -> thấy hình ảnh quả táo và bật ra 'apple' chứ không qua chữ tiếng Việt).\n2. Chấp nhận mắc lỗi: Đừng sợ sai ngữ pháp ở giai đoạn đầu.\n3. Đắm chìm trong ngôn ngữ: Sử dụng trợ lý AI để chat hội thoại hàng ngày.\n\n*Bài tập thực hành*: Hãy viết ra 5 câu đơn giản mô tả những vật dụng xung quanh bạn ngay bây giờ bằng tiếng Anh.`;
+    } else if (String(lessonId) === '4') {
+      duration = '08:12';
+      description = 'Trong văn nói, bạn không cần dùng hết 12 thì. Hãy tập trung làm chủ 3 thì cốt lõi: Hiện tại đơn, Quá khứ đơn, Tương lai đơn.';
+      content = `Ba thì cốt lõi chiếm hơn 80% thời lượng giao tiếp hàng ngày:\n1. **Hiện tại đơn (Simple Present)**: Diễn tả thói quen, chân lý. (Ví dụ: I study English every day).\n2. **Quá khứ đơn (Simple Past)**: Diễn tả việc đã kết thúc. (Ví dụ: I learned 10 new words yesterday).\n3. **Tương lai đơn (Simple Future)**: Diễn tả dự định tức thời. (Ví dụ: I will call you tonight).\n\nHãy dùng Tab AI Assistant bên cạnh để gõ thử 3 câu ví dụ về cuộc sống của bạn sử dụng 3 thì trên và nhờ AI sửa lỗi ngữ pháp.`;
+    } else if (String(lessonId) === '5') {
+      duration = '06:30';
+      description = 'Cách đặt câu hỏi lịch sự, câu hỏi lựa chọn và cách lên giọng cuối câu hỏi để cuộc trò chuyện tự nhiên hơn.';
+      content = `Luyện tập cách đặt câu hỏi:\n- Yes/No questions: Lên giọng ở cuối câu. (e.g., Do you like coffee? ↗)\n- Wh-questions: Xuống giọng ở cuối câu. (e.g., What is your favorite food? ↘)\n- Tag questions (Câu hỏi đuôi): Dùng để xác nhận thông tin. (e.g., You are a student, aren't you?)\n\n*Thực hành*: Nhờ AI Assistant đóng vai làm người bản xứ và đặt câu hỏi phỏng vấn bạn nhé.`;
+    } else if (String(lessonId) === '6') {
+      duration = '10:15';
+      description = 'Phân biệt nghe chủ động và nghe thụ động. Cách áp dụng phương pháp shadowing để rèn giọng điệu nói tiếng Anh.';
+      content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
+    }
+
+    return {
+      id: String(l.lesson_id),
+      title: l.title,
+      duration: duration,
+      videoUrl: l.content_url,
+      description: description,
+      content: content,
+      resources: [],
+      completed: completed
+    };
+  } catch (error) {
+    console.error("Lỗi getLessonById từ Backend:", error);
+    throw error;
   }
-  
-  // Trở về bài học đầu tiên nếu không tìm thấy
-  return {
-    ...mockCourseData.sections[0].lessons[0],
-    completed: !!progressState[mockCourseData.sections[0].lessons[0].id]
-  };
 };

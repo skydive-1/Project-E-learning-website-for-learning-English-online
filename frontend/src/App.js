@@ -57,7 +57,7 @@ function App() {
         <Route
           path="/instructor/dashboard"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={[1, 2]}>
               <InstructorDashboard />
             </ProtectedRoute>
           }
@@ -65,7 +65,7 @@ function App() {
         <Route
           path="/instructor/create-course"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowedRoles={[1, 2]}>
               <CourseEditor />
             </ProtectedRoute>
           }

@@ -104,3 +104,23 @@ exports.getLessonById = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getCourseById = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const course = await coursesService.getCourseById(courseId);
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy khóa học'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: 'Lấy chi tiết khóa học thành công',
+      course
+    });
+  } catch (error) {
+    next(error);
+  }
+};

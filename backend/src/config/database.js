@@ -165,6 +165,88 @@ const testConnection = async () => {
 
     console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons", "user_progress" thành công.');
 
+    // --- SEED DỮ LIỆU MẪU KHÓA HỌC TIẾNG ANH MẶC ĐỊNH ---
+    let instructorId = 1;
+    const instructorRes = await client.query('SELECT user_id FROM users WHERE role_id = 2 LIMIT 1');
+    if (instructorRes.rows.length > 0) {
+      instructorId = instructorRes.rows[0].user_id;
+    } else {
+      const anyUserRes = await client.query('SELECT user_id FROM users LIMIT 1');
+      if (anyUserRes.rows.length > 0) {
+        instructorId = anyUserRes.rows[0].user_id;
+      }
+    }
+
+    const courseCheck = await client.query("SELECT course_id FROM courses WHERE course_name = 'English for Communication & AI Interaction'");
+    if (courseCheck.rows.length === 0) {
+      console.log('🌱 Đang khởi tạo dữ liệu mẫu khóa học "English for Communication & AI Interaction"...');
+      
+      // Chèn khóa học (subject_id = 4: General English Communication)
+      const courseRes = await client.query(`
+        INSERT INTO courses (subject_id, course_name, description, instructor_id, thumbnail_url, price, status, start_date, end_date)
+        VALUES (4, 'English for Communication & AI Interaction', 'Khóa học tiếng Anh giao tiếp phản xạ kết hợp Trợ lý học tập AI.', $1, '/images/hero_illustration.png', 0, 1, '2026-06-20', '2027-06-20')
+        RETURNING course_id
+      `, [instructorId]);
+      
+      const newCourseId = courseRes.rows[0].course_id;
+      
+      // Chương 1
+      const sec1Res = await client.query(`
+        INSERT INTO sections (course_id, title, order_index)
+        VALUES ($1, 'Chương 1: Giới thiệu & Định hướng học tập', 1)
+        RETURNING section_id
+      `, [newCourseId]);
+      const sec1Id = sec1Res.rows[0].section_id;
+      
+      // Lesson 1
+      await client.query(`
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
+        VALUES ($1, '1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', 1)
+      `, [sec1Id]);
+      
+      // Lesson 2
+      await client.query(`
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
+        VALUES ($1, '2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4', 2)
+      `, [sec1Id]);
+
+      // Chương 2
+      const sec2Res = await client.query(`
+        INSERT INTO sections (course_id, title, order_index)
+        VALUES ($1, 'Chương 2: Ngữ pháp phản xạ cơ bản (Reflexive Grammar)', 2)
+        RETURNING section_id
+      `, [newCourseId]);
+      const sec2Id = sec2Res.rows[0].section_id;
+      
+      // Lesson 3
+      await client.query(`
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
+        VALUES ($1, '3. Các thì thời gian trong văn phong nói (Speaking Tenses)', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4', 1)
+      `, [sec2Id]);
+      
+      // Lesson 4
+      await client.query(`
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
+        VALUES ($1, '4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4', 2)
+      `, [sec2Id]);
+
+      // Chương 3
+      const sec3Res = await client.query(`
+        INSERT INTO sections (course_id, title, order_index)
+        VALUES ($1, 'Chương 3: Luyện nghe và phản xạ hội thoại', 3)
+        RETURNING section_id
+      `, [newCourseId]);
+      const sec3Id = sec3Res.rows[0].section_id;
+      
+      // Lesson 5
+      await client.query(`
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
+        VALUES ($1, '5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4', 1)
+      `, [sec3Id]);
+      
+      console.log('🌱 Seed khóa học mặc định thành công!');
+    }
+
     client.release();
     return true;
   } catch (error) {

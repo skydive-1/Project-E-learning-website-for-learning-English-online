@@ -147,6 +147,30 @@ class CoursesService {
       handleServiceError(error, 'Lỗi lấy chi tiết bài học');
     }
   }
+
+  async getCourseById(courseId) {
+    try {
+      // 1. Lấy thông tin khóa học
+      const courseRes = await db.query('SELECT * FROM courses WHERE course_id = $1', [courseId]);
+      if (courseRes.rows.length === 0) return null;
+      const course = courseRes.rows[0];
+
+      // 2. Lấy danh sách chương (sections)
+      const sectionsRes = await db.query('SELECT * FROM sections WHERE course_id = $1 ORDER BY order_index', [courseId]);
+      const sections = sectionsRes.rows;
+
+      // 3. Lấy danh sách bài giảng (lessons) cho mỗi chương
+      for (const section of sections) {
+        const lessonsRes = await db.query('SELECT * FROM lessons WHERE section_id = $1 ORDER BY order_index', [section.section_id]);
+        section.lessons = lessonsRes.rows;
+      }
+
+      course.sections = sections;
+      return course;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi lấy thông tin chi tiết khóa học');
+    }
+  }
 }
 
 module.exports = new CoursesService();

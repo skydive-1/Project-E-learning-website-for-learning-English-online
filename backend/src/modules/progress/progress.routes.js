@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const progressController = require('./controllers/progress.controller');
 const validate = require('../../middleware/validation.middleware');
+const { authenticate } = require('../../middleware/auth.middleware');
 
 // Schema Validation
 const getProgressSchema = {
@@ -15,9 +16,9 @@ const getProgressSchema = {
 };
 
 // GET /api/progress/:userId
-router.get('/:userId', validate(getProgressSchema), progressController.getProgressByUserId);
+router.get('/:userId', authenticate, validate(getProgressSchema), progressController.getProgressByUserId);
 
 // POST /api/progress - Ghi nhận tiến độ học tập
-router.post('/', progressController.recordProgress);
+router.post('/', authenticate, progressController.recordProgress);
 
 module.exports = router;
