@@ -58,6 +58,26 @@ const InstructorDashboard = () => {
     fetchCourses();
   }, []);
 
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa khóa học này cùng tất cả chương học và bài giảng liên quan không? Hành động này không thể hoàn tác.')) {
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_BASE_URL}/courses/${courseId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      setCourses(prev => prev.filter(c => c.course_id !== courseId));
+      alert('Xóa khóa học thành công!');
+    } catch (err) {
+      console.error('Lỗi khi xóa khóa học:', err);
+      alert(err.response?.data?.message || 'Lỗi khi xóa khóa học.');
+    }
+  };
+
   // Compute stats
   const totalCourses = courses.length;
   const totalLessons = courses.reduce((sum, c) => sum + (c.lessons_count || 0), 0);
@@ -182,7 +202,7 @@ const InstructorDashboard = () => {
                       <td className="actions-cell">
                         <button className="action-btn" title="Edit" onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}><FiEdit /></button>
                         <button className="action-btn" title="View" onClick={() => navigate(`/lessons`)}><FiEye /></button>
-                        <button className="action-btn delete" title="Delete" onClick={() => alert('Chức năng xóa đang được phát triển')}><FiTrash2 /></button>
+                        <button className="action-btn delete" title="Delete" onClick={() => handleDeleteCourse(course.course_id)}><FiTrash2 /></button>
                       </td>
                     </tr>
                   ))}

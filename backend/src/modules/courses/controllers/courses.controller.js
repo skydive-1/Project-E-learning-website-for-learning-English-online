@@ -124,3 +124,42 @@ exports.getCourseById = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.updateCourse = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const course = await coursesService.updateCourse(courseId, req.body);
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy khóa học để cập nhật'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật khóa học thành công',
+      course
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteCourse = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const result = await coursesService.deleteCourse(courseId);
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy khóa học để xóa'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      message: 'Xóa khóa học thành công'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

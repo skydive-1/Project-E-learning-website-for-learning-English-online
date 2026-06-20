@@ -171,6 +171,83 @@ class CoursesService {
       handleServiceError(error, 'Lỗi lấy thông tin chi tiết khóa học');
     }
   }
+
+  async updateCourse(courseId, courseData) {
+    try {
+      const { 
+        subjectId, 
+        courseName, 
+        description, 
+        thumbnail_url, 
+        price, 
+        status, 
+        startDate, 
+        endDate 
+      } = courseData;
+
+      const updates = [];
+      const values = [];
+      let paramIndex = 1;
+
+      if (subjectId !== undefined) {
+        updates.push(`subject_id = $${paramIndex++}`);
+        values.push(subjectId ? parseInt(subjectId, 10) : null);
+      }
+      if (courseName !== undefined) {
+        updates.push(`course_name = $${paramIndex++}`);
+        values.push(courseName);
+      }
+      if (description !== undefined) {
+        updates.push(`description = $${paramIndex++}`);
+        values.push(description);
+      }
+      if (thumbnail_url !== undefined) {
+        updates.push(`thumbnail_url = $${paramIndex++}`);
+        values.push(thumbnail_url);
+      }
+      if (price !== undefined) {
+        updates.push(`price = $${paramIndex++}`);
+        values.push(price ? parseFloat(price) : 0);
+      }
+      if (status !== undefined) {
+        updates.push(`status = $${paramIndex++}`);
+        values.push(status !== null ? (isNaN(status) ? status : parseInt(status, 10)) : null);
+      }
+      if (startDate !== undefined) {
+        updates.push(`start_date = $${paramIndex++}`);
+        values.push(startDate || null);
+      }
+      if (endDate !== undefined) {
+        updates.push(`end_date = $${paramIndex++}`);
+        values.push(endDate || null);
+      }
+
+      if (updates.length === 0) return await this.getCourseById(courseId);
+
+      values.push(courseId);
+      const queryText = `
+        UPDATE courses 
+        SET ${updates.join(', ')} 
+        WHERE course_id = $${paramIndex}
+        RETURNING *
+      `;
+      const result = await db.query(queryText, values);
+      if (result.rows.length === 0) return null;
+
+      return await this.getCourseById(courseId);
+    } catch (error) {
+      handleServiceError(error, 'Lỗi cập nhật khóa học');
+    }
+  }
+
+  async deleteCourse(courseId) {
+    try {
+      const result = await db.query('DELETE FROM courses WHERE course_id = $1 RETURNING course_id', [courseId]);
+      return result.rows.length > 0;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi xóa khóa học');
+    }
+  }
 }
 
 module.exports = new CoursesService();

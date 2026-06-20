@@ -26,4 +26,10 @@ router.post('/upload', authenticate, authorize([1, 2]), upload.single('file'), c
 // POST /api/courses - Tạo mới khóa học kèm chương và bài học
 router.post('/', authenticate, authorize([1, 2]), coursesController.createCourse);
 
+// PUT /api/courses/:courseId - Cập nhật thông tin khóa học
+router.put('/:courseId', authenticate, authorize([1, 2]), coursesController.updateCourse);
+
+// DELETE /api/courses/:courseId - Xóa khóa học
+router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.deleteCourse);
+
 module.exports = router;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { 
   FiArrowLeft, FiSave, FiUpload, FiTrash2, 
@@ -26,7 +26,9 @@ const API_BASE_URL = 'http://localhost:5000/api';
 
 const CourseEditor = () => {
   const navigate = useNavigate();
+  const { courseId } = useParams();
   const fileInputRef = useRef({});
+  const isEditMode = !!courseId;
 
   // Auth check
   useEffect(() => {
@@ -35,6 +37,48 @@ const CourseEditor = () => {
       navigate('/');
     }
   }, [navigate]);
+
+  // Fetch course details for editing
+  useEffect(() => {
+    if (isEditMode) {
+      const fetchCourse = async () => {
+        try {
+          setLoading(true);
+          const token = localStorage.getItem('token');
+          const response = await axios.get(`${API_BASE_URL}/courses/${courseId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.data && response.data.success) {
+            const course = response.data.course;
+            setCourseName(course.course_name);
+            setSubjectId(String(course.subject_id));
+            if (course.start_date) setStartDate(new Date(course.start_date).toISOString().substring(0, 10));
+            if (course.end_date) setEndDate(new Date(course.end_date).toISOString().substring(0, 10));
+            if (course.sections) {
+              setSections(course.sections.map(sec => ({
+                id: sec.section_id,
+                title: sec.title,
+                lessons: (sec.lessons || []).map(l => ({
+                  id: l.lesson_id,
+                  title: l.title,
+                  type: l.content_type,
+                  contentUrl: l.content_url,
+                  uploading: false,
+                  fileName: l.content_url ? l.content_url.split('/').pop() : ''
+                }))
+              })));
+            }
+          }
+        } catch (err) {
+          console.error('Lỗi khi tải thông tin khóa học để sửa:', err);
+          setErrorMsg('Không thể tải thông tin chi tiết khóa học từ máy chủ.');
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchCourse();
+    }
+  }, [courseId, isEditMode]);
 
   // States
   const [subjects, setSubjects] = useState([]);
@@ -245,21 +289,27 @@ const CourseEditor = () => {
     };
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/courses`, payload, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = isEditMode
+        ? await axios.put(`${API_BASE_URL}/courses/${courseId}`, payload, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          })
+        : await axios.post(`${API_BASE_URL}/courses`, payload, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
 
       if (response.data && response.data.success) {
-        setSuccessMsg('Tạo khóa học thành công!');
+        setSuccessMsg(isEditMode ? 'Cập nhật khóa học thành công!' : 'Tạo khóa học thành công!');
         setTimeout(() => {
           navigate('/instructor/dashboard');
         }, 1500);
       }
     } catch (err) {
-      console.error('Lỗi tạo khóa học:', err);
-      setErrorMsg(err.response?.data?.message || 'Có lỗi xảy ra khi tạo khóa học trên máy chủ.');
+      console.error('Lỗi lưu khóa học:', err);
+      setErrorMsg(err.response?.data?.message || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.');
     } finally {
       setLoading(false);
     }
@@ -291,8 +341,8 @@ const CourseEditor = () => {
         <div className="instructor-content">
           <header className="content-header" style={{ marginBottom: '24px' }}>
             <div className="header-text">
-              <h1>Create New Course</h1>
-              <p>Setup your course metadata and structure your curriculum below.</p>
+              <h1>{isEditMode ? 'Edit Course' : 'Create New Course'}</h1>
+              <p>{isEditMode ? 'Update your course metadata and structure your curriculum below.' : 'Setup your course metadata and structure your curriculum below.'}</p>
             </div>
             <div className="header-actions">
               <button 

@@ -70,6 +70,14 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/instructor/edit-course/:courseId"
+          element={
+            <ProtectedRoute allowedRoles={[1, 2]}>
+              <CourseEditor />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Catch All - Redirect to home */}
         <Route
