@@ -5,8 +5,10 @@ import {
   FiArrowLeft, FiChevronDown, FiChevronUp, FiAward, 
   FiBookOpen, FiDownload, FiCpu, FiClock 
 } from 'react-icons/fi';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
 import ChatBox from '../../chatbot/components/ChatBox';
+import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import { 
   getCourseDetails, 
   getLessonById, 
@@ -17,14 +19,12 @@ const LessonDetailPage = () => {
   const navigate = useNavigate();
   const { lessonId } = useParams();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   // States
-  const [course, setCourse] = useState(null);
-  const [currentLesson, setCurrentLesson] = useState(null);
   const [activeRightTab, setActiveRightTab] = useState("playlist"); // "playlist" or "ai"
   const [activeLeftTab, setActiveLeftTab] = useState("syllabus"); // "syllabus" or "resources"
   const [expandedSections, setExpandedSections] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
 
   // Lắng nghe sự thay đổi của location để đổi tab tự động nếu cần
   useEffect(() => {
@@ -37,55 +37,47 @@ const LessonDetailPage = () => {
     }
   }, [location]);
 
-  // Load course details and current lesson
+  // 1. Tải thông tin meta của bài giảng để xác định courseId của bài giảng hiện tại
+  const { data: initialLessonData } = useQuery({
+    queryKey: ['lesson-meta', lessonId],
+    queryFn: () => getLessonById(lessonId),
+    enabled: !!lessonId
+  });
+
+  const courseIdToLoad = lessonId ? (initialLessonData?.courseId || null) : 1;
+
+  // 2. Tải chi tiết khóa học động dựa trên courseId có được
+  const { data: course, isLoading: courseLoading } = useQuery({
+    queryKey: ['course', courseIdToLoad],
+    queryFn: () => getCourseDetails(courseIdToLoad),
+    enabled: courseIdToLoad !== null
+  });
+
+  // 3. Xác định targetLessonId thực tế (nếu URL không có lessonId, lấy bài đầu tiên của khóa học làm mặc định)
+  const targetLessonId = lessonId || (course?.sections?.[0]?.lessons?.[0]?.id || null);
+
+  // 4. Tải chi tiết bài học hiện tại để hiển thị
+  const { data: currentLesson, isLoading: lessonLoading } = useQuery({
+    queryKey: ['lesson', targetLessonId],
+    queryFn: () => getLessonById(targetLessonId),
+    enabled: !!targetLessonId
+  });
+
+  const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && lessonLoading);
+
+  // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
   useEffect(() => {
-    const loadLessonData = async () => {
-      try {
-        setIsLoading(true);
-        
-        let targetLessonId = lessonId;
-        let courseIdToLoad = 1; // Mặc định khóa học 1 làm dự phòng
-        
-        // Nếu có lessonId, lấy chi tiết bài học trước để tìm course_id
-        if (targetLessonId) {
-          const lessonData = await getLessonById(targetLessonId);
-          setCurrentLesson(lessonData);
-          if (lessonData && lessonData.courseId) {
-            courseIdToLoad = lessonData.courseId;
-          }
+    if (targetLessonId && course?.sections) {
+      const sectionExp = {};
+      course.sections.forEach(sec => {
+        const hasLesson = sec.lessons.some(l => String(l.id) === String(targetLessonId));
+        if (hasLesson) {
+          sectionExp[sec.id] = true;
         }
-        
-        // Load chi tiết khóa học động
-        const courseData = await getCourseDetails(courseIdToLoad);
-        setCourse(courseData);
-        
-        // Nếu không có lessonId từ URL, mặc định lấy bài đầu tiên của khóa học
-        if (!targetLessonId && courseData.sections && courseData.sections[0] && courseData.sections[0].lessons && courseData.sections[0].lessons[0]) {
-          const firstLesson = courseData.sections[0].lessons[0];
-          targetLessonId = firstLesson.id;
-          const lessonData = await getLessonById(targetLessonId);
-          setCurrentLesson(lessonData);
-        }
-
-        if (targetLessonId && courseData) {
-          // Tự động mở rộng section chứa bài học hiện tại
-          const sectionExp = {};
-          courseData.sections.forEach(sec => {
-            const hasLesson = sec.lessons.some(l => String(l.id) === String(targetLessonId));
-            sectionExp[sec.id] = hasLesson ? true : (sectionExp[sec.id] ?? false);
-          });
-          setExpandedSections(prev => ({ ...prev, ...sectionExp }));
-        }
-
-      } catch (error) {
-        console.error("Lỗi tải thông tin bài học:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadLessonData();
-  }, [lessonId]);
+      });
+      setExpandedSections(prev => ({ ...prev, ...sectionExp }));
+    }
+  }, [targetLessonId, course]);
 
   // Đổi bài học mới
   const handleSelectLesson = (id) => {
@@ -98,16 +90,9 @@ const LessonDetailPage = () => {
     try {
       await toggleLessonCompletion(id);
       
-      // Cập nhật lại trạng thái bài học hiện tại
-      if (currentLesson && currentLesson.id === id) {
-        setCurrentLesson(prev => ({ ...prev, completed: !prev.completed }));
-      }
-      
-      // Reload lại thông tin khóa học để cập nhật progress bar và checkbox danh sách
-      if (course && course.id) {
-        const courseData = await getCourseDetails(course.id);
-        setCourse(courseData);
-      }
+      // Khởi chạy reload ngầm của React Query để đồng bộ toàn cục
+      queryClient.invalidateQueries({ queryKey: ['lesson', id] });
+      queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
     } catch (error) {
       console.error("Lỗi cập nhật trạng thái bài học:", error);
     }
@@ -405,7 +390,9 @@ const LessonDetailPage = () => {
                 {/* AI Assistant ChatBox View */}
                 {activeRightTab === "ai" && (
                   <div className="h-full p-2">
-                    <ChatBox />
+                    <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
+                      <ChatBox />
+                    </ErrorBoundary>
                   </div>
                 )}
               </div>

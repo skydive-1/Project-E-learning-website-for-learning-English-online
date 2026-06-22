@@ -7,17 +7,21 @@ import {
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { getProfile, updateProfileApi, changePasswordApi } from '../../auth/services/auth.service';
+import { updateProfileApi, changePasswordApi } from '../../auth/services/auth.service';
+import { useAuth } from '../../../context/AuthContext';
 import '../styles/profile.scss';
 
 const ProfilePage = () => {
   const navigate = useNavigate();
+  const { user: authUser, refreshProfile } = useAuth();
+  
+  // Gán biến user bằng authUser từ context để giữ nguyên các tham chiếu hiển thị trong JSX bên dưới
+  const user = authUser;
   
   // Tab states
   const [activeTab, setActiveTab] = useState('info'); // 'info', 'stats', 'password'
 
   // User details state
-  const [user, setUser] = useState(null);
   const [profileData, setProfileData] = useState({
     username: '',
     fullName: '',
@@ -38,32 +42,15 @@ const ProfilePage = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          navigate('/login');
-          return;
-        }
-
-        const res = await getProfile();
-        const userData = res.data || res.user || res;
-        setUser(userData);
-        setProfileData({
-          username: userData.username || '',
-          fullName: userData.fullName || userData.full_name || '',
-          profilePictureUrl: userData.profilePictureUrl || userData.profile_picture_url || ''
-        });
-      } catch (error) {
-        console.error("Error loading user profile:", error);
-        localStorage.removeItem('token');
-        navigate('/login');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchUser();
-  }, [navigate]);
+    if (authUser) {
+      setProfileData({
+        username: authUser.username || '',
+        fullName: authUser.fullName || authUser.full_name || '',
+        profilePictureUrl: authUser.profilePictureUrl || authUser.profile_picture_url || ''
+      });
+      setIsLoading(false);
+    }
+  }, [authUser]);
 
   // Handle input changes
   const handleProfileChange = (e) => {
@@ -81,14 +68,14 @@ const ProfilePage = () => {
     setIsSaving(true);
 
     try {
-      const result = await updateProfileApi({
+      await updateProfileApi({
         username: profileData.username,
         fullName: profileData.fullName,
         profilePictureUrl: profileData.profilePictureUrl
       });
       
       setInfoMessage({ type: 'success', text: 'Cập nhật thông tin cá nhân thành công!' });
-      setUser({ ...user, ...result.data });
+      await refreshProfile();
       
       // Auto clear message after 3 seconds
       setTimeout(() => setInfoMessage({ type: '', text: '' }), 3000);
@@ -140,8 +127,8 @@ const ProfilePage = () => {
         username: profileData.username,
         fullName: profileData.fullName,
         profilePictureUrl: url
-      }).then((result) => {
-        setUser(prev => ({ ...prev, profile_picture_url: url, profilePictureUrl: url }));
+      }).then(async (result) => {
+        await refreshProfile();
         setInfoMessage({ type: 'success', text: 'Cập nhật ảnh đại diện thành công!' });
         setTimeout(() => setInfoMessage({ type: '', text: '' }), 3000);
       }).catch(err => {

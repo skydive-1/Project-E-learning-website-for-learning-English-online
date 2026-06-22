@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import { loginUser } from '../services/auth.service';
+import { useAuth } from '../../../context/AuthContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -34,14 +36,11 @@ const LoginPage = () => {
       });
 
       if (result.data?.token) {
-        localStorage.setItem('token', result.data.token);
+        setMessage({ type: 'success', text: 'Đăng nhập thành công! Đang tải thông tin...' });
+        await login(result.data.token);
+      } else {
+        throw new Error("Token không hợp lệ từ API");
       }
-
-      setMessage({ type: 'success', text: 'Đăng nhập thành công! Đang chuyển hướng...' });
-      
-      setTimeout(() => {
-        navigate('/');
-      }, 1000);
     } catch (error) {
       const errMsg = error.response?.data?.message || 'Email hoặc mật khẩu không chính xác';
       setMessage({ type: 'error', text: errMsg });

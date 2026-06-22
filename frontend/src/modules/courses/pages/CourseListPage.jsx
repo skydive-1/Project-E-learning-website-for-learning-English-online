@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
+import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiLoader } from 'react-icons/fi';
@@ -71,8 +72,6 @@ const mockCoursesData = [
   }
 ];
 
-const API_BASE_URL = 'http://localhost:5000/api';
-
 const CourseCard = ({ course }) => {
   const navigate = useNavigate();
 
@@ -114,17 +113,15 @@ const CourseCard = ({ course }) => {
 };
 
 const CourseListPage = () => {
-  const [courses, setCourses] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchText] = useState('');
 
-  // Fetch courses from DB
-  useEffect(() => {
-    const fetchCourses = async () => {
+  // Fetch courses from DB sử dụng TanStack Query và apiClient
+  const { data: courses = [], isLoading: loading } = useQuery({
+    queryKey: ['courses'],
+    queryFn: async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/courses`);
+        const response = await apiClient.get('/courses');
         if (response.data && response.data.courses && response.data.courses.length > 0) {
-          // Map DB courses to view model structure
           const dbCoursesMapped = response.data.courses.map(c => ({
             id: `db-${c.course_id}`,
             title: c.course_name,
@@ -138,20 +135,15 @@ const CourseListPage = () => {
             level: c.subject_name,
             duration: `${c.lessons_count || 0} bài giảng`
           }));
-          // Combine DB courses and mock courses for rich UI
-          setCourses([...dbCoursesMapped, ...mockCoursesData]);
-        } else {
-          setCourses(mockCoursesData);
+          return [...dbCoursesMapped, ...mockCoursesData];
         }
+        return mockCoursesData;
       } catch (err) {
         console.error('Lỗi fetch courses từ DB:', err);
-        setCourses(mockCoursesData);
-      } finally {
-        setLoading(false);
+        return mockCoursesData;
       }
-    };
-    fetchCourses();
-  }, []);
+    }
+  });
 
   // Scroll animation observer
   useEffect(() => {

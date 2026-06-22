@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Khởi tạo instance Axios với baseURL của API backend
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -27,12 +27,12 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Nếu API trả về 401 (Unauthorized) do token hết hạn, tự động logout và chuyển về trang login
+    // Nếu API trả về 401 (Unauthorized) do token hết hạn, tự động logout mềm và chuyển về trang login
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('token');
-      // Tránh reload lặp lại nếu đang ở trang login
+      // Tránh lặp lại nếu đang ở trang login
       if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+        window.dispatchEvent(new CustomEvent('auth-logout'));
       }
     }
     return Promise.reject(error);
