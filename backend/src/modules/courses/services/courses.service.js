@@ -141,7 +141,13 @@ class CoursesService {
 
   async getLessonById(lessonId) {
     try {
-      const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [lessonId]);
+      const queryText = `
+        SELECT l.*, s.course_id 
+        FROM lessons l
+        JOIN sections s ON l.section_id = s.section_id
+        WHERE l.lesson_id = $1
+      `;
+      const result = await db.query(queryText, [lessonId]);
       return result.rows[0];
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy chi tiết bài học');

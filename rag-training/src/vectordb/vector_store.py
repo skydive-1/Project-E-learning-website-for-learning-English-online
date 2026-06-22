@@ -1,5 +1,5 @@
-import pinecone
-from langchain.vectorstores import Pinecone
+from pinecone import Pinecone as PineconeClient
+from langchain_community.vectorstores import Pinecone
 
 class PineconeVectorStore:
     def __init__(self, api_key, environment, index_name):
@@ -10,10 +10,7 @@ class PineconeVectorStore:
     def initialize(self):
         print("🔗 Đang kết nối tới cơ sở dữ liệu Vector Pinecone...")
         try:
-            pinecone.init(
-                api_key=self.api_key,
-                environment=self.environment
-            )
+            self.pc = PineconeClient(api_key=self.api_key)
             print("✅ Kết nối Pinecone thành công!")
         except Exception as e:
             print(f"❌ Không thể khởi tạo kết nối Pinecone: {e}")

@@ -28,7 +28,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// Bộ lọc định dạng file
+// Bộ lọc định dạng file (kiểm tra kép cả MIME type và Đuôi mở rộng file)
 const fileFilter = (req, file, cb) => {
   const allowedMimeTypes = [
     'application/pdf',
@@ -38,10 +38,18 @@ const fileFilter = (req, file, cb) => {
     'video/avi'
   ];
 
-  if (allowedMimeTypes.includes(file.mimetype)) {
+  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi'];
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  // Kiểm tra MIME type
+  const isMimeAllowed = allowedMimeTypes.includes(file.mimetype);
+  // Kiểm tra Đuôi mở rộng file
+  const isExtAllowed = allowedExtensions.includes(ext);
+
+  if (isMimeAllowed && isExtAllowed) {
     cb(null, true);
   } else {
-    cb(new Error('Định dạng tệp không được hỗ trợ. Chỉ cho phép tệp PDF và Video (MP4, MOV, MKV, AVI).'), false);
+    cb(new Error('Định dạng tệp không hợp lệ hoặc không được hỗ trợ. Chỉ cho phép tệp PDF và Video (MP4, MOV, MKV, AVI).'), false);
   }
 };
 

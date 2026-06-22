@@ -119,7 +119,10 @@ export const getUserIdFromToken = () => {
   if (!token) return null;
   try {
     const payload = token.split('.')[1];
-    const decoded = JSON.parse(atob(payload));
+    // Giải mã Base64URL an toàn chống thiếu padding và ký tự đặc biệt
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const decoded = JSON.parse(atob(padded));
     return decoded.id;
   } catch (e) {
     console.error('Lỗi giải mã token:', e);
@@ -127,10 +130,10 @@ export const getUserIdFromToken = () => {
   }
 };
 
-export const getCourseDetails = async () => {
+export const getCourseDetails = async (courseId = 1) => {
   try {
-    // 1. Gọi API lấy chi tiết khóa học mẫu (ID = 2) từ backend
-    const courseResponse = await apiClient.get('/courses/2');
+    // 1. Gọi API lấy chi tiết khóa học từ backend
+    const courseResponse = await apiClient.get(`/courses/${courseId}`);
     const dbCourse = courseResponse.data.course;
 
     // 2. Lấy userId từ JWT token
@@ -292,6 +295,7 @@ export const getLessonById = async (lessonId) => {
 
     return {
       id: String(l.lesson_id),
+      courseId: l.course_id,
       title: l.title,
       duration: duration,
       videoUrl: l.content_url,

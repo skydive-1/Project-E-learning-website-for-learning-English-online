@@ -17,8 +17,10 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   if (allowedRoles && allowedRoles.length > 0) {
     try {
       const payload = token.split('.')[1];
-      // Giải mã Base64 an toàn bằng atob
-      const decoded = JSON.parse(atob(payload));
+      // Giải mã Base64URL an toàn chống thiếu padding và ký tự đặc biệt
+      const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      const decoded = JSON.parse(atob(padded));
       const userRole = parseInt(decoded.roleId || decoded.role, 10);
 
       // Nếu vai trò của user không khớp với allowedRoles, chuyển hướng về trang chủ

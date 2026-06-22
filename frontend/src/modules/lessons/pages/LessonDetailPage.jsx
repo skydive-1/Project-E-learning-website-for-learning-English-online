@@ -42,21 +42,40 @@ const LessonDetailPage = () => {
     const loadLessonData = async () => {
       try {
         setIsLoading(true);
-        const courseData = await getCourseDetails();
+        
+        let targetLessonId = lessonId;
+        let courseIdToLoad = 1; // Mặc định khóa học 1 làm dự phòng
+        
+        // Nếu có lessonId, lấy chi tiết bài học trước để tìm course_id
+        if (targetLessonId) {
+          const lessonData = await getLessonById(targetLessonId);
+          setCurrentLesson(lessonData);
+          if (lessonData && lessonData.courseId) {
+            courseIdToLoad = lessonData.courseId;
+          }
+        }
+        
+        // Load chi tiết khóa học động
+        const courseData = await getCourseDetails(courseIdToLoad);
         setCourse(courseData);
         
-        // Lấy bài học hiện tại từ URL params hoặc bài đầu tiên
-        const targetLessonId = lessonId || courseData.sections[0].lessons[0].id;
-        const lessonData = await getLessonById(targetLessonId);
-        setCurrentLesson(lessonData);
+        // Nếu không có lessonId từ URL, mặc định lấy bài đầu tiên của khóa học
+        if (!targetLessonId && courseData.sections && courseData.sections[0] && courseData.sections[0].lessons && courseData.sections[0].lessons[0]) {
+          const firstLesson = courseData.sections[0].lessons[0];
+          targetLessonId = firstLesson.id;
+          const lessonData = await getLessonById(targetLessonId);
+          setCurrentLesson(lessonData);
+        }
 
-        // Tự động mở rộng section chứa bài học hiện tại
-        const sectionExp = {};
-        courseData.sections.forEach(sec => {
-          const hasLesson = sec.lessons.some(l => l.id === targetLessonId);
-          sectionExp[sec.id] = hasLesson ? true : (sectionExp[sec.id] ?? false);
-        });
-        setExpandedSections(prev => ({ ...prev, ...sectionExp }));
+        if (targetLessonId && courseData) {
+          // Tự động mở rộng section chứa bài học hiện tại
+          const sectionExp = {};
+          courseData.sections.forEach(sec => {
+            const hasLesson = sec.lessons.some(l => String(l.id) === String(targetLessonId));
+            sectionExp[sec.id] = hasLesson ? true : (sectionExp[sec.id] ?? false);
+          });
+          setExpandedSections(prev => ({ ...prev, ...sectionExp }));
+        }
 
       } catch (error) {
         console.error("Lỗi tải thông tin bài học:", error);
@@ -85,8 +104,10 @@ const LessonDetailPage = () => {
       }
       
       // Reload lại thông tin khóa học để cập nhật progress bar và checkbox danh sách
-      const courseData = await getCourseDetails();
-      setCourse(courseData);
+      if (course && course.id) {
+        const courseData = await getCourseDetails(course.id);
+        setCourse(courseData);
+      }
     } catch (error) {
       console.error("Lỗi cập nhật trạng thái bài học:", error);
     }

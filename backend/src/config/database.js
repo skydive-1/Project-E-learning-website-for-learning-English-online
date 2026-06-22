@@ -25,7 +25,7 @@ const pool = new Pool({
   ...poolConfig,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 });
 
 // Lắng nghe sự kiện lỗi trên các client nhàn rỗi trong pool
@@ -67,6 +67,7 @@ const testConnection = async () => {
         phone VARCHAR(15) UNIQUE,
         role_id INT NOT NULL DEFAULT 3,
         gender VARCHAR(10) CHECK (gender IN ('Male','Female','Other')),
+        profile_picture_url VARCHAR(255),
         CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(role_id)
       );
     `);
@@ -79,6 +80,11 @@ const testConnection = async () => {
     // Tự động thay đổi default role_id sang 3 (Student) cho bảng đã tồn tại
     await client.query(`
       ALTER TABLE users ALTER COLUMN role_id SET DEFAULT 3;
+    `);
+
+    // Tự động kiểm tra và bổ sung cột profile_picture_url nếu chưa tồn tại
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture_url VARCHAR(255);
     `);
 
     // Tự động khởi tạo/kiểm tra các môn học mẫu trong bảng subjects
@@ -165,6 +171,26 @@ const testConnection = async () => {
 
     console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons", "user_progress" thành công.');
 
+    // Tự động chuyển đổi cột status của bảng courses sang VARCHAR(20) nếu nó đang là integer
+    const statusColTypeRes = await client.query(`
+      SELECT data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'courses' AND column_name = 'status'
+    `);
+    if (statusColTypeRes.rows.length > 0 && statusColTypeRes.rows[0].data_type === 'integer') {
+      console.log('🔄 Đang chuyển đổi kiểu dữ liệu cột "status" của bảng "courses" từ INTEGER sang VARCHAR(20)...');
+      await client.query(`
+        ALTER TABLE courses DROP CONSTRAINT IF EXISTS courses_status_check;
+        ALTER TABLE courses ALTER COLUMN status DROP DEFAULT;
+        ALTER TABLE courses ALTER COLUMN status TYPE VARCHAR(20) USING (CASE WHEN status::text = '1' THEN 'published' WHEN status::text = '2' THEN 'archived' WHEN status::text = 'published' THEN 'published' WHEN status::text = 'archived' THEN 'archived' ELSE 'draft' END);
+        ALTER TABLE courses ADD CONSTRAINT courses_status_check CHECK (status IN ('draft', 'published', 'archived'));
+      `);
+      await client.query(`
+        ALTER TABLE courses ALTER COLUMN status SET DEFAULT 'draft';
+      `);
+      console.log('✅ Đã chuyển đổi cột "status" thành công!');
+    }
+
     // --- SEED DỮ LIỆU MẪU KHÓA HỌC TIẾNG ANH MẶC ĐỊNH ---
     let instructorId = 1;
     const instructorRes = await client.query('SELECT user_id FROM users WHERE role_id = 2 LIMIT 1');
@@ -184,7 +210,7 @@ const testConnection = async () => {
       // Chèn khóa học (subject_id = 4: General English Communication)
       const courseRes = await client.query(`
         INSERT INTO courses (subject_id, course_name, description, instructor_id, thumbnail_url, price, status, start_date, end_date)
-        VALUES (4, 'English for Communication & AI Interaction', 'Khóa học tiếng Anh giao tiếp phản xạ kết hợp Trợ lý học tập AI.', $1, '/images/hero_illustration.png', 0, 1, '2026-06-20', '2027-06-20')
+        VALUES (4, 'English for Communication & AI Interaction', 'Khóa học tiếng Anh giao tiếp phản xạ kết hợp Trợ lý học tập AI.', $1, '/images/hero_illustration.png', 0, 'published', '2026-06-20', '2027-06-20')
         RETURNING course_id
       `, [instructorId]);
       
@@ -250,7 +276,7 @@ const testConnection = async () => {
     client.release();
     return true;
   } catch (error) {
-    console.error('❌ Không thể kết nối hoặc khởi tạo bảng trong PostgreSQL:', error.message);
+    console.error('❌ Không thể kết nối hoặc khởi tạo bảng trong PostgreSQL:', error);
     return false;
   }
 };

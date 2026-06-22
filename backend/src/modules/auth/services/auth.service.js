@@ -23,12 +23,18 @@ class AuthService {
       const hashedPassword = await bcrypt.hash(password, 10);
 
       // 3. Lưu thông tin người dùng vào database PostgreSQL (mặc định role_id = 3 là Student)
+      // Chặn đăng ký vai trò Admin hoặc các vai trò không hợp lệ qua API công khai
+      let finalRoleId = parseInt(roleId, 10);
+      if (finalRoleId !== 2 && finalRoleId !== 3) {
+        finalRoleId = 3; // Chỉ cho phép đăng ký trực tiếp vai trò Student hoặc Instructor
+      }
+
       const queryText = `
         INSERT INTO users (email, password_hash, username, full_name, role_id)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING user_id, email, username, full_name, role_id, created_date
       `;
-      const values = [email, hashedPassword, username, fullName || username, parseInt(roleId, 10) || 3];
+      const values = [email, hashedPassword, username, fullName || username, finalRoleId];
       const result = await db.query(queryText, values);
 
       const newUser = result.rows[0];

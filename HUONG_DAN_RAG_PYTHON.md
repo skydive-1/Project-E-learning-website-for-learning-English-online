@@ -257,11 +257,11 @@ Train RAG Model cho E-learning Chatbot
 
 import os
 from dotenv import load_dotenv
-from langchain.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import GooglePalmEmbeddings
-from langchain.vectorstores import Pinecone
-import pinecone
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.vectorstores import Pinecone
+from pinecone import Pinecone as PineconeClient
 
 # 1. Load biến môi trường từ .env
 load_dotenv()
@@ -280,10 +280,7 @@ print("✅ API Keys loaded successfully")
 
 # 3. Khởi tạo Pinecone
 try:
-    pinecone.init(
-        api_key=PINECONE_API_KEY,
-        environment=PINECONE_ENV
-    )
+    pc = PineconeClient(api_key=PINECONE_API_KEY)
     print("✅ Pinecone initialized")
 except Exception as e:
     print(f"❌ Lỗi kết nối Pinecone: {e}")
@@ -329,9 +326,9 @@ print(f"✅ Chia thành {len(chunks)} chunks")
 # 7. Tạo embeddings bằng Google Gemini
 print("\n🧠 Tạo embeddings bằng Google Gemini...")
 try:
-    embeddings = GooglePalmEmbeddings(
+    embeddings = GoogleGenerativeAIEmbeddings(
         google_api_key=GEMINI_API_KEY,
-        model_name="models/embedding-gecko-001"
+        model="models/embedding-001"
     )
     print("✅ Embeddings model initialized")
 except Exception as e:
