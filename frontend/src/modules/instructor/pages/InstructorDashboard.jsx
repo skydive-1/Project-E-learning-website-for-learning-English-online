@@ -201,7 +201,7 @@ const InstructorDashboard = () => {
                       </td>
                       <td className="actions-cell">
                         <button className="action-btn" title="Edit" onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}><FiEdit /></button>
-                        <button className="action-btn" title="View" onClick={() => navigate(`/lessons`)}><FiEye /></button>
+                        <button className="action-btn" title="View" onClick={() => navigate(`/lessons?courseId=${course.course_id}`)}><FiEye /></button>
                         <button className="action-btn delete" title="Delete" onClick={() => handleDeleteCourse(course.course_id)}><FiTrash2 /></button>
                       </td>
                     </tr>

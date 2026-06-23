@@ -44,7 +44,11 @@ const LessonDetailPage = () => {
     enabled: !!lessonId
   });
 
-  const courseIdToLoad = lessonId ? (initialLessonData?.courseId || null) : 1;
+  const searchParams = new URLSearchParams(location.search);
+  const queryCourseId = searchParams.get('courseId');
+  const courseIdToLoad = lessonId 
+    ? (initialLessonData?.courseId || null) 
+    : (queryCourseId ? parseInt(queryCourseId, 10) : 5);
 
   // 2. Tải chi tiết khóa học động dựa trên courseId có được
   const { data: course, isLoading: courseLoading } = useQuery({
@@ -156,7 +160,14 @@ const LessonDetailPage = () => {
               
               {/* Premium Video Container */}
               <div className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group">
-                {currentLesson?.videoUrl ? (
+                {currentLesson?.type === 'pdf' ? (
+                  <iframe 
+                    key={currentLesson.id}
+                    src={currentLesson.pdfUrl} 
+                    className="w-full h-full border-none bg-white"
+                    title={currentLesson.title}
+                  />
+                ) : currentLesson?.videoUrl ? (
                   <video 
                     key={currentLesson.id}
                     src={currentLesson.videoUrl} 

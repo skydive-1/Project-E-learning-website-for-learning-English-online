@@ -76,7 +76,12 @@ const CourseCard = ({ course }) => {
   const navigate = useNavigate();
 
   const handleStartLearning = () => {
-    navigate('/lessons');
+    if (course.id && course.id.startsWith('db-')) {
+      const dbId = course.id.split('-')[1];
+      navigate(`/lessons?courseId=${dbId}`);
+    } else {
+      navigate(`/lessons?courseId=5`);
+    }
   };
 
   return (

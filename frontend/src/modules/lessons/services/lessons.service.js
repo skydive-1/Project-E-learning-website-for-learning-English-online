@@ -187,14 +187,18 @@ export const getCourseDetails = async (courseId = 1) => {
             content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
           }
 
+          const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
+          
           return {
             id: String(l.lesson_id),
             title: l.title,
             duration: duration,
-            videoUrl: l.content_url,
+            type: l.content_type || 'video',
+            videoUrl: l.content_type === 'video' ? resolvedUrl : null,
+            pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
             description: description,
             content: content,
-            resources: [],
+            resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
             completed: completedLessonIds.includes(l.lesson_id)
           };
         })
@@ -293,15 +297,19 @@ export const getLessonById = async (lessonId) => {
       content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
     }
 
+    const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
+
     return {
       id: String(l.lesson_id),
       courseId: l.course_id,
       title: l.title,
       duration: duration,
-      videoUrl: l.content_url,
+      type: l.content_type || 'video',
+      videoUrl: l.content_type === 'video' ? resolvedUrl : null,
+      pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
       description: description,
       content: content,
-      resources: [],
+      resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
       completed: completed
     };
   } catch (error) {
