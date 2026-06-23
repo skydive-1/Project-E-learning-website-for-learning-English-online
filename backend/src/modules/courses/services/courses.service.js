@@ -30,7 +30,10 @@ class CoursesService {
         ORDER BY c.course_id DESC
       `;
       const result = await db.query(queryText);
-      return result.rows;
+      return result.rows.map(row => ({
+        ...row,
+        status: row.status === 'published' ? 1 : 0
+      }));
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy danh sách khóa học');
     }
@@ -53,7 +56,12 @@ class CoursesService {
         sections 
       } = courseData;
       
-      const finalStatus = status || 'draft';
+      let finalStatus = 'draft';
+      if (status === 1 || status === '1' || status === 'published') {
+        finalStatus = 'published';
+      } else if (status === 2 || status === '2' || status === 'archived') {
+        finalStatus = 'archived';
+      }
       const finalPrice = price || 0;
       const finalSubjectId = subjectId ? parseInt(subjectId) : null;
       
@@ -95,6 +103,10 @@ class CoursesService {
       }
       
       await client.query('COMMIT');
+      
+      // Map status for frontend compatibility
+      newCourse.status = newCourse.status === 'published' ? 1 : 0;
+      
       return newCourse;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -161,6 +173,9 @@ class CoursesService {
       if (courseRes.rows.length === 0) return null;
       const course = courseRes.rows[0];
 
+      // Map status for frontend compatibility
+      course.status = course.status === 'published' ? 1 : 0;
+
       // 2. Lấy danh sách chương (sections)
       const sectionsRes = await db.query('SELECT * FROM sections WHERE course_id = $1 ORDER BY order_index', [courseId]);
       const sections = sectionsRes.rows;
@@ -217,7 +232,15 @@ class CoursesService {
       }
       if (status !== undefined) {
         updates.push(`status = $${paramIndex++}`);
-        values.push(status !== null ? (isNaN(status) ? status : parseInt(status, 10)) : null);
+        let dbStatus = 'draft';
+        if (status === 1 || status === '1' || status === 'published') {
+          dbStatus = 'published';
+        } else if (status === 2 || status === '2' || status === 'archived') {
+          dbStatus = 'archived';
+        } else if (status === null) {
+          dbStatus = null;
+        }
+        values.push(dbStatus);
       }
       if (startDate !== undefined) {
         updates.push(`start_date = $${paramIndex++}`);
