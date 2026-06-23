@@ -6,8 +6,8 @@ const chatbotService = require('../services/chatbot.service');
 
 exports.ask = async (req, res, next) => {
   try {
-    const { question } = req.body;
-    const answer = await chatbotService.ask(question);
+    const { question, lessonId } = req.body;
+    const answer = await chatbotService.ask(question, lessonId);
     
     res.status(200).json({
       success: true,

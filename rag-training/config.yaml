@@ -1,7 +1,7 @@
 # RAG Configuration Settings
 rag:
-  chunk_size: 1000
-  chunk_overlap: 100
+  chunk_size: 250
+  chunk_overlap: 30
   data_folder: "./data"
 
 models:

@@ -391,7 +391,7 @@ const LessonDetailPage = () => {
                 {activeRightTab === "ai" && (
                   <div className="h-full p-2">
                     <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
-                      <ChatBox />
+                      <ChatBox lessonId={currentLesson?.id || targetLessonId} />
                     </ErrorBoundary>
                   </div>
                 )}

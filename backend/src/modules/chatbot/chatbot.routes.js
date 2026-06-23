@@ -7,7 +7,8 @@ const validate = require('../../middleware/validation.middleware');
 // Schema Validation
 const askSchema = {
   body: {
-    question: { required: true }
+    question: { required: true },
+    lessonId: { required: true }
   }
 };
 

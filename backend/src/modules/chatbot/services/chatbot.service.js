@@ -5,10 +5,10 @@
 const { pineconeClient, geminiClient } = require('../../../utils/ai-clients');
 
 class ChatbotService {
-  async ask(question) {
+  async ask(question, lessonId) {
     try {
       // 1. Tìm kiếm tài liệu liên quan từ Pinecone
-      const context = await pineconeClient.search(question);
+      const context = await pineconeClient.search(question, lessonId);
 
       // 2. Sinh câu trả lời từ Gemini
       const response = await geminiClient.generateResponse(question, context);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2 } from 'react-icons/fi';
 import { askChatbot } from '../services/chatbot.service';
 
-const ChatBox = () => {
+const ChatBox = ({ lessonId }) => {
   const [messages, setMessages] = useState([
     {
       id: "msg-welcome",
@@ -46,7 +46,7 @@ const ChatBox = () => {
 
     try {
       // Gọi API gửi lên backend/gemini
-      const aiReply = await askChatbot(text);
+      const aiReply = await askChatbot(text, lessonId);
       
       const aiMessage = {
         id: `msg-${Date.now()}-ai`,

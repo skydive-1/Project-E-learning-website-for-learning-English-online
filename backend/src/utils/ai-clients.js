@@ -6,9 +6,9 @@
  */
 
 const pineconeClient = {
-  async search(question) {
+  async search(question, lessonId) {
     // TODO: Tích hợp Pinecone Client thực tế bằng API Key
-    console.log(`[Pinecone Client] Đang tìm kiếm vector cho câu hỏi: "${question}"`);
+    console.log(`[Pinecone Client] Đang tìm kiếm vector cho câu hỏi: "${question}" (lessonId: ${lessonId})`);
 
     // Giả lập trả về context
     return "Đây là tài liệu học tiếng Anh mẫu từ database vector Pinecone.";

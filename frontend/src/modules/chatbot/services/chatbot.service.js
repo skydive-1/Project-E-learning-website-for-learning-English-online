@@ -44,9 +44,9 @@ const getFallbackResponse = (question) => {
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend
  */
-export const askChatbot = async (question) => {
+export const askChatbot = async (question, lessonId) => {
   try {
-    const response = await apiClient.post('/chatbot/ask', { question });
+    const response = await apiClient.post('/chatbot/ask', { question, lessonId });
     if (response.data && response.data.success) {
       return response.data.data;
     }

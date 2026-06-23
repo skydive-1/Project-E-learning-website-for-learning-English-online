@@ -27,11 +27,11 @@ def main():
         print(f"❌ Lỗi tải cấu hình hệ thống: {e}")
         sys.exit(1)
         
-    # 2. Ingestion - Đọc tài liệu PDF
+    # 2. Ingestion - Đọc tài liệu
     loader = DocumentLoader(config.data_folder)
-    documents = loader.load_pdfs()
+    documents = loader.load_documents()
     if not documents:
-        print("❌ Không tìm thấy tài liệu PDF nào. Đường ống huấn luyện dừng lại.")
+        print("❌ Không tìm thấy tài liệu nào (.pdf hoặc .txt). Đường ống huấn luyện dừng lại.")
         sys.exit(0)
         
     # 3. Chunking - Cắt nhỏ văn bản
