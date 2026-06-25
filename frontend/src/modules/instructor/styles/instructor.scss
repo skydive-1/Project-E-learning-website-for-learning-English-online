@@ -415,6 +415,333 @@ $border-light: #e2e8f0;
       }
     }
   }
+  // Tabs and search/filters
+  .filter-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    background: #fff;
+    padding: 16px 24px;
+    border-radius: 16px;
+    border: 1px solid $border-light;
+
+    .search-input-wrapper {
+      position: relative;
+      flex: 1;
+      max-width: 400px;
+      svg {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: $text-muted;
+      }
+      input {
+        width: 100%;
+        padding: 10px 14px 10px 40px;
+        border: 1px solid $border-light;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        outline: none;
+        transition: border-color 0.2s;
+        &:focus {
+          border-color: $primary-blue;
+        }
+      }
+    }
+
+    .filter-select {
+      padding: 10px 14px;
+      border: 1px solid $border-light;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: $text-dark;
+      outline: none;
+      background-color: #fff;
+      cursor: pointer;
+      &:focus {
+        border-color: $primary-blue;
+      }
+    }
+  }
+
+  // Progress Bar styling in tables
+  .progress-bar-container {
+    width: 120px;
+    background: #e2e8f0;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 4px;
+    .progress-bar-fill {
+      background: #10b981;
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+  }
+
+  // Student details cell
+  .student-info-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    
+    .student-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: #fff;
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+
+    .student-meta {
+      display: flex;
+      flex-direction: column;
+      .student-name {
+        font-weight: 700;
+        color: $text-dark;
+      }
+      .student-username {
+        font-size: 12px;
+        color: $text-muted;
+      }
+    }
+  }
+
+  // Charts & Performance Tab styling
+  .chart-card {
+    background: #fff;
+    padding: 24px;
+    border-radius: 20px;
+    border: 1px solid $border-light;
+    margin-bottom: 32px;
+    
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      h3 { font-size: 16px; font-weight: 800; color: $text-dark; }
+    }
+    
+    .chart-container {
+      height: 250px;
+      display: flex;
+      align-items: flex-end;
+      gap: 20px;
+      padding-top: 20px;
+      border-bottom: 1px solid $border-light;
+      position: relative;
+      
+      .chart-y-axis {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        pointer-events: none;
+        .grid-line {
+          width: 100%;
+          border-top: 1px dashed #f1f5f9;
+          position: relative;
+          span {
+            position: absolute;
+            left: 0;
+            top: -10px;
+            font-size: 10px;
+            color: $text-muted;
+            background: #fff;
+            padding-right: 4px;
+          }
+        }
+      }
+
+      .chart-bar-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100%;
+        justify-content: flex-end;
+        position: relative;
+        z-index: 1;
+
+        .chart-bar-value {
+          font-size: 11px;
+          font-weight: 700;
+          color: $primary-blue;
+          margin-bottom: 6px;
+          opacity: 0;
+          transition: opacity 0.2s;
+        }
+
+        .chart-bar {
+          width: 70%;
+          max-width: 40px;
+          background: linear-gradient(180deg, rgba(29, 78, 216, 0.8) 0%, rgba(29, 78, 216, 0.4) 100%);
+          border-radius: 6px 6px 0 0;
+          transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: pointer;
+          &:hover {
+            background: $primary-blue;
+            + .chart-bar-value { opacity: 1; }
+          }
+        }
+        
+        &:hover {
+          .chart-bar-value { opacity: 1; }
+        }
+
+        .chart-bar-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: $text-muted;
+          margin-top: 8px;
+          white-space: nowrap;
+        }
+      }
+    }
+  }
+
+  // Settings Tab Layout
+  .settings-layout {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 32px;
+    align-items: start;
+
+    .settings-card {
+      background: #fff;
+      padding: 32px;
+      border-radius: 24px;
+      border: 1px solid $border-light;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+
+      h2 {
+        font-size: 18px;
+        font-weight: 800;
+        color: $text-dark;
+        margin-bottom: 24px;
+        border-bottom: 1px solid #f1f5f9;
+        padding-bottom: 12px;
+      }
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      
+      .form-group-full {
+        grid-column: span 2;
+      }
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      
+      label {
+        font-size: 13px;
+        font-weight: 700;
+        color: $text-dark;
+      }
+
+      input, select, textarea {
+        padding: 12px 16px;
+        border: 1px solid $border-light;
+        border-radius: 12px;
+        font-size: 14px;
+        outline: none;
+        transition: all 0.2s;
+        color: $text-dark;
+        font-weight: 500;
+
+        &:focus {
+          border-color: $primary-blue;
+          box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.08);
+        }
+
+        &:disabled {
+          background-color: #f8fafc;
+          color: #94a3b8;
+          cursor: not-allowed;
+        }
+      }
+      
+      textarea {
+        resize: vertical;
+        min-height: 100px;
+      }
+    }
+
+    .btn-save-settings {
+      margin-top: 24px;
+      background: $primary-blue;
+      color: #fff;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: fit-content;
+      
+      &:hover {
+        background: $hover-blue;
+        transform: translateY(-2px);
+      }
+      
+      &:disabled {
+        background-color: #94a3b8;
+        cursor: not-allowed;
+        transform: none;
+      }
+    }
+  }
+
+  // Alerts
+  .alert-toast {
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    
+    &.success {
+      background: #ecfdf5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+    }
+    
+    &.error {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+  }
 }
 
 @media (max-width: 992px) {
@@ -422,5 +749,6 @@ $border-light: #e2e8f0;
     .instructor-container { flex-direction: column; }
     .instructor-sidebar { width: 100%; }
     .stats-overview { grid-template-columns: 1fr; }
+    .settings-layout { grid-template-columns: 1fr; }
   }
 }

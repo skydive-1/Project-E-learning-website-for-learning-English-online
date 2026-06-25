@@ -79,10 +79,18 @@ exports.changePassword = async (req, res, next) => {
 
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { username, fullName, profilePictureUrl } = req.body;
+    const { username, fullName, profilePictureUrl, phone, gender, birthDate } = req.body;
     const userId = req.user.id;
     
-    const updatedUser = await authService.updateProfile({ userId, username, fullName, profilePictureUrl });
+    const updatedUser = await authService.updateProfile({ 
+      userId, 
+      username, 
+      fullName, 
+      profilePictureUrl,
+      phone,
+      gender,
+      birthDate
+    });
     
     res.status(200).json({
       success: true,

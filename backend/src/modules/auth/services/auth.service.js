@@ -174,7 +174,7 @@ class AuthService {
     }
   }
 
-  async updateProfile({ userId, username, fullName, profilePictureUrl }) {
+  async updateProfile({ userId, username, fullName, profilePictureUrl, phone, gender, birthDate }) {
     try {
       // 1. Kiểm tra username trùng lặp nếu có đổi
       if (username) {
@@ -204,6 +204,19 @@ class AuthService {
         updates.push(`profile_picture_url = $${paramIndex++}`);
         values.push(profilePictureUrl);
       }
+      if (phone !== undefined) {
+        updates.push(`phone = $${paramIndex++}`);
+        values.push(phone);
+      }
+      if (gender !== undefined) {
+        updates.push(`gender = $${paramIndex++}`);
+        values.push(gender);
+      }
+      if (birthDate !== undefined) {
+        updates.push(`birth_date = $${paramIndex++}`);
+        // Xử lý giá trị trống hoặc null
+        values.push(birthDate === '' ? null : birthDate);
+      }
 
       if (updates.length === 0) {
         const error = new Error('Không có thông tin nào để cập nhật');
@@ -217,7 +230,7 @@ class AuthService {
         UPDATE users 
         SET ${updates.join(', ')} 
         WHERE user_id = $${paramIndex}
-        RETURNING user_id, email, username, full_name, profile_picture_url, role_id
+        RETURNING user_id, email, username, full_name, profile_picture_url, phone, gender, birth_date, role_id
       `;
 
       const result = await db.query(queryText, values);
@@ -235,6 +248,9 @@ class AuthService {
         username: updatedUser.username,
         fullName: updatedUser.full_name,
         profilePictureUrl: updatedUser.profile_picture_url,
+        phone: updatedUser.phone,
+        gender: updatedUser.gender,
+        birthDate: updatedUser.birth_date,
         roleId: updatedUser.role_id
       };
     } catch (error) {

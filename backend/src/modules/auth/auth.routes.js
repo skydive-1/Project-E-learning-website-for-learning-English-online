@@ -35,7 +35,10 @@ const changePasswordSchema = {
 const updateProfileSchema = {
   body: {
     username: { minLength: 3 },
-    fullName: { minLength: 2 }
+    fullName: { minLength: 2 },
+    phone: { required: false },
+    gender: { required: false },
+    birthDate: { required: false }
   }
 };
 
