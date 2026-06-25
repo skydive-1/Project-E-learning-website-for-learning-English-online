@@ -13,21 +13,30 @@ const handleRagChat = async (userId, lessonId, question) => {
       return { success: false, reply: "Vui lòng nhập câu hỏi." };
     }
 
-    // 1. Tạo vector embedding từ câu hỏi bằng model text-embedding-004
-    const embeddingResult = await embeddingModel.embedContent(question);
+    // 1. Tạo vector embedding từ câu hỏi
+    const embeddingResult = await embeddingModel.embedContent({
+      content: { parts: [{ text: question }] },
+      outputDimensionality: 768
+    });
     const queryVector = embeddingResult.embedding?.values;
 
     if (!queryVector) {
       throw new Error("Không thể tạo vector embedding từ câu hỏi.");
     }
 
-    // 2. Truy vấn Pinecone kèm Filter theo đúng bài học học viên đang xem (lesson_id)
-    const queryResponse = await pineconeIndex.query({
+    const queryOptions = {
       vector: queryVector,
       topK: 2,
-      includeMetadata: true,
-      filter: { lesson_id: { $eq: Number(lessonId) } }
-    });
+      includeMetadata: true
+    };
+
+    const parsedLessonId = Number(lessonId);
+    if (lessonId !== undefined && lessonId !== null && !isNaN(parsedLessonId)) {
+      queryOptions.filter = { lesson_id: { $eq: parsedLessonId } };
+    }
+
+    // 2. Truy vấn Pinecone
+    const queryResponse = await pineconeIndex.query(queryOptions);
 
     // 3. Trích xuất text từ kết quả trả về của Pinecone
     const matches = queryResponse.matches || [];

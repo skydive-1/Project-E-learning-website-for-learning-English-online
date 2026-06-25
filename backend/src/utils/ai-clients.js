@@ -29,8 +29,11 @@ const pineconeClient = {
         return "";
       }
 
-      // 1. Tạo embedding cho câu hỏi bằng model text-embedding-004
-      const embeddingResult = await embeddingModel.embedContent(question);
+      // 1. Tạo embedding cho câu hỏi
+      const embeddingResult = await embeddingModel.embedContent({
+        content: { parts: [{ text: question }] },
+        outputDimensionality: 768
+      });
       const embeddingValues = embeddingResult.embedding?.values;
 
       if (!embeddingValues) {

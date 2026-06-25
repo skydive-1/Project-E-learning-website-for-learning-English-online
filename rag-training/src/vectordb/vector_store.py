@@ -15,6 +15,25 @@ if not hasattr(pinecone, 'list_indexes'):
             return []
     pinecone.list_indexes = _patched_list_indexes
 
+# Patch pinecone.Index for compatibility with pinecone-client 3.x
+if not hasattr(pinecone, '_original_Index'):
+    pinecone._original_Index = pinecone.Index
+    def _patched_Index(index_name, pool_threads=4):
+        import os
+        api_key = os.environ.get("PINECONE_API_KEY")
+        pc = PineconeClient(api_key=api_key)
+        index = pc.Index(index_name)
+        orig_query = index.query
+        def wrapped_query(*args, **kwargs):
+            # Nếu LangChain truyền vector dưới dạng positional argument (bị nhận nhầm thành top_k trong Pinecone Client 3.x)
+            if len(args) > 0:
+                kwargs['vector'] = args[0]
+                args = args[1:]
+            return orig_query(*args, **kwargs)
+        index.query = wrapped_query
+        return index
+    pinecone.Index = _patched_Index
+
 from langchain_community.vectorstores import Pinecone
 
 class PineconeVectorStore:
@@ -63,6 +82,20 @@ class PineconeVectorStore:
             
         print(f"📤 Đang upload {len(chunks)} vectors lên index: {self.index_name}...")
         try:
+            import re
+            import os
+            for chunk in chunks:
+                source = chunk.metadata.get("source", "")
+                filename = os.path.basename(source)
+                # Tìm số sau chữ 'lesson' (ví dụ: lesson16-supplement.txt -> 16)
+                match = re.search(r"lesson(\d+)", filename, re.IGNORECASE)
+                if match:
+                    lesson_id = int(match.group(1))
+                    chunk.metadata["lesson_id"] = lesson_id
+                else:
+                    # Mặc định nếu không tìm thấy số bài học
+                    chunk.metadata["lesson_id"] = 1
+                    
             docsearch = Pinecone.from_documents(
                 chunks,
                 embeddings_model,
