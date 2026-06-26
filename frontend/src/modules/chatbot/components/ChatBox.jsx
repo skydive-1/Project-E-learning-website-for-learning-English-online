@@ -156,9 +156,9 @@ const ChatBox = ({ lessonId }) => {
                 AI
               </div>
               <div className="px-4 py-3 rounded-2xl rounded-tl-none bg-white text-slate-500 border border-slate-100 shadow-sm flex items-center space-x-1 h-[34px]">
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
               </div>
             </div>
           </div>

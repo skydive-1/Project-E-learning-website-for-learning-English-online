@@ -4,9 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiLoader } from 'react-icons/fi';
+import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiLoader, FiX, FiCheckCircle } from 'react-icons/fi';
 import '../styles/courses.scss';
 
+// Mẫu dữ liệu Mock đồng bộ với database subject_id
 const mockCoursesData = [
   {
     id: 'course-1',
@@ -19,7 +20,9 @@ const mockCoursesData = [
     image: '/images/hero_illustration.png',
     badge: 'Đề xuất',
     level: 'Advanced',
-    duration: '45 hours'
+    duration: '45 giờ',
+    subjectId: 1,
+    subjectName: 'IELTS Masterclass'
   },
   {
     id: 'course-2',
@@ -32,7 +35,9 @@ const mockCoursesData = [
     image: '/images/meeting_group.png',
     badge: 'Mới',
     level: 'Intermediate',
-    duration: '32 hours'
+    duration: '32 giờ',
+    subjectId: 3,
+    subjectName: 'Business English'
   },
   {
     id: 'course-3',
@@ -44,7 +49,9 @@ const mockCoursesData = [
     price: 'Miễn phí',
     image: '/images/teacher_virtual.png',
     level: 'Beginner',
-    duration: '12 hours'
+    duration: '12 giờ',
+    subjectId: 4,
+    subjectName: 'General English Communication'
   },
   {
     id: 'course-4',
@@ -56,7 +63,9 @@ const mockCoursesData = [
     price: 'Miễn phí',
     image: '/images/hero_illustration.png',
     level: 'Elementary',
-    duration: '15 hours'
+    duration: '15 giờ',
+    subjectId: 4,
+    subjectName: 'General English Communication'
   },
   {
     id: 'course-5',
@@ -68,9 +77,57 @@ const mockCoursesData = [
     price: 'Miễn phí',
     image: '/images/meeting_group.png',
     level: 'Intermediate',
-    duration: '20 hours'
+    duration: '20 giờ',
+    subjectId: 2,
+    subjectName: 'TOEIC Prep'
   }
 ];
+
+// Hàm phụ trợ tự động phân loại trình độ tiếng Anh từ tiêu đề/môn học
+const getCourseLevel = (courseName, subjectName) => {
+  const name = `${courseName || ''} ${subjectName || ''}`.toLowerCase();
+  if (name.includes('căn bản') || name.includes('begin') || name.includes('cơ bản') || name.includes('nhập môn') || name.includes('elementary')) {
+    return 'Beginner';
+  }
+  if (name.includes('communication') || name.includes('giao tiếp') || name.includes('conversation') || name.includes('business')) {
+    return 'Intermediate';
+  }
+  if (name.includes('ielts') || name.includes('advanced') || name.includes('chuyên sâu') || name.includes('nâng cao') || name.includes('masterclass')) {
+    return 'Advanced';
+  }
+  return 'Intermediate';
+};
+
+// Hàm chuyển đổi tiếng Việt có dấu thành không dấu để tìm kiếm thông minh
+const removeVietnameseTones = (str) => {
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+};
+
+// Skeleton Card Component
+const CourseCardSkeleton = () => {
+  return (
+    <div className="course-card-skeleton">
+      <div className="skeleton-thumb animate-pulse"></div>
+      <div className="skeleton-body">
+        <div className="skeleton-tags">
+          <span className="skeleton-tag animate-pulse"></span>
+          <span className="skeleton-tag animate-pulse"></span>
+        </div>
+        <div className="skeleton-title animate-pulse"></div>
+        <div className="skeleton-title short animate-pulse"></div>
+        <div className="skeleton-text animate-pulse"></div>
+        <div className="skeleton-rating animate-pulse"></div>
+        <div className="skeleton-meta animate-pulse"></div>
+      </div>
+    </div>
+  );
+};
 
 const CourseCard = ({ course }) => {
   const navigate = useNavigate();
@@ -80,20 +137,29 @@ const CourseCard = ({ course }) => {
       const dbId = course.id.split('-')[1];
       navigate(`/lessons?courseId=${dbId}`);
     } else {
-      navigate(`/lessons?courseId=5`);
+      // Map mock course id dynamically to corresponding subject values
+      const mockId = course.id === 'course-1' ? 1 : 
+                     course.id === 'course-2' ? 3 : 
+                     course.id === 'course-3' ? 4 : 
+                     course.id === 'course-4' ? 4 : 2;
+      navigate(`/lessons?courseId=${mockId}`);
     }
   };
 
   return (
     <div className="course-card-premium scroll-animate" onClick={handleStartLearning}>
       <div className="card-thumb">
-        <img src={course.image} alt={course.title} />
+        <img src={course.image || '/images/hero_illustration.png'} alt={course.title} />
         {course.badge && <span className="badge-status">{course.badge}</span>}
         <div className="thumb-overlay">
           <button className="btn-preview">Học ngay</button>
         </div>
       </div>
       <div className="card-body">
+        <div className="card-tags">
+          <span className="tag-level">{course.level}</span>
+          {course.subjectName && <span className="tag-subject">{course.subjectName}</span>}
+        </div>
         <h3 className="course-title">{course.title}</h3>
         <p className="instructor">{course.instructor}</p>
         <div className="rating-row">
@@ -118,50 +184,119 @@ const CourseCard = ({ course }) => {
 };
 
 const CourseListPage = () => {
-  const [searchTerm, setSearchText] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState('all');
+  const [selectedLevel, setSelectedLevel] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
 
-  // Fetch courses from DB sử dụng TanStack Query và apiClient
+  // Fetch danh sách môn học phục vụ cho việc hiển thị bộ lọc động
+  const { data: subjects = [] } = useQuery({
+    queryKey: ['subjects'],
+    queryFn: async () => {
+      try {
+        const response = await apiClient.get('/courses/subjects');
+        return response.data?.subjects || [];
+      } catch (err) {
+        console.error('Lỗi fetch subjects từ DB:', err);
+        return [];
+      }
+    }
+  });
+
+  // Fetch danh sách khóa học từ DB
   const { data: courses = [], isLoading: loading } = useQuery({
     queryKey: ['courses'],
     queryFn: async () => {
       try {
         const response = await apiClient.get('/courses');
         if (response.data && response.data.courses && response.data.courses.length > 0) {
-          const dbCoursesMapped = response.data.courses.map(c => ({
-            id: `db-${c.course_id}`,
-            title: c.course_name,
-            instructor: 'Hệ thống E-Learning',
-            rating: 4.8,
-            reviews: 15,
-            students: 120,
-            price: 'Miễn phí',
-            image: '/images/hero_illustration.png',
-            badge: 'Thực tế',
-            level: c.subject_name,
-            duration: `${c.lessons_count || 0} bài giảng`
-          }));
-          return [...dbCoursesMapped, ...mockCoursesData];
+          const dbCoursesMapped = response.data.courses.map(c => {
+            const calculatedLevel = getCourseLevel(c.course_name, c.subject_name);
+            return {
+              id: `db-${c.course_id}`,
+              title: c.course_name,
+              instructor: 'Hệ thống E-Learning',
+              rating: 4.8,
+              reviews: 15,
+              students: 120,
+              price: 'Miễn phí',
+              image: c.thumbnail_url || '/images/hero_illustration.png',
+              badge: 'Thực tế',
+              level: calculatedLevel,
+              subjectId: c.subject_id,
+              subjectName: c.subject_name,
+              duration: `${c.lessons_count || 0} bài giảng`
+            };
+          });
+          return dbCoursesMapped; // Trả về duy nhất dữ liệu thật nếu có trong DB
         }
-        return mockCoursesData;
+        return mockCoursesData; // Fallback về mock data nếu DB rỗng
       } catch (err) {
         console.error('Lỗi fetch courses từ DB:', err);
-        return mockCoursesData;
+        return mockCoursesData; // Fallback về mock data nếu có lỗi kết nối DB
       }
     }
   });
 
-  // Scroll animation observer
+  // Lọc danh sách môn học để hiển thị lên thanh danh mục
+  const displayedSubjects = subjects.length > 0 ? subjects : [
+    { subject_id: 1, subject_name: 'IELTS Masterclass' },
+    { subject_id: 2, subject_name: 'TOEIC Prep' },
+    { subject_id: 3, subject_name: 'Business English' },
+    { subject_id: 4, subject_name: 'General English Communication' },
+    { subject_id: 5, subject_name: 'English Grammar Essentials' }
+  ];
+
+  // Xử lý bộ lọc và tìm kiếm
+  const filteredCourses = courses.filter(course => {
+    // 1. Tìm kiếm không dấu thông minh
+    const rawSearch = removeVietnameseTones(searchTerm.trim());
+    const matchSearch = !rawSearch || 
+      removeVietnameseTones(course.title || '').includes(rawSearch) ||
+      removeVietnameseTones(course.level || '').includes(rawSearch) ||
+      removeVietnameseTones(course.instructor || '').includes(rawSearch) ||
+      (course.subjectName && removeVietnameseTones(course.subjectName).includes(rawSearch));
+
+    // 2. Bộ lọc theo môn học (subject)
+    const matchSubject = selectedSubjectId === 'all' || course.subjectId === Number(selectedSubjectId);
+
+    // 3. Bộ lọc theo trình độ
+    const matchLevel = selectedLevel === 'all' || 
+      (course.level && course.level.toLowerCase() === selectedLevel.toLowerCase());
+
+    return matchSearch && matchSubject && matchLevel;
+  });
+
+  // Xử lý sắp xếp kết quả
+  const sortedCourses = [...filteredCourses].sort((a, b) => {
+    if (sortBy === 'rating') {
+      return b.rating - a.rating;
+    }
+    if (sortBy === 'students') {
+      return b.students - a.students;
+    }
+    if (sortBy === 'newest') {
+      const getNumId = (id) => {
+        if (id.startsWith('db-')) return parseInt(id.split('-')[1], 10);
+        return 0; // Mock data có thứ tự thấp hơn
+      };
+      return getNumId(b.id) - getNumId(a.id);
+    }
+    return 0;
+  });
+
+  // Sửa lỗi IntersectionObserver: Đảm bảo trigger lại hoạt ảnh khi danh sách hiển thị thực tế thay đổi
+  const courseIdsString = sortedCourses.map(c => c.id).join(',');
   useEffect(() => {
-    if (courses.length > 0) {
+    if (sortedCourses.length > 0) {
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add('animate-in');
           }
         });
-      }, { threshold: 0.1 });
+      }, { threshold: 0.05 });
 
-      // Timeout to ensure DOM nodes are rendered
       const timer = setTimeout(() => {
         document.querySelectorAll('.scroll-animate').forEach(el => observer.observe(el));
       }, 100);
@@ -171,13 +306,14 @@ const CourseListPage = () => {
         observer.disconnect();
       };
     }
-  }, [courses]);
+  }, [courseIdsString]);
 
-  // Filter based on search term
-  const filteredCourses = courses.filter(course => 
-    course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    course.level.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setSelectedSubjectId('all');
+    setSelectedLevel('all');
+    setSortBy('newest');
+  };
 
   return (
     <div className="courses-page-new">
@@ -190,15 +326,20 @@ const CourseListPage = () => {
             <div className="hero-flex">
               <div className="hero-text scroll-animate">
                 <h1>Học Tiếng Anh Miễn Phí</h1>
-                <p>Hệ thống bài giảng chất lượng cao, giúp bạn làm chủ tiếng Anh hoàn toàn miễn phí.</p>
+                <p>Hệ thống bài giảng chất lượng cao, tích hợp công nghệ RAG AI hỗ trợ giải đáp tức thì.</p>
                 <div className="search-bar-wrapper">
                   <FiSearch className="search-icon" />
                   <input 
                     type="text" 
-                    placeholder="Bạn muốn học gì hôm nay?"
+                    placeholder="Tìm tên khóa học, chủ đề hoặc trình độ..."
                     value={searchTerm}
-                    onChange={(e) => setSearchText(e.target.value)}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
+                  {searchTerm && (
+                    <button className="btn-clear-search" onClick={() => setSearchTerm('')} title="Xóa tìm kiếm">
+                      <FiX />
+                    </button>
+                  )}
                   <button className="btn-search">Tìm kiếm</button>
                 </div>
               </div>
@@ -211,40 +352,91 @@ const CourseListPage = () => {
           </div>
         </section>
 
-        {/* Categories Bar */}
+        {/* Categories / Subjects Filter Bar */}
         <nav className="category-filter-bar">
           <div className="container">
             <div className="filter-list">
-              <button className="active"><FiFilter /> Tất cả</button>
-              <button onClick={() => setSearchText('giao tiếp')}>Giao tiếp</button>
-              <button onClick={() => setSearchText('ielts')}>IELTS</button>
-              <button onClick={() => setSearchText('toeic')}>TOEIC</button>
-              <button onClick={() => setSearchText('grammar')}>Ngữ pháp</button>
-              <button onClick={() => setSearchText('pronunciation')}>Phát âm</button>
+              <button 
+                className={selectedSubjectId === 'all' ? 'active' : ''} 
+                onClick={() => setSelectedSubjectId('all')}
+              >
+                <FiFilter /> Tất cả môn học
+              </button>
+              {displayedSubjects.map(sub => (
+                <button 
+                  key={sub.subject_id}
+                  className={selectedSubjectId === sub.subject_id ? 'active' : ''}
+                  onClick={() => setSelectedSubjectId(sub.subject_id)}
+                >
+                  {sub.subject_name}
+                </button>
+              ))}
             </div>
           </div>
         </nav>
 
-        {/* All Courses Section */}
+        {/* Catalog Control Panel (Counts, Sorting & Advanced Level Filter) */}
+        <section className="catalog-controls-section">
+          <div className="container">
+            <div className="catalog-controls-bar">
+              <div className="results-count">
+                Tìm thấy <strong>{sortedCourses.length}</strong> khóa học
+              </div>
+              
+              <div className="controls-group">
+                {/* Bộ lọc trình độ */}
+                <div className="filter-select-wrapper">
+                  <label htmlFor="level-select">Trình độ:</label>
+                  <select 
+                    id="level-select"
+                    value={selectedLevel}
+                    onChange={(e) => setSelectedLevel(e.target.value)}
+                  >
+                    <option value="all">Tất cả trình độ</option>
+                    <option value="beginner">Beginner (Bắt đầu)</option>
+                    <option value="elementary">Elementary (Sơ cấp)</option>
+                    <option value="intermediate">Intermediate (Trung cấp)</option>
+                    <option value="advanced">Advanced (Nâng cao)</option>
+                  </select>
+                </div>
+
+                {/* Sắp xếp kết quả */}
+                <div className="filter-select-wrapper">
+                  <label htmlFor="sort-select">Sắp xếp:</label>
+                  <select 
+                    id="sort-select"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                  >
+                    <option value="newest">Mới nhất</option>
+                    <option value="students">Học viên đông nhất</option>
+                    <option value="rating">Đánh giá cao nhất</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* All Courses Grid */}
         <section className="course-section">
           <div className="container">
-            <div className="section-header">
-              <h2>Tất cả khóa học</h2>
-              <p>Danh sách các khóa học trực tuyến dành cho mọi cấp độ.</p>
-            </div>
-
             {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '80px', gap: '10px', color: '#64748b' }}>
-                <FiLoader className="spin" style={{ fontSize: '28px' }} />
-                <span>Đang tải danh sách khóa học...</span>
+              <div className="course-grid">
+                {[...Array(6)].map((_, i) => <CourseCardSkeleton key={i} />)}
               </div>
-            ) : filteredCourses.length === 0 ? (
-              <div style={{ padding: '80px', textAlign: 'center', color: '#64748b' }}>
-                Không tìm thấy khóa học nào phù hợp với tìm kiếm của bạn.
+            ) : sortedCourses.length === 0 ? (
+              <div className="courses-empty-state">
+                <div className="empty-illustration">🔍</div>
+                <h3>Không tìm thấy kết quả phù hợp</h3>
+                <p>Thử thay đổi từ khóa tìm kiếm hoặc đặt lại bộ lọc của bạn để khám phá các khóa học khác.</p>
+                <button className="btn-reset-filters" onClick={handleResetFilters}>
+                  Thiết lập lại bộ lọc
+                </button>
               </div>
             ) : (
               <div className="course-grid">
-                {filteredCourses.map(course => <CourseCard key={course.id} course={course} />)}
+                {sortedCourses.map(course => <CourseCard key={course.id} course={course} />)}
               </div>
             )}
           </div>

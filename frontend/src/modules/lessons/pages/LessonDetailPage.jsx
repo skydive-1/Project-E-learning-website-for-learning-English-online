@@ -253,7 +253,7 @@ const LessonDetailPage = () => {
                   {activeLeftTab === "syllabus" && (
                     <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap animate-fade">
                       <p className="font-semibold text-slate-800 text-[14.5px] mb-3">Tóm tắt nội dung bài học:</p>
-                      <p className="mb-4 text-slate-500 italic bg-slate-50 px-4 py-3 rounded-xl border-l-4 border-slate-300">
+                      <p className="mb-4 text-slate-500 italic bg-slate-50/50 px-4 py-3 rounded-xl border border-slate-200">
                         {currentLesson?.description}
                       </p>
                       <div className="bg-white border border-slate-100/60 p-4 rounded-xl shadow-inner text-[14px]">
@@ -357,10 +357,10 @@ const LessonDetailPage = () => {
                                   <div 
                                     key={lesson.id}
                                     onClick={() => handleSelectLesson(lesson.id)}
-                                    className={`flex items-start px-3.5 py-3 transition-colors cursor-pointer ${
+                                    className={`flex items-start px-3.5 py-3 transition-colors cursor-pointer rounded-lg ${
                                       isActive 
-                                        ? 'bg-smart-indigo/[0.03] border-l-4 border-smart-indigo' 
-                                        : 'hover:bg-slate-50/50 border-l-4 border-transparent'
+                                        ? 'bg-smart-indigo/[0.05] text-smart-indigo font-bold' 
+                                        : 'hover:bg-slate-50/60 text-slate-600'
                                     }`}
                                   >
                                     {/* Completion Checkbox */}

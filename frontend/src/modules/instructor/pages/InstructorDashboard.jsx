@@ -569,7 +569,7 @@ const InstructorDashboard = () => {
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <div className="progress-bar-container">
-                                <div className="progress-bar-fill" style={{ width: `${student.progress}%` }}></div>
+                                <div className="progress-bar-fill" style={{ transform: `scaleX(${student.progress / 100})`, transformOrigin: 'left' }}></div>
                               </div>
                               <span style={{ fontSize: '12px', fontWeight: '700', color: '#059669' }}>
                                 {student.progress}% ({student.completedLessons}/{student.totalLessons} bài)

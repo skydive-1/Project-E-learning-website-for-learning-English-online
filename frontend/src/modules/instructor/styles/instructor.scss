@@ -481,7 +481,9 @@ $border-light: #e2e8f0;
       background: #10b981;
       height: 100%;
       border-radius: 4px;
-      transition: width 0.3s ease;
+      width: 100%;
+      transform-origin: left;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
   }
 
@@ -598,12 +600,18 @@ $border-light: #e2e8f0;
           max-width: 40px;
           background: linear-gradient(180deg, rgba(29, 78, 216, 0.8) 0%, rgba(29, 78, 216, 0.4) 100%);
           border-radius: 6px 6px 0 0;
-          transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
           cursor: pointer;
+          transform-origin: bottom;
+          animation: scaleUpChart 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           &:hover {
             background: $primary-blue;
             + .chart-bar-value { opacity: 1; }
           }
+        }
+
+        @keyframes scaleUpChart {
+          from { transform: scaleY(0); }
+          to { transform: scaleY(1); }
         }
         
         &:hover {
