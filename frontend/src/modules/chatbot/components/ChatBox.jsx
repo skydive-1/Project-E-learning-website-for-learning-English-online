@@ -154,7 +154,7 @@ const ChatBox = ({ lessonId }) => {
         <div className="w-16 h-16 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center mb-4 border border-smart-indigo/10">
           <FiCpu className="text-3xl animate-pulse" />
         </div>
-        <h3 className="font-bold text-slate-800 text-sm mb-2">Trợ Lý Ảo LingoMate AI</h3>
+        <h3 className="font-bold text-slate-800 text-sm mb-2">Trợ Lý Ảo AI</h3>
         <p className="text-[11.5px] text-slate-500 max-w-[220px] leading-relaxed mb-6">
           Vui lòng đăng nhập để bắt đầu trò chuyện cùng Trợ lý ảo và tự động lưu trữ tiến độ hội thoại theo bài học.
         </p>
