@@ -1,20 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2 } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import { askChatbot, getChatHistory, saveChatHistory } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
 
 const ChatBox = ({ lessonId }) => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState([
-    {
-      id: "msg-welcome",
-      sender: "ai",
-      text: "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?",
-      timestamp: new Date()
-    }
-  ]);
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   
   const messagesEndRef = useRef(null);
 
@@ -23,32 +19,52 @@ const ChatBox = ({ lessonId }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Tải lịch sử chat cũ khi lessonId hoặc user thay đổi
+  // Tải lịch sử chat cũ khi lessonId hoặc user thay đổi (Xử lý Race Conditions và Loading)
   useEffect(() => {
+    let isCurrent = true;
     const fetchHistory = async () => {
-      if (user?.userId && lessonId) {
+      if (!user?.userId || !lessonId) {
+        setIsHistoryLoading(false);
+        return;
+      }
+      
+      setIsHistoryLoading(true);
+      try {
         const historyData = await getChatHistory(user.userId, lessonId);
-        if (historyData && historyData.length > 0) {
-          const mappedMessages = historyData.map(msg => ({
-            id: `msg-db-${msg.chat_id}`,
-            sender: msg.sender === 'bot' ? 'ai' : 'user',
-            text: msg.message,
-            timestamp: new Date()
-          }));
-          setMessages(mappedMessages);
-        } else {
-          setMessages([
-            {
-              id: "msg-welcome",
-              sender: "ai",
-              text: "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?",
+        if (isCurrent) {
+          if (historyData && historyData.length > 0) {
+            const mappedMessages = historyData.map(msg => ({
+              id: `msg-db-${msg.chat_id}`,
+              sender: msg.sender === 'bot' ? 'ai' : 'user',
+              text: msg.message,
               timestamp: new Date()
-            }
-          ]);
+            }));
+            setMessages(mappedMessages);
+          } else {
+            setMessages([
+              {
+                id: "msg-welcome",
+                sender: "ai",
+                text: "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?",
+                timestamp: new Date()
+              }
+            ]);
+          }
+        }
+      } catch (err) {
+        console.error('⚠️ Lỗi tải lịch sử chat:', err);
+      } finally {
+        if (isCurrent) {
+          setIsHistoryLoading(false);
         }
       }
     };
+
     fetchHistory();
+
+    return () => {
+      isCurrent = false;
+    };
   }, [user?.userId, lessonId]);
 
   useEffect(() => {
@@ -62,7 +78,7 @@ const ChatBox = ({ lessonId }) => {
     // Reset input
     if (!textToSend) setInputText("");
 
-    // Add user message
+    // Thêm câu hỏi của user vào danh sách ngay lập tức
     const userMessage = {
       id: `msg-${Date.now()}-user`,
       sender: "user",
@@ -71,11 +87,10 @@ const ChatBox = ({ lessonId }) => {
     };
     setMessages(prev => [...prev, userMessage]);
     
-    // Set loading state
     setIsLoading(true);
 
     try {
-      // Gọi API gửi lên backend/gemini
+      // 1. Gọi API hỏi AI từ backend/gemini
       const aiReply = await askChatbot(text, lessonId);
       
       const aiMessage = {
@@ -86,9 +101,11 @@ const ChatBox = ({ lessonId }) => {
       };
       setMessages(prev => [...prev, aiMessage]);
 
-      // Lưu cuộc hội thoại này vào CSDL
+      // 2. Lưu hội thoại ngầm (Auto-Save) vào CSDL
       if (user?.userId && lessonId) {
-        await saveChatHistory(user.userId, lessonId, text, aiReply);
+        saveChatHistory(user.userId, lessonId, text, aiReply).catch(err => {
+          console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
+        });
       }
     } catch (error) {
       const errorMessage = {
@@ -130,6 +147,27 @@ const ChatBox = ({ lessonId }) => {
     { label: "Tạo một bài tập nhỏ", text: "Tạo cho tôi một bài tập trắc nghiệm nhỏ để kiểm tra kiến thức bài học này" }
   ];
 
+  // Trạng thái chưa đăng nhập: Hiển thị giao diện khóa sang trọng
+  if (!user) {
+    return (
+      <div className="flex flex-col h-full bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative justify-center items-center p-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center mb-4 border border-smart-indigo/10">
+          <FiCpu className="text-3xl animate-pulse" />
+        </div>
+        <h3 className="font-bold text-slate-800 text-sm mb-2">Trợ Lý Ảo LingoMate AI</h3>
+        <p className="text-[11.5px] text-slate-500 max-w-[220px] leading-relaxed mb-6">
+          Vui lòng đăng nhập để bắt đầu trò chuyện cùng Trợ lý ảo và tự động lưu trữ tiến độ hội thoại theo bài học.
+        </p>
+        <button
+          onClick={() => navigate('/login')}
+          className="px-5 py-2.5 bg-smart-indigo hover:bg-indigo-700 text-white font-semibold text-xs tracking-wider uppercase rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer"
+        >
+          Đăng nhập ngay
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative">
       {/* Chat Header */}
@@ -155,34 +193,52 @@ const ChatBox = ({ lessonId }) => {
 
       {/* Message Area with Custom Scrollbar */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-slate-50/50">
-        {messages.map((msg) => (
-          <div 
-            key={msg.id} 
-            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div className={`flex items-start max-w-[85%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              {/* AI Avatar */}
-              {msg.sender === 'ai' && (
-                <div className="w-7 h-7 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10">
-                  AI
-                </div>
-              )}
-              
-              {/* Message Bubble */}
-              <div 
-                className={`px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-sm whitespace-pre-wrap ${
-                  msg.sender === 'user' 
-                    ? 'bg-smart-indigo text-white rounded-tr-none' 
-                    : msg.isError 
-                      ? 'bg-red-50 text-red-700 border border-red-100 rounded-tl-none'
-                      : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
-                }`}
-              >
-                {msg.text}
-              </div>
+        {isHistoryLoading ? (
+          <div className="space-y-4">
+            {/* User skeleton message */}
+            <div className="flex justify-end">
+              <div className="w-[60%] h-10 bg-slate-200/80 rounded-2xl rounded-tr-none animate-pulse"></div>
+            </div>
+            {/* AI skeleton message */}
+            <div className="flex justify-start items-start">
+              <div className="w-7 h-7 rounded-full bg-slate-200 animate-pulse mr-2"></div>
+              <div className="w-[70%] h-16 bg-slate-200/80 rounded-2xl rounded-tl-none animate-pulse"></div>
+            </div>
+            {/* User skeleton message 2 */}
+            <div className="flex justify-end">
+              <div className="w-[45%] h-10 bg-slate-200/80 rounded-2xl rounded-tr-none animate-pulse"></div>
             </div>
           </div>
-        ))}
+        ) : (
+          messages.map((msg) => (
+            <div 
+              key={msg.id} 
+              className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`flex items-start max-w-[85%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                {/* AI Avatar */}
+                {msg.sender === 'ai' && (
+                  <div className="w-7 h-7 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10">
+                    AI
+                  </div>
+                )}
+                
+                {/* Message Bubble */}
+                <div 
+                  className={`px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-sm whitespace-pre-wrap ${
+                    msg.sender === 'user' 
+                      ? 'bg-smart-indigo text-white rounded-tr-none' 
+                      : msg.isError 
+                        ? 'bg-red-50 text-red-700 border border-red-100 rounded-tl-none'
+                        : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
+                  }`}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
 
         {/* Typing Animation */}
         {isLoading && (
