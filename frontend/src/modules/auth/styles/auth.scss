@@ -421,3 +421,38 @@ h3 {
     }
   }
 }
+
+html.dark {
+  --primary-blue: #3b82f6;
+  --primary-blue-hover: #60a5fa;
+  --text-dark: var(--text-color);
+  --text-body: var(--text-light);
+  --bg-left: var(--card-bg);
+  --card-left-bg: #2d3748;
+  --input-bg: var(--input-bg);
+  --border-grey: var(--border-color);
+  --text-muted: var(--text-light);
+  --error-color: #f87171;
+  --success-color: #4ade80;
+
+  .auth-wrapper {
+    background-color: var(--bg-color);
+  }
+  .auth-split-card {
+    background: var(--card-bg);
+    box-shadow: none;
+    .auth-right-pane {
+      h2 { color: var(--text-color); }
+      .form-label { color: #cbd5e1; }
+      .input-wrapper input {
+        background-color: var(--input-bg);
+        border-color: var(--border-color);
+        color: var(--text-color);
+        &:focus {
+          border-color: #3b82f6;
+        }
+      }
+    }
+  }
+}
+

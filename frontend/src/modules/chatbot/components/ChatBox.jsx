@@ -150,12 +150,12 @@ const ChatBox = ({ lessonId }) => {
   // Trạng thái chưa đăng nhập: Hiển thị giao diện khóa sang trọng
   if (!user) {
     return (
-      <div className="flex flex-col h-full bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative justify-center items-center p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center mb-4 border border-smart-indigo/10">
+      <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm relative justify-center items-center p-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center mb-4 border border-smart-indigo/10 dark:border-smart-indigo/20">
           <FiCpu className="text-3xl animate-pulse" />
         </div>
-        <h3 className="font-bold text-slate-800 text-sm mb-2">Trợ Lý Ảo AI</h3>
-        <p className="text-[11.5px] text-slate-500 max-w-[220px] leading-relaxed mb-6">
+        <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-2">Trợ Lý Ảo AI</h3>
+        <p className="text-[11.5px] text-slate-500 dark:text-slate-400 max-w-[220px] leading-relaxed mb-6">
           Vui lòng đăng nhập để bắt đầu trò chuyện cùng Trợ lý ảo và tự động lưu trữ tiến độ hội thoại theo bài học.
         </p>
         <button
@@ -169,7 +169,7 @@ const ChatBox = ({ lessonId }) => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm relative">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm relative transition-colors duration-300">
       {/* Chat Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-smart-indigo to-blue-600 text-white shadow-sm shrink-0">
         <div className="flex items-center space-x-2">
@@ -192,21 +192,21 @@ const ChatBox = ({ lessonId }) => {
       </div>
 
       {/* Message Area with Custom Scrollbar */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-slate-50/50">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
         {isHistoryLoading ? (
           <div className="space-y-4">
             {/* User skeleton message */}
             <div className="flex justify-end">
-              <div className="w-[60%] h-10 bg-slate-200/80 rounded-2xl rounded-tr-none animate-pulse"></div>
+              <div className="w-[60%] h-10 bg-slate-200/80 dark:bg-slate-700/80 rounded-2xl rounded-tr-none animate-pulse"></div>
             </div>
             {/* AI skeleton message */}
             <div className="flex justify-start items-start">
-              <div className="w-7 h-7 rounded-full bg-slate-200 animate-pulse mr-2"></div>
-              <div className="w-[70%] h-16 bg-slate-200/80 rounded-2xl rounded-tl-none animate-pulse"></div>
+              <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse mr-2"></div>
+              <div className="w-[70%] h-16 bg-slate-200/80 dark:bg-slate-700/80 rounded-2xl rounded-tl-none animate-pulse"></div>
             </div>
             {/* User skeleton message 2 */}
             <div className="flex justify-end">
-              <div className="w-[45%] h-10 bg-slate-200/80 rounded-2xl rounded-tr-none animate-pulse"></div>
+              <div className="w-[45%] h-10 bg-slate-200/80 dark:bg-slate-700/80 rounded-2xl rounded-tr-none animate-pulse"></div>
             </div>
           </div>
         ) : (
@@ -218,7 +218,7 @@ const ChatBox = ({ lessonId }) => {
               <div className={`flex items-start max-w-[85%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                 {/* AI Avatar */}
                 {msg.sender === 'ai' && (
-                  <div className="w-7 h-7 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10">
+                  <div className="w-7 h-7 rounded-full bg-smart-indigo/10 dark:bg-smart-indigo/20 text-smart-indigo dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10 dark:border-smart-indigo/20">
                     AI
                   </div>
                 )}
@@ -229,8 +229,8 @@ const ChatBox = ({ lessonId }) => {
                     msg.sender === 'user' 
                       ? 'bg-smart-indigo text-white rounded-tr-none' 
                       : msg.isError 
-                        ? 'bg-red-50 text-red-700 border border-red-100 rounded-tl-none'
-                        : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
+                        ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900 rounded-tl-none'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-100 dark:border-slate-650 rounded-tl-none'
                   }`}
                 >
                   {msg.text}
@@ -244,10 +244,10 @@ const ChatBox = ({ lessonId }) => {
         {isLoading && (
           <div className="flex justify-start">
             <div className="flex items-start max-w-[85%]">
-              <div className="w-7 h-7 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10">
+              <div className="w-7 h-7 rounded-full bg-smart-indigo/10 dark:bg-smart-indigo/20 text-smart-indigo dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10 dark:border-smart-indigo/20">
                 AI
               </div>
-              <div className="px-4 py-3 rounded-2xl rounded-tl-none bg-white text-slate-500 border border-slate-100 shadow-sm flex items-center space-x-1 h-[34px]">
+              <div className="px-4 py-3 rounded-2xl rounded-tl-none bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-slate-650 shadow-sm flex items-center space-x-1 h-[34px]">
                 <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
                 <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
                 <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
@@ -261,14 +261,14 @@ const ChatBox = ({ lessonId }) => {
 
       {/* Suggested Quick Prompts */}
       {messages.length === 1 && !isLoading && (
-        <div className="px-4 py-2 bg-slate-50 shrink-0 border-t border-slate-100">
-          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Gợi ý nhanh cho bạn:</p>
+        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/80 shrink-0 border-t border-slate-100 dark:border-slate-750">
+          <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Gợi ý nhanh cho bạn:</p>
           <div className="flex flex-col space-y-1.5">
             {quickPrompts.map((prompt, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSendMessage(prompt.text)}
-                className="text-left text-xs px-3 py-1.5 bg-white border border-slate-200 hover:border-smart-indigo hover:text-smart-indigo text-slate-600 rounded-xl transition-all shadow-sm truncate"
+                className="text-left text-xs px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-smart-indigo dark:hover:border-indigo-400 hover:text-smart-indigo dark:hover:text-indigo-400 text-slate-600 dark:text-slate-300 rounded-xl transition-all shadow-sm truncate"
               >
                 {prompt.label}
               </button>
@@ -280,14 +280,14 @@ const ChatBox = ({ lessonId }) => {
       {/* Input Bottom Form */}
       <form 
         onSubmit={handleSubmit}
-        className="px-3 py-3 border-t border-slate-200 bg-white flex items-center space-x-2 shrink-0"
+        className="px-3 py-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center space-x-2 shrink-0"
       >
         <input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           placeholder="Ask a question..."
-          className="flex-1 px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-smart-indigo focus:bg-white transition-all text-slate-800"
+          className="flex-1 px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-smart-indigo focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-800 dark:text-slate-100"
           disabled={isLoading}
         />
         <button
@@ -296,7 +296,7 @@ const ChatBox = ({ lessonId }) => {
           className={`p-2.5 rounded-xl transition-all ${
             inputText.trim() && !isLoading
               ? 'bg-smart-indigo text-white hover:bg-smart-indigo-hover shadow-md hover:shadow-indigo-100'
-              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
           }`}
         >
           <FiSend className="text-sm" />

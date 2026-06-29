@@ -1,13 +1,14 @@
 // Instructor Dashboard Styles
 $primary-blue: #1d4ed8;
 $hover-blue: #1e40af;
-$light-blue-bg: #f3f7fe;
-$text-dark: #0f172a;
-$text-muted: #64748b;
-$border-light: #e2e8f0;
+$light-blue-bg: var(--light-blue-bg, #f3f7fe);
+$text-dark: var(--text-color, #0f172a);
+$text-muted: var(--text-light, #64748b);
+$border-light: var(--border-color, #e2e8f0);
 
 .instructor-page {
-  background-color: #f8fafc;
+  background-color: var(--bg-color, #f8fafc);
+
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -769,3 +770,86 @@ $border-light: #e2e8f0;
     .settings-layout { grid-template-columns: 1fr; }
   }
 }
+
+html.dark {
+  .instructor-page {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    
+    .instructor-sidebar, 
+    .stats-overview .stat-card,
+    .course-list-table-wrapper,
+    .course-nav-guide,
+    .section-container,
+    .settings-card,
+    .chart-card,
+    .quiz-card-item {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      box-shadow: none !important;
+      color: var(--text-color);
+    }
+    
+    .sidebar-brand h2 {
+      color: #3b82f6;
+    }
+    
+    .sidebar-nav button {
+      color: var(--text-light);
+      &:hover {
+        background: var(--dropdown-hover);
+        color: var(--text-color);
+      }
+      &.active {
+        background: #1d4ed8;
+        color: #fff;
+      }
+    }
+    
+    .content-header h1 {
+      color: var(--text-color);
+    }
+    .content-header p {
+      color: var(--text-light);
+    }
+    
+    .course-list-table {
+      th {
+        background: var(--dropdown-hover) !important;
+        color: var(--text-color) !important;
+      }
+      td {
+        border-color: var(--border-color) !important;
+        color: #cbd5e1 !important;
+        .course-name {
+          color: var(--text-color) !important;
+        }
+      }
+    }
+    
+    input, select, textarea {
+      background-color: var(--input-bg) !important;
+      border-color: var(--border-color) !important;
+      color: var(--text-color) !important;
+      &:focus {
+        border-color: #3b82f6 !important;
+      }
+    }
+    
+    .section-header-edit {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+    }
+    
+    .lesson-item-edit {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      color: #cbd5e1 !important;
+    }
+
+    .form-group label {
+      color: #cbd5e1;
+    }
+  }
+}
+

@@ -1,16 +1,18 @@
 // Courses Page Style - Synthesis of F8 and Udemy
+// Style variables
 $primary-blue: #1d4ed8;
 $hover-blue: #1e40af;
-$light-blue-bg: #f3f7fe;
+$light-blue-bg: var(--light-blue-bg, #f3f7fe);
 $accent-orange: #ff7a30;
 $hover-orange: #ea580c;
-$text-dark: #2d2f31; // Udemy-style dark charcoal
-$text-muted: #6a6f73;
-$text-light: #475569;
-$border-light: #d1d7dc;
+$text-dark: var(--text-color, #2d2f31); // Udemy-style dark charcoal
+$text-muted: var(--text-light, #6a6f73);
+$text-light: var(--text-light, #475569);
+$border-light: var(--border-color, #d1d7dc);
 
 .courses-page-new {
-  background-color: #ffffff;
+  background-color: var(--bg-color, #ffffff);
+
   min-height: 100vh;
   font-family: 'Outfit', sans-serif;
 
@@ -584,3 +586,173 @@ $border-light: #d1d7dc;
     .hero-stats { flex-direction: row; justify-content: center; flex-wrap: wrap; }
   }
 }
+
+html.dark {
+  .courses-page-new {
+    background-color: var(--bg-color) !important;
+    color: var(--text-color) !important;
+
+    .courses-hero-section {
+      background: radial-gradient(circle at 10% 10%, var(--card-bg) 0%, var(--bg-color) 100%) !important;
+      h1 { color: var(--text-color) !important; }
+      p { color: var(--text-light) !important; }
+      
+      .hero-stats .stat-item {
+        background-color: var(--card-bg) !important;
+        border-color: var(--border-color) !important;
+        strong { color: var(--text-color) !important; }
+        span { color: var(--text-light) !important; }
+      }
+    }
+    
+    .course-card-new {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      box-shadow: none !important;
+      
+      .card-info {
+        h3 { color: var(--text-color) !important; }
+        .instructor-name { color: var(--text-light) !important; }
+        .meta-row { color: var(--text-light) !important; }
+      }
+    }
+    
+    .search-input-box {
+      background-color: var(--input-bg) !important;
+      border-color: var(--border-color) !important;
+      color: var(--text-color) !important;
+      &::placeholder { color: var(--text-light) !important; }
+    }
+    
+    .filter-tabs button {
+      color: var(--text-light) !important;
+      &.active {
+        background-color: #1d4ed8 !important;
+        color: #fff !important;
+      }
+      &:not(.active):hover {
+        background-color: var(--dropdown-hover) !important;
+      }
+    }
+
+    // Horizontal filter category bar
+    .category-filter-bar {
+      background: var(--bg-color) !important;
+      border-bottom-color: var(--border-color) !important;
+      
+      .filter-list button {
+        background: var(--card-bg) !important;
+        color: var(--text-light) !important;
+        
+        &:hover {
+          background: var(--dropdown-hover) !important;
+          color: var(--text-color) !important;
+        }
+        &.active {
+          background: #1d4ed8 !important;
+          color: #fff !important;
+        }
+      }
+    }
+
+    // Catalog controls section
+    .catalog-controls-section {
+      background: var(--bg-color) !important;
+      border-bottom-color: var(--border-color) !important;
+
+      .results-count {
+        color: var(--text-light) !important;
+      }
+      .filter-select-wrapper {
+        label {
+          color: var(--text-light) !important;
+        }
+        select {
+          background: var(--card-bg) !important;
+          border-color: var(--border-color) !important;
+          color: var(--text-color) !important;
+          
+          &:hover {
+            background: var(--dropdown-hover) !important;
+          }
+          
+          option {
+            background: var(--card-bg) !important;
+            color: var(--text-color) !important;
+          }
+        }
+      }
+    }
+
+    // Premium card styles
+    .course-card-premium {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      box-shadow: none !important;
+      
+      .card-thumb {
+        background: var(--bg-color) !important;
+        
+        .badge-status {
+          background: var(--card-bg) !important;
+          color: var(--text-color) !important;
+          border: 1px solid var(--border-color) !important;
+        }
+      }
+
+      .card-body {
+        .course-title {
+          color: var(--text-color) !important;
+        }
+        .instructor {
+          color: var(--text-light) !important;
+        }
+        .rating-row {
+          .rating-score {
+            color: #f59e0b !important;
+          }
+          .stars .star-empty {
+            color: rgba(255, 255, 255, 0.15) !important;
+          }
+          .reviews-count {
+            color: var(--text-light) !important;
+          }
+        }
+        .meta-info {
+          color: var(--text-light) !important;
+          svg {
+            color: var(--text-light) !important;
+          }
+        }
+        .price-row {
+          .current-price {
+            color: var(--text-color) !important;
+          }
+          .old-price {
+            color: var(--text-light) !important;
+          }
+        }
+      }
+    }
+
+    // Heading elements
+    .course-section {
+      .section-header h2 {
+        color: var(--text-color) !important;
+      }
+    }
+
+    // Empty state
+    .courses-empty-state {
+      background: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      h3 {
+        color: var(--text-color) !important;
+      }
+      p {
+        color: var(--text-light) !important;
+      }
+    }
+  }
+}
+

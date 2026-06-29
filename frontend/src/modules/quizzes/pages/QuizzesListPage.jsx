@@ -34,38 +34,38 @@ const QuizzesListPage = () => {
 
   const getDifficultyColor = (difficulty) => {
     switch (difficulty.toLowerCase()) {
-      case 'easy': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'medium': return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'hard': return 'bg-rose-50 text-rose-700 border-rose-200';
-      default: return 'bg-slate-50 text-slate-700 border-slate-200';
+      case 'easy': return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800';
+      case 'medium': return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-800';
+      case 'hard': return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800';
+      default: return 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
     }
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300" style={{ fontFamily: "'Outfit', sans-serif" }}>
       <Header />
       
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-28 flex flex-col items-center">
         {/* Page Header */}
         <div className="text-center max-w-2xl mx-auto mb-12 animate-fade">
-          <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-bold text-smart-indigo tracking-wider uppercase mb-4">
+          <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-bold text-smart-indigo tracking-wider uppercase mb-4 dark:bg-indigo-950/20 dark:border-indigo-900/50 dark:text-indigo-400">
             <FiCompass className="text-sm" />
             <span>Sân chơi tự luyện</span>
           </span>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight leading-none mb-4">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight leading-none mb-4">
             Thử thách trắc nghiệm vui
           </h1>
-          <p className="text-sm text-slate-500 leading-relaxed">
+          <p className="text-sm text-slate-500 dark:text-slate-405 leading-relaxed">
             Học mà chơi, chơi mà học! Trắc nghiệm phản xạ nhanh giúp củng cố từ vựng, ngữ pháp tiếng Anh giao tiếp thông dụng.
           </p>
         </div>
 
         {/* Game PIN Join Box (E-Learn style) */}
-        <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 text-center mb-16 animate-fade">
-          <h2 className="text-lg font-bold text-slate-800 tracking-tight mb-1 flex items-center justify-center gap-2">
+        <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200/80 dark:border-slate-700 text-center mb-16 animate-fade">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight mb-1 flex items-center justify-center gap-2">
             <FiZap className="text-yellow-500 fill-yellow-500" /> Vào chơi nhanh bằng PIN
           </h2>
-          <p className="text-xs text-slate-400 mb-5 font-semibold">
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-5 font-semibold">
             Nhập mã PIN bất kỳ để kết nối ngẫu nhiên và tham gia phòng chờ.
           </p>
 
@@ -76,7 +76,7 @@ const QuizzesListPage = () => {
               maxLength={6}
               value={pinCode}
               onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
-              className="flex-1 text-center py-2.5 px-4 text-base font-extrabold border border-slate-200 rounded-xl focus:border-smart-indigo focus:ring-0 outline-none uppercase tracking-widest transition-all"
+              className="flex-1 text-center py-2.5 px-4 text-base font-extrabold border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 rounded-xl focus:border-smart-indigo focus:ring-0 outline-none uppercase tracking-widest transition-all"
             />
             
             <button
@@ -92,8 +92,8 @@ const QuizzesListPage = () => {
 
         {/* Quizzes List Header */}
         <div className="flex items-center w-full max-w-4xl mb-8">
-          <h2 className="text-base font-bold text-slate-800 uppercase tracking-wider">Danh sách đề thi hiện có</h2>
-          <div className="flex-1 h-[1px] bg-slate-200 ml-4"></div>
+          <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Danh sách đề thi hiện có</h2>
+          <div className="flex-1 h-[1px] bg-slate-200 dark:bg-slate-800 ml-4"></div>
         </div>
 
         {/* Quizzes Grid (Clean White/Slate Theme) */}
@@ -101,7 +101,7 @@ const QuizzesListPage = () => {
           {quizzesList.map((quiz) => (
             <div 
               key={quiz.id} 
-              className="bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-indigo-200 transition-all duration-300 group min-h-[220px]"
+              className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 p-6 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-300 group min-h-[220px]"
             >
               <div>
                 <div className="flex justify-between items-center mb-4">
@@ -109,25 +109,25 @@ const QuizzesListPage = () => {
                     {quiz.difficulty === 'Easy' ? '☘️ Dễ' : quiz.difficulty === 'Medium' ? '⚡ Trung bình' : '🔥 Khó'}
                   </span>
                   
-                  <div className="flex items-center space-x-1 text-slate-400 text-xs font-semibold">
+                  <div className="flex items-center space-x-1 text-slate-400 dark:text-slate-500 text-xs font-semibold">
                     <FiClock />
                     <span>{quiz.timeLimit} phút</span>
                   </div>
                 </div>
 
-                <h3 className="text-lg font-bold text-slate-800 leading-tight group-hover:text-smart-indigo transition-colors mb-2">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 leading-tight group-hover:text-smart-indigo dark:group-hover:text-indigo-400 transition-colors mb-2">
                   {quiz.title}
                 </h3>
                 
-                <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
                   {quiz.description}
                 </p>
               </div>
 
               {/* Action buttons */}
-              <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                <span className="flex items-center space-x-1.5 text-xs text-slate-400 font-bold bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                  <FiBookOpen className="text-smart-indigo" />
+              <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
+                <span className="flex items-center space-x-1.5 text-xs text-slate-400 dark:text-slate-350 font-bold bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-800">
+                  <FiBookOpen className="text-smart-indigo dark:text-indigo-400" />
                   <span>{quiz.questions?.length || 0} câu hỏi</span>
                 </span>
 

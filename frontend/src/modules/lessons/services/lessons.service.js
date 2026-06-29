@@ -1,4 +1,6 @@
 import apiClient from '../../../config/api.config';
+import { getCourseQuizQuestions } from '../../quizzes/services/quizzes.service';
+
 
 const mockCourseData = {
   id: "course-1",
@@ -158,7 +160,7 @@ export const getCourseDetails = async (courseId = 1) => {
       return {
         id: String(sec.section_id),
         title: sec.title,
-        lessons: sec.lessons.map(l => {
+        lessons: sec.lessons.flatMap(l => {
           // Bổ sung các thông tin mô tả chi tiết mặc định nếu DB không lưu trữ
           let description = 'Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Assistant.';
           let content = 'Chào mừng bạn đến với lớp học English for Communication! Hãy sử dụng Chatbot AI ở góc bên phải để tương tác.';
@@ -189,7 +191,7 @@ export const getCourseDetails = async (courseId = 1) => {
 
           const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
           
-          return {
+          const lessonObj = {
             id: String(l.lesson_id),
             title: l.title,
             duration: duration,
@@ -201,9 +203,30 @@ export const getCourseDetails = async (courseId = 1) => {
             resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
             completed: completedLessonIds.includes(l.lesson_id)
           };
+
+          // Check if lesson has quiz questions compiled
+          const quizQuestions = getCourseQuizQuestions(l.lesson_id);
+          if (quizQuestions && quizQuestions.length > 0) {
+            const quizObj = {
+              id: `quiz-${l.lesson_id}`,
+              title: `📝 Trắc nghiệm: ${l.title}`,
+              duration: `${quizQuestions.length} câu hỏi`,
+              type: 'quiz',
+              videoUrl: null,
+              pdfUrl: null,
+              description: `Bài tập trắc nghiệm luyện tập kiến thức cho bài học: ${l.title}`,
+              content: '',
+              resources: [],
+              completed: completedLessonIds.includes(l.lesson_id)
+            };
+            return [lessonObj, quizObj];
+          }
+
+          return [lessonObj];
         })
       };
     });
+
 
     // 5. Tính toán tiến trình hoàn thành (%)
     const allLessons = mappedSections.flatMap(s => s.lessons);
@@ -226,20 +249,21 @@ export const getCourseDetails = async (courseId = 1) => {
 
 export const toggleLessonCompletion = async (lessonId) => {
   try {
+    const cleanId = String(lessonId).replace('quiz-', '');
     const userId = getUserIdFromToken();
     if (!userId) throw new Error("Chưa đăng nhập");
 
     // Lấy tiến trình hiện tại để tìm trạng thái hoàn thành hiện tại
     const progressResponse = await apiClient.get(`/progress/${userId}`);
     const progressList = progressResponse.data.progress || [];
-    const currentProgress = progressList.find(p => String(p.lesson_id) === String(lessonId));
+    const currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
     
     const newCompletedState = currentProgress ? !currentProgress.is_completed : true;
 
     // Gửi cập nhật lên backend
     await apiClient.post('/progress', {
       userId: userId,
-      lessonId: parseInt(lessonId, 10),
+      lessonId: parseInt(cleanId, 10),
       isCompleted: newCompletedState
     });
 
@@ -250,10 +274,14 @@ export const toggleLessonCompletion = async (lessonId) => {
   }
 };
 
+
 export const getLessonById = async (lessonId) => {
   try {
+    const isQuiz = String(lessonId).startsWith('quiz-');
+    const cleanId = isQuiz ? lessonId.replace('quiz-', '') : lessonId;
+
     // 1. Lấy chi tiết bài học từ API backend
-    const response = await apiClient.get(`/courses/lessons/${lessonId}`);
+    const response = await apiClient.get(`/courses/lessons/${cleanId}`);
     const l = response.data.lesson;
 
     // 2. Lấy trạng thái hoàn thành từ backend
@@ -263,7 +291,7 @@ export const getLessonById = async (lessonId) => {
       try {
         const progressResponse = await apiClient.get(`/progress/${userId}`);
         const progressList = progressResponse.data.progress || [];
-        const currentProgress = progressList.find(p => String(p.lesson_id) === String(lessonId));
+        const currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
         completed = currentProgress ? currentProgress.is_completed : false;
       } catch (err) {
         console.error("Lỗi lấy tiến trình của bài học:", err);
@@ -275,29 +303,46 @@ export const getLessonById = async (lessonId) => {
     let content = 'Chào mừng bạn đến với lớp học English for Communication! Hãy sử dụng Chatbot AI ở góc bên phải để tương tác.';
     let duration = '05:00';
 
-    if (String(lessonId) === '2') {
+    if (String(cleanId) === '2') {
       duration = '03:15';
       description = 'Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Chatbot ở thanh bên phải để sửa lỗi phát âm và ngữ pháp.';
       content = `Chào mừng bạn đến với khóa học English for Communication!\n\nTrong bài đầu tiên này, chúng ta sẽ tìm hiểu:\n- Cách thiết lập mục tiêu học tiếng Anh giao tiếp hàng ngày.\n- Cách tận dụng Trợ lý AI (AI Assistant) bên cạnh video để đặt câu hỏi trực tiếp khi gặp cấu trúc ngữ pháp khó.\n- Cách thực hành luyện nói và đặt câu hỏi cho AI để ghi nhớ từ vựng.`;
-    } else if (String(lessonId) === '3') {
+    } else if (String(cleanId) === '3') {
       duration = '05:42';
       description = 'Làm thế nào để dừng việc dịch nhẩm từ tiếng Việt sang tiếng Anh trước khi nói? Bài học sẽ chỉ ra tư duy suy nghĩ bằng tiếng Anh.';
       content = `Để giao tiếp trôi chảy, điều quan trọng nhất là loại bỏ thói quen dịch nhẩm:\n1. Liên kết trực tiếp hình ảnh/khái niệm với từ tiếng Anh (ví dụ nghĩ đến 'quả táo' -> thấy hình ảnh quả táo và bật ra 'apple' chứ không qua chữ tiếng Việt).\n2. Chấp nhận mắc lỗi: Đừng sợ sai ngữ pháp ở giai đoạn đầu.\n3. Đắm chìm trong ngôn ngữ: Sử dụng trợ lý AI để chat hội thoại hàng ngày.\n\n*Bài tập thực hành*: Hãy viết ra 5 câu đơn giản mô tả những vật dụng xung quanh bạn ngay bây giờ bằng tiếng Anh.`;
-    } else if (String(lessonId) === '4') {
+    } else if (String(cleanId) === '4') {
       duration = '08:12';
       description = 'Trong văn nói, bạn không cần dùng hết 12 thì. Hãy tập trung làm chủ 3 thì cốt lõi: Hiện tại đơn, Quá khứ đơn, Tương lai đơn.';
       content = `Ba thì cốt lõi chiếm hơn 80% thời lượng giao tiếp hàng ngày:\n1. **Hiện tại đơn (Simple Present)**: Diễn tả thói quen, chân lý. (Ví dụ: I study English every day).\n2. **Quá khứ đơn (Simple Past)**: Diễn tả việc đã kết thúc. (Ví dụ: I learned 10 new words yesterday).\n3. **Tương lai đơn (Simple Future)**: Diễn tả dự định tức thời. (Ví dụ: I will call you tonight).\n\nHãy dùng Tab AI Assistant bên cạnh để gõ thử 3 câu ví dụ về cuộc sống của bạn sử dụng 3 thì trên và nhờ AI sửa lỗi ngữ pháp.`;
-    } else if (String(lessonId) === '5') {
+    } else if (String(cleanId) === '5') {
       duration = '06:30';
       description = 'Cách đặt câu hỏi lịch sự, câu hỏi lựa chọn và cách lên giọng cuối câu hỏi để cuộc trò chuyện tự nhiên hơn.';
       content = `Luyện tập cách đặt câu hỏi:\n- Yes/No questions: Lên giọng ở cuối câu. (e.g., Do you like coffee? ↗)\n- Wh-questions: Xuống giọng ở cuối câu. (e.g., What is your favorite food? ↘)\n- Tag questions (Câu hỏi đuôi): Dùng để xác nhận thông tin. (e.g., You are a student, aren't you?)\n\n*Thực hành*: Nhờ AI Assistant đóng vai làm người bản xứ và đặt câu hỏi phỏng vấn bạn nhé.`;
-    } else if (String(lessonId) === '6') {
+    } else if (String(cleanId) === '6') {
       duration = '10:15';
       description = 'Phân biệt nghe chủ động và nghe thụ động. Cách áp dụng phương pháp shadowing để rèn giọng điệu nói tiếng Anh.';
       content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
     }
 
     const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
+
+    if (isQuiz) {
+      const quizQuestions = getCourseQuizQuestions(cleanId);
+      return {
+        id: `quiz-${l.lesson_id}`,
+        courseId: l.course_id,
+        title: `📝 Trắc nghiệm: ${l.title}`,
+        duration: `${quizQuestions.length} câu hỏi`,
+        type: 'quiz',
+        videoUrl: null,
+        pdfUrl: null,
+        description: `Bài tập trắc nghiệm luyện tập kiến thức cho bài học: ${l.title}`,
+        content: '',
+        resources: [],
+        completed: completed
+      };
+    }
 
     return {
       id: String(l.lesson_id),

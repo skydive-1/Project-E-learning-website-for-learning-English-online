@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiBookOpen, FiUser, FiLogOut, FiLayout } from 'react-icons/fi';
+import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import '../../modules/homepage/styles/homepage.scss'; // Link global/homepage styles
 
 const Header = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
@@ -49,6 +51,16 @@ const Header = () => {
         </nav>
 
         <div className="auth-buttons">
+          {/* Dark Mode Toggle Button */}
+          <button 
+            type="button"
+            onClick={toggleTheme}
+            className="theme-toggle-btn"
+            title={theme === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}
+          >
+            {theme === 'dark' ? <FiSun style={{ color: '#f59e0b' }} /> : <FiMoon />}
+          </button>
+
           {user ? (
             <div className="user-menu-wrapper">
               <div className="avatar-trigger" onClick={toggleDropdown}>

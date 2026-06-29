@@ -5,15 +5,16 @@
 // Style variables
 $primary-blue: #1d4ed8;
 $hover-blue: #1e40af;
-$light-blue-bg: #f3f7fe;
+$light-blue-bg: var(--light-blue-bg, #f3f7fe);
 $accent-orange: #ff7a30;
 $hover-orange: #ea580c;
-$text-dark: #0f172a;
-$text-light: #475569;
-$text-white: #ffffff;
-$border-light: #e2e8f0;
+$text-dark: var(--text-color, #0f172a);
+$text-light: var(--text-light, #475569);
+$text-white: var(--text-white, #ffffff);
+$border-light: var(--border-color, #e2e8f0);
 $card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
 $card-shadow-hover: 0 20px 40px rgba(29, 78, 216, 0.08);
+
 
 * {
   box-sizing: border-box;
@@ -24,9 +25,10 @@ $card-shadow-hover: 0 20px 40px rgba(29, 78, 216, 0.08);
 body {
   font-family: 'Outfit', sans-serif;
   color: $text-dark;
-  background-color: #fcfdfe;
+  background-color: var(--bg-color, #fcfdfe);
   line-height: 1.6;
 }
+
 
 .container {
   max-width: 1200px;
@@ -236,9 +238,9 @@ body {
         top: calc(100% + 10px);
         right: 0;
         width: 240px;
-        background: rgba(255, 255, 255, 0.96);
+        background: var(--dropdown-bg);
         backdrop-filter: blur(12px);
-        border: 1px solid $border-light;
+        border: 1px solid var(--border-color);
         border-radius: 16px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
         padding: 12px;
@@ -257,13 +259,13 @@ body {
           .dropdown-username {
             font-size: 15px;
             font-weight: 700;
-            color: $text-dark;
+            color: var(--text-color);
             margin: 0;
           }
 
           .dropdown-email {
             font-size: 12px;
-            color: $text-light;
+            color: var(--text-light);
             margin: 0;
             word-break: break-all;
           }
@@ -271,7 +273,7 @@ body {
 
         .dropdown-divider {
           height: 1px;
-          background-color: $border-light;
+          background-color: var(--border-color);
           margin: 6px 0;
         }
 
@@ -281,7 +283,7 @@ body {
           gap: 10px;
           padding: 10px 12px;
           border-radius: 10px;
-          color: $text-light;
+          color: var(--text-light);
           text-decoration: none;
           font-size: 14px;
           font-weight: 500;
@@ -294,16 +296,16 @@ body {
 
           .dropdown-icon {
             font-size: 16px;
-            color: $text-light;
+            color: var(--text-light);
             transition: color 0.15s ease;
           }
 
           &:hover {
-            background-color: rgba(29, 78, 216, 0.05);
-            color: $primary-blue;
+            background-color: var(--dropdown-hover);
+            color: var(--text-color);
 
             .dropdown-icon {
-              color: $primary-blue;
+              color: var(--text-color);
             }
           }
 
@@ -1556,3 +1558,194 @@ body {
     }
   }
 }
+
+.theme-toggle-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-color);
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 50%;
+  margin-right: 16px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: var(--dropdown-hover, #f1f5f9);
+  }
+}
+
+html.dark {
+  .features-intro-section,
+  .roadmap-simple-section,
+  .why-choose-section,
+  .courses-section,
+  .ai-tools-section,
+  .detailed-roadmap-section,
+  .consultation-section {
+    background-color: var(--bg-color) !important;
+    background: var(--bg-color) !important;
+    color: var(--text-color) !important;
+    border-color: var(--border-color) !important;
+  }
+  
+  .features-intro-content h2,
+  .section-title h2,
+  .step-item h4,
+  .why-card h4,
+  .tool-card h4,
+  .roadmap-card-new h3,
+  .form-header h3 {
+    color: var(--text-color) !important;
+  }
+  
+  .features-desc,
+  .section-title p,
+  .step-item p,
+  .why-card p,
+  .tool-card p,
+  .stage-features li,
+  .form-header p {
+    color: var(--text-light) !important;
+  }
+  
+  .why-card,
+  .step-icon,
+  .tool-card,
+  .roadmap-card-new,
+  .consultation-card {
+    background-color: var(--card-bg) !important;
+    background: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+    box-shadow: none !important;
+  }
+  
+  .course-card {
+    background: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    box-shadow: none !important;
+    .course-info {
+      h4 {
+        color: var(--text-color) !important;
+      }
+      p {
+        color: var(--text-light) !important;
+      }
+      .lessons-count, .students-count {
+        color: var(--text-light) !important;
+      }
+      .course-footer {
+        border-top-color: var(--border-color) !important;
+      }
+    }
+  }
+
+  #fun-quizzes-sec {
+    background-color: var(--bg-color) !important;
+    border-top-color: var(--border-color) !important;
+    border-bottom-color: var(--border-color) !important;
+    
+    .course-card {
+      background-color: var(--card-bg) !important;
+      border-color: var(--border-color) !important;
+      
+      h4 {
+        color: var(--text-color) !important;
+      }
+      p {
+        color: var(--text-light) !important;
+      }
+    }
+  }
+
+  .main-header {
+    background-color: var(--header-bg);
+    border-bottom-color: var(--border-color);
+    .logo {
+      color: #3b82f6;
+    }
+    .nav-menu a {
+      color: var(--text-light);
+      &:hover {
+        color: var(--text-color);
+      }
+    }
+  }
+  
+  .user-dropdown-menu {
+    background: var(--dropdown-bg);
+    border-color: var(--border-color);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    
+    .dropdown-username {
+      color: var(--text-color);
+    }
+    .dropdown-email {
+      color: var(--text-light);
+    }
+    .dropdown-divider {
+      background-color: var(--border-color);
+    }
+    .dropdown-item {
+      color: #cbd5e1;
+      &:hover {
+        background-color: var(--dropdown-hover);
+        color: var(--text-color);
+      }
+    }
+  }
+
+  .hero-section {
+    background: radial-gradient(circle at 10% 10%, var(--card-bg) 0%, var(--bg-color) 100%);
+    .hero-title {
+      color: var(--text-color);
+    }
+    .hero-subtitle {
+      color: var(--text-light);
+    }
+  }
+
+  .features-grid .feature-card {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+    box-shadow: none;
+    .feature-title {
+      color: var(--text-color);
+    }
+    .feature-desc {
+      color: var(--text-light);
+    }
+  }
+
+  .pricing-grid .pricing-card {
+    background: var(--card-bg);
+    border-color: var(--border-color);
+    box-shadow: none;
+    &.premium-card {
+      border-color: #1d4ed8;
+    }
+    .card-price {
+      color: var(--text-color);
+    }
+    .feature-item span {
+      color: #cbd5e1;
+    }
+  }
+
+  .main-footer {
+    background-color: var(--bg-color);
+    border-top-color: var(--border-color);
+    color: #cbd5e1;
+    .footer-links a {
+      color: var(--text-light);
+      &:hover {
+        color: var(--text-color);
+      }
+    }
+  }
+}
+

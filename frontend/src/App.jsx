@@ -12,6 +12,7 @@ import InstructorDashboard from './modules/instructor/pages/InstructorDashboard'
 import CourseEditor from './modules/instructor/pages/CourseEditor';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
@@ -30,84 +31,86 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
-        <BrowserRouter>
-          <AuthProvider>
-            <Routes>
-              {/* Public Landing Route */}
-              <Route path="/" element={<HomePage />} />
-              <Route path="/courses" element={<CourseListPage />} />
-              <Route path="/academy" element={<RoadmapPage />} />
-              
-              {/* Entertainment Standalone Quizzes */}
-              <Route path="/quizzes" element={<QuizzesListPage />} />
-              <Route path="/quizzes/play/:quizId" element={<PlayQuizPage />} />
+        <ThemeProvider>
+          <BrowserRouter>
+            <AuthProvider>
+              <Routes>
+                {/* Public Landing Route */}
+                <Route path="/" element={<HomePage />} />
+                <Route path="/courses" element={<CourseListPage />} />
+                <Route path="/academy" element={<RoadmapPage />} />
+                
+                {/* Entertainment Standalone Quizzes */}
+                <Route path="/quizzes" element={<QuizzesListPage />} />
+                <Route path="/quizzes/play/:quizId" element={<PlayQuizPage />} />
 
-              {/* Auth Routes with Shared Layout */}
-              <Route element={<AuthLayout />}>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-              </Route>
+                {/* Auth Routes with Shared Layout */}
+                <Route element={<AuthLayout />}>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                </Route>
 
-              {/* Protected Routes */}
-              <Route
-                path="/profile"
-                element={
-                  <ProtectedRoute>
-                    <ProfilePage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/lessons"
-                element={
-                  <ProtectedRoute>
-                    <LessonDetailPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/lessons/:lessonId"
-                element={
-                  <ProtectedRoute>
-                    <LessonDetailPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Protected Routes */}
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/lessons"
+                  element={
+                    <ProtectedRoute>
+                      <LessonDetailPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/lessons/:lessonId"
+                  element={
+                    <ProtectedRoute>
+                      <LessonDetailPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Instructor Routes */}
-              <Route
-                path="/instructor/dashboard"
-                element={
-                  <ProtectedRoute allowedRoles={[1, 2]}>
-                    <InstructorDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/instructor/create-course"
-                element={
-                  <ProtectedRoute allowedRoles={[1, 2]}>
-                    <CourseEditor />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/instructor/edit-course/:courseId"
-                element={
-                  <ProtectedRoute allowedRoles={[1, 2]}>
-                    <CourseEditor />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Instructor Routes */}
+                <Route
+                  path="/instructor/dashboard"
+                  element={
+                    <ProtectedRoute allowedRoles={[1, 2]}>
+                      <InstructorDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/instructor/create-course"
+                  element={
+                    <ProtectedRoute allowedRoles={[1, 2]}>
+                      <CourseEditor />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/instructor/edit-course/:courseId"
+                  element={
+                    <ProtectedRoute allowedRoles={[1, 2]}>
+                      <CourseEditor />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Catch All - Redirect to home */}
-              <Route
-                path="*"
-                element={<Navigate to="/" replace />}
-              />
-            </Routes>
-          </AuthProvider>
-        </BrowserRouter>
+                {/* Catch All - Redirect to home */}
+                <Route
+                  path="*"
+                  element={<Navigate to="/" replace />}
+                />
+              </Routes>
+            </AuthProvider>
+          </BrowserRouter>
+        </ThemeProvider>
       </ErrorBoundary>
     </QueryClientProvider>
   );

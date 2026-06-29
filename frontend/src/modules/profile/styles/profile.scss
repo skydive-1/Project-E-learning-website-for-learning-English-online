@@ -2,11 +2,11 @@
 
 $primary-blue: #1d4ed8;
 $hover-blue: #1e40af;
-$light-blue-bg: #f3f7fe;
-$border-light: #e2e8f0;
-$text-dark: #0f172a;
-$text-light: #475569;
-$text-white: #ffffff;
+$light-blue-bg: var(--light-blue-bg, #f3f7fe);
+$border-light: var(--border-color, #e2e8f0);
+$text-dark: var(--text-color, #0f172a);
+$text-light: var(--text-light, #475569);
+$text-white: var(--text-white, #ffffff);
 $accent-orange: #ff7a30;
 $hover-orange: #ea580c;
 
@@ -14,8 +14,9 @@ $hover-orange: #ea580c;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: #f8fafc;
+  background-color: var(--bg-color, #f8fafc);
 }
+
 
 .profile-main-content {
   flex: 1;
@@ -568,3 +569,67 @@ $hover-orange: #ea580c;
     gap: 16px;
   }
 }
+
+html.dark {
+  .profile-page-wrapper {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    
+    .profile-summary-card,
+    .profile-right-panel .profile-content-card,
+    .stat-card-item {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+      box-shadow: none;
+      color: var(--text-color);
+    }
+    
+    .profile-tabs button {
+      color: var(--text-light);
+      &:hover {
+        color: var(--text-color);
+        background: var(--dropdown-hover);
+      }
+      &.active {
+        color: #3b82f6;
+        border-color: #3b82f6;
+        background: none;
+      }
+    }
+    
+    .avatar-container {
+      border-color: var(--card-bg) !important;
+      background-color: var(--dropdown-hover) !important;
+    }
+    
+    .user-info-display {
+      background: var(--dropdown-hover);
+      border-color: var(--border-color);
+      .info-label {
+        color: var(--text-light);
+      }
+      .info-value {
+        color: var(--text-color);
+      }
+    }
+    
+    input, select, textarea {
+      background-color: var(--input-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+      &::placeholder {
+        color: var(--text-light);
+      }
+    }
+    
+    .form-group label {
+      color: #cbd5e1;
+    }
+    
+    .stats-cards-grid .stat-card-item {
+      .stat-num { color: #3b82f6; }
+      .stat-label { color: var(--text-light); }
+    }
+  }
+}
+
