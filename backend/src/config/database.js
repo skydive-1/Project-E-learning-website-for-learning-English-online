@@ -171,6 +171,39 @@ const testConnection = async () => {
 
     console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons", "user_progress" thành công.');
 
+    // Tạo/Kiểm tra bảng ai_chat và thêm cột lesson_id nếu chưa có
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_chat (
+        ai_chat SERIAL PRIMARY KEY,
+        student_id INT NOT NULL,
+        title TEXT NOT NULL,
+        sender_type VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_chat_student FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
+      );
+    `);
+
+    // Sửa khóa ngoại: Nếu tồn tại khóa ngoại cũ 'fk_student_id' (liên kết với bảng students trống), 
+    // ta bỏ đi và thêm liên kết chính xác với bảng users(user_id)
+    await client.query(`
+      ALTER TABLE ai_chat DROP CONSTRAINT IF EXISTS fk_student_id;
+      ALTER TABLE ai_chat DROP CONSTRAINT IF EXISTS fk_chat_student;
+      ALTER TABLE ai_chat ADD CONSTRAINT fk_chat_student FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE;
+    `);
+
+    await client.query(`
+      ALTER TABLE ai_chat ADD COLUMN IF NOT EXISTS lesson_id INT CONSTRAINT fk_ai_chat_lesson REFERENCES lessons(lesson_id) ON DELETE CASCADE;
+    `);
+
+    // Tăng độ dài/kiểu dữ liệu của title thành TEXT nếu trước đây nó là VARCHAR (để lưu trữ câu trả lời AI dài thoải mái)
+    await client.query(`
+      ALTER TABLE ai_chat ALTER COLUMN title TYPE TEXT;
+    `);
+
+    console.log('✅ Đã kiểm tra/khởi tạo bảng "ai_chat", cập nhật cột "lesson_id" và sửa đổi các khóa ngoại thành công.');
+
+
+
     // Tự động chuyển đổi cột status của bảng courses sang VARCHAR(20) nếu nó đang là integer
     const statusColTypeRes = await client.query(`
       SELECT data_type 

@@ -56,6 +56,8 @@ const handleRagChat = async (userId, lessonId, question) => {
   }
 };
 
+const db = require("../../../config/database");
+
 /**
  * Đối tượng service tương thích với các API hiện tại
  */
@@ -73,11 +75,71 @@ class ChatbotService {
       throw chatbotError;
     }
   }
+
+  async saveHistory(userId, lessonId, question, answer) {
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Lưu câu hỏi của học viên (sender = 'user')
+      const userInsertQuery = `
+        INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        RETURNING ai_chat
+      `;
+      const userRes = await client.query(userInsertQuery, [userId, lessonId, question, 'user']);
+
+      // 2. Lưu câu trả lời của Bot (sender = 'bot')
+      // Thêm 1 mili giây offset để đảm bảo thứ tự chính xác khi sắp xếp theo thời gian
+      const botInsertQuery = `
+        INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
+        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 millisecond')
+        RETURNING ai_chat
+      `;
+      const botRes = await client.query(botInsertQuery, [userId, lessonId, answer, 'bot']);
+
+      await client.query('COMMIT');
+      return {
+        userChatId: userRes.rows[0].ai_chat,
+        botChatId: botRes.rows[0].ai_chat
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error("Lỗi xảy ra tại ChatbotService.saveHistory:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getHistory(userId, lessonId) {
+    try {
+      const queryText = `
+        SELECT ai_chat, sender_type, title, created_at
+        FROM ai_chat
+        WHERE student_id = $1 AND lesson_id = $2
+        ORDER BY created_at ASC, ai_chat ASC
+      `;
+      const result = await db.query(queryText, [userId, lessonId]);
+      
+      return result.rows.map(row => ({
+        chat_id: row.ai_chat,
+        sender: row.sender_type,
+        message: row.title
+      }));
+    } catch (error) {
+      console.error("Lỗi xảy ra tại ChatbotService.getHistory:", error);
+      throw error;
+    }
+  }
 }
 
 const serviceInstance = new ChatbotService();
 
 module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
+  saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
+  getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   handleRagChat
 };
+

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2 } from 'react-icons/fi';
-import { askChatbot } from '../services/chatbot.service';
+import { askChatbot, getChatHistory, saveChatHistory } from '../services/chatbot.service';
+import { useAuth } from '../../../context/AuthContext';
 
 const ChatBox = ({ lessonId }) => {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([
     {
       id: "msg-welcome",
@@ -20,6 +22,34 @@ const ChatBox = ({ lessonId }) => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // Tải lịch sử chat cũ khi lessonId hoặc user thay đổi
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (user?.userId && lessonId) {
+        const historyData = await getChatHistory(user.userId, lessonId);
+        if (historyData && historyData.length > 0) {
+          const mappedMessages = historyData.map(msg => ({
+            id: `msg-db-${msg.chat_id}`,
+            sender: msg.sender === 'bot' ? 'ai' : 'user',
+            text: msg.message,
+            timestamp: new Date()
+          }));
+          setMessages(mappedMessages);
+        } else {
+          setMessages([
+            {
+              id: "msg-welcome",
+              sender: "ai",
+              text: "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?",
+              timestamp: new Date()
+            }
+          ]);
+        }
+      }
+    };
+    fetchHistory();
+  }, [user?.userId, lessonId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -55,6 +85,11 @@ const ChatBox = ({ lessonId }) => {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiMessage]);
+
+      // Lưu cuộc hội thoại này vào CSDL
+      if (user?.userId && lessonId) {
+        await saveChatHistory(user.userId, lessonId, text, aiReply);
+      }
     } catch (error) {
       const errorMessage = {
         id: `msg-${Date.now()}-err`,
@@ -73,6 +108,7 @@ const ChatBox = ({ lessonId }) => {
     e.preventDefault();
     handleSendMessage();
   };
+
 
   const handleClearChat = () => {
     if (window.confirm("Bạn có muốn xóa cuộc hội thoại này không?")) {

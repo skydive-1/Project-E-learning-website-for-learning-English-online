@@ -61,3 +61,35 @@ export const askChatbot = async (question, lessonId) => {
     return getFallbackResponse(question);
   }
 };
+
+/**
+ * Lấy lịch sử chat cũ từ backend
+ */
+export const getChatHistory = async (userId, lessonId) => {
+  try {
+    const response = await apiClient.get(`/chatbot/history/${userId}/${lessonId}`);
+    return response.data; // Mảng tin nhắn [{ chat_id, sender, message }]
+  } catch (error) {
+    console.error('⚠️ Không thể tải lịch sử chat từ backend:', error.message);
+    return [];
+  }
+};
+
+/**
+ * Lưu lượt hội thoại mới vào backend
+ */
+export const saveChatHistory = async (userId, lessonId, question, answer) => {
+  try {
+    const response = await apiClient.post('/chatbot/history', {
+      user_id: Number(userId),
+      lesson_id: Number(lessonId),
+      question,
+      answer
+    });
+    return response.data;
+  } catch (error) {
+    console.error('⚠️ Không thể lưu lịch sử chat vào backend:', error.message);
+    return null;
+  }
+};
+
