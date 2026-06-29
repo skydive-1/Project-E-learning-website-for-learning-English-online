@@ -43,6 +43,7 @@ const Header = () => {
         <nav className="nav-menu">
           <Link to="/courses">Programs</Link>
           <Link to="/academy">Academy</Link>
+          <Link to="/quizzes">Quizzes</Link>
           <a href="#features">Featured</a>
           <a href="#pricing">Pricing</a>
         </nav>

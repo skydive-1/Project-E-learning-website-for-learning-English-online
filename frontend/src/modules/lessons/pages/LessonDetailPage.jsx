@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
 import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
+import QuizContent from '../components/QuizContent';
 import { 
   getCourseDetails, 
   getLessonById, 
@@ -156,144 +157,164 @@ const LessonDetailPage = () => {
           <div className="grid grid-cols-10 gap-6 items-start">
             
             {/* Left Area - 70% */}
-            <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-              
-              {/* Premium Video Container */}
-              <div className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group">
-                {currentLesson?.type === 'pdf' ? (
-                  <iframe 
-                    key={currentLesson.id}
-                    src={currentLesson.pdfUrl} 
-                    className="w-full h-full border-none bg-white"
-                    title={currentLesson.title}
-                  />
-                ) : currentLesson?.videoUrl ? (
-                  <video 
-                    key={currentLesson.id}
-                    src={currentLesson.videoUrl} 
-                    controls 
-                    autoPlay
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
-                    <FiPlay className="text-5xl animate-pulse mb-3" />
-                    <span>Video bài giảng không khả dụng.</span>
-                  </div>
-                )}
+            {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
+              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                <QuizContent 
+                  lessonId={currentLesson.id} 
+                  onComplete={async (score, total) => {
+                    // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học
+                    if (score >= total / 2 && !currentLesson.completed) {
+                      try {
+                        await toggleLessonCompletion(currentLesson.id);
+                        queryClient.invalidateQueries({ queryKey: ['lesson', currentLesson.id] });
+                        queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
+                      } catch (err) {
+                        console.error("Lỗi tự động hoàn thành bài học khi làm trắc nghiệm:", err);
+                      }
+                    }
+                  }}
+                />
               </div>
-
-              {/* Lesson Details & Interactive Content */}
-              <div className="bg-white rounded-2xl border border-slate-200/60 p-6 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 mb-6">
-                  <div>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo bg-smart-indigo/5 px-2.5 py-1 rounded-md mb-2 inline-block">
-                      Bài học chi tiết
-                    </span>
-                    <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1">
-                      {currentLesson?.title}
-                    </h1>
-                  </div>
-
-                  <button
-                    onClick={(e) => handleToggleComplete(e, currentLesson.id)}
-                    className={`mt-3 sm:mt-0 flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all border shrink-0 ${
-                      currentLesson?.completed
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm hover:bg-emerald-100'
-                        : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    {currentLesson?.completed ? (
-                      <>
-                        <FiCheckSquare className="text-sm text-emerald-600" />
-                        <span>Đã hoàn thành</span>
-                      </>
-                    ) : (
-                      <>
-                        <FiSquare className="text-sm" />
-                        <span>Đánh dấu hoàn thành</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Left Tabs Navigation */}
-                <div className="flex border-b border-slate-100 space-x-6 text-sm mb-4 shrink-0">
-                  <button
-                    onClick={() => setActiveLeftTab("syllabus")}
-                    className={`pb-3.5 font-semibold transition-all relative ${
-                      activeLeftTab === "syllabus"
-                        ? 'text-smart-indigo'
-                        : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                  >
-                    <span>Giáo trình văn bản</span>
-                    {activeLeftTab === "syllabus" && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-smart-indigo rounded-full"></span>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setActiveLeftTab("resources")}
-                    className={`pb-3.5 font-semibold transition-all relative ${
-                      activeLeftTab === "resources"
-                        ? 'text-smart-indigo'
-                        : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                  >
-                    <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
-                    {activeLeftTab === "resources" && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-smart-indigo rounded-full"></span>
-                    )}
-                  </button>
-                </div>
-
-                {/* Left Tabs Content */}
-                <div className="min-h-[180px]">
-                  {activeLeftTab === "syllabus" && (
-                    <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap animate-fade">
-                      <p className="font-semibold text-slate-800 text-[14.5px] mb-3">Tóm tắt nội dung bài học:</p>
-                      <p className="mb-4 text-slate-500 italic bg-slate-50/50 px-4 py-3 rounded-xl border border-slate-200">
-                        {currentLesson?.description}
-                      </p>
-                      <div className="bg-white border border-slate-100/60 p-4 rounded-xl shadow-inner text-[14px]">
-                        {currentLesson?.content}
-                      </div>
+            ) : (
+              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                
+                {/* Premium Video Container */}
+                <div className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group">
+                  {currentLesson?.type === 'pdf' ? (
+                    <iframe 
+                      key={currentLesson.id}
+                      src={currentLesson.pdfUrl} 
+                      className="w-full h-full border-none bg-white"
+                      title={currentLesson.title}
+                    />
+                  ) : currentLesson?.videoUrl ? (
+                    <video 
+                      key={currentLesson.id}
+                      src={currentLesson.videoUrl} 
+                      controls 
+                      autoPlay
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
+                      <FiPlay className="text-5xl animate-pulse mb-3" />
+                      <span>Video bài giảng không khả dụng.</span>
                     </div>
                   )}
+                </div>
 
-                  {activeLeftTab === "resources" && (
-                    <div className="space-y-3 animate-fade text-sm">
-                      {currentLesson?.resources && currentLesson.resources.length > 0 ? (
-                        currentLesson.resources.map((res, index) => (
-                          <div 
-                            key={index}
-                            className="flex items-center justify-between p-3.5 border border-slate-150 rounded-xl hover:bg-slate-50/50 hover:border-slate-300 transition-colors shadow-sm bg-white"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <FiFileText className="text-smart-indigo text-lg shrink-0" />
-                              <span className="font-medium text-slate-700">{res.name}</span>
-                            </div>
-                            <a 
-                              href={res.url}
-                              className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
-                            >
-                              <FiDownload />
-                              <span>Tải xuống</span>
-                            </a>
-                          </div>
-                        ))
+                {/* Lesson Details & Interactive Content */}
+                <div className="bg-white rounded-2xl border border-slate-200/60 p-6 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 mb-6">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo bg-smart-indigo/5 px-2.5 py-1 rounded-md mb-2 inline-block">
+                        Bài học chi tiết
+                      </span>
+                      <h1 className="text-lg sm:text-xl font-bold text-slate-800 mt-1">
+                        {currentLesson?.title}
+                      </h1>
+                    </div>
+
+                    <button
+                      onClick={(e) => handleToggleComplete(e, currentLesson.id)}
+                      className={`mt-3 sm:mt-0 flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all border shrink-0 ${
+                        currentLesson?.completed
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm hover:bg-emerald-100'
+                          : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {currentLesson?.completed ? (
+                        <>
+                          <FiCheckSquare className="text-sm text-emerald-600" />
+                          <span>Đã hoàn thành</span>
+                        </>
                       ) : (
-                        <div className="text-center py-8 text-slate-400">
-                          <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
-                          <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
-                        </div>
+                        <>
+                          <FiSquare className="text-sm" />
+                          <span>Đánh dấu hoàn thành</span>
+                        </>
                       )}
-                    </div>
-                  )}
+                    </button>
+                  </div>
+
+                  {/* Left Tabs Navigation */}
+                  <div className="flex border-b border-slate-100 space-x-6 text-sm mb-4 shrink-0">
+                    <button
+                      onClick={() => setActiveLeftTab("syllabus")}
+                      className={`pb-3.5 font-semibold transition-all relative ${
+                        activeLeftTab === "syllabus"
+                          ? 'text-smart-indigo'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      <span>Giáo trình văn bản</span>
+                      {activeLeftTab === "syllabus" && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-smart-indigo rounded-full"></span>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => setActiveLeftTab("resources")}
+                      className={`pb-3.5 font-semibold transition-all relative ${
+                        activeLeftTab === "resources"
+                          ? 'text-smart-indigo'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
+                      {activeLeftTab === "resources" && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-smart-indigo rounded-full"></span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Left Tabs Content */}
+                  <div className="min-h-[180px]">
+                    {activeLeftTab === "syllabus" && (
+                      <div className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap animate-fade">
+                        <p className="font-semibold text-slate-800 text-[14.5px] mb-3">Tóm tắt nội dung bài học:</p>
+                        <p className="mb-4 text-slate-500 italic bg-slate-50/50 px-4 py-3 rounded-xl border border-slate-200">
+                          {currentLesson?.description}
+                        </p>
+                        <div className="bg-white border border-slate-100/60 p-4 rounded-xl shadow-inner text-[14px]">
+                          {currentLesson?.content}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeLeftTab === "resources" && (
+                      <div className="space-y-3 animate-fade text-sm">
+                        {currentLesson?.resources && currentLesson.resources.length > 0 ? (
+                          currentLesson.resources.map((res, index) => (
+                            <div 
+                              key={index}
+                              className="flex items-center justify-between p-3.5 border border-slate-150 rounded-xl hover:bg-slate-50/50 hover:border-slate-300 transition-colors shadow-sm bg-white"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <FiFileText className="text-smart-indigo text-lg shrink-0" />
+                                <span className="font-medium text-slate-700">{res.name}</span>
+                              </div>
+                              <a 
+                                href={res.url}
+                                className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                                <FiDownload />
+                                <span>Tải xuống</span>
+                              </a>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-slate-400">
+                            <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
+                            <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Right Sidebar Area - 30% */}
             <div className="col-span-10 lg:col-span-3 flex flex-col h-[calc(100vh-140px)] lg:sticky lg:top-24 bg-white border border-slate-200/60 rounded-2xl overflow-hidden shadow-sm">

@@ -360,6 +360,60 @@ const HomePage = () => {
           </div>
         </section>
 
+        {/* FUN QUIZZES SECTION */}
+        <section id="fun-quizzes-sec" className="courses-section" style={{ backgroundColor: '#f8fafc', paddingTop: '64px', paddingBottom: '64px', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+          <div className="container">
+            <div className="section-title scroll-animate">
+              <h2>Luyện trắc nghiệm vui giải trí</h2>
+              <p>Thử thách phản xạ tiếng Anh nhanh với các đề trắc nghiệm chủ đề Tiếng lóng, Idioms, Từ vựng đời sống</p>
+            </div>
+
+            <div className="courses-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginTop: '32px' }}>
+              <div className="course-card scroll-animate" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '24px', backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <span className="course-tag grammar" style={{ backgroundColor: '#e0e7ff', color: '#4338ca', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '750' }}>IDIOMS</span>
+                    <h4 style={{ marginTop: '12px', fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>English Slangs & Idioms Quiz</h4>
+                    <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>Thử thách hiểu biết của bạn về tiếng lóng và các thành ngữ tiếng Anh giao tiếp thông dụng hàng ngày của người bản xứ.</p>
+                  </div>
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>5 câu hỏi • 5 phút</span>
+                    <button 
+                      onClick={() => navigate('/quizzes/play/fun-1')}
+                      style={{ padding: '8px 16px', backgroundColor: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
+                      onMouseOver={(e) => e.target.style.backgroundColor = '#1e40af'}
+                      onMouseOut={(e) => e.target.style.backgroundColor = '#1d4ed8'}
+                    >
+                      Bắt đầu thi
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="course-card scroll-animate" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '24px', backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <span className="course-tag grammar" style={{ backgroundColor: '#ecfdf5', color: '#047857', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '750' }}>TRAVEL</span>
+                    <h4 style={{ marginTop: '12px', fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Travel English Essentials</h4>
+                    <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>Trang bị các mẫu câu giao tiếp tiếng Anh thiết thực tại sân bay, khách sạn, nhà hàng khi đi du lịch nước ngoài.</p>
+                  </div>
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>5 câu hỏi • 8 phút</span>
+                    <button 
+                      onClick={() => navigate('/quizzes/play/fun-2')}
+                      style={{ padding: '8px 16px', backgroundColor: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
+                      onMouseOver={(e) => e.target.style.backgroundColor = '#1e40af'}
+                      onMouseOut={(e) => e.target.style.backgroundColor = '#1d4ed8'}
+                    >
+                      Bắt đầu thi
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* AI LEARNING TOOLS */}
         <section className="ai-tools-section">
           <div className="container">

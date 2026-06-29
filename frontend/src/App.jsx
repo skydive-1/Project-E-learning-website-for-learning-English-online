@@ -14,6 +14,8 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
+import PlayQuizPage from './modules/quizzes/pages/PlayQuizPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +37,10 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/courses" element={<CourseListPage />} />
               <Route path="/academy" element={<RoadmapPage />} />
+              
+              {/* Entertainment Standalone Quizzes */}
+              <Route path="/quizzes" element={<QuizzesListPage />} />
+              <Route path="/quizzes/play/:quizId" element={<PlayQuizPage />} />
 
               {/* Auth Routes with Shared Layout */}
               <Route element={<AuthLayout />}>

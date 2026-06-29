@@ -750,6 +750,15 @@ $border-light: #e2e8f0;
       border: 1px solid #fecaca;
     }
   }
+
+  .quiz-card-item {
+    transition: transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1), border-color 0.3s ease, box-shadow 0.3s ease !important;
+    &:hover {
+      transform: translateY(-4px);
+      border-color: #1d4ed8 !important;
+      box-shadow: 0 10px 25px rgba(29, 78, 216, 0.06) !important;
+    }
+  }
 }
 
 @media (max-width: 992px) {
