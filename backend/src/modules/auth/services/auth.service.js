@@ -257,6 +257,166 @@ class AuthService {
       handleServiceError(error, 'Lỗi cập nhật profile trong AuthService');
     }
   }
+
+  async googleLogin(tokenData) {
+    try {
+      let token = tokenData;
+      let isAccessToken = false;
+      
+      if (tokenData && typeof tokenData === 'object') {
+        token = tokenData.token;
+        isAccessToken = tokenData.isAccessToken;
+      }
+      
+      let url = `https://oauth2.googleapis.com/tokeninfo?id_token=${token}`;
+      if (isAccessToken) {
+        url = `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${token}`;
+      }
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        const error = new Error('Mã token Google không hợp lệ hoặc đã hết hạn');
+        error.status = 400;
+        throw error;
+      }
+      
+      const payload = await response.json();
+      if (payload.error_description) {
+        const error = new Error(payload.error_description);
+        error.status = 400;
+        throw error;
+      }
+
+      const email = payload.email;
+      const fullName = payload.name || payload.given_name || 'Google User';
+      const profilePictureUrl = payload.picture || null;
+
+      const result = await db.query(
+        'SELECT user_id, email, username, full_name, role_id FROM users WHERE email = $1',
+        [email]
+      );
+
+      if (result.rows.length > 0) {
+        const user = result.rows[0];
+        
+        const jwtPayload = {
+          id: user.user_id,
+          email: user.email,
+          username: user.username,
+          roleId: user.role_id
+        };
+
+        const token = jwt.sign(jwtPayload, process.env.JWT_SECRET, {
+          expiresIn: process.env.JWT_EXPIRE || '24h'
+        });
+
+        return {
+          isNewUser: false,
+          token,
+          user: {
+            userId: user.user_id,
+            email: user.email,
+            username: user.username,
+            fullName: user.full_name,
+            roleId: user.role_id
+          }
+        };
+      }
+
+      const tempPayload = {
+        email,
+        fullName,
+        profilePictureUrl
+      };
+
+      const tempToken = jwt.sign(tempPayload, process.env.JWT_SECRET, {
+        expiresIn: '15m'
+      });
+
+      return {
+        isNewUser: true,
+        tempToken,
+        email,
+        fullName,
+        profilePictureUrl
+      };
+    } catch (error) {
+      handleServiceError(error, 'Lỗi googleLogin trong AuthService');
+    }
+  }
+
+  async googleConfirmRole({ tempToken, roleId }) {
+    try {
+      let decoded;
+      try {
+        decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+      } catch (err) {
+        const error = new Error('Liên kết chọn vai trò đã hết hạn hoặc không hợp lệ');
+        error.status = 400;
+        throw error;
+      }
+
+      const { email, fullName, profilePictureUrl } = decoded;
+      
+      const targetRoleId = parseInt(roleId, 10);
+      if (targetRoleId !== 2 && targetRoleId !== 3) {
+        const error = new Error('Vai trò người dùng chọn không hợp lệ');
+        error.status = 400;
+        throw error;
+      }
+
+      const checkUser = await db.query('SELECT user_id FROM users WHERE email = $1', [email]);
+      if (checkUser.rows.length > 0) {
+        const error = new Error('Tài khoản với email này đã tồn tại');
+        error.status = 400;
+        throw error;
+      }
+
+      let username = email.split('@')[0];
+      const checkUsername = await db.query('SELECT user_id FROM users WHERE username = $1', [username]);
+      if (checkUsername.rows.length > 0) {
+        username = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+
+      const { v4: uuidv4 } = require('uuid');
+      const randomPassword = uuidv4();
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      const queryText = `
+        INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING user_id, email, username, full_name, role_id, profile_picture_url, created_date
+      `;
+      const values = [email, hashedPassword, username, fullName, targetRoleId, profilePictureUrl];
+      const result = await db.query(queryText, values);
+      const newUser = result.rows[0];
+
+      const jwtPayload = {
+        id: newUser.user_id,
+        email: newUser.email,
+        username: newUser.username,
+        roleId: newUser.role_id
+      };
+
+      const token = jwt.sign(jwtPayload, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRE || '24h'
+      });
+
+      return {
+        token,
+        user: {
+          userId: newUser.user_id,
+          email: newUser.email,
+          username: newUser.username,
+          fullName: newUser.full_name,
+          roleId: newUser.role_id,
+          profilePictureUrl: newUser.profile_picture_url
+        }
+      };
+    } catch (error) {
+      handleServiceError(error, 'Lỗi googleConfirmRole trong AuthService');
+    }
+  }
 }
 
 module.exports = new AuthService();

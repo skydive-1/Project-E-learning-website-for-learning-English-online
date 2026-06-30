@@ -50,4 +50,8 @@ router.get('/profile', authenticate, authController.getProfile);
 router.put('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.put('/profile', authenticate, validate(updateProfileSchema), authController.updateProfile);
 
+// Google Sign-In Endpoints
+router.post('/google', authController.googleLogin);
+router.post('/google/confirm-role', authController.googleConfirmRole);
+
 module.exports = router;

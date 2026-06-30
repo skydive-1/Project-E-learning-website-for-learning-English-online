@@ -101,3 +101,51 @@ exports.updateProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.googleLogin = async (req, res, next) => {
+  try {
+    const { idToken, token, isAccessToken } = req.body;
+    
+    const activeToken = token || idToken;
+    if (!activeToken) {
+      const err = new Error('Thiếu Google Token');
+      err.status = 400;
+      throw err;
+    }
+    
+    const result = await authService.googleLogin({
+      token: activeToken,
+      isAccessToken: !!isAccessToken
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: result.isNewUser ? 'Tài khoản chưa tồn tại, vui lòng chọn vai trò' : 'Đăng nhập Google thành công',
+      ...result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.googleConfirmRole = async (req, res, next) => {
+  try {
+    const { tempToken, roleId } = req.body;
+    
+    if (!tempToken || !roleId) {
+      const err = new Error('Thiếu thông tin đăng ký (tempToken hoặc vai trò)');
+      err.status = 400;
+      throw err;
+    }
+    
+    const result = await authService.googleConfirmRole({ tempToken, roleId });
+    
+    res.status(201).json({
+      success: true,
+      message: 'Đăng ký tài khoản Google thành công',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};

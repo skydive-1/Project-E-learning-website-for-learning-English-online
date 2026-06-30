@@ -39,3 +39,19 @@ export const updateProfileApi = async ({ username, fullName, profilePictureUrl }
   const response = await apiClient.put('/auth/profile', { username, fullName, profilePictureUrl });
   return response.data;
 };
+
+/**
+ * Đăng nhập/Xác thực Google OAuth2 token
+ */
+export const loginWithGoogle = async (token, isAccessToken = false) => {
+  const response = await apiClient.post('/auth/google', { token, isAccessToken });
+  return response.data;
+};
+
+/**
+ * Hoàn tất đăng ký tài khoản Google mới bằng cách chọn vai trò
+ */
+export const googleConfirmRole = async ({ tempToken, roleId }) => {
+  const response = await apiClient.post('/auth/google/confirm-role', { tempToken, roleId });
+  return response.data;
+};
