@@ -248,6 +248,11 @@
         }
       }
 
+      option {
+        background-color: #111214 !important;
+        color: #f3f4f6 !important;
+      }
+
       textarea {
         resize: vertical;
         min-height: 80px;
@@ -344,6 +349,47 @@
         cursor: not-allowed;
         transform: none;
       }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-dashboard-wrapper {
+    padding: 20px 10px;
+
+    .admin-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .admin-tabs {
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+      
+      .admin-tab {
+        text-align: left;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border-color);
+        width: 100%;
+        
+        &.active {
+          border-bottom: 2px solid #3b82f6;
+        }
+      }
+    }
+
+    .form-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .options-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .table-filters {
+      flex-wrap: wrap;
     }
   }
 }

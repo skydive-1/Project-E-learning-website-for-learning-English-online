@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon } from 'react-icons/fi';
+import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import '../../modules/homepage/styles/homepage.scss'; // Link global/homepage styles
@@ -10,44 +10,58 @@ const Header = () => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (!event.target.closest('.user-menu-wrapper')) {
         setIsDropdownOpen(false);
       }
+      if (!event.target.closest('.main-header')) {
+        setIsMobileMenuOpen(false);
+      }
     };
-    if (isDropdownOpen) {
+    if (isDropdownOpen || isMobileMenuOpen) {
       window.addEventListener('click', handleOutsideClick);
     }
     return () => {
       window.removeEventListener('click', handleOutsideClick);
     };
-  }, [isDropdownOpen]);
+  }, [isDropdownOpen, isMobileMenuOpen]);
 
   const handleLogout = () => {
     logout();
     setIsDropdownOpen(false);
+    setIsMobileMenuOpen(false);
   };
 
-  const toggleDropdown = () => {
+  const toggleDropdown = (e) => {
+    e.stopPropagation();
     setIsDropdownOpen(!isDropdownOpen);
   };
 
   return (
     <header className="main-header">
       <div className="header-container">
-        <Link to="/" className="logo">
+        <Link to="/" className="logo" onClick={() => setIsMobileMenuOpen(false)}>
           <FiBookOpen className="logo-icon" />
           <span>E-Learn Academy</span>
         </Link>
 
-        <nav className="nav-menu">
-          <Link to="/courses">Programs</Link>
-          <Link to="/academy">Academy</Link>
-          <Link to="/quizzes">Quizzes</Link>
-          <a href="#features">Featured</a>
-          <a href="#pricing">Pricing</a>
+        <nav className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`}>
+          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>Programs</Link>
+          <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>Academy</Link>
+          <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>Quizzes</Link>
+          <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>Featured</a>
+          <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a>
+
+          {/* Mobile-only auth links */}
+          {!user && (
+            <div className="mobile-auth-links">
+              <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>Login</Link>
+              <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>Register</Link>
+            </div>
+          )}
         </nav>
 
         <div className="auth-buttons">
@@ -124,6 +138,19 @@ const Header = () => {
               <Link to="/register" className="btn-register">Register</Link>
             </>
           )}
+
+          {/* Mobile Menu Toggle Button */}
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsMobileMenuOpen(!isMobileMenuOpen);
+            }}
+            className="mobile-menu-toggle-btn"
+            title="Menu"
+          >
+            {isMobileMenuOpen ? <FiX /> : <FiMenu />}
+          </button>
         </div>
       </div>
     </header>

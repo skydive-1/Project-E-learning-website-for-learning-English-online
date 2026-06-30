@@ -587,6 +587,54 @@ $border-light: var(--border-color, #d1d7dc);
   }
 }
 
+@media (max-width: 600px) {
+  .courses-page-new {
+    .courses-hero-section {
+      padding: 120px 0 40px;
+      h1 { font-size: 28px; }
+      p { font-size: 15px; margin-bottom: 20px; }
+    }
+
+    .search-bar-wrapper {
+      padding: 4px;
+      input {
+        padding: 10px 10px 10px 48px;
+        font-size: 14px;
+      }
+      .search-icon {
+        left: 18px;
+        font-size: 16px;
+      }
+      .btn-search {
+        padding: 0 16px;
+        font-size: 14px;
+      }
+    }
+
+    .catalog-controls-section {
+      padding: 16px 0;
+      .catalog-controls-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        
+        .results-count {
+          text-align: center;
+        }
+
+        .controls-group {
+          justify-content: space-between;
+          width: 100%;
+        }
+      }
+    }
+    
+    .course-section {
+      padding: 40px 0;
+    }
+  }
+}
+
 html.dark {
   .courses-page-new {
     background-color: var(--bg-color) !important;

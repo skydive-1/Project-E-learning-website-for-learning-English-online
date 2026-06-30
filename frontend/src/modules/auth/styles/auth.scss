@@ -402,22 +402,33 @@ h3 {
 @media (max-width: 768px) {
   .auth-split-card {
     flex-direction: column;
-    border-radius: 20px;
+    border-radius: 24px;
     margin: 10px;
+    max-width: 440px;
+    min-height: auto;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04);
 
     .auth-left-pane {
-      padding: 30px 20px;
-      .illustration-card {
-        max-width: 240px;
-        margin-bottom: 16px;
-      }
-      h3 {
-        font-size: 20px;
-      }
+      display: none; // Hide illustration on mobile to let user log in immediately
     }
 
     .auth-right-pane {
-      padding: 30px 24px;
+      padding: 40px 24px;
+
+      .auth-back-nav {
+        top: 20px;
+        left: 24px;
+      }
+
+      .welcome-title {
+        font-size: 26px;
+        margin-top: 16px;
+      }
+
+      .welcome-subtitle {
+        font-size: 13.5px;
+        margin-bottom: 20px;
+      }
     }
   }
 }

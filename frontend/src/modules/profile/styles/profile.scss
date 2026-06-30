@@ -568,6 +568,17 @@ $hover-orange: #ea580c;
     grid-template-columns: 1fr;
     gap: 16px;
   }
+
+  .profile-form {
+    .form-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    
+    .save-btn {
+      width: 100%; // full width on mobile for better ergonomics
+    }
+  }
 }
 
 html.dark {
@@ -620,6 +631,11 @@ html.dark {
       &::placeholder {
         color: var(--text-light);
       }
+    }
+    
+    option {
+      background-color: #111214 !important;
+      color: #f3f4f6 !important;
     }
     
     .form-group label {

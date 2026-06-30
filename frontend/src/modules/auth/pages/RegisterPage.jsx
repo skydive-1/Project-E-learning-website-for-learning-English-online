@@ -164,7 +164,7 @@ const RegisterPage = () => {
               name="roleId"
               value={formData.roleId}
               onChange={handleChange}
-              className="w-full pl-12 pr-8 py-3.5 bg-[#fafbfc] border border-[#e2e8f0] rounded-[20px] focus:outline-none focus:border-smart-indigo text-[14.5px] text-slate-700 font-sans cursor-pointer"
+              className="w-full pl-12 pr-8 py-3.5 bg-[#fafbfc] dark:bg-[#111214] border border-[#e2e8f0] dark:border-[#1f2023] rounded-[20px] focus:outline-none focus:border-smart-indigo text-[14.5px] text-slate-700 dark:text-slate-200 font-sans cursor-pointer"
             >
               <option value={3}>Học viên (Student)</option>
               <option value={2}>Giảng viên (Instructor)</option>

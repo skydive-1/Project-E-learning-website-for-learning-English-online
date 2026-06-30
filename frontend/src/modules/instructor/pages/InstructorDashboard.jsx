@@ -1002,7 +1002,7 @@ const InstructorDashboard = () => {
                   <select 
                     value={filterCourseId} 
                     onChange={(e) => setFilterCourseId(e.target.value)}
-                    style={{ borderRadius: '20px', padding: '10px 16px', border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: '13.5px', fontWeight: '600', color: '#475569', cursor: 'pointer', outline: 'none' }}
+                    style={{ borderRadius: '20px', padding: '10px 16px', border: '1px solid var(--border-color, #e2e8f0)', backgroundColor: 'var(--card-bg, #fff)', fontSize: '13.5px', fontWeight: '600', color: 'var(--text-color, #475569)', cursor: 'pointer', outline: 'none' }}
                   >
                     <option value="all">Tất cả danh mục</option>
                     {myCourses.map(c => (
@@ -1013,7 +1013,7 @@ const InstructorDashboard = () => {
                   <select 
                     value={filterDifficulty} 
                     onChange={(e) => setFilterDifficulty(e.target.value)}
-                    style={{ borderRadius: '20px', padding: '10px 16px', border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: '13.5px', fontWeight: '600', color: '#475569', cursor: 'pointer', outline: 'none' }}
+                    style={{ borderRadius: '20px', padding: '10px 16px', border: '1px solid var(--border-color, #e2e8f0)', backgroundColor: 'var(--card-bg, #fff)', fontSize: '13.5px', fontWeight: '600', color: 'var(--text-color, #475569)', cursor: 'pointer', outline: 'none' }}
                   >
                     <option value="all">Tất cả trình độ</option>
                     <option value="Easy">Cơ bản (Easy)</option>
@@ -1024,7 +1024,7 @@ const InstructorDashboard = () => {
                   <select 
                     value={sortBy} 
                     onChange={(e) => setSortBy(e.target.value)}
-                    style={{ borderRadius: '20px', padding: '10px 16px', border: '1px solid #e2e8f0', backgroundColor: '#fff', fontSize: '13.5px', fontWeight: '600', color: '#475569', cursor: 'pointer', outline: 'none' }}
+                    style={{ borderRadius: '20px', padding: '10px 16px', border: '1px solid var(--border-color, #e2e8f0)', backgroundColor: 'var(--card-bg, #fff)', fontSize: '13.5px', fontWeight: '600', color: 'var(--text-color, #475569)', cursor: 'pointer', outline: 'none' }}
                   >
                     <option value="newest">Mới nhất</option>
                     <option value="oldest">Cũ nhất</option>
@@ -1043,12 +1043,13 @@ const InstructorDashboard = () => {
                     style={{
                       width: '100%',
                       padding: '10px 16px 10px 42px',
-                      border: '1px solid #e2e8f0',
+                      border: '1px solid var(--border-color, #e2e8f0)',
                       borderRadius: '20px',
                       fontSize: '13.5px',
                       fontWeight: '500',
                       outline: 'none',
-                      backgroundColor: '#fff'
+                      backgroundColor: 'var(--card-bg, #fff)',
+                      color: 'var(--text-color, #0f172a)'
                     }}
                   />
                 </div>

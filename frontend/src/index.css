@@ -30,6 +30,7 @@ html.dark {
   --sidebar-bg: #08090a;
   --light-blue-bg: #111214;
   --text-white: #f3f4f6;
+  color-scheme: dark;
 }
 
 body {

@@ -229,6 +229,50 @@ $border-light: #e2e8f0;
   }
 }
 
+@media (max-width: 600px) {
+  .academy-page-modern {
+    .academy-hero-section {
+      padding: 120px 0 40px;
+      h1 {
+        font-size: 32px;
+      }
+      p {
+        font-size: 15px;
+        margin-bottom: 24px;
+      }
+    }
+
+    .roadmap-paths-section {
+      padding: 40px 0;
+      .section-title {
+        margin-bottom: 32px;
+        h2 { font-size: 26px; }
+      }
+    }
+
+    .roadmap-path-card .path-content {
+      padding: 24px;
+      .path-skills ul {
+        grid-template-columns: 1fr; // Single column on small viewports
+        gap: 6px;
+      }
+    }
+    
+    .roadmap-benefits-section {
+      padding: 40px 0 80px;
+      .benefits-card {
+        padding: 24px;
+        border-radius: 20px;
+        
+        .benefit-text {
+          h2 { font-size: 24px; }
+          ul li { font-size: 15px; }
+        }
+      }
+    }
+  }
+}
+
 html.dark {
   .academy-page-modern {
     background-color: var(--bg-color);
