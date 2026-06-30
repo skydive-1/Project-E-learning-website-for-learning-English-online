@@ -33,3 +33,59 @@ exports.getPerformance = async (req, res, next) => {
     next(error);
   }
 };
+
+const { geminiModel } = require('../../../utils/ai-clients');
+
+exports.generateQuiz = async (req, res, next) => {
+  try {
+    const { topic, count } = req.body;
+    
+    if (!topic || !topic.trim()) {
+      const err = new Error('Vui lòng nhập chủ đề câu hỏi (topic)');
+      err.status = 400;
+      throw err;
+    }
+    
+    const numQuestions = parseInt(count) || 5;
+    
+    const prompt = `You are a professional English language test creator.
+Generate a quiz with ${numQuestions} multiple choice questions about the topic: "${topic}".
+Each question must be a multiple choice question with exactly 4 options labeled starting with "A. ", "B. ", "C. ", "D. ".
+For each question, specify the question text, the options, the correct answer letter (only "A", "B", "C", or "D"), and a clear explanation in Vietnamese explaining why it is correct.
+
+You must return a JSON array of objects with the following schema:
+[
+  {
+    "question": "The question text",
+    "options": [
+      "A. Option text",
+      "B. Option text",
+      "C. Option text",
+      "D. Option text"
+    ],
+    "correctAnswer": "B",
+    "explanation": "Detailed explanation in Vietnamese"
+  }
+]`;
+
+    console.log(`[Gemini Quiz Generator] Generating quiz for topic: ${topic}`);
+    const result = await geminiModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const responseText = result.response.text();
+    const questions = JSON.parse(responseText);
+
+    res.status(200).json({
+      success: true,
+      message: `Đã tạo thành công ${questions.length} câu hỏi bằng AI`,
+      questions
+    });
+  } catch (error) {
+    console.error('Lỗi sinh Quiz từ Gemini:', error);
+    next(error);
+  }
+};

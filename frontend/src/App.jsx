@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
 import PlayQuizPage from './modules/quizzes/pages/PlayQuizPage';
+import AdminDashboard from './modules/admin/pages/AdminDashboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,6 +99,16 @@ function App() {
                   element={
                     <ProtectedRoute allowedRoles={[1, 2]}>
                       <CourseEditor />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Admin Routes */}
+                <Route
+                  path="/admin/dashboard"
+                  element={
+                    <ProtectedRoute allowedRoles={[1]}>
+                      <AdminDashboard />
                     </ProtectedRoute>
                   }
                 />

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import apiClient from '../../../config/api.config';
 import { 
   FiPlus, FiBook, FiUsers, FiTrendingUp, FiSettings, 
   FiEdit, FiTrash2, FiEye, FiLoader, FiAlertCircle, FiLayers,
@@ -191,90 +192,46 @@ const InstructorDashboard = () => {
     };
   }, []);
 
-  const handleGenerateAiQuiz = (e) => {
+  const handleGenerateAiQuiz = async (e) => {
     e.preventDefault();
     if (!aiTopic.trim()) return alert('Vui lòng nhập chủ đề trắc nghiệm.');
     if (!createLessonId) return alert('Vui lòng chọn bài học để gán câu hỏi.');
 
     setAiGenerating(true);
+    try {
+      const response = await apiClient.post('/instructor/generate-quiz', {
+        topic: aiTopic.trim(),
+        count: aiNumQuestions || 5
+      });
 
-    // Simulate AI generation delay
-    setTimeout(() => {
-      const generatedQuestions = [
-        {
-          id: `q-${createLessonId}-ai-1`,
-          question: `Which of the following sentences is grammatically correct regarding the topic: "${aiTopic}"?`,
-          options: [
-            "A. He don't know the answer.",
-            "B. He doesn't know the answer.",
-            "C. He not know the answer.",
-            "D. He isn't know the answer."
-          ],
-          correctAnswer: "B",
-          explanation: "In English grammar, the third-person singular auxiliary verb for negation is 'doesn't'."
-        },
-        {
-          id: `q-${createLessonId}-ai-2`,
-          question: `Select the most appropriate vocabulary word for the context of "${aiTopic}": "She gave a __________ explanation that cleared up all confusion."`,
-          options: [
-            "A. vague",
-            "B. lucid",
-            "C. obscure",
-            "D. redundant"
-          ],
-          correctAnswer: "B",
-          explanation: "'Lucid' means clear and easy to understand, which matches the context of clearing up confusion."
-        },
-        {
-          id: `q-${createLessonId}-ai-3`,
-          question: `Choose the correct preposition: "We need to focus __________ improving our English speaking skills."`,
-          options: [
-            "A. in",
-            "B. at",
-            "C. on",
-            "D. with"
-          ],
-          correctAnswer: "C",
-          explanation: "The verb 'focus' is always followed by the preposition 'on'."
-        },
-        {
-          id: `q-${createLessonId}-ai-4`,
-          question: `Identify the synonym of 'acquire' related to the study of "${aiTopic}":`,
-          options: [
-            "A. lose",
-            "B. obtain",
-            "C. forfeit",
-            "D. abandon"
-          ],
-          correctAnswer: "B",
-          explanation: "'Acquire' means to gain or obtain possession of something."
-        },
-        {
-          id: `q-${createLessonId}-ai-5`,
-          question: `What is the opposite of 'deliberate' in the context of "${aiTopic}"?`,
-          options: [
-            "A. intentional",
-            "B. planned",
-            "C. accidental",
-            "D. conscious"
-          ],
-          correctAnswer: "C",
-          explanation: "'Deliberate' means done on purpose; its opposite is 'accidental'."
-        }
-      ];
+      if (response.data && response.data.success && response.data.questions) {
+        const generatedQuestions = response.data.questions.map((q, idx) => ({
+          id: `q-${createLessonId}-ai-${Date.now()}-${idx + 1}`,
+          question: q.question,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation
+        }));
 
-      saveCourseQuizQuestions(createLessonId, generatedQuestions);
+        saveCourseQuizQuestions(createLessonId, generatedQuestions);
+        
+        setSelectedQuizCourseId(createCourseId);
+        setSelectedQuizLessonId(createLessonId);
+        setQuizQuestions(generatedQuestions);
+        setQuizMode('edit');
+
+        alert('Đã tạo thành công bộ câu hỏi trắc nghiệm bằng AI (Gemini)!');
+      } else {
+        alert('Không thể tạo câu hỏi trắc nghiệm bằng AI. Vui lòng thử lại.');
+      }
+    } catch (error) {
+      console.error('Lỗi khi gọi AI Quiz Generator:', error);
+      alert(error.response?.data?.message || 'Có lỗi xảy ra khi kết nối máy chủ để sinh câu hỏi.');
+    } finally {
       setAiGenerating(false);
       setShowAiModal(false);
       setAiTopic('');
-      
-      setSelectedQuizCourseId(createCourseId);
-      setSelectedQuizLessonId(createLessonId);
-      setQuizQuestions(generatedQuestions);
-      setQuizMode('edit');
-
-      alert('Đã tạo thành công 5 câu hỏi trắc nghiệm bằng AI!');
-    }, 2000);
+    }
   };
 
   const handleCreateNewQuiz = (e) => {

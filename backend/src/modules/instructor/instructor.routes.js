@@ -17,4 +17,7 @@ router.get('/students', instructorController.getStudents);
 // GET /api/instructor/performance - Lấy dữ liệu thống kê hiệu suất học tập/doanh thu
 router.get('/performance', instructorController.getPerformance);
 
+// POST /api/instructor/generate-quiz - Sinh câu hỏi trắc nghiệm bằng AI (Gemini)
+router.post('/generate-quiz', instructorController.generateQuiz);
+
 module.exports = router;

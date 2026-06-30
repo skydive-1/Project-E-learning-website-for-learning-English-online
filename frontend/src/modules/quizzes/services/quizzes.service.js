@@ -228,6 +228,22 @@ export const saveCourseQuizQuestions = (lessonId, questions) => {
   return true;
 };
 
+// Lưu/Cập nhật một bài trắc nghiệm tự do (Standalone Quiz)
+export const saveFreeQuiz = (quiz) => {
+  const data = getQuizzesData();
+  data.freeQuizzes[String(quiz.id)] = quiz;
+  saveQuizzesData(data);
+  return true;
+};
+
+// Xóa bài trắc nghiệm tự do
+export const deleteFreeQuiz = (quizId) => {
+  const data = getQuizzesData();
+  delete data.freeQuizzes[String(quizId)];
+  saveQuizzesData(data);
+  return true;
+};
+
 // Khôi phục dữ liệu gốc
 export const resetToDefaultQuizzes = () => {
   localStorage.removeItem(LOCAL_STORAGE_KEY);

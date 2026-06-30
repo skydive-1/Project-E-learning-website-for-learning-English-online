@@ -19,6 +19,7 @@ const chatbotRoutes = require('./modules/chatbot/chatbot.routes');
 const progressRoutes = require('./modules/progress/progress.routes');
 const lessonsRoutes = require('./modules/lessons/lessons.routes');
 const instructorRoutes = require('./modules/instructor/instructor.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
 
 // Ràng buộc bảo mật: JWT_SECRET là bắt buộc để khởi chạy ứng dụng an toàn
 if (!process.env.JWT_SECRET) {
@@ -71,6 +72,7 @@ app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/lessons', lessonsRoutes);
 app.use('/api/instructor', instructorRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ===== 6. HEALTH CHECK ENDPOINT =====
 app.get('/api/health', (req, res) => {
