@@ -43,19 +43,19 @@ class CoursesService {
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      
-      const { 
-        courseName, 
-        subjectId, 
-        description, 
-        thumbnail_url, 
-        price, 
-        status, 
-        startDate, 
-        endDate, 
-        sections 
+
+      const {
+        courseName,
+        subjectId,
+        description,
+        thumbnail_url,
+        price,
+        status,
+        startDate,
+        endDate,
+        sections
       } = courseData;
-      
+
       let finalStatus = 'draft';
       if (status === 1 || status === '1' || status === 'published') {
         finalStatus = 'published';
@@ -64,7 +64,7 @@ class CoursesService {
       }
       const finalPrice = price || 0;
       const finalSubjectId = subjectId ? parseInt(subjectId) : null;
-      
+
       // 1. Chèn khóa học vào bảng courses (Đã đồng bộ với Supabase)
       const courseResult = await client.query(`
         INSERT INTO courses (
@@ -81,32 +81,32 @@ class CoursesService {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *
       `, [
-        finalSubjectId, 
-        courseName, 
-        description, 
-        instructorId, 
-        thumbnail_url, 
-        finalPrice, 
-        finalStatus, 
-        startDate || null, 
+        finalSubjectId,
+        courseName,
+        description,
+        instructorId,
+        thumbnail_url,
+        finalPrice,
+        finalStatus,
+        startDate || null,
         endDate || null
       ]);
-      
+
       const newCourse = courseResult.rows[0];
       const courseId = newCourse.course_id;
-      
+
       // 2. Chèn các chương (sections) và bài học (lessons)
       if (sections && Array.isArray(sections)) {
         for (let i = 0; i < sections.length; i++) {
           await this._insertSection(client, courseId, sections[i], i + 1);
         }
       }
-      
+
       await client.query('COMMIT');
-      
+
       // Map status for frontend compatibility
       newCourse.status = newCourse.status === 'published' ? 1 : 0;
-      
+
       return newCourse;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -121,15 +121,15 @@ class CoursesService {
    */
   async _insertSection(client, courseId, sectionData, defaultOrder) {
     const orderIndex = sectionData.orderIndex !== undefined ? sectionData.orderIndex : defaultOrder;
-    
+
     const result = await client.query(`
       INSERT INTO sections (course_id, title, order_index)
       VALUES ($1, $2, $3)
       RETURNING section_id
     `, [courseId, sectionData.title, orderIndex]);
-    
+
     const sectionId = result.rows[0].section_id;
-    
+
     if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
       for (let i = 0; i < sectionData.lessons.length; i++) {
         await this._insertLesson(client, sectionId, sectionData.lessons[i], i + 1);
@@ -144,7 +144,7 @@ class CoursesService {
     const orderIndex = lessonData.orderIndex !== undefined ? lessonData.orderIndex : defaultOrder;
     const contentType = lessonData.contentType || lessonData.type || 'video';
     const contentUrl = lessonData.contentUrl || lessonData.url || '';
-    
+
     await client.query(`
       INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
       VALUES ($1, $2, $3, $4, $5)
@@ -168,25 +168,61 @@ class CoursesService {
 
   async getCourseById(courseId) {
     try {
-      // 1. Lấy thông tin khóa học
-      const courseRes = await db.query('SELECT * FROM courses WHERE course_id = $1', [courseId]);
-      if (courseRes.rows.length === 0) return null;
-      const course = courseRes.rows[0];
+      const queryText = `
+        SELECT 
+          c.*,
+          s.section_id, s.title AS section_title, s.order_index AS section_order,
+          l.lesson_id, l.title AS lesson_title, l.content_type, l.content_url, l.order_index AS lesson_order
+        FROM courses c
+        LEFT JOIN sections s ON c.course_id = s.course_id
+        LEFT JOIN lessons l ON s.section_id = l.section_id
+        WHERE c.course_id = $1
+        ORDER BY s.order_index ASC, l.order_index ASC
+      `;
 
-      // Map status for frontend compatibility
-      course.status = course.status === 'published' ? 1 : 0;
+      const result = await db.query(queryText, [courseId]);
+      if (result.rows.length === 0) return null;
 
-      // 2. Lấy danh sách chương (sections)
-      const sectionsRes = await db.query('SELECT * FROM sections WHERE course_id = $1 ORDER BY order_index', [courseId]);
-      const sections = sectionsRes.rows;
+      const {
+        section_id, section_title, section_order,
+        lesson_id, lesson_title, content_type, content_url, lesson_order,
+        ...courseData
+      } = result.rows[0];
 
-      // 3. Lấy danh sách bài giảng (lessons) cho mỗi chương
-      for (const section of sections) {
-        const lessonsRes = await db.query('SELECT * FROM lessons WHERE section_id = $1 ORDER BY order_index', [section.section_id]);
-        section.lessons = lessonsRes.rows;
-      }
+      const course = {
+        ...courseData,
+        status: courseData.status === 'published' ? 1 : 0,
+        sections: []
+      };
 
-      course.sections = sections;
+      const sectionMap = new Map();
+
+      result.rows.forEach(row => {
+        if (row.section_id && !sectionMap.has(row.section_id)) {
+          const newSection = {
+            section_id: row.section_id,
+            course_id: row.course_id,
+            title: row.section_title,
+            order_index: row.section_order,
+            lessons: []
+          };
+          sectionMap.set(row.section_id, newSection);
+          course.sections.push(newSection);
+        }
+
+        if (row.lesson_id) {
+          const section = sectionMap.get(row.section_id);
+          section.lessons.push({
+            lesson_id: row.lesson_id,
+            section_id: row.section_id,
+            title: row.lesson_title,
+            content_type: row.content_type,
+            content_url: row.content_url,
+            order_index: row.lesson_order
+          });
+        }
+      });
+
       return course;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin chi tiết khóa học');
@@ -195,15 +231,15 @@ class CoursesService {
 
   async updateCourse(courseId, courseData) {
     try {
-      const { 
-        subjectId, 
-        courseName, 
-        description, 
-        thumbnail_url, 
-        price, 
-        status, 
-        startDate, 
-        endDate 
+      const {
+        subjectId,
+        courseName,
+        description,
+        thumbnail_url,
+        price,
+        status,
+        startDate,
+        endDate
       } = courseData;
 
       const updates = [];
