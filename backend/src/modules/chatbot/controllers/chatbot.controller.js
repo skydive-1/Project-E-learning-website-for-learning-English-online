@@ -8,7 +8,7 @@ exports.ask = async (req, res, next) => {
   try {
     const { question, lessonId } = req.body;
     const answer = await chatbotService.ask(question, lessonId, req.user?.id);
-    
+
     res.status(200).json({
       success: true,
       data: answer
@@ -20,15 +20,16 @@ exports.ask = async (req, res, next) => {
 
 exports.saveHistory = async (req, res, next) => {
   try {
-    const { user_id, lesson_id, question, answer } = req.body;
-    
-    if (!user_id || !lesson_id || !question || !answer) {
-      const err = new Error("Dữ liệu không đầy đủ. Yêu cầu có: user_id, lesson_id, question, answer");
+    // Tiếp nhận 4 trường dữ liệu từ Quốc Anh
+    const { userId, lessonId, title, sender_type } = req.body;
+
+    if (!userId || !lessonId || !title || !sender_type) {
+      const err = new Error("Dữ liệu không đầy đủ. Yêu cầu 4 trường: userId, lessonId, title, sender_type");
       err.status = 400;
       throw err;
     }
 
-    const result = await chatbotService.saveHistory(user_id, lesson_id, question, answer);
+    const result = await chatbotService.saveHistory(userId, lessonId, title, sender_type);
     res.status(201).json({
       success: true,
       message: "Lưu lịch sử tin nhắn thành công",
@@ -42,7 +43,7 @@ exports.saveHistory = async (req, res, next) => {
 exports.getHistory = async (req, res, next) => {
   try {
     const { userId, lessonId } = req.params;
-    
+
     if (!userId || !lessonId) {
       const err = new Error("Thiếu userId hoặc lessonId");
       err.status = 400;

@@ -90,56 +90,38 @@ class ChatbotService {
     }
   }
 
-  async saveHistory(userId, lessonId, question, answer) {
-    const client = await db.pool.connect();
+  async saveHistory(userId, lessonId, title, senderType) {
     try {
-      await client.query('BEGIN');
-
-      // 1. Lưu câu hỏi của học viên (sender = 'user')
-      const userInsertQuery = `
+      // 1. Thực thi câu lệnh INSERT INTO ai_chat để đẩy thẳng vào database
+      const insertQuery = `
         INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
         VALUES ($1, $2, $3, $4, NOW())
-        RETURNING ai_chat
+        RETURNING ai_chat, student_id, lesson_id, title, sender_type, created_at AS created_date
       `;
-      const userRes = await client.query(userInsertQuery, [userId, lessonId, question, 'user']);
-
-      // 2. Lưu câu trả lời của Bot (sender = 'bot')
-      // Thêm 1 mili giây offset để đảm bảo thứ tự chính xác khi sắp xếp theo thời gian
-      const botInsertQuery = `
-        INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
-        VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 millisecond')
-        RETURNING ai_chat
-      `;
-      const botRes = await client.query(botInsertQuery, [userId, lessonId, answer, 'bot']);
-
-      await client.query('COMMIT');
-      return {
-        userChatId: userRes.rows[0].ai_chat,
-        botChatId: botRes.rows[0].ai_chat
-      };
+      const result = await db.query(insertQuery, [userId, lessonId, title, senderType]);
+      return result.rows[0];
     } catch (error) {
-      await client.query('ROLLBACK');
       console.error("Lỗi xảy ra tại ChatbotService.saveHistory:", error);
       throw error;
-    } finally {
-      client.release();
     }
   }
 
   async getHistory(userId, lessonId) {
     try {
+      // 2. Truy vấn bảng ai_chat và trả về danh sách hội thoại cũ theo thứ tự thời gian tăng dần
       const queryText = `
-        SELECT ai_chat, sender_type, title, created_at
+        SELECT ai_chat, sender_type, title, created_at AS created_date
         FROM ai_chat
         WHERE student_id = $1 AND lesson_id = $2
-        ORDER BY created_at ASC, ai_chat ASC
+        ORDER BY created_date ASC
       `;
       const result = await db.query(queryText, [userId, lessonId]);
       
       return result.rows.map(row => ({
         chat_id: row.ai_chat,
         sender: row.sender_type,
-        message: row.title
+        message: row.title,
+        created_date: row.created_date
       }));
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.getHistory:", error);
@@ -152,7 +134,7 @@ const serviceInstance = new ChatbotService();
 
 module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
-  saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
+  saveHistory: (userId, lessonId, title, senderType) => serviceInstance.saveHistory(userId, lessonId, title, senderType),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   handleRagChat
 };

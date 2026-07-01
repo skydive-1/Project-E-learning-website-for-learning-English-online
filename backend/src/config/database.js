@@ -171,6 +171,34 @@ const testConnection = async () => {
 
     console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons", "user_progress" thành công.');
 
+    // Tạo bảng questions (trắc nghiệm cho course)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS questions (
+        question_id SERIAL PRIMARY KEY,
+        course_id INT NOT NULL,
+        question_text TEXT NOT NULL,
+        options JSONB NOT NULL,
+        correct_answer TEXT NOT NULL,
+        CONSTRAINT fk_question_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
+      );
+    `);
+
+    // Tạo bảng quiz_history
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quiz_history (
+        history_id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL,
+        course_id INT NOT NULL,
+        score NUMERIC(5,2) NOT NULL,
+        total_questions INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_quiz_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        CONSTRAINT fk_quiz_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
+      );
+    `);
+
+    console.log('✅ Đã kiểm tra/khởi tạo các bảng "questions", "quiz_history" thành công.');
+
     // Tạo/Kiểm tra bảng ai_chat và thêm cột lesson_id nếu chưa có
     await client.query(`
       CREATE TABLE IF NOT EXISTS ai_chat (
@@ -239,16 +267,16 @@ const testConnection = async () => {
     const courseCheck = await client.query("SELECT course_id FROM courses WHERE course_name = 'English for Communication & AI Interaction'");
     if (courseCheck.rows.length === 0) {
       console.log('🌱 Đang khởi tạo dữ liệu mẫu khóa học "English for Communication & AI Interaction"...');
-      
+
       // Chèn khóa học (subject_id = 4: General English Communication)
       const courseRes = await client.query(`
         INSERT INTO courses (subject_id, course_name, description, instructor_id, thumbnail_url, price, status, start_date, end_date)
         VALUES (4, 'English for Communication & AI Interaction', 'Khóa học tiếng Anh giao tiếp phản xạ kết hợp Trợ lý học tập AI.', $1, '/images/hero_illustration.png', 0, 'published', '2026-06-20', '2027-06-20')
         RETURNING course_id
       `, [instructorId]);
-      
+
       const newCourseId = courseRes.rows[0].course_id;
-      
+
       // Chương 1
       const sec1Res = await client.query(`
         INSERT INTO sections (course_id, title, order_index)
@@ -256,13 +284,13 @@ const testConnection = async () => {
         RETURNING section_id
       `, [newCourseId]);
       const sec1Id = sec1Res.rows[0].section_id;
-      
+
       // Lesson 1
       await client.query(`
         INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
         VALUES ($1, '1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', 1)
       `, [sec1Id]);
-      
+
       // Lesson 2
       await client.query(`
         INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
@@ -276,13 +304,13 @@ const testConnection = async () => {
         RETURNING section_id
       `, [newCourseId]);
       const sec2Id = sec2Res.rows[0].section_id;
-      
+
       // Lesson 3
       await client.query(`
         INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
         VALUES ($1, '3. Các thì thời gian trong văn phong nói (Speaking Tenses)', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4', 1)
       `, [sec2Id]);
-      
+
       // Lesson 4
       await client.query(`
         INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
@@ -296,13 +324,13 @@ const testConnection = async () => {
         RETURNING section_id
       `, [newCourseId]);
       const sec3Id = sec3Res.rows[0].section_id;
-      
+
       // Lesson 5
       await client.query(`
         INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
         VALUES ($1, '5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả', 'video', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4', 1)
       `, [sec3Id]);
-      
+
       console.log('🌱 Seed khóa học mặc định thành công!');
     }
 
