@@ -7,6 +7,7 @@ import AuthLayout from './modules/auth/components/AuthLayout';
 import ProfilePage from './modules/profile/pages/ProfilePage';
 import LessonDetailPage from './modules/lessons/pages/LessonDetailPage';
 import CourseListPage from './modules/courses/pages/CourseListPage';
+import MyCoursesPage from './modules/courses/pages/MyCoursesPage';
 import RoadmapPage from './modules/academy/pages/RoadmapPage';
 import InstructorDashboard from './modules/instructor/pages/InstructorDashboard';
 import CourseEditor from './modules/instructor/pages/CourseEditor';
@@ -57,6 +58,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/my-courses"
+                  element={
+                    <ProtectedRoute>
+                      <MyCoursesPage />
                     </ProtectedRoute>
                   }
                 />

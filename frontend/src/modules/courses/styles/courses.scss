@@ -804,3 +804,136 @@ html.dark {
   }
 }
 
+// Custom styles for My Courses Dashboard
+.my-courses-dashboard {
+  .stat-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05) !important;
+    }
+  }
+
+  .filter-pills button {
+    &:hover {
+      border-color: #1d4ed8 !important;
+      color: #1d4ed8 !important;
+    }
+  }
+
+  .search-box-wrapper input {
+    transition: border-color 0.2s, box-shadow 0.2s;
+    &:focus {
+      border-color: #1d4ed8 !important;
+      box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15) !important;
+    }
+  }
+
+  .course-card-premium {
+    background: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 20px;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+
+    &:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+      
+      .btn-preview {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
+    .card-thumb {
+      position: relative;
+      height: 180px;
+      overflow: hidden;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .badge-status {
+        position: absolute;
+        top: 14px;
+        left: 14px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        z-index: 2;
+      }
+
+      .thumb-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(15, 23, 42, 0.4);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      &:hover .thumb-overlay {
+        opacity: 1;
+      }
+
+      .btn-preview {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.9);
+        background: #ffffff;
+        color: #0f172a;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 30px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        opacity: 0;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      }
+    }
+
+    .card-body {
+      padding: 20px;
+
+      .card-tags {
+        margin-bottom: 12px;
+        .tag-level {
+          font-size: 11px;
+          font-weight: 700;
+          padding: 4px 10px;
+          border-radius: 6px;
+        }
+      }
+
+      .course-title {
+        color: var(--text-color, #0f172a);
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+    }
+  }
+
+  /* Dark mode specific styles */
+  &.dark-mode-theme {
+    .stat-card {
+      background: #1e293b !important;
+      border-color: #334155 !important;
+    }
+  }
+}
+

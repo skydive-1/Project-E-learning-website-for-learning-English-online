@@ -119,7 +119,7 @@ const Header = () => {
                     </Link>
                   )}
 
-                  <Link to="/lessons" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
+                  <Link to="/my-courses" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                     <FiBookOpen className="dropdown-icon" />
                     <span>Bài học của tôi</span>
                   </Link>
