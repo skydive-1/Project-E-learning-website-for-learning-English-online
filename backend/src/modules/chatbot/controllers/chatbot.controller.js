@@ -20,16 +20,16 @@ exports.ask = async (req, res, next) => {
 
 exports.saveHistory = async (req, res, next) => {
   try {
-    // Tiếp nhận 4 trường dữ liệu từ Quốc Anh
-    const { userId, lessonId, title, sender_type } = req.body;
+    // Tiếp nhận các trường dữ liệu theo API Contract
+    const { user_id, lesson_id, question, answer } = req.body;
 
-    if (!userId || !lessonId || !title || !sender_type) {
-      const err = new Error("Dữ liệu không đầy đủ. Yêu cầu 4 trường: userId, lessonId, title, sender_type");
+    if (!user_id || !lesson_id || !question || !answer) {
+      const err = new Error("Dữ liệu không đầy đủ. Yêu cầu 4 trường: user_id, lesson_id, question, answer");
       err.status = 400;
       throw err;
     }
 
-    const result = await chatbotService.saveHistory(userId, lessonId, title, sender_type);
+    const result = await chatbotService.saveHistory(user_id, lesson_id, question, answer);
     res.status(201).json({
       success: true,
       message: "Lưu lịch sử tin nhắn thành công",

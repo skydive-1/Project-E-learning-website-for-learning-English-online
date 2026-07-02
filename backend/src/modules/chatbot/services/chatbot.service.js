@@ -90,16 +90,28 @@ class ChatbotService {
     }
   }
 
-  async saveHistory(userId, lessonId, title, senderType) {
+  async saveHistory(userId, lessonId, question, answer) {
     try {
-      // 1. Thực thi câu lệnh INSERT INTO ai_chat để đẩy thẳng vào database
-      const insertQuery = `
+      // 1. Lưu câu hỏi của user
+      const insertUserQuery = `
         INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
-        VALUES ($1, $2, $3, $4, NOW())
+        VALUES ($1, $2, $3, 'user', NOW())
         RETURNING ai_chat, student_id, lesson_id, title, sender_type, created_at AS created_date
       `;
-      const result = await db.query(insertQuery, [userId, lessonId, title, senderType]);
-      return result.rows[0];
+      const userResult = await db.query(insertUserQuery, [userId, lessonId, question]);
+
+      // 2. Lưu câu trả lời của bot/ai
+      const insertBotQuery = `
+        INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
+        VALUES ($1, $2, $3, 'bot', NOW())
+        RETURNING ai_chat, student_id, lesson_id, title, sender_type, created_at AS created_date
+      `;
+      const botResult = await db.query(insertBotQuery, [userId, lessonId, answer]);
+
+      return {
+        userMessage: userResult.rows[0],
+        botMessage: botResult.rows[0]
+      };
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.saveHistory:", error);
       throw error;
@@ -134,7 +146,7 @@ const serviceInstance = new ChatbotService();
 
 module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
-  saveHistory: (userId, lessonId, title, senderType) => serviceInstance.saveHistory(userId, lessonId, title, senderType),
+  saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   handleRagChat
 };
