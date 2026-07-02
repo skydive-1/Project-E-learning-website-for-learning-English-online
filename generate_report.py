@@ -118,7 +118,7 @@ def main():
     run_main.font.bold = True
     run_main.font.color.rgb = c_indigo
     
-    run_time = p_title.add_run("(Cập nhật tiến độ dự án từ khi khởi tạo đến ngày 24/06/2026 - Giữa Sprint 3)")
+    run_time = p_title.add_run("(Cập nhật tiến độ dự án tính đến ngày 30/06/2026 - Chuẩn bị báo cáo ngày 02/07/2026)")
     run_time.font.size = Pt(11)
     run_time.font.italic = True
     run_time.font.color.rgb = RGBColor(100, 116, 139)
@@ -137,9 +137,9 @@ def main():
         r_val.font.size = Pt(11)
         
     add_meta_line(p_meta, "Thành viên thực hiện", "Nguyễn Quốc Anh (Frontend & RAG AI), Trần Minh Liêm (Backend & AI), Nguyễn Hữu Chương (Database)")
-    add_meta_line(p_meta, "Kiến trúc hệ thống", "Modular Monolith (Express JS / React JS / PostgreSQL / VectorDB Pinecone)")
-    add_meta_line(p_meta, "Tiến độ Sprint hiện tại", "Sprint 3: Hiện thực hóa tính năng Tiến độ học tập & Trợ lý ảo RAG Chatbot (22/06 - 26/06/2026)")
-    add_meta_line(p_meta, "Nền tảng Database Cloud", "PostgreSQL (Supabase) + Pinecone Cloud Index (english-lessons)")
+    add_meta_line(p_meta, "Kiến trúc hệ thống", "Modular Monolith (Express JS / React JS 19 / PostgreSQL / VectorDB Pinecone)")
+    add_meta_line(p_meta, "Tiến độ hiện tại", "Hoàn thành khoảng 85% - 90% khối lượng công việc, chuẩn bị báo cáo tiến độ và demo ngày 02/07/2026")
+    add_meta_line(p_meta, "Nền tảng Database Cloud", "PostgreSQL (Supabase) + Pinecone Cloud Index (english-lessons) + Gemini AI Studio")
     
     # Horizontal Divider Line
     p_div = doc.add_paragraph()
@@ -172,31 +172,23 @@ def main():
     p.add_run("Kiến trúc phần mềm được lựa chọn là ")
     r_arch = p.add_run("Modular Monolith")
     r_arch.font.bold = True
-    p.add_run(" nhằm giảm thiểu sự phức tạp khi triển khai, tiết kiệm chi phí vận hành máy chủ, nhưng vẫn bảo đảm tính module hóa rõ rệt ở cả frontend và backend giúp đội ngũ phát triển 3 người làm việc song song, không chồng chéo mã nguồn. Đến thời điểm hiện tại (giữa Sprint 3), dự án đã đi được khoảng ")
-    r_pct = p.add_run("75% - 80% chặng đường")
+    p.add_run(" nhằm giảm thiểu sự phức tạp khi triển khai, tiết kiệm chi phí vận hành máy chủ, nhưng vẫn bảo đảm tính module hóa rõ rệt ở cả frontend và backend giúp đội ngũ phát triển 3 người làm việc song song, không chồng chéo mã nguồn. Đến thời điểm hiện tại (cuối Sprint 3, chuẩn bị báo cáo tiến độ tuần này), dự án đã hoàn thành ")
+    r_pct = p.add_run("khoảng 85% - 90% chặng đường")
     r_pct.font.bold = True
     r_pct.font.color.rgb = c_orange
-    p.add_run(", các khung chức năng lớn của học viên, giảng viên và hạ tầng dữ liệu RAG đã hoạt động ổn định trên môi trường local và Supabase Cloud.")
+    p.add_run(", các khung chức năng lớn của học viên, giảng viên, hệ thống trắc nghiệm và hạ tầng kết nối RAG AI thực tế đã hoạt động ổn định và liên thông hoàn toàn.")
 
     # ----------------- SECTION 2 -----------------
     h1 = doc.add_paragraph()
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(8)
-    r = h1.add_run("II. TIẾN ĐỘ CHI TIẾT PHÂN HỆ FRONTEND (QUỐC ANH)")
+    r = h1.add_run("II. NHỮNG KẾT QUẢ ĐÃ ĐẠT ĐƯỢC (TÍNH ĐẾN 30/06/2026)")
     r.font.size = Pt(14)
     r.font.bold = True
     r.font.color.rgb = c_indigo
     
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    p.add_run("Phân hệ Frontend được xây dựng bằng thư viện ")
-    p.add_run("ReactJS (phiên bản 19)").font.bold = True
-    p.add_run(" kết hợp với công cụ biên dịch siêu tốc ")
-    p.add_run("Vite").font.bold = True
-    p.add_run(". Toàn bộ giao diện được cấu trúc theo mô hình Modular gọn gàng, chia nhỏ các luồng nghiệp vụ thành các thư mục độc lập (Homepage, Auth, Courses, Lessons, Profile, Instructor, Progress, Chatbot) giúp tăng khả năng tái sử dụng và bảo trì mã nguồn.")
-    
     p_sub = doc.add_paragraph()
-    p_sub.add_run("Các hạng mục và giao diện đã hoàn thành 100%:").font.bold = True
+    p_sub.add_run("1. Phân hệ Frontend (Nguyễn Quốc Anh):").font.bold = True
     p_sub.paragraph_format.space_after = Pt(4)
     
     def add_bullet(doc, bold_txt, normal_txt):
@@ -208,88 +200,57 @@ def main():
         r_n = p_b.add_run(normal_txt)
         r_n.font.size = Pt(11)
 
+    add_bullet(doc, "Responsive Web Design (RWD) hoàn thiện: ", "Toàn bộ giao diện hệ thống đã được tối ưu hóa hiển thị, tự động thích ứng mượt mà trên mọi thiết bị khác nhau bao gồm điện thoại di động, máy tính bảng và máy tính để bàn.")
+    add_bullet(doc, "Tích hợp Giao diện Sáng/Tối (Light & Dark Mode): ", "Xây dựng hệ thống Context quản lý theme chung (ThemeContext.jsx) tích hợp nút chuyển đổi nhanh trên thanh công cụ Header. Cấu hình SCSS đồng bộ giúp chuyển đổi màu sắc, độ tương phản mượt mà, hạn chế mỏi mắt khi học tập lâu dài.")
+    add_bullet(doc, "Trang cá nhân & Xác thực (Profile, Login, Register Pages): ", "Cho phép người dùng chỉnh sửa thông tin cá nhân, thay đổi ảnh đại diện. Tích hợp validation nhập liệu chặt chẽ ở form đăng ký/đăng nhập, lưu giữ JSON Web Token cục bộ tại localStorage để bảo mật các trang riêng tư (ProtectedRoute).")
     add_bullet(doc, "Trang chủ hệ thống (HomePage): ", "Giới thiệu các khóa học nổi bật, lộ trình học trực quan, danh mục bài học và biểu đồ tổng quan, tạo ấn tượng ban đầu hiện đại, sạch sẽ.")
     add_bullet(doc, "Trang danh sách khóa học (CourseListPage): ", "Hiển thị danh sách khóa học kèm hình ảnh thu nhỏ (thumbnail), phân loại môn học và mức độ phù hợp.")
     add_bullet(doc, "Lộ trình học trực quan (RoadmapPage): ", "Cung cấp cái nhìn tổng quan về lộ trình học từ cơ bản đến nâng cao dưới dạng Grid, sử dụng màu sắc phân loại trạng thái bài học.")
-    add_bullet(doc, "Trang chi tiết học tập bài giảng (LessonDetailPage): ", "Giao diện chính dành cho học viên, gồm khung phát video bài giảng chất lượng cao (hoặc xem tài liệu PDF), khu vực xem giáo trình bằng văn bản (Syllabus text content), tài liệu đính kèm bên ngoài (Attachments) có nút tải xuống trực tiếp và thanh playlist bài học xếp theo dạng accordion gập/mở thông minh.")
-    add_bullet(doc, "Khung chat Trợ lý ảo AI Assistant: ", "Nằm cố định sát cạnh video bài giảng ở Sidebar bên phải. Giao diện trò chuyện được thiết kế tối ưu với bong bóng chat phân biệt màu sắc, hiệu ứng loading dấu ba chấm nhấp nháy chân thực, nút dọn dẹp lịch sử trò chuyện và các nút gợi ý câu hỏi nhanh (Quick Prompts) để người học click hỏi nhanh chatbot.")
-    add_bullet(doc, "Hệ thống Quản lý Giảng viên (Instructor Dashboard & CourseEditor): ", "Giao diện quản lý toàn diện dành cho giáo viên, cho phép xem danh sách khóa học đã tạo, tạo mới khóa học hoặc chỉnh sửa chi tiết các chương mục bài giảng, tích hợp trực tiếp API lưu trữ dữ liệu thời gian thực xuống database.")
-    add_bullet(doc, "Trang cá nhân & Xác thực (Profile, Login, Register Pages): ", "Cho phép chỉnh sửa thông tin cá nhân, xem ảnh đại diện, tích hợp xác thực thông tin nhập liệu, lưu Token đăng nhập cục bộ (localStorage) để bảo mật các trang riêng tư thông qua ProtectedRoute.")
-    add_bullet(doc, "Cơ chế phản hồi dự phòng thông minh (Fallback Answers): ", "Trường hợp API chatbot backend chưa kịp kết nối hoặc lỗi dịch vụ, Frontend tự động kích hoạt bộ dữ liệu câu hỏi thường gặp được biên soạn sẵn (ngữ pháp, từ vựng, bài tập thực hành...) kết hợp thời gian trễ ngẫu nhiên (1.2s - 2.5s) mô phỏng quá trình AI phản hồi thực tế.")
+    add_bullet(doc, "Trang học tập bài giảng (LessonDetailPage): ", "Giao diện chính dành cho học viên, gồm khung phát video bài giảng chất lượng cao, khu vực xem giáo trình bằng văn bản (Syllabus text content), tài liệu đính kèm bên ngoài (Attachments) có nút tải xuống trực tiếp và thanh playlist bài học xếp theo dạng accordion gập/mở thông minh.")
+    add_bullet(doc, "Khung chat Trợ lý ảo AI Assistant: ", "Sidebar trò chuyện bên phải video bài học được thiết kế tối ưu với bong bóng chat phân biệt màu sắc, hiệu ứng loading dấu ba chấm nhấp nháy chân thực, nút dọn dẹp lịch sử trò chuyện và các nút gợi ý câu hỏi nhanh (Quick Prompts) để người học click hỏi nhanh chatbot.")
 
-    # ----------------- SECTION 3 -----------------
-    h1 = doc.add_paragraph()
-    h1.paragraph_format.space_before = Pt(14)
-    h1.paragraph_format.space_after = Pt(8)
-    r = h1.add_run("III. TIẾN ĐỘ CHI TIẾT PHÂN HỆ BACKEND (MINH LIÊM)")
-    r.font.size = Pt(14)
-    r.font.bold = True
-    r.font.color.rgb = c_indigo
-    
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    p.add_run("Phân hệ Backend chạy trên nền tảng ")
-    p.add_run("Node.js và Express framework").font.bold = True
-    p.add_run(", tổ chức theo kiến trúc Modular Monolith. Mã nguồn backend được chia thành các folder cô lập rõ ràng: auth, courses, lessons, progress, chatbot. Mỗi module quản lý đầy đủ từ routes, controllers đến services để đảm bảo lỗi ở một chức năng không làm ảnh hưởng đến các chức năng khác.")
-    
     p_sub = doc.add_paragraph()
-    p_sub.add_run("Các chức năng và API đã hoàn thiện:").font.bold = True
+    p_sub.add_run("2. Phân hệ Backend & Kết nối AI (Trần Minh Liêm):").font.bold = True
     p_sub.paragraph_format.space_after = Pt(4)
     
-    add_bullet(doc, "Module Xác thực (Auth Module): ", "Triển khai thành công các API đăng ký tài khoản mới, mã hóa mật khẩu bảo mật bằng thư viện bcryptjs, đăng nhập sinh mã JSON Web Token (JWT) và Middleware authenticate kiểm tra token tự động tại các API nội bộ.")
-    add_bullet(doc, "Module Khóa học (Courses Module): ", "Hoàn thành API lấy danh mục môn học, danh sách khóa học kèm theo số lượng chương (sections) và bài giảng (lessons) được tính toán bằng truy vấn SQL tối ưu. Đặc biệt, API tạo mới khóa học được bao bọc trong một Database Transaction (giao dịch an toàn), đảm bảo chèn đồng thời khóa học, các chương học và bài giảng con vào cơ sở dữ liệu cùng lúc; nếu có bất kỳ lỗi nào xảy ra, hệ thống tự động Rollback để tránh rác dữ liệu.")
-    add_bullet(doc, "Module Tiến trình học tập (Progress Module): ", "API lấy danh sách bài học đã hoàn thành theo User ID và API ghi nhận trạng thái hoàn thành bài học. Dịch vụ này sử dụng truy vấn UPSERT (INSERT ON CONFLICT DO UPDATE) của PostgreSQL để tránh tạo ra các bản ghi trùng lặp và loại bỏ lỗi xung đột dữ liệu (race-condition) khi người dùng click liên tục.")
-    add_bullet(doc, "Module Chatbot RAG (Chatbot Module): ", "Hoàn thiện API Endpoint POST /api/chatbot/ask yêu cầu xác thực người dùng. Dịch vụ này tiếp nhận câu hỏi của người dùng và lesson_id hiện tại, gọi dịch vụ RAG để trả về kết quả.")
-    add_bullet(doc, "Middleware dùng chung: ", "Middleware kiểm tra hợp lệ dữ liệu (validation.middleware), ghi nhận hoạt động (logger.middleware) và bộ xử lý lỗi toàn cục (Global Error Handler) bắt giữ và format các thông báo lỗi chuyên nghiệp gửi về client.")
+    add_bullet(doc, "Tích hợp thực tế Gemini & Pinecone (Loại bỏ Mock): ", "Thay thế thành công toàn bộ mã giả lập (Mock Client) trước đây. Kết nối thực tế API Gemini API (sử dụng model gemini-2.5-flash và gemini-embedding-001) và cơ sở dữ liệu Vector Database Pinecone (Index: english-lessons, 768 chiều).")
+    add_bullet(doc, "Xử lý RAG Chat thực tế: ", "Chatbot backend tiếp nhận câu hỏi của người dùng, tự động gọi Gemini tạo vector embedding của câu hỏi, thực hiện truy vấn độ tương đồng cosine trên Pinecone với bộ lọc lesson_id để trích xuất ngữ cảnh bổ trợ chính xác theo từng bài học cụ thể, sau đó tổng hợp câu trả lời gửi về client.")
+    add_bullet(doc, "Lưu lịch sử chat (Chat History API): ", "Hiện thực hóa luồng lưu trữ lịch sử trò chuyện của học viên với AI. Phát triển các API endpoint GET/POST /api/chatbot/history liên kết chặt chẽ với cơ sở dữ liệu PostgreSQL (bảng ai_chat), tự động tải lại toàn bộ nội dung trò chuyện cũ khi học viên quay lại bài học.")
+    add_bullet(doc, "Prompt Engineering tối ưu hóa: ", "Tinh chỉnh prompt hệ thống giúp Gemini đóng vai giáo viên tiếng Anh phản hồi tự nhiên, sinh động, định dạng markdown rõ ràng. Sử dụng IPA (phiên âm chuẩn) kèm ví dụ thực tế khi giải nghĩa từ vựng; loại bỏ hoàn toàn các câu trả lời rập khuôn kiểu máy móc.")
+    add_bullet(doc, "Cấu hình Google Login (Google OAuth): ", "Thiết lập cấu hình xác thực OAuth với Google giúp người học có thể đăng nhập nhanh chóng bằng tài khoản Gmail cá nhân mà không cần tạo mật khẩu mới.")
+    add_bullet(doc, "Module Quản lý Khóa học & Tiến trình học tập: ", "Các API CRUD khóa học bảo vệ bởi Database Transactions (giao dịch an toàn). API ghi nhận tiến trình học tập sử dụng UPSERT của PostgreSQL tránh lỗi race-condition hoặc trùng lặp bản ghi.")
 
-    make_callout_box(doc, [
-        "Hạ tầng kết nối AI thực tế trong file backend/src/utils/ai-clients.js hiện đang ở dạng Mock/Giả lập.",
-        "Cần khẩn trương ráp nối thư viện SDK Pinecone Client và Google Generative AI (@google/generative-ai) thực tế vào file này để hoàn tất tích hợp RAG.",
-        "Key bảo mật GEMINI_API_KEY và PINECONE_API_KEY cần được Quốc Anh và Liêm chia sẻ và dán vào file cấu hình môi trường .env cục bộ."
-    ], "HẠN CHẾ CẦN KHẮC PHỤC NGAY Ở BACKEND")
-
-    # ----------------- SECTION 4 -----------------
-    h1 = doc.add_paragraph()
-    h1.paragraph_format.space_before = Pt(14)
-    h1.paragraph_format.space_after = Pt(8)
-    r = h1.add_run("IV. TIẾN ĐỘ PHÂN HỆ DATABASE & PIPELINE HUẤN LUYỆN AI RAG (CHƯƠNG & Q.ANH)")
-    r.font.size = Pt(14)
-    r.font.bold = True
-    r.font.color.rgb = c_indigo
-    
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    p.add_run("Hệ thống lưu trữ sử dụng hai loại cơ sở dữ liệu bổ trợ cho nhau: ")
-    p.add_run("PostgreSQL").font.bold = True
-    p.add_run(" (lưu trữ thông tin nghiệp vụ quan hệ được cấu hình trên nền tảng Supabase Cloud) và ")
-    p.add_run("Pinecone").font.bold = True
-    p.add_run(" (lưu trữ dữ liệu vector phục vụ truy tìm tri thức ngữ cảnh cho Chatbot AI).")
-    
     p_sub = doc.add_paragraph()
-    p_sub.add_run("1. Khởi tạo Cơ sở dữ liệu PostgreSQL (Supabase)").font.bold = True
+    p_sub.add_run("3. Phân hệ Trắc nghiệm tự luyện - Quizzes System (Nhóm phát triển):").font.bold = True
+    p_sub.paragraph_format.space_after = Pt(4)
+    
+    add_bullet(doc, "Giao diện làm Quiz tương tác (PlayQuizPage): ", "Thiết kế bộ giao diện làm bài trắc nghiệm đẹp mắt, có đếm ngược thời gian, thanh tiến trình trực quan, hiển thị kết quả chấm điểm tức thì và đưa ra giải thích ngữ pháp chi tiết cho từng đáp án đúng/sai.")
+    add_bullet(doc, "Tính năng AI sinh Quiz tự động (AI Quiz Generator): ", "Trên Dashboard của Giảng viên, tích hợp tính năng cho phép giáo viên nhập chủ đề (topic) và số câu hỏi mong muốn, hệ thống sẽ gọi Gemini AI tự động sinh bộ câu hỏi trắc nghiệm tiếng Anh tương ứng giúp giảm thời gian soạn giáo án của giáo viên.")
+    add_bullet(doc, "Quản lý danh sách Quiz (QuizzesListPage): ", "Hiển thị danh sách các đề trắc nghiệm tự luyện chia theo độ khó (Easy, Medium, Hard), giới hạn thời gian làm bài, giúp học viên tự học dễ dàng.")
+
+    p_sub = doc.add_paragraph()
+    p_sub.add_run("4. Phân hệ Cơ sở dữ liệu (Nguyễn Hữu Chương):").font.bold = True
     p_sub.paragraph_format.space_after = Pt(4)
     
     p_db_desc = doc.add_paragraph()
     p_db_desc.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    p_db_desc.add_run("Database đã được cấu hình trực tuyến và đồng bộ hóa với server backend thành công. Hiện tại, database có ")
-    p_db_desc.add_run("14 bảng").font.bold = True
-    p_db_desc.add_run(" đã khởi tạo. Dưới đây là bảng thống kê số lượng dữ liệu thực tế đang có trong database phục vụ quá trình phát triển:")
+    p_db_desc.add_run("Cơ sở dữ liệu PostgreSQL trực tuyến trên Supabase Cloud được thiết kế đồng bộ với hệ thống Backend thông qua 14 bảng quan hệ đã được chuẩn hóa. Bảng dưới đây thể hiện số lượng dữ liệu thực tế đang chạy ổn định trong quá trình phát triển:")
 
     # Table of DB row counts
     db_tables = [
-        ("1", "users", "12", "Lưu thông tin tài khoản đăng nhập học viên, giảng viên và quản trị.", "Đã hoàn thành"),
-        ("2", "roles", "3", "Quy định vai trò phân quyền (1: Admin, 2: Học viên, 3: Giảng viên).", "Đã hoàn thành"),
-        ("3", "courses", "3", "Lưu trữ thông tin khóa học (tên, mô tả, giảng viên, giá tiền, trạng thái).", "Đã hoàn thành"),
-        ("4", "sections", "5", "Lưu trữ các chương học lớn của từng khóa học.", "Đã hoàn thành"),
-        ("5", "lessons", "8", "Lưu trữ các bài giảng chi tiết (video URL, tài liệu PDF, loại nội dung).", "Đã hoàn thành"),
+        ("1", "users", "14", "Lưu thông tin tài khoản đăng nhập (Học viên, Giảng viên, Admin).", "Đã hoàn thành"),
+        ("2", "roles", "3", "Quy định vai trò phân quyền (1: Admin, 2: Instructor, 3: Student).", "Đã hoàn thành"),
+        ("3", "courses", "4", "Lưu trữ thông tin khóa học (tên, mô tả, giảng viên, giá tiền, trạng thái).", "Đã hoàn thành"),
+        ("4", "sections", "6", "Lưu trữ các chương học lớn của từng khóa học.", "Đã hoàn thành"),
+        ("5", "lessons", "11", "Lưu trữ các bài giảng chi tiết (video URL, tài liệu PDF, loại nội dung).", "Đã hoàn thành"),
         ("6", "subjects", "5", "Lưu trữ danh sách môn học hỗ trợ phân loại khóa học.", "Đã hoàn thành"),
-        ("7", "user_progress", "1", "Theo dõi vết tiến độ xem bài giảng (hoàn thành hay chưa) của học viên.", "Đã hoàn thành"),
-        ("8", "ai_chat", "0", "Lưu trữ lịch sử chat của học viên với bot để tải lại lịch sử giống Udemy.", "Cần ráp API thật"),
-        ("9", "classes", "0", "Lưu thông tin lớp học (chức năng mở rộng).", "Đang phát triển"),
-        ("10", "teachers", "0", "Thông tin chi tiết giảng viên liên kết.", "Đang phát triển"),
-        ("11", "students", "0", "Thông tin chi tiết học viên liên kết.", "Đang phát triển"),
-        ("12", "grades", "0", "Lưu điểm số bài kiểm tra của học viên.", "Đang phát triển"),
-        ("13", "quizz", "0", "Lưu ngân hàng câu hỏi trắc nghiệm tự luyện.", "Đang phát triển"),
+        ("7", "user_progress", "1", "Theo dõi vết tiến độ xem bài giảng của học viên.", "Đã hoàn thành"),
+        ("8", "ai_chat", "Hoạt động tốt", "Lưu trữ lịch sử chat của học viên với bot để tải lại trên UI.", "Đã hoàn thành"),
+        ("9", "quizz", "0", "Lưu ngân hàng câu hỏi trắc nghiệm tự luyện (Hiện đang lưu tạm LocalStorage).", "Đang đồng bộ hóa"),
+        ("10", "classes", "0", "Lưu thông tin lớp học (chức năng mở rộng).", "Đang phát triển"),
+        ("11", "teachers", "0", "Thông tin chi tiết giảng viên liên kết.", "Đang phát triển"),
+        ("12", "students", "0", "Thông tin chi tiết học viên liên kết.", "Đang phát triển"),
+        ("13", "grades", "0", "Lưu điểm số bài kiểm tra của học viên.", "Đang phát triển"),
         ("14", "payments", "0", "Lưu lịch sử thanh toán mua khóa học VIP.", "Đang phát triển")
     ]
     
@@ -300,7 +261,7 @@ def main():
     # Headers styling
     hdr_cells = table.rows[0].cells
     headers = ["STT", "Tên Bảng (Table)", "Bản Ghi (Rows)", "Mô Tả Vai Trò", "Trạng Thái"]
-    col_widths = [Inches(0.5), Inches(1.2), Inches(0.8), Inches(3.2), Inches(1.3)]
+    col_widths = [Inches(0.5), Inches(1.3), Inches(1.0), Inches(3.2), Inches(1.3)]
     
     for i, header_text in enumerate(headers):
         hdr_cells[i].text = header_text
@@ -334,10 +295,10 @@ def main():
                 p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 
             # Shading for status
-            if text == "Đã hoàn thành":
+            if text in ["Đã hoàn thành"]:
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(16, 185, 129) # Success Emerald Green
-            elif text == "Cần ráp API thật":
+            elif text == "Đang đồng bộ hóa":
                 run.font.bold = True
                 run.font.color.rgb = c_orange
             elif text == "Đang phát triển":
@@ -345,58 +306,54 @@ def main():
 
     doc.add_paragraph().paragraph_format.space_before = Pt(8)
     
-    p_sub2 = doc.add_paragraph()
-    p_sub2.add_run("2. Pipeline Huấn luyện AI RAG bằng Python (Quốc Anh)").font.bold = True
-    p_sub2.paragraph_format.space_after = Pt(4)
-    
-    p_rag_desc = doc.add_paragraph()
-    p_rag_desc.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    p_rag_desc.add_run("Phục vụ việc nạp tri thức học tập cho Chatbot, Quốc Anh đã xây dựng hoàn thiện một đường ống huấn luyện (Training Ingestion Pipeline) độc lập đặt trong thư mục ")
-    p_rag_desc.add_run("rag-training/").font.bold = True
-    p_rag_desc.add_run(". Pipeline này viết bằng Python cấu trúc Modular rất bài bản và đã chạy thử nghiệm thành công với các file dữ liệu ngữ pháp tiếng Anh. Quy trình hoạt động của pipeline gồm các bước:")
-    
-    add_bullet(doc, "Bước 1 - Ingestion (Document Loader): ", "Đọc các tài liệu bổ trợ bài học định dạng .txt hoặc .pdf từ thư mục data/. Hiện tại đã chuẩn bị sẵn 3 file tài liệu bài học: lesson1-supplement.txt, lesson3-supplement.txt, lesson5-supplement.txt.")
-    add_bullet(doc, "Bước 2 - Chunking (Text Chunker): ", "Băm nhỏ tài liệu văn bản dài thành các đoạn nhỏ (Chunks) có kích thước 200 - 300 từ và độ gối đầu (overlap) từ 20 - 50 từ để bảo toàn ngữ cảnh liền mạch giữa các câu.")
-    add_bullet(doc, "Bước 3 - Embeddings (Gemini Embedder): ", "Khởi tạo kết nối Google Gemini API và gọi mô hình text-embedding-004 của Google để chuyển đổi các đoạn văn bản thành vector biểu diễn ngữ nghĩa 768 chiều.")
-    add_bullet(doc, "Bước 4 - Vector DB Upload (Pinecone Store): ", "Kiểm tra và tự động khởi tạo Index english-lessons với số chiều 768, metric Cosine trên Pinecone Cloud (Free Tier Serverless spec AWS us-east-1). Thực hiện upload toàn bộ chunks vector kèm theo siêu dữ liệu (metadata) bao gồm lesson_id và nội dung text tương ứng.")
-    add_bullet(doc, "Bước 5 - Đánh giá thử nghiệm (Evaluation): ", "Sử dụng các câu hỏi truy vấn thử nghiệm như 'How to learn English effectively?' và 'What is shadowing method?' để kiểm tra độ tương đồng tương đối và trích xuất đúng ngữ cảnh văn bản.")
+    # Pipeline info
+    p_pipeline = doc.add_paragraph()
+    p_pipeline.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p_pipeline.add_run("Pipeline Huấn luyện RAG (rag-training/): ").font.bold = True
+    p_pipeline.add_run("Đường ống Ingestion nạp tri thức viết bằng Python đã hoàn thiện cấu trúc Modular. Chương trình tự động đọc các tài liệu văn bản (.txt, .pdf), băm nhỏ thành các đoạn có độ gối đầu (overlap), gọi API Gemini chuyển đổi thành vector 768 chiều và tải lên Pinecone Vector Database Cloud.")
 
-    # ----------------- SECTION 5 -----------------
+    # ----------------- SECTION 3 -----------------
     h1 = doc.add_paragraph()
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(8)
-    r = h1.add_run("V. ĐÁNH GIÁ CHUNG VÀ KẾ HOẠCH HOÀN THIỆN TIẾP THEO")
+    r = h1.add_run("III. NHỮNG HẠNG MỤC CHƯA ĐẠT ĐƯỢC VÀ HẠN CHẾ")
     r.font.size = Pt(14)
     r.font.bold = True
     r.font.color.rgb = c_indigo
     
-    p_sub3 = doc.add_paragraph()
-    p_sub3.add_run("1. Ưu điểm nổi bật của hệ thống hiện tại").font.bold = True
-    p_sub3.paragraph_format.space_after = Pt(4)
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.add_run("Bên cạnh các kết quả lớn đã đạt được để chuẩn bị báo cáo tiến độ, dự án vẫn còn một số điểm hạn chế và các chức năng chưa đạt được như mong muốn:")
     
-    add_bullet(doc, "Tính thực tiễn cao: ", "Sự kết hợp giữa bài giảng video Udemy và khung chat AI bên cạnh tạo nên sự đột phá trong cách học tập tương tác, giúp học viên giải quyết rào cản ngôn ngữ lập tức.")
-    add_bullet(doc, "Kiến trúc rõ ràng: ", "Bảo đảm khả năng mở rộng tốt. Cấu trúc thư mục ngăn nắp giúp phân tách rạch ròi trách nhiệm của các thành viên trong nhóm.")
-    add_bullet(doc, "Đồng bộ dữ liệu: ", "API Backend sử dụng transaction và upsert thông minh giúp hệ thống chạy mượt mà, bảo toàn tính đúng đắn của dữ liệu ngay cả khi có xung đột mạng.")
+    add_bullet(doc, "1. Dữ liệu Quizzes chưa đồng bộ về cơ sở dữ liệu Backend: ", "Hệ thống làm Quiz ở Frontend hiện vẫn đang quản lý và lưu giữ dữ liệu thông qua LocalStorage. Cần phát triển các API lưu trữ Quiz tập trung trên PostgreSQL (bảng quizz) để giáo viên có thể quản lý tập trung và học viên làm bài trên mọi thiết bị mà không bị mất tiến trình.")
+    add_bullet(doc, "2. Các bảng dữ liệu mở rộng chưa được kích hoạt: ", "Các bảng bổ sung như classes (lớp học), teachers (giảng viên), students (học viên), grades (điểm số), và payments (thanh toán VIP) đã được khởi tạo cấu trúc trong database PostgreSQL nhưng chưa được viết API kết nối đầy đủ hoặc chưa được tích hợp lên giao diện người dùng.")
+    add_bullet(doc, "3. Môi trường triển khai trực tuyến (Deployment Cloud): ", "Dự án hiện tại đang chạy tốt dưới môi trường phát triển cục bộ (localhost). Cần khẩn trương triển khai server backend lên Cloud (như Render hoặc Railway) và frontend React lên Cloud (như Vercel hoặc Netlify) để hội đồng phản biện có thể truy cập, kiểm thử trực tuyến mà không cần cài đặt code tại máy.")
+    add_bullet(doc, "4. Thiếu bộ kiểm thử tự động (Automated Testing): ", "Dự án chưa có bộ Unit Test hoặc Integration Test tự động cho các API backend quan trọng, chủ yếu vẫn là kiểm thử thủ công và debug bằng log, điều này có thể gây rủi ro khi hệ thống phát triển quy mô lớn hơn.")
+
+    make_callout_box(doc, [
+        "Cần hoàn thiện đồng bộ dữ liệu Quiz từ LocalStorage về PostgreSQL trước ngày báo cáo chính thức.",
+        "Tiến hành deploy thử nghiệm Frontend lên Vercel và Backend lên Render để hội đồng có thể thao tác demo trực tiếp.",
+        "Tạo sẵn các tài khoản mẫu cho các vai trò: Học viên (Student), Giáo viên (Instructor), Quản trị viên (Admin) để phần demo trong buổi báo cáo diễn ra trơn tru."
+    ], "KẾ HOẠCH HÀNH ĐỘNG KHẨN CẤP TRƯỚC BUỔI BÁO CÁO")
+
+    # ----------------- SECTION 4 -----------------
+    h1 = doc.add_paragraph()
+    h1.paragraph_format.space_before = Pt(14)
+    h1.paragraph_format.space_after = Pt(8)
+    r = h1.add_run("IV. ĐÁNH GIÁ CHUNG VÀ KẾ HOẠCH BÁO CÁO")
+    r.font.size = Pt(14)
+    r.font.bold = True
+    r.font.color.rgb = c_indigo
     
-    p_sub4 = doc.add_paragraph()
-    p_sub4.add_run("2. Các rủi ro và điểm nghẽn kỹ thuật (Hạn chế)").font.bold = True
-    p_sub4.paragraph_format.space_after = Pt(4)
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.add_run("Đến thời điểm hiện tại, dự án đã đạt được các cột mốc kỹ thuật rất quan trọng, đặc biệt là sự kết hợp nhuần nhuyễn giữa học tập video truyền thống và ")
+    p.add_run("trợ lý học tập RAG AI thực tế").font.bold = True
+    p.add_run(". Các thành viên đã phối hợp chặt chẽ, kiểm soát tốt cấu trúc mã nguồn thông qua mô hình Modular Monolith.")
     
-    add_bullet(doc, "Kết nối AI ở Backend bị Mock: ", "Như đã chỉ ra, backend mới mô phỏng phản hồi AI bằng mã tĩnh. Đây là điểm nghẽn lớn nhất ngăn cản chatbot RAG hoạt động thực tế trên UI.")
-    add_bullet(doc, "Độ lệch cấu trúc bảng lịch sử chat: ", "Bảng ai_chat lưu trong cơ sở dữ liệu Supabase sử dụng cấu trúc student_id và sender_type, trong khi tài liệu thiết kế ban đầu đề xuất chat_history sử dụng user_id và sender. Cần thống nhất lại cấu trúc này trong code backend khi tiến hành kết nối.")
-    add_bullet(doc, "Thiếu dữ liệu chat thực tế: ", "Hiện tại bảng ai_chat chưa có dòng dữ liệu nào do luồng chat thực tế chưa được kích hoạt liên thông.")
-    
-    p_sub5 = doc.add_paragraph()
-    p_sub5.add_run("3. Kế hoạch hành động để hoàn thành Sprint 3 (Trước ngày 26/06/2026)").font.bold = True
-    p_sub5.paragraph_format.space_after = Pt(4)
-    
-    p_plan = doc.add_paragraph()
-    p_plan.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    p_plan.add_run("Để kích hoạt thành công 'linh hồn' của đồ án trước hạn chót Sprint 3, nhóm cần ưu tiên thực hiện các công việc sau:")
-    
-    add_bullet(doc, "Nhiệm vụ 1 (Trần Minh Liêm): ", "Thay thế file mock backend/src/utils/ai-clients.js bằng mã nguồn tích hợp thực tế sử dụng SDK @google/generative-ai và @pinecone-database/pinecone. Thực hiện lọc dữ liệu vector theo đúng lesson_id bằng filter của Pinecone.")
-    add_bullet(doc, "Nhiệm vụ 2 (Nguyễn Hữu Chương): ", "Cập nhật logic hoặc đồng bộ lại bảng ai_chat trong database Supabase, sẵn sàng hỗ trợ API lưu lịch sử tin nhắn của học viên khi trò chuyện.")
-    add_bullet(doc, "Nhiệm vụ 3 (Nguyễn Quốc Anh): ", "Kiểm tra và lấy key từ Google AI Studio gửi cho Liêm. Chạy thử nghiệm toàn trình (End-to-End) luồng Chatbot từ giao diện React, gọi API Backend, truy vấn Pinecone Index, gửi prompt đến Gemini và trả phản hồi lại màn hình học viên.")
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p.add_run("Để chuẩn bị tốt nhất cho buổi báo cáo tiến độ vào thứ Năm tuần này (02/07/2026), nhóm phát triển sẽ tập trung hoàn thiện giao diện demo, đảm bảo các kết nối Cloud luôn sẵn sàng và chuẩn bị slide thuyết trình nêu bật được giá trị cốt lõi là giải pháp trợ lý ảo thông minh giải đáp ngữ cảnh bài học.")
     
     # Bottom Signatures
     doc.add_paragraph().paragraph_format.space_before = Pt(24)
@@ -404,7 +361,7 @@ def main():
     p_sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p_sig.paragraph_format.right_indent = Inches(0.5)
     
-    run_sig_date = p_sig.add_run("Hà Nội, ngày 24 tháng 06 năm 2026\n")
+    run_sig_date = p_sig.add_run("Hà Nội, ngày 30 tháng 06 năm 2026\n")
     run_sig_date.font.italic = True
     run_sig_date.font.size = Pt(11)
     

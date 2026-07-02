@@ -38,7 +38,12 @@ exports.uploadFile = async (req, res, next) => {
         message: 'Không tìm thấy file để tải lên'
       });
     }
-    const fileUrl = `/uploads/${req.file.filename}`;
+    
+    const destNormalized = req.file.destination.replace(/\\/g, '/');
+    const uploadIdx = destNormalized.indexOf('/uploads');
+    const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
+    const fileUrl = `/uploads${subFolder}/${req.file.filename}`;
+
     res.status(200).json({
       success: true,
       message: 'Tải file lên thành công',
@@ -73,8 +78,10 @@ exports.uploadMedia = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
-    // Trả về đường dẫn file để frontend lưu vào lesson/course
-    const fileUrl = `/uploads/${req.file.destination.split('uploads/')[1]}/${req.file.filename}`;
+    const destNormalized = req.file.destination.replace(/\\/g, '/');
+    const uploadIdx = destNormalized.indexOf('/uploads');
+    const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
+    const fileUrl = `/uploads${subFolder}/${req.file.filename}`;
     
     res.status(200).json({
       success: true,

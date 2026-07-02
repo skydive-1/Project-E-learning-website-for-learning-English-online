@@ -17,7 +17,26 @@ if (!fs.existsSync(uploadDir)) {
 // Cấu hình lưu trữ
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype;
+    
+    let subDir = '';
+    if (mime.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.avi'].includes(ext)) {
+      subDir = 'courses/videos';
+    } else if (mime === 'application/pdf' || ext === '.pdf') {
+      subDir = 'courses/documents';
+    } else if (mime.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+      subDir = 'courses/thumbnails';
+    }
+
+    const targetDir = path.join(uploadDir, subDir);
+
+    // Tạo thư mục nếu chưa tồn tại
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    cb(null, targetDir);
   },
   filename: (req, file, cb) => {
     // Đặt tên file độc nhất: timestamp-random-tên_gốc
@@ -35,10 +54,14 @@ const fileFilter = (req, file, cb) => {
     'video/mp4',
     'video/quicktime',
     'video/x-matroska',
-    'video/avi'
+    'video/avi',
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp'
   ];
 
-  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi'];
+  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
   const ext = path.extname(file.originalname).toLowerCase();
 
   // Kiểm tra MIME type
@@ -49,7 +72,7 @@ const fileFilter = (req, file, cb) => {
   if (isMimeAllowed && isExtAllowed) {
     cb(null, true);
   } else {
-    cb(new Error('Định dạng tệp không hợp lệ hoặc không được hỗ trợ. Chỉ cho phép tệp PDF và Video (MP4, MOV, MKV, AVI).'), false);
+    cb(new Error('Định dạng tệp không hợp lệ hoặc không được hỗ trợ. Cho phép tệp PDF, Video (MP4, MOV, MKV, AVI) và Hình ảnh (JPG, JPEG, PNG, GIF, WEBP).'), false);
   }
 };
 
