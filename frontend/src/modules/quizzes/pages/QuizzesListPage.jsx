@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
@@ -7,10 +7,26 @@ import { getFreeQuizzesList } from '../services/quizzes.service';
 
 const QuizzesListPage = () => {
   const navigate = useNavigate();
-  const quizzesList = getFreeQuizzesList();
+  const [quizzesList, setQuizzesList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [pinCode, setPinCode] = useState('');
   const [pinError, setPinError] = useState('');
   const [joining, setJoining] = useState(false);
+
+  useEffect(() => {
+    const loadQuizzes = async () => {
+      try {
+        setLoading(true);
+        const list = await getFreeQuizzesList();
+        setQuizzesList(list);
+      } catch (err) {
+        console.error("Lỗi tải danh sách trắc nghiệm:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadQuizzes();
+  }, []);
 
   const handleJoinByPin = (e) => {
     e.preventDefault();
@@ -40,6 +56,15 @@ const QuizzesListPage = () => {
       default: return 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-900 text-slate-500">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-smart-indigo rounded-full animate-spin"></div>
+        <p className="mt-4 text-xs font-bold uppercase tracking-wider">Đang tải danh sách đề thi...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300" style={{ fontFamily: "'Outfit', sans-serif" }}>

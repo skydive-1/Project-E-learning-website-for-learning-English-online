@@ -12,12 +12,19 @@ exports.getQuizzes = async (req, res, next) => {
 
     const data = await quizzesService.getQuizzesByCourseId(courseId);
     
-    // Ẩn đáp án đúng trước khi trả về cho Frontend
-    const sanitizedData = data.map(q => ({
-      question_id: q.question_id,
-      course_id: q.course_id,
-      question_text: q.question_text,
-      options: q.options
+    // Ẩn đáp án đúng và giải thích trước khi trả về cho Frontend làm bài
+    const sanitizedData = data.map(quiz => ({
+      quiz_id: quiz.quiz_id,
+      course_id: quiz.course_id,
+      title: quiz.title,
+      description: quiz.description,
+      difficulty: quiz.difficulty,
+      time_limit: quiz.time_limit,
+      questions: quiz.questions.map(q => ({
+        question_id: q.question_id,
+        question_text: q.question_text,
+        options: q.options
+      }))
     }));
 
     res.status(200).json({
@@ -31,17 +38,30 @@ exports.getQuizzes = async (req, res, next) => {
 
 exports.submitQuiz = async (req, res, next) => {
   try {
-    // Tiếp nhận userId, courseId và mảng đáp án answers
-    const userId = req.body.userId || req.user?.id;
-    const { courseId, answers } = req.body;
+    // Tiếp nhận userId, quizId/courseId và mảng đáp án answers
+    const userId = req.body.userId || req.user?.id || req.user?.userId;
+    const { quizId, courseId, answers } = req.body;
     
-    if (!userId || !courseId || !answers || !Array.isArray(answers)) {
-      const err = new Error("Dữ liệu không hợp lệ. Yêu cầu có: userId, courseId, answers (dạng mảng)");
+    if (!userId || (!quizId && !courseId) || !answers || !Array.isArray(answers)) {
+      const err = new Error("Dữ liệu không hợp lệ. Yêu cầu có: userId, quizId hoặc courseId, answers (dạng mảng)");
       err.status = 400;
       throw err;
     }
 
-    const result = await quizzesService.submitQuiz(userId, courseId, answers);
+    let finalQuizId = quizId;
+    if (!finalQuizId && courseId) {
+      // Nếu chỉ truyền courseId, tự động tìm quiz đầu tiên của khóa học đó
+      const quizzes = await quizzesService.getQuizzesByCourseId(courseId);
+      if (quizzes.length > 0) {
+        finalQuizId = quizzes[0].quiz_id;
+      } else {
+        const err = new Error("Không tìm thấy đề thi trắc nghiệm cho khóa học này.");
+        err.status = 404;
+        throw err;
+      }
+    }
+
+    const result = await quizzesService.submitQuiz(userId, finalQuizId, answers);
     res.status(201).json({
       success: true,
       message: "Nộp bài thi thành công",

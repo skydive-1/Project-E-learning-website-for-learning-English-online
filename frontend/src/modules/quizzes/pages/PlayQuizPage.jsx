@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiClock, FiAward, FiVolume2, FiVolumeX, FiCheck, FiX, FiRefreshCw } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { getFreeQuizById } from '../services/quizzes.service';
+import { getFreeQuizById, submitQuizAttempt } from '../services/quizzes.service';
 
 const PlayQuizPage = () => {
   const { quizId } = useParams();
   const navigate = useNavigate();
-  const quiz = getFreeQuizById(quizId);
+  const [quiz, setQuiz] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedAnswers, setSelectedAnswers] = useState({});
 
   // States
   const [gameState, setGameState] = useState('intro'); // 'intro', 'playing', 'feedback', 'podium'
@@ -23,6 +25,21 @@ const PlayQuizPage = () => {
   const [selectedOptionKey, setSelectedOptionKey] = useState(null);
   const [feedbackType, setFeedbackType] = useState(''); // 'correct', 'incorrect', 'timeout'
   const [earnedPoints, setEarnedPoints] = useState(0);
+
+  useEffect(() => {
+    const fetchQuiz = async () => {
+      try {
+        setLoading(true);
+        const data = await getFreeQuizById(quizId);
+        setQuiz(data);
+      } catch (err) {
+        console.error("Lỗi tải thông tin đề thi trắc nghiệm:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchQuiz();
+  }, [quizId]);
 
   const timerRef = useRef(null);
 
@@ -92,6 +109,15 @@ const PlayQuizPage = () => {
     };
   }, [gameState, currentIdx]);
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-6 text-center">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-smart-indigo rounded-full animate-spin"></div>
+        <p className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-500">Đang chuẩn bị đề thi...</p>
+      </div>
+    );
+  }
+
   if (!quiz) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-6 text-center">
@@ -111,6 +137,7 @@ const PlayQuizPage = () => {
     setScore(0);
     setAnswersLog([]);
     setTimeLeft(20);
+    setSelectedAnswers({});
   };
 
   const handleAnswerClick = (optionKey) => {
@@ -118,6 +145,11 @@ const PlayQuizPage = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     
     setSelectedOptionKey(optionKey);
+    setSelectedAnswers(prev => ({
+      ...prev,
+      [currentQuestion.id]: optionKey
+    }));
+    
     const isCorrect = optionKey === currentQuestion.correctAnswer;
     
     let pts = 0;
@@ -139,6 +171,10 @@ const PlayQuizPage = () => {
 
   const handleTimeout = () => {
     setSelectedOptionKey(null);
+    setSelectedAnswers(prev => ({
+      ...prev,
+      [currentQuestion.id]: ''
+    }));
     setFeedbackType('timeout');
     setEarnedPoints(0);
     playAudio('incorrect');
@@ -146,13 +182,18 @@ const PlayQuizPage = () => {
     setGameState('feedback');
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentIdx < quiz.questions.length - 1) {
       setCurrentIdx(prev => prev + 1);
       setTimeLeft(20);
       setGameState('playing');
     } else {
       setGameState('podium');
+      try {
+        await submitQuizAttempt(quiz.id, selectedAnswers);
+      } catch (err) {
+        console.warn("⚠️ Lỗi lưu kết quả thi lên máy chủ:", err.message);
+      }
     }
   };
 

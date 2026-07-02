@@ -171,33 +171,50 @@ const testConnection = async () => {
 
     console.log('✅ Đã kiểm tra/khởi tạo các bảng "courses", "sections", "lessons", "user_progress" thành công.');
 
-    // Tạo bảng questions (trắc nghiệm cho course)
+    // Tạo bảng quizzes (Đề trắc nghiệm)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quizzes (
+        quiz_id SERIAL PRIMARY KEY,
+        course_id INT, -- NULL đối với đề thi tự do
+        lesson_id INT, -- NULL nếu không gắn với bài học cụ thể
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        difficulty VARCHAR(50) DEFAULT 'Medium',
+        time_limit INT DEFAULT 10,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_quiz_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
+        CONSTRAINT fk_quiz_lesson FOREIGN KEY (lesson_id) REFERENCES lessons(lesson_id) ON DELETE CASCADE
+      );
+    `);
+
+    // Tạo bảng questions (Câu hỏi trắc nghiệm liên kết với quizzes)
     await client.query(`
       CREATE TABLE IF NOT EXISTS questions (
         question_id SERIAL PRIMARY KEY,
-        course_id INT NOT NULL,
+        quiz_id INT NOT NULL,
         question_text TEXT NOT NULL,
         options JSONB NOT NULL,
-        correct_answer TEXT NOT NULL,
-        CONSTRAINT fk_question_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
-      );
-    `);
-
-    // Tạo bảng quiz_history
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS quiz_history (
-        history_id SERIAL PRIMARY KEY,
-        user_id INT NOT NULL,
-        course_id INT NOT NULL,
-        score NUMERIC(5,2) NOT NULL,
-        total_questions INT NOT NULL,
+        correct_answer VARCHAR(50) NOT NULL,
+        explanation TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_quiz_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-        CONSTRAINT fk_quiz_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
+        CONSTRAINT fk_question_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE
       );
     `);
 
-    console.log('✅ Đã kiểm tra/khởi tạo các bảng "questions", "quiz_history" thành công.');
+    // Tạo bảng quiz_attempts (Lịch sử làm bài trắc nghiệm)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quiz_attempts (
+        attempt_id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL,
+        quiz_id INT NOT NULL,
+        score INT NOT NULL,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_attempt_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+        CONSTRAINT fk_attempt_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE
+      );
+    `);
+
+    console.log('✅ Đã kiểm tra/khởi tạo các bảng "quizzes", "questions", "quiz_attempts" thành công.');
 
     // Tạo/Kiểm tra bảng ai_chat và thêm cột lesson_id nếu chưa có
     await client.query(`

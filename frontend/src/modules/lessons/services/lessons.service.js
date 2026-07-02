@@ -1,5 +1,5 @@
 import apiClient from '../../../config/api.config';
-import { getCourseQuizQuestions } from '../../quizzes/services/quizzes.service';
+import { getCourseQuizQuestions, fetchAndCacheQuizzes } from '../../quizzes/services/quizzes.service';
 
 
 const mockCourseData = {
@@ -134,8 +134,11 @@ export const getUserIdFromToken = () => {
 
 export const getCourseDetails = async (courseId = 1) => {
   try {
-    // 1. Gọi API lấy chi tiết khóa học từ backend
-    const courseResponse = await apiClient.get(`/courses/${courseId}`);
+    // 1. Gọi API lấy chi tiết khóa học và tải quizzes đi kèm
+    const [courseResponse] = await Promise.all([
+      apiClient.get(`/courses/${courseId}`),
+      fetchAndCacheQuizzes(courseId).catch(err => console.warn("Lỗi tải quizzes ngầm:", err.message))
+    ]);
     const dbCourse = courseResponse.data.course;
 
     // 2. Lấy userId từ JWT token
@@ -328,7 +331,11 @@ export const getLessonById = async (lessonId) => {
     const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
 
     if (isQuiz) {
-      const quizQuestions = getCourseQuizQuestions(cleanId);
+      let quizQuestions = getCourseQuizQuestions(cleanId);
+      if (quizQuestions.length === 0 && l.course_id) {
+        await fetchAndCacheQuizzes(l.course_id).catch(err => console.warn("Lỗi tải quizzes bổ sung:", err.message));
+        quizQuestions = getCourseQuizQuestions(cleanId);
+      }
       return {
         id: `quiz-${l.lesson_id}`,
         courseId: l.course_id,

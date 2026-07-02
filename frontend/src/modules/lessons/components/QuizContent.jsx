@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiClock, FiAlertCircle, FiCheckCircle, FiChevronLeft, FiChevronRight, FiRefreshCw, FiAward } from 'react-icons/fi';
-import { getCourseQuizQuestions, getFreeQuizById } from '../../quizzes/services/quizzes.service';
+import { 
+  getCourseQuizQuestions, 
+  getFreeQuizById,
+  getCourseQuizByLessonId,
+  submitQuizAttempt
+} from '../../quizzes/services/quizzes.service';
 
 const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const [questions, setQuestions] = useState([]);
   const [quizTitle, setQuizTitle] = useState("Bài tập Trắc nghiệm");
   const [timeLimit, setTimeLimit] = useState(10); // minutes
+  const [actualQuizId, setActualQuizId] = useState(null);
 
   // Quiz states
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -19,21 +25,34 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
   // Load questions
   useEffect(() => {
-    if (isFreeQuiz && quizId) {
-      const quiz = getFreeQuizById(quizId);
-      if (quiz) {
-        setQuestions(quiz.questions || []);
-        setQuizTitle(quiz.title);
-        setTimeLimit(quiz.timeLimit || 10);
-        setTimeLeft((quiz.timeLimit || 10) * 60);
+    let isCurrent = true;
+    const loadQuizData = async () => {
+      try {
+        if (isFreeQuiz && quizId) {
+          const quiz = await getFreeQuizById(quizId);
+          if (quiz && isCurrent) {
+            setQuestions(quiz.questions || []);
+            setQuizTitle(quiz.title);
+            setTimeLimit(quiz.timeLimit || 10);
+            setTimeLeft((quiz.timeLimit || 10) * 60);
+            setActualQuizId(quiz.id);
+          }
+        } else if (lessonId) {
+          const quiz = getCourseQuizByLessonId(lessonId);
+          if (quiz && isCurrent) {
+            setQuestions(quiz.questions || []);
+            setQuizTitle(quiz.title || "Bài kiểm tra phản xạ kiến thức");
+            setTimeLimit(quiz.timeLimit || 10);
+            setTimeLeft((quiz.timeLimit || 10) * 60);
+            setActualQuizId(quiz.id);
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi load câu hỏi trắc nghiệm:", err);
       }
-    } else if (lessonId) {
-      const qList = getCourseQuizQuestions(lessonId);
-      setQuestions(qList);
-      setQuizTitle("Bài kiểm tra phản xạ kiến thức");
-      setTimeLimit(10);
-      setTimeLeft(600);
-    }
+    };
+
+    loadQuizData();
 
     // Reset quiz state when switching quiz/lesson
     setSelectedAnswers({});
@@ -41,6 +60,10 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     setIsSubmitted(false);
     setScore(0);
     setShowConfirmModal(false);
+
+    return () => {
+      isCurrent = false;
+    };
   }, [lessonId, quizId, isFreeQuiz]);
 
   // Countdown timer logic
@@ -79,7 +102,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     calculateAndSubmit();
   };
 
-  const calculateAndSubmit = () => {
+  const calculateAndSubmit = async () => {
     let correctCount = 0;
     questions.forEach((q) => {
       if (selectedAnswers[q.id] === q.correctAnswer) {
@@ -90,6 +113,14 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     setScore(correctCount);
     setIsSubmitted(true);
     setShowConfirmModal(false);
+
+    if (actualQuizId) {
+      try {
+        await submitQuizAttempt(actualQuizId, selectedAnswers);
+      } catch (err) {
+        console.warn("⚠️ Không thể lưu kết quả thi lên máy chủ:", err.message);
+      }
+    }
 
     if (onComplete) {
       onComplete(correctCount, questions.length);
