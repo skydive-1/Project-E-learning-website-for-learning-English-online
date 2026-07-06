@@ -204,7 +204,9 @@ export const getCourseDetails = async (courseId = 1) => {
             description: description,
             content: content,
             resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
-            completed: completedLessonIds.includes(l.lesson_id)
+            completed: completedLessonIds.includes(l.lesson_id),
+            speakingSentences: l.speaking_sentences || l.speakingSentences || '',
+            speakingQuestions: l.speaking_questions || l.speakingQuestions || ''
           };
 
           // Check if lesson has quiz questions compiled
@@ -362,7 +364,9 @@ export const getLessonById = async (lessonId) => {
       description: description,
       content: content,
       resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
-      completed: completed
+      completed: completed,
+      speakingSentences: l.speaking_sentences || l.speakingSentences || '',
+      speakingQuestions: l.speaking_questions || l.speakingQuestions || ''
     };
   } catch (error) {
     console.error("Lỗi getLessonById từ Backend:", error);

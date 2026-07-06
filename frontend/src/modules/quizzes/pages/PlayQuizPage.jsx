@@ -371,71 +371,158 @@ const PlayQuizPage = () => {
 
             <button
               onClick={handleNext}
-              className="px-8 py-3.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-widest active:scale-95 transition-all cursor-pointer shadow-md"
-            >
-              Câu tiếp theo
-            </button>
-          </div>
-        )}
-
-        {/* PODIUM/LEADERBOARD SCREEN */}
+              className="px-8 py-3.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-widest activ        {/* PODIUM/LEADERBOARD SCREEN */}
         {gameState === 'podium' && (
-          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center text-center space-y-6 animate-fade">
-            <div>
-              <div className="w-14 h-14 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-full flex items-center justify-center text-slate-800 dark:text-slate-100 text-2xl mx-auto shadow-sm mb-3">
-                🏆
-              </div>
-              <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100">English Game Show</h1>
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mt-1">Bảng xếp hạng chung cuộc</p>
+          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center space-y-6 animate-fade">
+            <div className="text-center">
+              <span className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase">
+                🎉 Hoàn thành bài thi trắc nghiệm
+              </span>
+              <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 mt-4">English Game Show</h1>
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mt-1">Kết quả và bảng xếp hạng chung cuộc</p>
             </div>
 
-            {/* Elegant 3D Podium Layout */}
-            <div className="flex items-end justify-center gap-4 max-w-sm w-full mx-auto h-40 mt-6 mb-4">
-              {/* 2nd Place: LingoBot */}
-              <div className="flex flex-col items-center w-24">
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 truncate max-w-[80px]">LingoBot</span>
-                <div className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-t-xl flex flex-col items-center justify-center py-2 shadow-sm" style={{ height: '55px' }}>
-                  <span className="text-lg font-black text-slate-600 dark:text-slate-350">2</span>
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">3,450 pts</span>
+            {/* Grid layout for Podium & Chart */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full items-stretch pt-2">
+              
+              {/* Left Column: Podium Leaderboard */}
+              <div className="bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-between min-h-[220px]">
+                <div className="text-center">
+                  <div className="w-10 h-10 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-full flex items-center justify-center text-xl mx-auto shadow-sm mb-2">
+                    🏆
+                  </div>
+                  <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">Bảng xếp hạng danh dự</h3>
+                </div>
+                
+                <div className="flex items-end justify-center gap-3 w-full h-32 mt-4">
+                  {/* 2nd Place */}
+                  <div className="flex flex-col items-center w-20">
+                    <span className="text-[10px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[65px]">LingoBot</span>
+                    <div className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-t-xl flex flex-col items-center justify-center py-2 shadow-sm" style={{ height: '48px' }}>
+                      <span className="text-base font-black text-slate-600 dark:text-slate-350">2</span>
+                      <span className="text-[8px] font-bold text-slate-400 dark:text-slate-505">3,450 pts</span>
+                    </div>
+                  </div>
+
+                  {/* 1st Place */}
+                  <div className="flex flex-col items-center w-24">
+                    <span className="text-xs font-black text-smart-indigo dark:text-indigo-400 mb-1 flex items-center gap-0.5">
+                      👑 <span className="truncate max-w-[65px]">{nickname}</span>
+                    </span>
+                    <div className="w-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-250 dark:border-indigo-800 rounded-t-xl flex flex-col items-center justify-center py-3 shadow-md" style={{ height: '70px' }}>
+                      <span className="text-xl font-black text-smart-indigo dark:text-indigo-400">1</span>
+                      <span className="text-[9px] font-black text-smart-indigo dark:text-indigo-400 mt-0.5">{score} pts</span>
+                    </div>
+                  </div>
+
+                  {/* 3rd Place */}
+                  <div className="flex flex-col items-center w-18">
+                    <span className="text-[9px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[60px]">Guru99</span>
+                    <div className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-t-xl flex flex-col items-center justify-center py-1.5 shadow-sm" style={{ height: '32px' }}>
+                      <span className="text-sm font-black text-slate-500 dark:text-slate-450">3</span>
+                      <span className="text-[7px] font-bold text-slate-400 dark:text-slate-505">2,800 pts</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* 1st Place: User */}
-              <div className="flex flex-col items-center w-28">
-                <span className="text-xs font-black text-smart-indigo dark:text-indigo-455 mb-1 flex items-center gap-1">
-                  👑 <span className="truncate max-w-[80px]">{nickname}</span>
-                </span>
-                <div className="w-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/80 rounded-t-xl flex flex-col items-center justify-center py-3 shadow-md" style={{ height: '80px' }}>
-                  <span className="text-2xl font-black text-smart-indigo dark:text-indigo-400">1</span>
-                  <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 mt-0.5">{score} pts</span>
-                </div>
-              </div>
+              {/* Right Column: Dynamic SVG Donut Chart */}
+              <div className="bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-between gap-4">
+                <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider text-center">Phân tích tỷ lệ câu hỏi</h3>
+                
+                {(() => {
+                  const correctCount = answersLog.filter(l => l.isCorrect).length;
+                  const totalCount = quiz.questions.length || 1;
+                  const correctPercent = Math.round((correctCount / totalCount) * 100);
+                  
+                  // Donut math
+                  const r = 50;
+                  const strokeWidth = 10;
+                  const strokeCircumference = 2 * Math.PI * r; // ~314.16
+                  const strokeOffset = strokeCircumference - (correctCount / totalCount) * strokeCircumference;
+                  
+                  return (
+                    <div className="flex flex-col sm:flex-row items-center gap-6 w-full justify-center">
+                      {/* SVG Donut Circle */}
+                      <div className="relative flex items-center justify-center w-28 h-28 shrink-0">
+                        <svg width="112" height="112" viewBox="0 0 120 120" className="transform -rotate-90">
+                          {/* Background track (Incorrect base) */}
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r={r}
+                            fill="transparent"
+                            stroke="#f43f5e"
+                            strokeWidth={strokeWidth}
+                          />
+                          {/* Foreground segment (Correct answers) */}
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r={r}
+                            fill="transparent"
+                            stroke="#10b981"
+                            strokeWidth={strokeWidth}
+                            strokeDasharray={strokeCircumference}
+                            strokeDashoffset={strokeOffset}
+                            strokeLinecap="round"
+                            className="transition-all duration-1000 ease-out"
+                          />
+                        </svg>
+                        
+                        <div className="absolute flex flex-col items-center justify-center">
+                          <span className="text-xl font-black text-slate-800 dark:text-slate-100">{correctPercent}%</span>
+                          <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500">Chính xác</span>
+                        </div>
+                      </div>
 
-              {/* 3rd Place: Guru99 */}
-              <div className="flex flex-col items-center w-20">
-                <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-1 truncate max-w-[70px]">Guru99</span>
-                <div className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-t-xl flex flex-col items-center justify-center py-1.5 shadow-sm" style={{ height: '40px' }}>
-                  <span className="text-base font-black text-slate-500 dark:text-slate-450">3</span>
-                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500">2,800 pts</span>
-                </div>
+                      {/* Score metrics detail list */}
+                      <div className="flex-1 flex flex-col gap-2 w-full">
+                        <div className="flex justify-between items-center bg-emerald-500/5 dark:bg-emerald-950/20 px-3 py-2 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/10">
+                          <span className="flex items-center gap-1.5">🟢 Đúng:</span>
+                          <span>{correctCount} / {totalCount} câu</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-rose-500/5 dark:bg-rose-950/20 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 border border-rose-500/10">
+                          <span className="flex items-center gap-1.5">🔴 Sai / Quá giờ:</span>
+                          <span>{totalCount - correctCount} câu</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-indigo-500/5 dark:bg-indigo-950/20 px-3 py-2 rounded-xl text-xs font-bold text-smart-indigo dark:text-indigo-400 border border-indigo-500/10">
+                          <span className="flex items-center gap-1.5">⭐ Tổng điểm:</span>
+                          <span>{score} điểm</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
-            {/* Performance Stats List */}
-            <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-4 text-left max-w-sm w-full mx-auto space-y-2.5 font-semibold text-xs text-slate-600 dark:text-slate-400 shadow-inner">
-              <div className="flex justify-between">
-                <span>Độ chính xác:</span>
-                <span className="text-slate-800 dark:text-slate-200 font-extrabold">
-                  {answersLog.filter(l => l.isCorrect).length} / {quiz.questions.length} câu đúng
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tổng số điểm đạt được:</span>
-                <span className="text-smart-indigo dark:text-indigo-400 font-black text-sm">{score} điểm</span>
-              </div>
-            </div>
+            {/* Smart comment assessment */}
+            {(() => {
+              const correctCount = answersLog.filter(l => l.isCorrect).length;
+              const totalCount = quiz.questions.length || 1;
+              const correctPercent = Math.round((correctCount / totalCount) * 100);
+              
+              let comment = "Cần nỗ lực hơn nữa! Bạn hãy xem lại tài liệu bài học và chơi lại lần nữa để cải thiện phản xạ nhé.";
+              let commentClass = "text-rose-600 dark:text-rose-400 bg-rose-50/50 dark:bg-rose-950/10 border-rose-100 dark:border-rose-900/50";
+              
+              if (correctPercent >= 80) {
+                comment = "Tuyệt vời! Bạn đã làm chủ hoàn hảo các kiến thức trọng tâm của bài học này. Hãy tiếp tục phát huy nhé!";
+                commentClass = "text-emerald-600 dark:text-emerald-450 bg-emerald-50/55 dark:bg-emerald-950/10 border-emerald-100 dark:border-emerald-900/50";
+              } else if (correctPercent >= 50) {
+                comment = "Khá tốt! Bạn đã nắm được kiến thức nền tảng. Hãy luyện tập lại một lần nữa để đạt điểm số tối đa nhé.";
+                commentClass = "text-amber-600 dark:text-amber-450 bg-amber-50/55 dark:bg-amber-950/10 border-amber-100 dark:border-amber-900/50";
+              }
+              
+              return (
+                <div className={`p-4 rounded-xl border w-full text-xs font-semibold leading-relaxed text-center ${commentClass}`}>
+                  💡 <strong>Đánh giá năng lực:</strong> {comment}
+                </div>
+              );
+            })()}
 
-            <div className="flex gap-4 max-w-sm w-full mx-auto pt-4">
+            {/* Action buttons */}
+            <div className="flex gap-4 max-w-sm w-full mx-auto pt-2">
               <button
                 onClick={() => {
                   setGameState('playing');
@@ -444,13 +531,19 @@ const PlayQuizPage = () => {
                   setAnswersLog([]);
                   setTimeLeft(20);
                 }}
-                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <FiRefreshCw /> Chơi lại
               </button>
               <button
                 onClick={() => navigate('/quizzes')}
-                className="flex-1 py-3 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
+                className="flex-1 py-3 bg-smart-indigo hover:bg-indigo-650 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
+              >
+                Về sảnh thi
+              </button>
+            </div>
+          </div>
+        )}-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
               >
                 Về sảnh thi
               </button>

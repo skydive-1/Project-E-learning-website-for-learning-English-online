@@ -1,8 +1,124 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiSend, FiCpu, FiMessageSquare, FiTrash2 } from 'react-icons/fi';
+import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { askChatbot, getChatHistory, saveChatHistory } from '../services/chatbot.service';
+import { askChatbot, getChatHistory, saveChatHistory, askChatbotAudio } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
+import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
+
+// Hàm helper để sinh câu hỏi trắc nghiệm tương tác tùy theo bài học (lessonId)
+const getLessonSpecificQuiz = (lessonId) => {
+  const cleanId = String(lessonId).replace('quiz-', '');
+  
+  const quizzes = {
+    "1": [
+      {
+        question: "Phương pháp 'Active Recall' trong học tập có nghĩa là gì?",
+        options: [
+          "Đọc đi đọc lại bài học một cách thụ động",
+          "Chủ động kiểm tra trí nhớ để truy xuất thông tin",
+          "Dịch từng từ tiếng Anh sang tiếng Việt trong đầu",
+          "Chỉ nghe nhạc tiếng Anh trong lúc làm việc khác"
+        ],
+        correctAnswer: 1,
+        explanation: "'Active recall' là phương pháp chủ động gợi nhớ bằng cách tự kiểm tra hoặc đặt câu hỏi để truy xuất thông tin từ bộ nhớ, thay vì đọc lại thụ động."
+      },
+      {
+        question: "Đâu là cách thiết lập mục tiêu luyện nói tiếng Anh hàng ngày hiệu quả?",
+        options: [
+          "Học thuộc lòng toàn bộ cuốn từ điển dày",
+          "Dành ra thời gian cố định mỗi ngày để nói/chat",
+          "Chỉ học công thức ngữ pháp chứ không nói",
+          "Đợi đến khi phát âm thật hoàn hảo mới bắt đầu nói"
+        ],
+        correctAnswer: 1,
+        explanation: "Thiết lập thói quen nhỏ đều đặn hàng ngày là chìa khóa để cải thiện phản xạ giao tiếp tiếng Anh tốt nhất."
+      }
+    ],
+    "2": [
+      {
+        question: "Làm thế nào để hạn chế thói quen dịch nhẩm từ Việt sang Anh?",
+        options: [
+          "Luôn luôn suy nghĩ nghĩa tiếng Việt trước",
+          "Liên kết từ tiếng Anh trực tiếp với hình ảnh/khái niệm",
+          "Nói thật chậm để kiểm tra từng quy tắc ngữ pháp",
+          "Tránh sử dụng tiếng Anh trong giao tiếp hàng ngày"
+        ],
+        correctAnswer: 1,
+        explanation: "Hãy liên kết từ vựng trực tiếp với khái niệm thực tế (ví dụ: nghĩ 'apple' -> hình ảnh quả táo, thay vì dịch 'apple' -> 'quả táo' -> hình ảnh)."
+      },
+      {
+        question: "Thái độ đúng đắn nhất đối với các lỗi sai ngữ pháp khi bắt đầu luyện nói là gì?",
+        options: [
+          "Sợ hãi và không dám nói tiếp để tránh sai lầm",
+          "Chấp nhận lỗi sai như một phần tự nhiên của quá trình học",
+          "Học hết tất cả ngữ pháp trước khi thử mở miệng nói",
+          "Luôn xin lỗi và lo lắng quá mức vì đã nói sai"
+        ],
+        correctAnswer: 1,
+        explanation: "Mắc lỗi là hoàn toàn bình thường. Bạn cần vượt qua nỗi sợ sai để giao tiếp tự nhiên và trôi chảy hơn ở giai đoạn đầu."
+      }
+    ],
+    "3": [
+      {
+        question: "She usually ______ to the gym after work. (Chọn đáp án đúng)",
+        options: ["go", "goes", "went", "going"],
+        correctAnswer: 1,
+        explanation: "Chủ ngữ là 'She' (ngôi thứ 3 số ít), trạng từ chỉ tần suất 'usually' chỉ thì Hiện tại đơn -> Động từ chia thêm -s/es thành 'goes'."
+      },
+      {
+        question: "Yesterday, I ______ English vocabulary with my AI teacher. (Chọn đáp án đúng)",
+        options: ["study", "studies", "studied", "studying"],
+        correctAnswer: 2,
+        explanation: "Dấu hiệu thời gian là 'Yesterday' (hôm qua) chỉ hành động đã xảy ra trong quá khứ -> Dùng động từ quá khứ đơn (V-ed): 'studied'."
+      }
+    ],
+    "4": [
+      {
+        question: "Chọn câu hỏi đuôi chính xác: 'You are a student, ______?'",
+        options: ["are you", "aren't you", "don't you", "do you"],
+        correctAnswer: 1,
+        explanation: "Vế trước là thể khẳng định của to be ('are') -> Phần câu hỏi đuôi tương ứng dùng phủ định phủ nhận: 'aren't you'."
+      },
+      {
+        question: "Đối với câu hỏi nghi vấn dạng 'Yes/No', ngữ điệu cuối câu nên như thế nào?",
+        options: [
+          "Lên giọng ở cuối câu",
+          "Xuống giọng ở cuối câu",
+          "Giữ giọng điệu phẳng lặng",
+          "Nói thầm từ cuối cùng"
+        ],
+        correctAnswer: 0,
+        explanation: "Theo quy tắc ngữ điệu tiếng Anh chuẩn, câu hỏi dạng Yes/No (ví dụ: Do you like coffee? ↗) cần lên giọng ở cuối câu."
+      }
+    ],
+    "5": [
+      {
+        question: "Phương pháp 'Shadowing' (Nói đuổi) yêu cầu người học phải làm gì?",
+        options: [
+          "Nghe một đoạn hội thoại dài rồi tóm tắt lại",
+          "Bắt chước lặp lại ngay lập tức theo ngữ điệu người nói mẫu",
+          "Dịch thầm câu nói trong đầu trước khi lặp lại",
+          "Đọc to văn bản dịch sẵn trên giấy"
+        ],
+        correctAnswer: 1,
+        explanation: "'Shadowing' yêu cầu học viên nghe và lặp lại ngay lập tức (như một cái bóng) theo sát cách nhấn âm, nối âm và ngữ điệu của người nói bản xứ."
+      },
+      {
+        question: "Tại sao nên ghi âm lại giọng nói của chính mình khi shadowing?",
+        options: [
+          "Để đăng lên mạng xã hội giải trí ngay lập tức",
+          "Để nghe lại, đối chiếu lỗi sai với giọng đọc mẫu và tự sửa",
+          "Để kiểm tra chất lượng phần cứng microphone của máy",
+          "Để chắc chắn rằng giọng mình càng to càng tốt"
+        ],
+        correctAnswer: 1,
+        explanation: "Ghi âm giúp bạn nghe lại giọng mình một cách khách quan, so sánh trực tiếp với câu mẫu bản xứ để phát hiện các âm phát âm lỗi và sửa chữa kịp thời."
+      }
+    ]
+  };
+  
+  return quizzes[cleanId] || quizzes["3"]; // Mặc định trả về bộ câu hỏi ngữ pháp (Bài 3)
+};
 
 const ChatBox = ({ lessonId }) => {
   const { user } = useAuth();
@@ -11,8 +127,76 @@ const ChatBox = ({ lessonId }) => {
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [quizStates, setQuizStates] = useState({}); // Lưu trạng thái tương tác trắc nghiệm { [messageId]: { currentIdx, selectedOption, isAnswered, score } }
   
   const messagesEndRef = useRef(null);
+  const recordingTimeoutRef = useRef(null);
+  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
+
+  const handleStartAudioRecording = async () => {
+    try {
+      await startRecording();
+      recordingTimeoutRef.current = setTimeout(() => {
+        handleStopAudioRecording();
+      }, 60000); // Tự động ngắt sau 60s
+    } catch (err) {
+      console.error("Ghi âm thất bại:", err);
+    }
+  };
+
+  const handleStopAudioRecording = async () => {
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+    }
+    const audioBlob = await stopRecording();
+    if (!audioBlob) return;
+
+    const audioMessageId = `msg-${Date.now()}-user-audio`;
+    const userAudioMessage = {
+      id: audioMessageId,
+      sender: "user",
+      text: "🎤 [Đoạn ghi âm]",
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userAudioMessage]);
+    setIsLoading(true);
+
+    try {
+      const result = await askChatbotAudio(audioBlob, lessonId);
+      
+      const aiReplyMessage = {
+        id: `msg-${Date.now()}-ai`,
+        sender: "ai",
+        text: result.reply,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, aiReplyMessage]);
+
+      if (user?.userId && lessonId) {
+        saveChatHistory(user.userId, lessonId, "[Ghi âm giọng nói]", result.reply).catch(err => {
+          console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
+        });
+      }
+    } catch (error) {
+      const errorMessage = {
+        id: `msg-${Date.now()}-err`,
+        sender: "ai",
+        text: "Không thể xử lý đoạn ghi âm. Hãy thử lại hoặc chuyển sang nhập văn bản.",
+        timestamp: new Date(),
+        isError: true
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancelAudioRecording = () => {
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+    }
+    stopRecording();
+  };
 
   // Cuộn xuống tin nhắn mới nhất
   const scrollToBottom = () => {
@@ -90,14 +274,29 @@ const ChatBox = ({ lessonId }) => {
     setIsLoading(true);
 
     try {
-      // 1. Gọi API hỏi AI từ backend/gemini
-      const aiReply = await askChatbot(text, lessonId);
+      let aiReply;
+      let quizData = null;
+
+      const isQuizRequest = text.toLowerCase().includes("trắc nghiệm") || 
+                            text.toLowerCase().includes("quizzes") || 
+                            text.toLowerCase().includes("quizz") || 
+                            text.toLowerCase().includes("bài tập nhỏ") ||
+                            text.toLowerCase().includes("bài tập trắc nghiệm");
+
+      if (isQuizRequest) {
+        aiReply = "Tôi đã tạo cho bạn 2 câu hỏi trắc nghiệm nhanh dưới đây để kiểm tra kiến thức về bài học này:";
+        quizData = getLessonSpecificQuiz(lessonId);
+      } else {
+        // 1. Gọi API hỏi AI từ backend/gemini
+        aiReply = await askChatbot(text, lessonId);
+      }
       
       const aiMessage = {
         id: `msg-${Date.now()}-ai`,
         sender: "ai",
         text: aiReply,
-        timestamp: new Date()
+        timestamp: new Date(),
+        quizData: quizData
       };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -225,15 +424,143 @@ const ChatBox = ({ lessonId }) => {
                 
                 {/* Message Bubble */}
                 <div 
-                  className={`px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-sm whitespace-pre-wrap ${
+                  className={`px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-sm ${
                     msg.sender === 'user' 
-                      ? 'bg-smart-indigo text-white rounded-tr-none' 
+                      ? 'bg-smart-indigo text-white rounded-tr-none whitespace-pre-wrap' 
                       : msg.isError 
-                        ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900 rounded-tl-none'
+                        ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900 rounded-tl-none whitespace-pre-wrap'
                         : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-100 dark:border-slate-650 rounded-tl-none'
                   }`}
                 >
-                  {msg.text}
+                  {msg.quizData ? (
+                    <div className="space-y-3 p-0.5 animate-fade" style={{ minWidth: '220px' }}>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                        📝 Bài tập trắc nghiệm nhanh
+                      </p>
+                      
+                      {(() => {
+                        const qState = quizStates[msg.id] || { currentIdx: 0, selectedOption: null, isAnswered: false, score: 0 };
+                        const currentIdx = qState.currentIdx;
+                        const total = msg.quizData.length;
+                        
+                        if (currentIdx >= total) {
+                          return (
+                            <div className="text-center py-2 space-y-2">
+                              <p className="text-sm font-extrabold text-emerald-600 dark:text-emerald-450">
+                                🎉 Hoàn thành bài tập!
+                              </p>
+                              <p className="text-xs text-slate-600 dark:text-slate-350">
+                                Kết quả của bạn: <strong>{qState.score}/{total}</strong> câu đúng.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setQuizStates(prev => ({
+                                    ...prev,
+                                    [msg.id]: { currentIdx: 0, selectedOption: null, isAnswered: false, score: 0 }
+                                  }));
+                                }}
+                                className="mt-2 text-[10.5px] px-3 py-1.5 bg-smart-indigo hover:bg-indigo-650 text-white font-bold rounded-lg cursor-pointer transition-colors"
+                              >
+                                Làm lại
+                              </button>
+                            </div>
+                          );
+                        }
+                        
+                        const currentQuestion = msg.quizData[currentIdx];
+                        
+                        return (
+                          <div className="space-y-3">
+                            {/* Question progress */}
+                            <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                              <span>Câu hỏi {currentIdx + 1}/{total}</span>
+                              {qState.isAnswered && (
+                                <span className={qState.selectedOption === currentQuestion.correctAnswer ? 'text-emerald-500 font-extrabold' : 'text-red-500 font-extrabold'}>
+                                  {qState.selectedOption === currentQuestion.correctAnswer ? 'Chính xác!' : 'Chưa đúng!'}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Question text */}
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-relaxed whitespace-normal">
+                              {currentQuestion.question}
+                            </p>
+                            
+                            {/* Option buttons */}
+                            <div className="flex flex-col gap-1.5">
+                              {currentQuestion.options.map((opt, oIdx) => {
+                                let btnStyle = "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300";
+                                
+                                if (qState.isAnswered) {
+                                  if (oIdx === currentQuestion.correctAnswer) {
+                                    btnStyle = "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-350 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 font-bold";
+                                  } else if (oIdx === qState.selectedOption) {
+                                    btnStyle = "bg-red-50 dark:bg-red-950/40 border-red-350 dark:border-red-800 text-red-700 dark:text-red-400";
+                                  } else {
+                                    btnStyle = "bg-slate-55 dark:bg-slate-800/20 border-slate-200 dark:border-slate-700/50 text-slate-400 dark:text-slate-500 opacity-60";
+                                  }
+                                }
+                                
+                                return (
+                                  <button
+                                    key={oIdx}
+                                    type="button"
+                                    disabled={qState.isAnswered}
+                                    onClick={() => {
+                                      const isCorrect = oIdx === currentQuestion.correctAnswer;
+                                      setQuizStates(prev => ({
+                                        ...prev,
+                                        [msg.id]: {
+                                          ...qState,
+                                          selectedOption: oIdx,
+                                          isAnswered: true,
+                                          score: qState.score + (isCorrect ? 1 : 0)
+                                        }
+                                      }));
+                                    }}
+                                    className={`text-left text-xs px-3.5 py-2.5 rounded-xl border transition-all ${btnStyle} ${!qState.isAnswered && 'cursor-pointer'}`}
+                                  >
+                                    <span className="font-bold mr-1.5">{['A', 'B', 'C', 'D'][oIdx]}.</span> {opt}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            
+                            {/* Explanation box */}
+                            {qState.isAnswered && (
+                              <div className="p-3 bg-slate-55 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl space-y-1.5 animate-fade">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Giải thích chi tiết:</p>
+                                <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-350 font-medium whitespace-normal">
+                                  {currentQuestion.explanation}
+                                </p>
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setQuizStates(prev => ({
+                                      ...prev,
+                                      [msg.id]: {
+                                        ...qState,
+                                        currentIdx: currentIdx + 1,
+                                        selectedOption: null,
+                                        isAnswered: false
+                                      }
+                                    }));
+                                  }}
+                                  className="w-full mt-2.5 py-2 bg-slate-200 hover:bg-slate-350 dark:bg-slate-750 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-lg text-xs cursor-pointer transition-colors text-center border-0"
+                                >
+                                  {currentIdx + 1 < total ? 'Câu tiếp theo' : 'Xem kết quả'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <span className="whitespace-pre-wrap">{msg.text}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -280,27 +607,72 @@ const ChatBox = ({ lessonId }) => {
       {/* Input Bottom Form */}
       <form 
         onSubmit={handleSubmit}
-        className="px-3 py-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center space-x-2 shrink-0"
+        className="px-3 py-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center space-x-2 shrink-0 animate-fade"
       >
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Ask a question..."
-          className="flex-1 px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-smart-indigo focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-800 dark:text-slate-100"
-          disabled={isLoading}
-        />
-        <button
-          type="submit"
-          disabled={!inputText.trim() || isLoading}
-          className={`p-2.5 rounded-xl transition-all ${
-            inputText.trim() && !isLoading
-              ? 'bg-smart-indigo text-white hover:bg-smart-indigo-hover shadow-md hover:shadow-indigo-100'
-              : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-          }`}
-        >
-          <FiSend className="text-sm" />
-        </button>
+        {isRecording ? (
+          <div className="flex-1 flex items-center space-x-3 bg-red-50 dark:bg-red-950/20 px-3.5 py-2 rounded-xl border border-red-100 dark:border-red-900">
+            <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping"></span>
+            <span className="text-xs font-semibold text-red-600 dark:text-red-400">
+              Đang thu âm... {recordingTime}s
+            </span>
+            <div className="flex-1 flex justify-center space-x-1">
+              <span className="w-1 h-3 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+              <span className="w-1 h-5 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+              <span className="w-1 h-2 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></span>
+              <span className="w-1 h-4 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+              <span className="w-1 h-1.5 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0.5s' }}></span>
+            </div>
+            <button
+              type="button"
+              onClick={handleStopAudioRecording}
+              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+            >
+              Gửi
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelAudioRecording}
+              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-semibold"
+            >
+              Hủy
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={handleStartAudioRecording}
+              disabled={isLoading}
+              className={`p-2.5 rounded-xl border transition-all ${
+                isLoading 
+                  ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 border-slate-100 dark:border-slate-750 cursor-not-allowed'
+                  : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:text-smart-indigo dark:hover:text-indigo-400 shadow-sm'
+              }`}
+              title="Ghi âm câu hỏi"
+            >
+              <FiMic className="text-sm" />
+            </button>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Ask a question..."
+              className="flex-1 px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-smart-indigo focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-800 dark:text-slate-100"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim() || isLoading}
+              className={`p-2.5 rounded-xl transition-all ${
+                inputText.trim() && !isLoading
+                  ? 'bg-smart-indigo text-white hover:bg-smart-indigo-hover shadow-md hover:shadow-indigo-100'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              <FiSend className="text-sm" />
+            </button>
+          </>
+        )}
       </form>
     </div>
   );

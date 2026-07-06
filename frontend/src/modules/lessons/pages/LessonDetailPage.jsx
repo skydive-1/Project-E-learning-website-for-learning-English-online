@@ -10,6 +10,7 @@ import Header from '../../../components/common/Header';
 import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
+import SpeakingExercise from '../components/SpeakingExercise';
 import { 
   getCourseDetails, 
   getLessonById, 
@@ -251,13 +252,24 @@ const LessonDetailPage = () => {
                       )}
                     </button>
 
-                    <button
+                     <button
                       onClick={() => setActiveLeftTab("resources")}
                       style={{ color: activeLeftTab === "resources" ? "#3b82f6" : "var(--text-light)" }}
                       className="pb-3.5 font-semibold transition-all relative"
                     >
                       <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
                       {activeLeftTab === "resources" && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => setActiveLeftTab("speaking")}
+                      style={{ color: activeLeftTab === "speaking" ? "#3b82f6" : "var(--text-light)" }}
+                      className="pb-3.5 font-semibold transition-all relative"
+                    >
+                      <span>Luyện phát âm (AI)</span>
+                      {activeLeftTab === "speaking" && (
                         <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
                       )}
                     </button>
@@ -305,6 +317,15 @@ const LessonDetailPage = () => {
                             <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {activeLeftTab === "speaking" && (
+                      <div className="animate-fade">
+                        <SpeakingExercise 
+                          lessonId={currentLesson?.id || targetLessonId} 
+                          speakingSentences={currentLesson?.speakingSentences}
+                        />
                       </div>
                     )}
                   </div>
