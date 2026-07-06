@@ -371,7 +371,14 @@ const PlayQuizPage = () => {
 
             <button
               onClick={handleNext}
-              className="px-8 py-3.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-widest activ        {/* PODIUM/LEADERBOARD SCREEN */}
+              className="px-8 py-3.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-widest active:scale-95 transition-all cursor-pointer shadow-md"
+            >
+              Câu tiếp theo
+            </button>
+          </div>
+        )}
+
+        {/* PODIUM/LEADERBOARD SCREEN */}
         {gameState === 'podium' && (
           <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center space-y-6 animate-fade">
             <div className="text-center">
@@ -379,7 +386,7 @@ const PlayQuizPage = () => {
                 🎉 Hoàn thành bài thi trắc nghiệm
               </span>
               <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 mt-4">English Game Show</h1>
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mt-1">Kết quả và bảng xếp hạng chung cuộc</p>
+              <p className="text-xs text-slate-400 dark:text-slate-505 font-semibold mt-1">Kết quả và bảng xếp hạng chung cuộc</p>
             </div>
 
             {/* Grid layout for Podium & Chart */}
@@ -399,7 +406,7 @@ const PlayQuizPage = () => {
                   <div className="flex flex-col items-center w-20">
                     <span className="text-[10px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[65px]">LingoBot</span>
                     <div className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-t-xl flex flex-col items-center justify-center py-2 shadow-sm" style={{ height: '48px' }}>
-                      <span className="text-base font-black text-slate-600 dark:text-slate-350">2</span>
+                      <span className="text-base font-black text-slate-650 dark:text-slate-350">2</span>
                       <span className="text-[8px] font-bold text-slate-400 dark:text-slate-505">3,450 pts</span>
                     </div>
                   </div>
@@ -419,7 +426,7 @@ const PlayQuizPage = () => {
                   <div className="flex flex-col items-center w-18">
                     <span className="text-[9px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[60px]">Guru99</span>
                     <div className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-t-xl flex flex-col items-center justify-center py-1.5 shadow-sm" style={{ height: '32px' }}>
-                      <span className="text-sm font-black text-slate-500 dark:text-slate-450">3</span>
+                      <span className="text-sm font-black text-slate-500 dark:text-slate-455">3</span>
                       <span className="text-[7px] font-bold text-slate-400 dark:text-slate-505">2,800 pts</span>
                     </div>
                   </div>
@@ -472,13 +479,13 @@ const PlayQuizPage = () => {
                         
                         <div className="absolute flex flex-col items-center justify-center">
                           <span className="text-xl font-black text-slate-800 dark:text-slate-100">{correctPercent}%</span>
-                          <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-500">Chính xác</span>
+                          <span className="text-[9px] uppercase font-bold text-slate-400 dark:text-slate-505">Chính xác</span>
                         </div>
                       </div>
 
                       {/* Score metrics detail list */}
                       <div className="flex-1 flex flex-col gap-2 w-full">
-                        <div className="flex justify-between items-center bg-emerald-500/5 dark:bg-emerald-950/20 px-3 py-2 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/10">
+                        <div className="flex justify-between items-center bg-emerald-500/5 dark:bg-emerald-950/20 px-3 py-2 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-450 border border-emerald-500/10">
                           <span className="flex items-center gap-1.5">🟢 Đúng:</span>
                           <span>{correctCount} / {totalCount} câu</span>
                         </div>
@@ -538,12 +545,6 @@ const PlayQuizPage = () => {
               <button
                 onClick={() => navigate('/quizzes')}
                 className="flex-1 py-3 bg-smart-indigo hover:bg-indigo-650 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
-              >
-                Về sảnh thi
-              </button>
-            </div>
-          </div>
-        )}-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md"
               >
                 Về sảnh thi
               </button>
