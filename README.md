@@ -1,7 +1,7 @@
-# LingoMate - E-learning Website for English Learning with AI RAG Chatbot
+# E-learning Website for English Learning with AI RAG Chatbot
 
 ## 🎯 GIỚI THIỆU DỰ ÁN
-**LingoMate** là một nền tảng học tiếng Anh trực tuyến toàn diện, được tích hợp công nghệ AI (Chatbot RAG) nhằm hỗ trợ phản xạ giao tiếp, tự luyện từ vựng và ngữ pháp theo lộ trình cá nhân hóa. Dự án sử dụng mô hình kiến trúc **Modular Monolith** ở phía Backend và **ReactJS** ở Frontend để đảm bảo tính rõ ràng, dễ bảo trì và mở rộng tốt.
+Dự án là một nền tảng học tiếng Anh trực tuyến toàn diện, được tích hợp trợ lý AI hỗ trợ học tập (Chatbot RAG) nhằm hỗ trợ phản xạ giao tiếp, tự luyện từ vựng và ngữ pháp theo lộ trình cá nhân hóa. Dự án sử dụng mô hình kiến trúc **Modular Monolith** ở phía Backend và **ReactJS** ở Frontend để đảm bảo tính rõ ràng, dễ bảo trì và mở rộng tốt.
 
 ---
 
