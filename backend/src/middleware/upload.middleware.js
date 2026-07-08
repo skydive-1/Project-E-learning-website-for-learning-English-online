@@ -27,6 +27,8 @@ const storage = multer.diskStorage({
       subDir = 'courses/documents';
     } else if (mime.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
       subDir = 'courses/thumbnails';
+    } else if (mime.startsWith('audio/') || ['.mp3', '.wav', '.ogg', '.m4a', '.webm'].includes(ext)) {
+      subDir = 'chatbot/audio';
     }
 
     const targetDir = path.join(uploadDir, subDir);
@@ -58,10 +60,19 @@ const fileFilter = (req, file, cb) => {
     'image/jpeg',
     'image/png',
     'image/gif',
-    'image/webp'
+    'image/webp',
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/x-m4a',
+    'audio/webm',
+    'audio/wave'
   ];
 
-  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp3', '.wav', '.ogg', '.m4a', '.webm'];
   const ext = path.extname(file.originalname).toLowerCase();
 
   // Kiểm tra MIME type
@@ -72,7 +83,7 @@ const fileFilter = (req, file, cb) => {
   if (isMimeAllowed && isExtAllowed) {
     cb(null, true);
   } else {
-    cb(new Error('Định dạng tệp không hợp lệ hoặc không được hỗ trợ. Cho phép tệp PDF, Video (MP4, MOV, MKV, AVI) và Hình ảnh (JPG, JPEG, PNG, GIF, WEBP).'), false);
+    cb(new Error('Định dạng tệp không hợp lệ. Cho phép tệp PDF, Video, Hình ảnh và Âm thanh (MP3, WAV, OGG, M4A, WEBM).'), false);
   }
 };
 

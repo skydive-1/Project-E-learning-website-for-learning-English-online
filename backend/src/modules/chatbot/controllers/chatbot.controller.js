@@ -58,3 +58,32 @@ exports.getHistory = async (req, res, next) => {
   }
 };
 
+exports.processAudio = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const err = new Error("Vui lòng cung cấp file âm thanh (field: audio).");
+      err.status = 400;
+      throw err;
+    }
+
+    const filePath = req.file.path;
+    const mimetype = req.file.mimetype;
+
+    const evaluation = await chatbotService.evaluateAudio(filePath, mimetype);
+
+    // Xóa file tạm sau khi đã đánh giá xong bằng AI
+    const fs = require('fs');
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Đánh giá phát âm thành công",
+      data: evaluation
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -20,4 +20,31 @@ router.get('/performance', instructorController.getPerformance);
 // POST /api/instructor/generate-quiz - Sinh câu hỏi trắc nghiệm bằng AI (Gemini)
 router.post('/generate-quiz', instructorController.generateQuiz);
 
+/**
+ * @swagger
+ * tags:
+ *   name: Instructor
+ *   description: API dành cho giảng viên
+ * 
+ * /api/instructor/students:
+ *   get:
+ *     summary: Lấy danh sách học viên
+ *     tags: [Instructor]
+ *     security:
+ *       - bearerAuth: []
+ * 
+ * /api/instructor/performance:
+ *   get:
+ *     summary: Lấy thống kê hiệu suất
+ *     tags: [Instructor]
+ *     security:
+ *       - bearerAuth: []
+ * 
+ * /api/instructor/generate-quiz:
+ *   post:
+ *     summary: Tạo quiz bằng AI
+ *     tags: [Instructor]
+ *     security:
+ *       - bearerAuth: []
+ */
 module.exports = router;

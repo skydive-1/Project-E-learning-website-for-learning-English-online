@@ -22,6 +22,10 @@ const instructorRoutes = require('./modules/instructor/instructor.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const quizzesRoutes = require('./modules/quizzes/quizzes.routes');
 
+// ===== SWAGGER =====
+const swaggerSpec = require('./swagger');
+const swaggerUi = require('swagger-ui-express');
+
 // Ràng buộc bảo mật: JWT_SECRET là bắt buộc để khởi chạy ứng dụng an toàn
 if (!process.env.JWT_SECRET) {
   console.error('\n❌ FATAL ERROR: JWT_SECRET không được định nghĩa trong biến môi trường.');
@@ -84,6 +88,9 @@ app.use('/api/instructor', instructorRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quizzes', quizzesRoutes);
 
+// Setup Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 // ===== 6. HEALTH CHECK ENDPOINT =====
 app.get('/api/health', (req, res) => {
   res.json({
@@ -107,7 +114,7 @@ app.listen(PORT, async () => {
   console.log(`
     ╔═══════════════════════════════════════════╗
     ║   🚀 E-LEARNING BACKEND SERVER STARTED   ║
-    ║   🌐 http://localhost:${PORT}                    ║
+    ║   🌐 http://localhost:${PORT}/api-docs    ║
     ║   🏗️  Architecture: Modular Monolith      ║
     ║   ✅ Database: PostgreSQL                ║
     ║   🤖 RAG: Pinecone + Gemini              ║

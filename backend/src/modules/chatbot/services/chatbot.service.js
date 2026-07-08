@@ -140,6 +140,38 @@ class ChatbotService {
       throw error;
     }
   }
+
+  async evaluateAudio(filePath, mimetype) {
+    try {
+      const fs = require('fs');
+      // Đọc file âm thanh
+      const audioData = fs.readFileSync(filePath);
+      const audioBase64 = audioData.toString("base64");
+      
+      const prompt = `Bạn là một giáo viên tiếng Anh chuyên nghiệp.
+Học viên vừa gửi một đoạn âm thanh (thu âm) phát âm.
+Nhiệm vụ của bạn:
+1. Ghi ra bản dịch chính xác (Transcript) những gì bạn nghe được từ học viên.
+2. Đánh giá chất lượng phát âm: độ trôi chảy, ngữ điệu, trọng âm.
+3. Chỉ ra cụ thể các lỗi phát âm và cách sửa chi tiết để giúp học viên cải thiện.
+Hãy trình bày thân thiện, tự nhiên và dễ hiểu bằng tiếng Việt.`;
+
+      const result = await geminiModel.generateContent([
+        prompt,
+        {
+          inlineData: {
+            data: audioBase64,
+            mimeType: mimetype || "audio/mp3"
+          }
+        }
+      ]);
+
+      return result.response.text();
+    } catch (error) {
+      console.error("Lỗi xảy ra tại ChatbotService.evaluateAudio:", error);
+      throw new Error("Lỗi hệ thống khi AI xử lý nhận diện và đánh giá âm thanh.");
+    }
+  }
 }
 
 const serviceInstance = new ChatbotService();
@@ -148,6 +180,7 @@ module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
+  evaluateAudio: (filePath, mimetype) => serviceInstance.evaluateAudio(filePath, mimetype),
   handleRagChat
 };
 

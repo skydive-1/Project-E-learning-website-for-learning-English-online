@@ -32,4 +32,78 @@ router.put('/:courseId', authenticate, authorize([1, 2]), coursesController.upda
 // DELETE /api/courses/:courseId - Xóa khóa học
 router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.deleteCourse);
 
+/**
+ * @swagger
+ * tags:
+ *   name: Courses
+ *   description: API quản lý khóa học
+ * 
+ * /api/courses:
+ *   get:
+ *     summary: Lấy danh sách khóa học
+ *     tags: [Courses]
+ *   post:
+ *     summary: Tạo khóa học mới
+ *     tags: [Courses]
+ *     security:
+ *       - bearerAuth: []
+ * 
+ * /api/courses/subjects:
+ *   get:
+ *     summary: Lấy danh sách môn học
+ *     tags: [Courses]
+ * 
+ * /api/courses/{courseId}:
+ *   get:
+ *     summary: Lấy chi tiết khóa học
+ *     tags: [Courses]
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *   put:
+ *     summary: Cập nhật khóa học
+ *     tags: [Courses]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *   delete:
+ *     summary: Xóa khóa học
+ *     tags: [Courses]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ * 
+ * /api/courses/lessons/{lessonId}:
+ *   get:
+ *     summary: Lấy chi tiết bài học
+ *     tags: [Courses]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: lessonId
+ *         required: true
+ *         schema:
+ *           type: string
+ * 
+ * /api/courses/upload:
+ *   post:
+ *     summary: Tải lên file
+ *     tags: [Courses]
+ *     security:
+ *       - bearerAuth: []
+ */
 module.exports = router;

@@ -42,8 +42,62 @@ const updateProfileSchema = {
   }
 };
 
+/**
+ * @swagger
+ * tags:
+ *   name: Auth
+ *   description: API cho xác thực và quản lý tài khoản
+ */
+
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Đăng ký tài khoản mới
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               fullName:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Đăng ký thành công
+ */
 // Routes
 router.post('/register', validate(registerSchema), authController.register);
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Đăng nhập
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công và trả về token
+ */
 router.post('/login', validate(loginSchema), authController.login);
 router.post('/logout', authenticate, authController.logout);
 router.get('/profile', authenticate, authController.getProfile);

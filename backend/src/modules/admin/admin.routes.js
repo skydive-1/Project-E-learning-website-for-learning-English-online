@@ -20,4 +20,43 @@ router.put('/users/:userId/role', adminController.updateUserRole);
 // DELETE /api/admin/users/:userId - Xóa tài khoản người dùng
 router.delete('/users/:userId', adminController.deleteUser);
 
+/**
+ * @swagger
+ * tags:
+ *   name: Admin
+ *   description: API dành cho Admin
+ * 
+ * /api/admin/users:
+ *   get:
+ *     summary: Lấy danh sách người dùng
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ * 
+ * /api/admin/users/{userId}/role:
+ *   put:
+ *     summary: Cập nhật role người dùng
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ * 
+ * /api/admin/users/{userId}:
+ *   delete:
+ *     summary: Xóa người dùng
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
 module.exports = router;

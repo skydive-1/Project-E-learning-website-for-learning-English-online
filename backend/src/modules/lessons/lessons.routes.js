@@ -18,4 +18,57 @@ router.put('/:lessonId', authenticate, authorize([1, 2]), lessonsController.upda
 // DELETE /api/lessons/:lessonId - Xóa bài giảng (Chỉ Admin / Instructor)
 router.delete('/:lessonId', authenticate, authorize([1, 2]), lessonsController.deleteLesson);
 
+/**
+ * @swagger
+ * tags:
+ *   name: Lessons
+ *   description: API bài giảng
+ * 
+ * /api/lessons:
+ *   get:
+ *     summary: Lấy danh sách bài giảng
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *   post:
+ *     summary: Tạo bài giảng mới
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ * 
+ * /api/lessons/{lessonId}:
+ *   put:
+ *     summary: Cập nhật bài giảng
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: lessonId
+ *         required: true
+ *         schema:
+ *           type: string
+ *   delete:
+ *     summary: Xóa bài giảng
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: lessonId
+ *         required: true
+ *         schema:
+ *           type: string
+ * 
+ * /api/lessons/video/stream/{lessonId}:
+ *   get:
+ *     summary: Stream video bài giảng
+ *     tags: [Lessons]
+ *     parameters:
+ *       - in: path
+ *         name: lessonId
+ *         required: true
+ *         schema:
+ *           type: string
+ */
 module.exports = router;

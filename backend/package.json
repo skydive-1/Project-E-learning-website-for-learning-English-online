@@ -23,6 +23,8 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pg": "^8.21.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
