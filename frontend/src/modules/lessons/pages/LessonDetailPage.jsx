@@ -194,6 +194,10 @@ const LessonDetailPage = () => {
                       src={currentLesson.videoUrl} 
                       controls 
                       autoPlay
+                      controlsList="nodownload"
+                      disablePictureInPicture
+                      onContextMenu={(e) => e.preventDefault()}
+                      onDragStart={(e) => e.preventDefault()}
                       className="w-full h-full object-contain"
                     />
                   ) : (

@@ -141,6 +141,18 @@ class LessonsService {
       handleServiceError(error, 'Lỗi xóa bài giảng');
     }
   }
+
+  /**
+   * Lấy chi tiết một bài học
+   */
+  async getLessonById(lessonId) {
+    try {
+      const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [parseInt(lessonId, 10)]);
+      return result.rows[0];
+    } catch (error) {
+      handleServiceError(error, 'Lỗi lấy thông tin bài giảng');
+    }
+  }
 }
 
 module.exports = new LessonsService();

@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const lessonsController = require('./controllers/lessons.controller');
-const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
+
+// GET /api/lessons/video/stream/:lessonId - Stream video bảo mật
+router.get('/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
 
 // GET /api/lessons - Lấy danh sách bài giảng (query: ?courseId=X hoặc ?sectionId=Y)
 router.get('/', authenticate, lessonsController.getLessonsByQuery);

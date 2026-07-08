@@ -192,7 +192,19 @@ export const getCourseDetails = async (courseId = 1) => {
             content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
           }
 
-          const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
+          const token = localStorage.getItem('token') || '';
+          let resolvedUrl = '';
+          if (l.content_url) {
+            if (l.content_url.startsWith('http')) {
+              resolvedUrl = l.content_url;
+            } else {
+              if (l.content_type === 'video') {
+                resolvedUrl = `http://localhost:5000/api/lessons/video/stream/${l.lesson_id}?token=${token}`;
+              } else {
+                resolvedUrl = `http://localhost:5000${l.content_url}`;
+              }
+            }
+          }
           
           const lessonObj = {
             id: String(l.lesson_id),
@@ -330,7 +342,19 @@ export const getLessonById = async (lessonId) => {
       content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
     }
 
-    const resolvedUrl = l.content_url ? (l.content_url.startsWith('http') ? l.content_url : `http://localhost:5000${l.content_url}`) : '';
+    const token = localStorage.getItem('token') || '';
+    let resolvedUrl = '';
+    if (l.content_url) {
+      if (l.content_url.startsWith('http')) {
+        resolvedUrl = l.content_url;
+      } else {
+        if (l.content_type === 'video') {
+          resolvedUrl = `http://localhost:5000/api/lessons/video/stream/${l.lesson_id}?token=${token}`;
+        } else {
+          resolvedUrl = `http://localhost:5000${l.content_url}`;
+        }
+      }
+    }
 
     if (isQuiz) {
       let quizQuestions = getCourseQuizQuestions(cleanId);

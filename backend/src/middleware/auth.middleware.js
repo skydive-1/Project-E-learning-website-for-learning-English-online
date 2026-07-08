@@ -73,7 +73,40 @@ const authorize = (roles = []) => {
   };
 };
 
+/**
+ * Middleware xác thực video qua query parameter token
+ */
+const authenticateVideoToken = (req, res, next) => {
+  try {
+    const token = req.query.token;
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Không có token xác thực, quyền truy cập video bị từ chối'
+      });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      const error = new Error('JWT_SECRET chưa được cấu hình trên hệ thống');
+      error.status = 500;
+      throw error;
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // decoded chứa: { id, email, username, roleId } hoặc tương đương
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Token xác thực video không hợp lệ hoặc đã hết hạn'
+    });
+  }
+};
+
 module.exports = {
   authenticate,
-  authorize
+  authorize,
+  authenticateVideoToken
 };
