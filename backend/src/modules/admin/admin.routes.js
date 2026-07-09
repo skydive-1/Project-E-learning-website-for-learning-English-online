@@ -32,6 +32,9 @@ router.delete('/users/:userId', adminController.deleteUser);
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Trả về danh sách người dùng
  * 
  * /api/admin/users/{userId}/role:
  *   put:
@@ -45,6 +48,19 @@ router.delete('/users/:userId', adminController.deleteUser);
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               roleId:
+ *                 type: integer
+ *                 description: ID vai trò mới (1=Admin, 2=Instructor, 3=Student)
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
  * 
  * /api/admin/users/{userId}:
  *   delete:
@@ -58,5 +74,8 @@ router.delete('/users/:userId', adminController.deleteUser);
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Xóa thành công
  */
 module.exports = router;

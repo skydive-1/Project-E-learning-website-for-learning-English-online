@@ -24,10 +24,23 @@ router.post('/submit', quizzesController.submitQuiz);
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/quizzes/submit:
  *   post:
  *     summary: Nộp bài quiz
  *     tags: [Quizzes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Nộp bài thành công
  */
 module.exports = router;
