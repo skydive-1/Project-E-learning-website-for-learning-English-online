@@ -132,6 +132,10 @@ const CourseCardSkeleton = () => {
 const CourseCard = ({ course }) => {
   const navigate = useNavigate();
 
+  const startDate = course.startDate ? new Date(course.startDate) : null;
+  const currentDate = new Date();
+  const hasNotStarted = startDate && startDate > currentDate;
+
   const handleStartLearning = () => {
     if (course.id && course.id.startsWith('db-')) {
       const dbId = course.id.split('-')[1];
@@ -150,9 +154,15 @@ const CourseCard = ({ course }) => {
     <div className="course-card-premium scroll-animate" onClick={handleStartLearning}>
       <div className="card-thumb">
         <img src={course.image || '/images/hero_illustration.png'} alt={course.title} />
-        {course.badge && <span className="badge-status">{course.badge}</span>}
+        {hasNotStarted ? (
+          <span className="badge-status" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#fff', fontWeight: 'bold' }}>
+            Sắp mở: {startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+          </span>
+        ) : (
+          course.badge && <span className="badge-status">{course.badge}</span>
+        )}
         <div className="thumb-overlay">
-          <button className="btn-preview">Học ngay</button>
+          <button className="btn-preview">{hasNotStarted ? 'Sắp mở' : 'Học ngay'}</button>
         </div>
       </div>
       <div className="card-body">
@@ -225,7 +235,9 @@ const CourseListPage = () => {
               level: calculatedLevel,
               subjectId: c.subject_id,
               subjectName: c.subject_name,
-              duration: `${c.lessons_count || 0} bài giảng`
+              duration: `${c.lessons_count || 0} bài giảng`,
+              startDate: c.start_date,
+              instructorId: c.instructor_id
             };
           });
           return dbCoursesMapped; // Trả về duy nhất dữ liệu thật nếu có trong DB

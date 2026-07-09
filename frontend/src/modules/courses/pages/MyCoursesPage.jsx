@@ -107,7 +107,9 @@ const MyCoursesPage = () => {
               subjectName: c.subject_name,
               progress: details.progress || 0,
               lessonsCount: c.lessons_count || 0,
-              sectionsCount: c.sections_count || 0
+              sectionsCount: c.sections_count || 0,
+              startDate: details.startDate || c.start_date,
+              instructorId: details.instructorId || c.instructor_id
             };
           } catch (e) {
             console.error(`Error loading details for course ${c.course_id}:`, e);
@@ -120,7 +122,9 @@ const MyCoursesPage = () => {
               subjectName: c.subject_name,
               progress: 0,
               lessonsCount: c.lessons_count || 0,
-              sectionsCount: c.sections_count || 0
+              sectionsCount: c.sections_count || 0,
+              startDate: c.start_date,
+              instructorId: c.instructor_id
             };
           }
         })
@@ -444,22 +448,33 @@ const MyCoursesPage = () => {
               gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
               gap: '30px'
             }}>
-              {filteredCourses.map(course => (
-                <div 
-                  key={course.id} 
-                  className="course-card-premium scroll-animate"
-                  onClick={() => handleStartLearning(course)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="card-thumb">
-                    <img src={course.image} alt={course.title} />
-                    <span className="badge-status" style={{ background: '#ecfdf5', color: '#059669' }}>
-                      {course.level}
-                    </span>
-                    <div className="thumb-overlay">
-                      <button className="btn-preview">Vào học ngay</button>
+              {filteredCourses.map(course => {
+                const startDate = course.startDate ? new Date(course.startDate) : null;
+                const currentDate = new Date();
+                const hasNotStarted = startDate && startDate > currentDate;
+
+                return (
+                  <div 
+                    key={course.id} 
+                    className="course-card-premium scroll-animate"
+                    onClick={() => handleStartLearning(course)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="card-thumb">
+                      <img src={course.image} alt={course.title} />
+                      {hasNotStarted ? (
+                        <span className="badge-status" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#fff', fontWeight: 'bold' }}>
+                          Chưa mở: {startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                        </span>
+                      ) : (
+                        <span className="badge-status" style={{ background: '#ecfdf5', color: '#059669' }}>
+                          {course.level}
+                        </span>
+                      )}
+                      <div className="thumb-overlay">
+                        <button className="btn-preview">{hasNotStarted ? 'Xem đếm ngược' : 'Vào học ngay'}</button>
+                      </div>
                     </div>
-                  </div>
                   <div className="card-body" style={{ display: 'flex', flexDirection: 'column', height: 'auto', minHeight: '220px' }}>
                     <div className="card-tags">
                       <span className="tag-level" style={{ background: 'rgba(29,78,216,0.06)', color: '#1d4ed8' }}>
@@ -508,7 +523,8 @@ const MyCoursesPage = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           )}
 

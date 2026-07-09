@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
+import { useAuth } from '../../../context/AuthContext';
 import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
@@ -22,11 +23,17 @@ const LessonDetailPage = () => {
   const { lessonId } = useParams();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   // States
   const [activeRightTab, setActiveRightTab] = useState("playlist"); // "playlist" or "ai"
   const [activeLeftTab, setActiveLeftTab] = useState("syllabus"); // "syllabus" or "resources"
   const [expandedSections, setExpandedSections] = useState({});
+
+  // Countdown timer state
+  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+
 
   // Lắng nghe sự thay đổi của location để đổi tab tự động nếu cần
   useEffect(() => {
@@ -58,6 +65,41 @@ const LessonDetailPage = () => {
     queryFn: () => getCourseDetails(courseIdToLoad),
     enabled: courseIdToLoad !== null
   });
+
+  const startDate = course?.startDate ? new Date(course.startDate) : null;
+  const currentDate = new Date();
+  const hasNotStarted = startDate && startDate > currentDate;
+  const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
+  const currentUserId = user?.userId || user?.user_id || user?.id;
+  const isInstructorOrAdmin = user && (userRole === 1 || Number(currentUserId) === Number(course?.instructorId));
+  const shouldLock = hasNotStarted && !isInstructorOrAdmin;
+
+  useEffect(() => {
+    if (!startDate || startDate <= currentDate) return;
+
+    const updateCountdown = () => {
+      const now = new Date().getTime();
+      const distance = startDate.getTime() - now;
+
+      if (distance < 0) {
+        clearInterval(interval);
+        queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      setCountdown({ days, hours, minutes, seconds });
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [course?.startDate]);
 
   // 3. Xác định targetLessonId thực tế (nếu URL không có lessonId, lấy bài đầu tiên của khóa học làm mặc định)
   const targetLessonId = lessonId || (course?.sections?.[0]?.lessons?.[0]?.id || null);
@@ -155,7 +197,78 @@ const LessonDetailPage = () => {
           </div>
 
           {/* 70/30 Grid Layout */}
-          <div className="grid grid-cols-10 gap-6 items-start">
+          {shouldLock ? (
+            /* Premium Glassmorphic Countdown Lock Screen */
+            <div className="w-full max-w-3xl mx-auto mt-6 bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-3xl p-8 md:p-12 shadow-xl text-center space-y-8 animate-fade relative overflow-hidden" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+              {/* Decorative Gradients */}
+              <div className="absolute -top-16 -left-16 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+              <div className="absolute -bottom-16 -right-16 w-32 h-32 bg-smart-indigo/10 rounded-full blur-2xl pointer-events-none"></div>
+
+              <div className="space-y-4">
+                <div className="w-20 h-20 rounded-2xl bg-amber-500/10 border-2 border-amber-500 flex items-center justify-center text-4xl text-amber-500 mx-auto shadow-md animate-bounce" style={{ animationDuration: '3s' }}>
+                  ⏳
+                </div>
+                <h1 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-slate-100 leading-tight" style={{ color: 'var(--text-color)' }}>
+                  Khóa học chưa khai giảng!
+                </h1>
+                <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 font-semibold max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--text-light)' }}>
+                  Cảm ơn bạn đã quan tâm đến khóa học <strong>{course?.title}</strong>. 
+                  Hiện tại lớp học này chưa đến giờ mở, vui lòng quay lại khi đồng hồ đếm ngược kết thúc.
+                </p>
+              </div>
+
+              {/* Countdown Numbers Grid */}
+              <div className="grid grid-cols-4 gap-3 md:gap-4 max-w-md mx-auto pt-4 pb-2">
+                {[
+                  { label: 'Ngày', value: countdown.days },
+                  { label: 'Giờ', value: countdown.hours },
+                  { label: 'Phút', value: countdown.minutes },
+                  { label: 'Giây', value: countdown.seconds }
+                ].map((item, index) => (
+                  <div 
+                    key={index}
+                    className="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/80 p-3 md:p-4.5 rounded-2xl shadow-inner"
+                    style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)' }}
+                  >
+                    <span className="text-2xl md:text-3xl font-black text-smart-indigo dark:text-indigo-400">
+                      {String(item.value).padStart(2, '0')}
+                    </span>
+                    <span className="text-[10px] md:text-xs font-bold text-slate-400 dark:text-slate-505 uppercase tracking-wider mt-1">
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Expected Start Date Banner */}
+              <div className="inline-block px-5 py-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-405 text-xs md:text-sm font-extrabold max-w-md mx-auto">
+                📅 Lịch khai giảng dự kiến: {startDate ? startDate.toLocaleDateString('vi-VN', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                }) : 'Đang cập nhật'}
+              </div>
+
+              <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-center max-w-xs md:max-w-md mx-auto">
+                <button
+                  onClick={() => navigate('/courses')}
+                  className="flex-1 py-3 px-6 bg-smart-indigo hover:bg-indigo-650 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+                >
+                  Khám phá khóa học khác
+                </button>
+                <button
+                  onClick={() => navigate('/')}
+                  className="flex-1 py-3 px-6 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-650 text-slate-750 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)', borderColor: 'var(--border-color)' }}
+                >
+                  Quay lại trang chủ
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-10 gap-6 items-start">
             
             {/* Left Area - 70% */}
             {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
@@ -458,6 +571,7 @@ const LessonDetailPage = () => {
             </div>
 
           </div>
+          )}
         </div>
       </main>
     </div>

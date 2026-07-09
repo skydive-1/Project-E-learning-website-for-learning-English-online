@@ -255,7 +255,9 @@ export const getCourseDetails = async (courseId = 1) => {
       title: dbCourse.course_name,
       instructor: "Dr. Alexander Wright",
       progress: progressPercent,
-      sections: mappedSections
+      sections: mappedSections,
+      startDate: dbCourse.start_date,
+      instructorId: dbCourse.instructor_id
     };
 
   } catch (error) {

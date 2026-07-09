@@ -24,6 +24,66 @@ const getRoleFromToken = () => {
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
+const CustomDateInput = ({ value, onChange }) => {
+  const [isFocused, setIsFocused] = useState(false);
+
+  const formatDateForDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid',
+        borderColor: isFocused ? '#3b82f6' : '#cbd5e1',
+        boxShadow: isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.15)' : 'none',
+        fontSize: '14px',
+        backgroundColor: '#fff',
+        color: '#1e293b',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        pointerEvents: 'none',
+        zIndex: 1,
+        transition: 'all 0.15s ease'
+      }}>
+        <span>{formatDateForDisplay(value) || 'Chọn ngày'}</span>
+        <span style={{ color: '#94a3b8' }}>📅</span>
+      </div>
+      <input 
+        type="date" 
+        value={value || ''}
+        onChange={onChange}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        style={{
+          width: '100%',
+          padding: '12px',
+          borderRadius: '10px',
+          border: '1px solid transparent',
+          fontSize: '14px',
+          opacity: 0,
+          position: 'relative',
+          zIndex: 2,
+          cursor: 'pointer'
+        }}
+      />
+    </div>
+  );
+};
+
 const CourseEditor = () => {
   const navigate = useNavigate();
   const { courseId } = useParams();
@@ -488,24 +548,16 @@ const CourseEditor = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Ngày khai giảng</label>
-                  <input 
-                    type="date" 
+                  <CustomDateInput 
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    style={{
-                      width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px'
-                    }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Ngày kết thúc</label>
-                  <input 
-                    type="date" 
+                  <CustomDateInput 
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    style={{
-                      width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px'
-                    }}
                   />
                 </div>
               </div>
