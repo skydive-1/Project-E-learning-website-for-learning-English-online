@@ -221,6 +221,31 @@ export const getCourseDetails = async (courseId = 1) => {
             speakingQuestions: l.speaking_questions || l.speakingQuestions || ''
           };
 
+          const resultList = [lessonObj];
+
+          // Check if lesson has speaking exercises configured
+          const speakingDbIds = ['1', '2', '3', '4', '5', '10', '11', '12', '13', '14', '25', '26', '27', '28', '29', '30'];
+          const hasSpeaking = (l.speaking_sentences && l.speaking_sentences.trim()) || 
+                              (l.speaking_questions && l.speaking_questions.trim()) ||
+                              speakingDbIds.includes(String(l.lesson_id));
+          if (hasSpeaking) {
+            const speakingObj = {
+              id: `speaking-${l.lesson_id}`,
+              title: `🗣️ Luyện nói: ${l.title}`,
+              duration: `Luyện phát âm AI`,
+              type: 'speaking',
+              videoUrl: null,
+              pdfUrl: null,
+              description: `Bài tập phát âm và phản xạ nói với AI cho bài học: ${l.title}`,
+              content: '',
+              resources: [],
+              completed: completedLessonIds.includes(l.lesson_id),
+              speakingSentences: l.speaking_sentences || '',
+              speakingQuestions: l.speaking_questions || ''
+            };
+            resultList.push(speakingObj);
+          }
+
           // Check if lesson has quiz questions compiled
           const quizQuestions = getCourseQuizQuestions(l.lesson_id);
           if (quizQuestions && quizQuestions.length > 0) {
@@ -236,10 +261,10 @@ export const getCourseDetails = async (courseId = 1) => {
               resources: [],
               completed: completedLessonIds.includes(l.lesson_id)
             };
-            return [lessonObj, quizObj];
+            resultList.push(quizObj);
           }
 
-          return [lessonObj];
+          return resultList;
         })
       };
     });
@@ -297,7 +322,10 @@ export const toggleLessonCompletion = async (lessonId) => {
 export const getLessonById = async (lessonId) => {
   try {
     const isQuiz = String(lessonId).startsWith('quiz-');
-    const cleanId = isQuiz ? lessonId.replace('quiz-', '') : lessonId;
+    const isSpeaking = String(lessonId).startsWith('speaking-');
+    let cleanId = lessonId;
+    if (isQuiz) cleanId = lessonId.replace('quiz-', '');
+    if (isSpeaking) cleanId = lessonId.replace('speaking-', '');
 
     // 1. Lấy chi tiết bài học từ API backend
     const response = await apiClient.get(`/courses/lessons/${cleanId}`);
@@ -376,6 +404,24 @@ export const getLessonById = async (lessonId) => {
         content: '',
         resources: [],
         completed: completed
+      };
+    }
+
+    if (isSpeaking) {
+      return {
+        id: `speaking-${l.lesson_id}`,
+        courseId: l.course_id,
+        title: `🗣️ Luyện nói: ${l.title}`,
+        duration: `Luyện phát âm AI`,
+        type: 'speaking',
+        videoUrl: null,
+        pdfUrl: null,
+        description: `Bài tập phát âm và phản xạ nói với AI cho bài học: ${l.title}`,
+        content: '',
+        resources: [],
+        completed: completed,
+        speakingSentences: l.speaking_sentences || '',
+        speakingQuestions: l.speaking_questions || ''
       };
     }
 

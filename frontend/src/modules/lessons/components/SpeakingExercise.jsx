@@ -71,7 +71,7 @@ const DEFAULT_QA_DATA = [
   { id: "qd-2", text: "Describe a topic you would love to discuss with an AI tutor.", translation: "Hãy mô tả một chủ đề bạn rất muốn thảo luận với gia sư AI." }
 ];
 
-const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions }) => {
+const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onComplete }) => {
   const cleanLessonId = String(lessonId).replace('quiz-', '');
   
   // Tab chính: 'pronunciation' (Luyện phát âm theo mẫu) hoặc 'qa' (Hỏi đáp phản xạ)
@@ -629,6 +629,20 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions }) =>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Complete Button */}
+      {onComplete && (
+        <div className="pt-6 mt-6 border-t border-slate-200/60 dark:border-slate-700/80 flex justify-end">
+          <button
+            type="button"
+            onClick={onComplete}
+            className="flex items-center space-x-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-sm font-bold rounded-2xl cursor-pointer shadow-md transition-all"
+          >
+            <FiCheckCircle className="text-base" />
+            <span>Hoàn thành bài luyện nói</span>
+          </button>
         </div>
       )}
     </div>

@@ -289,6 +289,25 @@ const LessonDetailPage = () => {
                   }}
                 />
               </div>
+            ) : currentLesson?.type === 'speaking' ? (
+              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                <SpeakingExercise 
+                  lessonId={currentLesson.id.replace('speaking-', '')} 
+                  speakingSentences={currentLesson.speakingSentences}
+                  speakingQuestions={currentLesson.speakingQuestions}
+                  onComplete={async () => {
+                    if (!currentLesson.completed) {
+                      try {
+                        await toggleLessonCompletion(currentLesson.id);
+                        queryClient.invalidateQueries({ queryKey: ['lesson', currentLesson.id] });
+                        queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
+                      } catch (err) {
+                        console.error("Lỗi tự động hoàn thành bài học khi luyện nói:", err);
+                      }
+                    }
+                  }}
+                />
+              </div>
             ) : (
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 
@@ -380,16 +399,7 @@ const LessonDetailPage = () => {
                       )}
                     </button>
 
-                    <button
-                      onClick={() => setActiveLeftTab("speaking")}
-                      style={{ color: activeLeftTab === "speaking" ? "#3b82f6" : "var(--text-light)" }}
-                      className="pb-3.5 font-semibold transition-all relative"
-                    >
-                      <span>Luyện phát âm (AI)</span>
-                      {activeLeftTab === "speaking" && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
-                      )}
-                    </button>
+
                   </div>
 
                   {/* Left Tabs Content */}
@@ -437,14 +447,7 @@ const LessonDetailPage = () => {
                       </div>
                     )}
 
-                    {activeLeftTab === "speaking" && (
-                      <div className="animate-fade">
-                        <SpeakingExercise 
-                          lessonId={currentLesson?.id || targetLessonId} 
-                          speakingSentences={currentLesson?.speakingSentences}
-                        />
-                      </div>
-                    )}
+
                   </div>
                 </div>
               </div>
