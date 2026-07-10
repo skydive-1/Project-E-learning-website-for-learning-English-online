@@ -42,16 +42,30 @@ router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.d
  *   get:
  *     summary: Lấy danh sách khóa học
  *     tags: [Courses]
+ *     responses:
+ *       200:
+ *         description: Thành công
  *   post:
  *     summary: Tạo khóa học mới
  *     tags: [Courses]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/courses/subjects:
  *   get:
  *     summary: Lấy danh sách môn học
  *     tags: [Courses]
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/courses/{courseId}:
  *   get:
@@ -63,6 +77,9 @@ router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.d
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
  *   put:
  *     summary: Cập nhật khóa học
  *     tags: [Courses]
@@ -74,6 +91,14 @@ router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.d
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Thành công
  *   delete:
  *     summary: Xóa khóa học
  *     tags: [Courses]
@@ -85,6 +110,9 @@ router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.d
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/courses/lessons/{lessonId}:
  *   get:
@@ -98,6 +126,9 @@ router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.d
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/courses/upload:
  *   post:
@@ -105,5 +136,17 @@ router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.d
  *     tags: [Courses]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Thành công
  */
 module.exports = router;

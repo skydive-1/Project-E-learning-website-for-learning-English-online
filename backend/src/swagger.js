@@ -14,6 +14,20 @@ const options = {
                 description: "Local Server",
             },
         ],
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: "http",
+                    scheme: "bearer",
+                    bearerFormat: "JWT",
+                },
+            },
+        },
+        security: [
+            {
+                bearerAuth: [],
+            },
+        ],
     },
 
     // Đường dẫn chứa các Route có JSDoc

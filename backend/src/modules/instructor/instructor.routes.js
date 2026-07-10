@@ -32,6 +32,9 @@ router.post('/generate-quiz', instructorController.generateQuiz);
  *     tags: [Instructor]
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/instructor/performance:
  *   get:
@@ -39,6 +42,9 @@ router.post('/generate-quiz', instructorController.generateQuiz);
  *     tags: [Instructor]
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/instructor/generate-quiz:
  *   post:
@@ -46,5 +52,13 @@ router.post('/generate-quiz', instructorController.generateQuiz);
  *     tags: [Instructor]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Thành công
  */
 module.exports = router;

@@ -30,11 +30,22 @@ router.delete('/:lessonId', authenticate, authorize([1, 2]), lessonsController.d
  *     tags: [Lessons]
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thành công
  *   post:
  *     summary: Tạo bài giảng mới
  *     tags: [Lessons]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/lessons/{lessonId}:
  *   put:
@@ -48,6 +59,14 @@ router.delete('/:lessonId', authenticate, authorize([1, 2]), lessonsController.d
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Thành công
  *   delete:
  *     summary: Xóa bài giảng
  *     tags: [Lessons]
@@ -59,6 +78,9 @@ router.delete('/:lessonId', authenticate, authorize([1, 2]), lessonsController.d
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
  * 
  * /api/lessons/video/stream/{lessonId}:
  *   get:
@@ -70,5 +92,8 @@ router.delete('/:lessonId', authenticate, authorize([1, 2]), lessonsController.d
  *         required: true
  *         schema:
  *           type: string
+ *     responses:
+ *       200:
+ *         description: Thành công
  */
 module.exports = router;
