@@ -121,6 +121,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   const [showQATranslation, setShowQATranslation] = useState({});
   const [qaResults, setQaResults] = useState({}); // { [questionId]: { transcription, grammarFeedback, pronunciationFeedback, suggestion, reply } }
   const [qaLoadingStates, setQaLoadingStates] = useState({});
+  const [showTextMap, setShowTextMap] = useState({});
 
   // Hook ghi âm chung
   const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
@@ -454,6 +455,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
             const isLoading = !!qaLoadingStates[item.id];
             const result = qaResults[item.id];
             const translationVisible = !!showQATranslation[item.id];
+            const showText = !!showTextMap[item.id];
 
             return (
               <div 
@@ -467,41 +469,63 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                 }`}
               >
                 {/* Header actions */}
-                <div className="flex justify-between items-start mb-3 gap-2">
-                  <div className="flex items-center space-x-2">
+                <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
+                  <div className="flex items-center space-x-2.5">
                     <button
                       type="button"
                       onClick={(e) => handlePlayTTS(item.text, e)}
-                      className="p-2 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-xl transition-all border border-blue-100 dark:border-blue-800/30 flex items-center justify-center cursor-pointer"
-                      title="Nghe câu hỏi"
+                      className="py-2 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer font-bold text-xs"
+                      title="Nghe câu hỏi từ AI"
                     >
-                      <FiVolume2 className="text-[15px]" />
+                      <FiVolume2 className="text-[14px]" />
+                      <span>Nghe AI hỏi</span>
                     </button>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowQATranslation(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                        setShowTextMap(prev => ({ ...prev, [item.id]: !prev[item.id] }));
                       }}
-                      className="text-[11px] text-slate-500 hover:text-smart-indigo font-bold px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      className="text-[11px] text-slate-500 hover:text-smart-indigo font-bold px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                     >
-                      {translationVisible ? "Ẩn nghĩa" : "Dịch câu hỏi"}
+                      {showText ? "Ẩn văn bản" : "Xem văn bản"}
                     </button>
+                    {(showText || result) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowQATranslation(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                        }}
+                        className="text-[11px] text-slate-500 hover:text-smart-indigo font-bold px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                      >
+                        {translationVisible ? "Ẩn dịch" : "Dịch câu hỏi"}
+                      </button>
+                    )}
                   </div>
 
                   {result && !isLoading && (
-                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2 py-1.5 rounded-lg border border-blue-100 dark:border-blue-850">
+                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2 py-1 rounded-lg border border-blue-100 dark:border-blue-850">
                       Đã trả lời
                     </span>
                   )}
                 </div>
 
-                {/* Question Text */}
+                {/* Question Text / Listening Placeholder */}
                 <div className="my-2">
-                  <p className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-wide leading-relaxed">
-                    {item.text}
-                  </p>
-                  {translationVisible && (
+                  {showText || result ? (
+                    <p className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-wide leading-relaxed">
+                      {item.text}
+                    </p>
+                  ) : (
+                    <div className="flex items-center space-x-2.5 py-4 px-4 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                      <FiVolume2 className="text-blue-500 text-lg animate-pulse shrink-0" />
+                      <span className="text-xs font-semibold text-slate-450 dark:text-slate-400">
+                        Bấm nút "Nghe AI hỏi" ở trên để nghe câu hỏi bằng âm thanh...
+                      </span>
+                    </div>
+                  )}
+                  {translationVisible && (showText || result) && (
                     <p className="text-xs text-slate-400 dark:text-slate-450 italic mt-2 pl-1.5 border-l-2 border-slate-200 dark:border-slate-650">
                       "{item.translation}"
                     </p>

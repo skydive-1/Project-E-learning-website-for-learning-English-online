@@ -144,11 +144,13 @@ class CoursesService {
     const orderIndex = lessonData.orderIndex !== undefined ? lessonData.orderIndex : defaultOrder;
     const contentType = lessonData.contentType || lessonData.type || 'video';
     const contentUrl = lessonData.contentUrl || lessonData.url || '';
+    const speakingSentences = lessonData.speakingSentences || lessonData.speaking_sentences || '';
+    const speakingQuestions = lessonData.speakingQuestions || lessonData.speaking_questions || '';
 
     await client.query(`
-      INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [sectionId, lessonData.title, contentType, contentUrl, orderIndex]);
+      INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [sectionId, lessonData.title, contentType, contentUrl, orderIndex, speakingSentences, speakingQuestions]);
   }
 
   async getLessonById(lessonId) {
@@ -172,7 +174,8 @@ class CoursesService {
         SELECT 
           c.*,
           s.section_id, s.title AS section_title, s.order_index AS section_order,
-          l.lesson_id, l.title AS lesson_title, l.content_type, l.content_url, l.order_index AS lesson_order
+          l.lesson_id, l.title AS lesson_title, l.content_type, l.content_url, l.order_index AS lesson_order,
+          l.speaking_sentences, l.speaking_questions
         FROM courses c
         LEFT JOIN sections s ON c.course_id = s.course_id
         LEFT JOIN lessons l ON s.section_id = l.section_id
@@ -186,6 +189,7 @@ class CoursesService {
       const {
         section_id, section_title, section_order,
         lesson_id, lesson_title, content_type, content_url, lesson_order,
+        speaking_sentences, speaking_questions,
         ...courseData
       } = result.rows[0];
 
@@ -218,7 +222,9 @@ class CoursesService {
             title: row.lesson_title,
             content_type: row.content_type,
             content_url: row.content_url,
-            order_index: row.lesson_order
+            order_index: row.lesson_order,
+            speaking_sentences: row.speaking_sentences || '',
+            speaking_questions: row.speaking_questions || ''
           });
         }
       });
@@ -230,7 +236,10 @@ class CoursesService {
   }
 
   async updateCourse(courseId, courseData) {
+    const client = await db.pool.connect();
     try {
+      await client.query('BEGIN');
+
       const {
         subjectId,
         courseName,
@@ -239,7 +248,8 @@ class CoursesService {
         price,
         status,
         startDate,
-        endDate
+        endDate,
+        sections
       } = courseData;
 
       const updates = [];
@@ -287,21 +297,122 @@ class CoursesService {
         values.push(endDate || null);
       }
 
-      if (updates.length === 0) return await this.getCourseById(courseId);
+      if (updates.length > 0) {
+        values.push(courseId);
+        const queryText = `
+          UPDATE courses 
+          SET ${updates.join(', ')} 
+          WHERE course_id = $${paramIndex}
+        `;
+        await client.query(queryText, values);
+      }
 
-      values.push(courseId);
-      const queryText = `
-        UPDATE courses 
-        SET ${updates.join(', ')} 
-        WHERE course_id = $${paramIndex}
-        RETURNING *
-      `;
-      const result = await db.query(queryText, values);
-      if (result.rows.length === 0) return null;
+      // --- SYNCHRONIZE SECTIONS AND LESSONS ---
+      if (sections && Array.isArray(sections)) {
+        // 1. Get existing section IDs of the course
+        const existingSectionsRes = await client.query(
+          'SELECT section_id FROM sections WHERE course_id = $1',
+          [courseId]
+        );
+        const existingSectionIds = existingSectionsRes.rows.map(r => r.section_id);
 
+        const currentSectionIds = [];
+        const currentLessonIds = [];
+
+        for (let i = 0; i < sections.length; i++) {
+          const sec = sections[i];
+          const sectionOrder = sec.orderIndex || (i + 1);
+          let secId;
+
+          const isExistingSection = sec.id && Number.isInteger(Number(sec.id)) && Number(sec.id) < 1000000000;
+
+          if (isExistingSection && existingSectionIds.includes(Number(sec.id))) {
+            // Update existing section
+            secId = Number(sec.id);
+            await client.query(
+              'UPDATE sections SET title = $1, order_index = $2 WHERE section_id = $3',
+              [sec.title, sectionOrder, secId]
+            );
+          } else {
+            // Insert new section
+            const insertSecRes = await client.query(
+              'INSERT INTO sections (course_id, title, order_index) VALUES ($1, $2, $3) RETURNING section_id',
+              [courseId, sec.title, sectionOrder]
+            );
+            secId = insertSecRes.rows[0].section_id;
+          }
+          currentSectionIds.push(secId);
+
+          // Get existing lesson IDs for this section if updating
+          let existingLessonIds = [];
+          if (isExistingSection) {
+            const existingLessonsRes = await client.query(
+              'SELECT lesson_id FROM lessons WHERE section_id = $1',
+              [secId]
+            );
+            existingLessonIds = existingLessonsRes.rows.map(r => r.lesson_id);
+          }
+
+          // Process lessons
+          if (sec.lessons && Array.isArray(sec.lessons)) {
+            for (let j = 0; j < sec.lessons.length; j++) {
+              const les = sec.lessons[j];
+              const lessonOrder = les.orderIndex || (j + 1);
+              const contentType = les.contentType || les.type || 'video';
+              const contentUrl = les.contentUrl || '';
+              const speakingSentences = les.speakingSentences || les.speaking_sentences || '';
+              const speakingQuestions = les.speakingQuestions || les.speaking_questions || '';
+              let lesId;
+
+              const isExistingLesson = les.id && Number.isInteger(Number(les.id)) && Number(les.id) < 1000000000;
+
+              if (isExistingLesson && existingLessonIds.includes(Number(les.id))) {
+                // Update existing lesson
+                lesId = Number(les.id);
+                await client.query(
+                  `UPDATE lessons 
+                   SET title = $1, content_type = $2, content_url = $3, order_index = $4, 
+                       speaking_sentences = $5, speaking_questions = $6 
+                   WHERE lesson_id = $7`,
+                  [les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions, lesId]
+                );
+              } else {
+                // Insert new lesson
+                const insertLesRes = await client.query(
+                  `INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)
+                   RETURNING lesson_id`,
+                  [secId, les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions]
+                );
+                lesId = insertLesRes.rows[0].lesson_id;
+              }
+              currentLessonIds.push(lesId);
+            }
+          }
+
+          // Delete lessons of this section that were removed
+          if (isExistingSection) {
+            await client.query(
+              'DELETE FROM lessons WHERE section_id = $1 AND NOT (lesson_id = ANY($2::int[]))',
+              [secId, currentLessonIds.length > 0 ? currentLessonIds : [-1]]
+            );
+          }
+        }
+
+        // Delete sections of this course that were removed
+        await client.query(
+          'DELETE FROM sections WHERE course_id = $1 AND NOT (section_id = ANY($2::int[]))',
+          [courseId, currentSectionIds.length > 0 ? currentSectionIds : [-1]]
+        );
+      }
+
+      await client.query('COMMIT');
       return await this.getCourseById(courseId);
     } catch (error) {
+      await client.query('ROLLBACK');
       handleServiceError(error, 'Lỗi cập nhật khóa học');
+    } finally {
+      client.release();
     }
   }
 

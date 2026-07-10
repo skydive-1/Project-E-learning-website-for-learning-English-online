@@ -342,9 +342,11 @@ const CourseEditor = () => {
       endDate,
       status, // 1: Active, 0: Inactive
       sections: sections.map((sec, sIdx) => ({
+        id: sec.id,
         title: sec.title,
         orderIndex: sIdx + 1,
         lessons: sec.lessons.map((les, lIdx) => ({
+          id: les.id,
           title: les.title,
           contentType: les.type, // 'video' or 'pdf'
           contentUrl: les.contentUrl,
@@ -433,25 +435,6 @@ const CourseEditor = () => {
                 }}
               >
                 📚 Chương trình học
-              </li>
-              <li 
-                onClick={() => setActiveHubTab('speaking')}
-                style={{ 
-                  cursor: 'pointer', 
-                  padding: '12px 16px', 
-                  borderRadius: '10px', 
-                  fontSize: '13px', 
-                  fontWeight: '700',
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px',
-                  transition: 'all 0.2s',
-                  background: activeHubTab === 'speaking' ? '#eef2ff' : 'transparent',
-                  color: activeHubTab === 'speaking' ? '#4f46e5' : '#475569',
-                  borderLeft: activeHubTab === 'speaking' ? '3px solid #4f46e5' : '3px solid transparent'
-                }}
-              >
-                💬 Quản lý Speaking AI
               </li>
             </ul>
           </div>
@@ -605,6 +588,7 @@ const CourseEditor = () => {
                               >
                                 <option value="video">Video</option>
                                 <option value="pdf">PDF Document</option>
+                                <option value="speaking">Speaking</option>
                               </select>
                               <input 
                                 type="text"
@@ -617,40 +601,111 @@ const CourseEditor = () => {
                               />
                             </div>
                             
-                            <div className="lesson-actions">
-                              <input 
-                                type="file" 
-                                ref={el => fileInputRef.current[refKey] = el}
-                                style={{ display: 'none' }}
-                                onChange={(e) => handleFileChange(sIdx, lIdx, e)}
-                                accept={lesson.type === 'video' ? 'video/*' : 'application/pdf'}
-                              />
-                              <button 
-                                className="btn-edit-content" 
-                                onClick={() => triggerFileSelect(sIdx, lIdx)}
-                                disabled={lesson.uploading}
-                                style={{
-                                  background: lesson.contentUrl ? '#ecfdf5' : '',
-                                  color: lesson.contentUrl ? '#059669' : '',
-                                  borderColor: lesson.contentUrl ? '#a7f3d0' : ''
-                                }}
-                              >
-                                {lesson.uploading ? (
-                                  <><FiLoader className="spin" /> Tải lên...</>
-                                ) : lesson.contentUrl ? (
-                                  <><FiUpload /> Đã tải lên</>
-                                ) : (
-                                  <><FiUpload /> Chọn tệp</>
-                                )}
-                              </button>
-                              <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
-                                <FiTrash2 />
-                              </button>
-                            </div>
+                            {lesson.type !== 'speaking' ? (
+                              <div className="lesson-actions">
+                                <input 
+                                  type="file" 
+                                  ref={el => fileInputRef.current[refKey] = el}
+                                  style={{ display: 'none' }}
+                                  onChange={(e) => handleFileChange(sIdx, lIdx, e)}
+                                  accept={lesson.type === 'video' ? 'video/*' : 'application/pdf'}
+                                />
+                                <button 
+                                  className="btn-edit-content" 
+                                  onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                  disabled={lesson.uploading}
+                                  style={{
+                                    background: lesson.contentUrl ? '#ecfdf5' : '',
+                                    color: lesson.contentUrl ? '#059669' : '',
+                                    borderColor: lesson.contentUrl ? '#a7f3d0' : ''
+                                  }}
+                                >
+                                  {lesson.uploading ? (
+                                    <><FiLoader className="spin" /> Tải lên...</>
+                                  ) : lesson.contentUrl ? (
+                                    <><FiUpload /> Đã tải lên</>
+                                  ) : (
+                                    <><FiUpload /> Chọn tệp</>
+                                  )}
+                                </button>
+                                <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
+                                  <FiTrash2 />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="lesson-actions">
+                                <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
+                                  <FiTrash2 />
+                                </button>
+                              </div>
+                            )}
                           </div>
 
+                          {/* Speaking configuration fields rendered inline if lesson type is speaking */}
+                          {lesson.type === 'speaking' && (
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 1fr',
+                              gap: '16px',
+                              marginTop: '8px',
+                              padding: '16px',
+                              background: '#f8fafc',
+                              borderRadius: '12px',
+                              border: '1px solid #e2e8f0',
+                              marginLeft: '28px'
+                            }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: '700', color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>1. Câu luyện phát âm AI (Đọc mẫu - mỗi câu một dòng):</span>
+                                  <span style={{ fontWeight: '500', color: '#94a3b8', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
+                                </span>
+                                <textarea
+                                  value={lesson.speakingSentences || ''}
+                                  onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingSentences', e.target.value)}
+                                  placeholder="Ví dụ:&#10;Welcome to our speaking class.&#10;How are you doing today?"
+                                  rows={3}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '12px',
+                                    outline: 'none',
+                                    color: '#334155',
+                                    background: '#ffffff',
+                                    resize: 'vertical'
+                                  }}
+                                />
+                              </div>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: '700', color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>2. Câu hỏi phản xạ nói Q&A (Trả lời tự do - mỗi câu một dòng):</span>
+                                  <span style={{ fontWeight: '500', color: '#94a3b8', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
+                                </span>
+                                <textarea
+                                  value={lesson.speakingQuestions || ''}
+                                  onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingQuestions', e.target.value)}
+                                  placeholder="Ví dụ:&#10;What did you do last weekend?&#10;Tell me about your family."
+                                  rows={3}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '12px',
+                                    outline: 'none',
+                                    color: '#334155',
+                                    background: '#ffffff',
+                                    resize: 'vertical'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
                           {/* File details banner if uploaded */}
-                          {lesson.contentUrl && (
+                          {lesson.type !== 'speaking' && lesson.contentUrl && (
                             <div style={{
                               fontSize: '12px', color: '#059669', background: '#f0fdf4', padding: '6px 12px', borderRadius: '6px',
                               marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '8px'
@@ -676,105 +731,7 @@ const CourseEditor = () => {
             </div>
           )}
 
-          {/* Speaking AI Hub Tab */}
-          {activeHubTab === 'speaking' && (
-            <div className="speaking-ai-manager" style={{
-              background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '32px'
-            }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>💬 Quản lý Speaking AI</h2>
-              <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>Cấu hình bài tập luyện nói thông minh cho từng bài học để học viên thực hành luyện phát âm và phản xạ nói.</p>
 
-              {sections.length === 0 || sections.every(s => s.lessons.length === 0) ? (
-                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b', background: '#f8fafc', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
-                  <FiAlertCircle style={{ fontSize: '24px', color: '#94a3b8', marginBottom: '8px' }} />
-                  <p className="text-sm font-semibold">Chưa có chương học hoặc bài học nào.</p>
-                  <p className="text-xs text-slate-400 mt-1">Vui lòng thiết lập cấu trúc chương trình học ở tab <strong>Chương trình học</strong> trước khi thêm câu luyện nói.</p>
-                </div>
-              ) : (
-                sections.map((section, sIdx) => {
-                  if (section.lessons.length === 0) return null;
-                  return (
-                    <div key={section.id} style={{ marginBottom: '28px', borderBottom: '1px solid #f1f5f9', paddingBottom: '24px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '16px' }}>📁</span> {section.title}
-                      </h3>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        {section.lessons.map((lesson, lIdx) => (
-                          <div 
-                            key={lesson.id} 
-                            style={{ 
-                              background: '#f8fafc', 
-                              padding: '20px', 
-                              borderRadius: '16px', 
-                              border: '1px solid #e2e8f0',
-                              marginLeft: '12px'
-                            }}
-                          >
-                            <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#334155', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
-                              <span>📖</span> {lesson.title}
-                            </h4>
-                            
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>1. Câu luyện phát âm AI - Đọc theo mẫu:</span>
-                                  <span style={{ fontWeight: '500', color: '#94a3b8', fontSize: '11px', fontStyle: 'italic' }}>(Tùy chọn)</span>
-                                </span>
-                                <textarea
-                                  value={lesson.speakingSentences || ''}
-                                  onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingSentences', e.target.value)}
-                                  placeholder="Ví dụ:&#10;Welcome to our speaking class.&#10;How are you doing today?"
-                                  rows={4}
-                                  style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    borderRadius: '10px',
-                                    border: '1px solid #cbd5e1',
-                                    fontSize: '12.5px',
-                                    outline: 'none',
-                                    color: '#334155',
-                                    fontFamily: 'monospace',
-                                    background: '#ffffff',
-                                    resize: 'vertical'
-                                  }}
-                                />
-                              </div>
-                              
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>2. Câu hỏi phản xạ nói Q&A - Trả lời tự do:</span>
-                                  <span style={{ fontWeight: '500', color: '#94a3b8', fontSize: '11px', fontStyle: 'italic' }}>(Tùy chọn)</span>
-                                </span>
-                                <textarea
-                                  value={lesson.speakingQuestions || ''}
-                                  onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingQuestions', e.target.value)}
-                                  placeholder="Ví dụ:&#10;What did you do last weekend?&#10;Tell me about your family."
-                                  rows={4}
-                                  style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    borderRadius: '10px',
-                                    border: '1px solid #cbd5e1',
-                                    fontSize: '12.5px',
-                                    outline: 'none',
-                                    color: '#334155',
-                                    fontFamily: 'monospace',
-                                    background: '#ffffff',
-                                    resize: 'vertical'
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
         </div>
       </main>
 

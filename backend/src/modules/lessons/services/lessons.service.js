@@ -37,13 +37,23 @@ class LessonsService {
    */
   async createLesson(lessonData) {
     try {
-      const { sectionId, section_id, title, contentType, content_type, contentUrl, content_url, orderIndex, order_index } = lessonData;
+      const { 
+        sectionId, section_id, 
+        title, 
+        contentType, content_type, 
+        contentUrl, content_url, 
+        orderIndex, order_index,
+        speakingSentences, speaking_sentences,
+        speakingQuestions, speaking_questions
+      } = lessonData;
       
       const finalSectionId = parseInt(sectionId || section_id, 10);
       const finalTitle = title;
       const finalContentType = contentType || content_type || 'video';
       const finalContentUrl = contentUrl || content_url || '';
       const finalOrderIndex = parseInt(orderIndex || order_index, 10) || 1;
+      const finalSpeakingSentences = speakingSentences || speaking_sentences || '';
+      const finalSpeakingQuestions = speakingQuestions || speaking_questions || '';
 
       if (!finalSectionId || !finalTitle) {
         const error = new Error('Thiếu thông tin section_id hoặc tiêu đề bài học');
@@ -60,11 +70,19 @@ class LessonsService {
       }
 
       const queryText = `
-        INSERT INTO lessons (section_id, title, content_type, content_url, order_index)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
       `;
-      const result = await db.query(queryText, [finalSectionId, finalTitle, finalContentType, finalContentUrl, finalOrderIndex]);
+      const result = await db.query(queryText, [
+        finalSectionId, 
+        finalTitle, 
+        finalContentType, 
+        finalContentUrl, 
+        finalOrderIndex, 
+        finalSpeakingSentences, 
+        finalSpeakingQuestions
+      ]);
       return result.rows[0];
     } catch (error) {
       handleServiceError(error, 'Lỗi tạo bài giảng mới');
@@ -76,7 +94,15 @@ class LessonsService {
    */
   async updateLesson(lessonId, lessonData) {
     try {
-      const { title, contentType, content_type, contentUrl, content_url, orderIndex, order_index, sectionId, section_id } = lessonData;
+      const { 
+        title, 
+        contentType, content_type, 
+        contentUrl, content_url, 
+        orderIndex, order_index, 
+        sectionId, section_id,
+        speakingSentences, speaking_sentences,
+        speakingQuestions, speaking_questions
+      } = lessonData;
       
       const updates = [];
       const values = [];
@@ -97,6 +123,14 @@ class LessonsService {
       if (orderIndex !== undefined || order_index !== undefined) {
         updates.push(`order_index = $${paramIndex++}`);
         values.push(parseInt(orderIndex || order_index, 10));
+      }
+      if (speakingSentences !== undefined || speaking_sentences !== undefined) {
+        updates.push(`speaking_sentences = $${paramIndex++}`);
+        values.push(speakingSentences !== undefined ? speakingSentences : speaking_sentences);
+      }
+      if (speakingQuestions !== undefined || speaking_questions !== undefined) {
+        updates.push(`speaking_questions = $${paramIndex++}`);
+        values.push(speakingQuestions !== undefined ? speakingQuestions : speaking_questions);
       }
       if (sectionId !== undefined || section_id !== undefined) {
         const finalSectionId = parseInt(sectionId || section_id, 10);

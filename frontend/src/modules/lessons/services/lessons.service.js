@@ -205,11 +205,12 @@ export const getCourseDetails = async (courseId = 1) => {
               }
             }
           }
+          const isSpeakingType = l.content_type === 'speaking';
           
           const lessonObj = {
             id: String(l.lesson_id),
-            title: l.title,
-            duration: duration,
+            title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
+            duration: isSpeakingType ? 'Luyện phát âm AI' : duration,
             type: l.content_type || 'video',
             videoUrl: l.content_type === 'video' ? resolvedUrl : null,
             pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
@@ -225,13 +226,15 @@ export const getCourseDetails = async (courseId = 1) => {
 
           // Check if lesson has speaking exercises configured
           const speakingDbIds = ['1', '2', '3', '4', '5', '10', '11', '12', '13', '14', '25', '26', '27', '28', '29', '30'];
-          const hasSpeaking = (l.speaking_sentences && l.speaking_sentences.trim()) || 
+          const hasSpeaking = !isSpeakingType && (
+                              (l.speaking_sentences && l.speaking_sentences.trim()) || 
                               (l.speaking_questions && l.speaking_questions.trim()) ||
-                              speakingDbIds.includes(String(l.lesson_id));
+                              speakingDbIds.includes(String(l.lesson_id))
+          );
           if (hasSpeaking) {
             const speakingObj = {
               id: `speaking-${l.lesson_id}`,
-              title: `🗣️ Luyện nói: ${l.title}`,
+              title: `Speaking: ${l.title}`,
               duration: `Luyện phát âm AI`,
               type: 'speaking',
               videoUrl: null,
@@ -293,7 +296,7 @@ export const getCourseDetails = async (courseId = 1) => {
 
 export const toggleLessonCompletion = async (lessonId) => {
   try {
-    const cleanId = String(lessonId).replace('quiz-', '');
+    const cleanId = String(lessonId).replace('quiz-', '').replace('speaking-', '');
     const userId = getUserIdFromToken();
     if (!userId) throw new Error("Chưa đăng nhập");
 
@@ -411,7 +414,7 @@ export const getLessonById = async (lessonId) => {
       return {
         id: `speaking-${l.lesson_id}`,
         courseId: l.course_id,
-        title: `🗣️ Luyện nói: ${l.title}`,
+        title: `Speaking: ${l.title}`,
         duration: `Luyện phát âm AI`,
         type: 'speaking',
         videoUrl: null,
@@ -425,11 +428,12 @@ export const getLessonById = async (lessonId) => {
       };
     }
 
+    const isSpeakingType = l.content_type === 'speaking';
     return {
       id: String(l.lesson_id),
       courseId: l.course_id,
-      title: l.title,
-      duration: duration,
+      title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
+      duration: isSpeakingType ? 'Luyện phát âm AI' : duration,
       type: l.content_type || 'video',
       videoUrl: l.content_type === 'video' ? resolvedUrl : null,
       pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,

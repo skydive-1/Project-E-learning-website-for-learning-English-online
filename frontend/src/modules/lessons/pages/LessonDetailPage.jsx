@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { 
   FiPlay, FiCheckSquare, FiSquare, FiFileText, 
   FiArrowLeft, FiChevronDown, FiChevronUp, FiAward, 
-  FiBookOpen, FiDownload, FiCpu, FiClock 
+  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic 
 } from 'react-icons/fi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
@@ -517,16 +517,18 @@ const LessonDetailPage = () => {
                               {sec.lessons.map((lesson) => {
                                 const isActive = currentLesson && currentLesson.id === lesson.id;
                                 const isQuiz = lesson.type === 'quiz';
+                                const isSpeaking = lesson.type === 'speaking';
+                                const isSubLesson = isQuiz || isSpeaking;
                                 return (
                                   <div 
                                     key={lesson.id}
                                     onClick={() => handleSelectLesson(lesson.id)}
                                     style={{
-                                      backgroundColor: isActive ? 'rgba(29, 78, 216, 0.08)' : (isQuiz ? 'rgba(99, 102, 241, 0.03)' : 'transparent'),
-                                      borderColor: isActive ? '#3b82f6' : (isQuiz ? 'rgba(99, 102, 241, 0.2)' : 'transparent'),
+                                      backgroundColor: isActive ? 'rgba(29, 78, 216, 0.08)' : (isSubLesson ? 'rgba(99, 102, 241, 0.03)' : 'transparent'),
+                                      borderColor: isActive ? '#3b82f6' : (isSubLesson ? 'rgba(99, 102, 241, 0.2)' : 'transparent'),
                                     }}
                                     className={`flex items-start px-3.5 py-3 transition-colors cursor-pointer rounded-lg border-l-4 ${
-                                      isQuiz ? 'ml-4 border-dashed' : 'border-transparent'
+                                      isSubLesson ? 'ml-4 border-dashed' : 'border-transparent'
                                     } hover:opacity-90`}
                                   >
                                     {/* Completion Checkbox */}
@@ -547,7 +549,7 @@ const LessonDetailPage = () => {
                                         {lesson.title}
                                       </p>
                                       <div className="flex items-center text-[10px] text-slate-400 space-x-2">
-                                        {isQuiz ? <FiCheckSquare /> : <FiClock />}
+                                        {isQuiz ? <FiCheckSquare /> : (isSpeaking ? <FiMic /> : <FiClock />)}
                                         <span>{lesson.duration}</span>
                                       </div>
                                     </div>
