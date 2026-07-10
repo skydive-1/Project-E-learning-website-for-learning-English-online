@@ -164,6 +164,8 @@ const CourseEditor = () => {
     }
   ]);
 
+  const [expandedSpeaking, setExpandedSpeaking] = useState({});
+
   const [loading, setLoading] = useState(false);
   const [fetchingSubjects, setFetchingSubjects] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -588,7 +590,6 @@ const CourseEditor = () => {
                               >
                                 <option value="video">Video</option>
                                 <option value="pdf">PDF Document</option>
-                                <option value="speaking">Speaking</option>
                               </select>
                               <input 
                                 type="text"
@@ -601,53 +602,104 @@ const CourseEditor = () => {
                               />
                             </div>
                             
-                            {lesson.type !== 'speaking' ? (
-                              <div className="lesson-actions">
-                                <input 
-                                  type="file" 
-                                  ref={el => fileInputRef.current[refKey] = el}
-                                  style={{ display: 'none' }}
-                                  onChange={(e) => handleFileChange(sIdx, lIdx, e)}
-                                  accept={lesson.type === 'video' ? 'video/*' : 'application/pdf'}
-                                />
-                                <button 
-                                  className="btn-edit-content" 
-                                  onClick={() => triggerFileSelect(sIdx, lIdx)}
-                                  disabled={lesson.uploading}
-                                  style={{
-                                    background: lesson.contentUrl ? '#ecfdf5' : '',
-                                    color: lesson.contentUrl ? '#059669' : '',
-                                    borderColor: lesson.contentUrl ? '#a7f3d0' : ''
-                                  }}
-                                >
-                                  {lesson.uploading ? (
-                                    <><FiLoader className="spin" /> Tải lên...</>
-                                  ) : lesson.contentUrl ? (
-                                    <><FiUpload /> Đã tải lên</>
-                                  ) : (
-                                    <><FiUpload /> Chọn tệp</>
-                                  )}
-                                </button>
-                                <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
-                                  <FiTrash2 />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="lesson-actions">
-                                <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
-                                  <FiTrash2 />
-                                </button>
-                              </div>
+                            <div className="lesson-actions">
+                              <input 
+                                type="file" 
+                                ref={el => fileInputRef.current[refKey] = el}
+                                style={{ display: 'none' }}
+                                onChange={(e) => handleFileChange(sIdx, lIdx, e)}
+                                accept={lesson.type === 'video' ? 'video/*' : 'application/pdf'}
+                              />
+                              <button 
+                                className="btn-edit-content" 
+                                onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                disabled={lesson.uploading}
+                                style={{
+                                  background: lesson.contentUrl ? '#ecfdf5' : '',
+                                  color: lesson.contentUrl ? '#059669' : '',
+                                  borderColor: lesson.contentUrl ? '#a7f3d0' : ''
+                                }}
+                              >
+                                {lesson.uploading ? (
+                                  <><FiLoader className="spin" /> Tải lên...</>
+                                ) : lesson.contentUrl ? (
+                                  <><FiUpload /> Đã tải lên</>
+                                ) : (
+                                  <><FiUpload /> Chọn tệp</>
+                                )}
+                              </button>
+                              <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
+                                <FiTrash2 />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Toggle Speaking Configuration Button */}
+                          <div style={{ marginLeft: '28px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: !prev[lesson.id] }))}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: 'none',
+                                border: 'none',
+                                color: '#4f46e5',
+                                fontSize: '11px',
+                                fontWeight: '750',
+                                cursor: 'pointer',
+                                padding: '4px 0',
+                                outline: 'none'
+                              }}
+                            >
+                              <span>💬</span>
+                              <span style={{ textDecoration: 'underline' }}>
+                                {expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions
+                                  ? 'Ẩn bài tập speaking'
+                                  : 'Thêm bài tập speaking (tùy chọn)'
+                                }
+                              </span>
+                            </button>
+
+                            {(lesson.speakingSentences || lesson.speakingQuestions) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm("Bạn có chắc chắn muốn xóa bài tập Speaking này?")) {
+                                    handleLessonChange(sIdx, lIdx, 'speakingSentences', '');
+                                    handleLessonChange(sIdx, lIdx, 'speakingQuestions', '');
+                                    setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: false }));
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#ef4444',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  cursor: 'pointer',
+                                  padding: '4px 0',
+                                  outline: 'none'
+                                }}
+                                title="Xóa bài tập Speaking"
+                              >
+                                <span>🗑️</span>
+                                <span style={{ textDecoration: 'underline' }}>Xóa bài tập speaking</span>
+                              </button>
                             )}
                           </div>
 
-                          {/* Speaking configuration fields rendered inline if lesson type is speaking */}
-                          {lesson.type === 'speaking' && (
+                          {/* Speaking configuration fields rendered inline if expanded or already has data */}
+                          {(expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions) && (
                             <div style={{
                               display: 'grid',
                               gridTemplateColumns: '1fr 1fr',
                               gap: '16px',
-                              marginTop: '8px',
+                              marginTop: '6px',
                               padding: '16px',
                               background: '#f8fafc',
                               borderRadius: '12px',
@@ -705,10 +757,10 @@ const CourseEditor = () => {
                           )}
 
                           {/* File details banner if uploaded */}
-                          {lesson.type !== 'speaking' && lesson.contentUrl && (
+                          {lesson.contentUrl && (
                             <div style={{
                               fontSize: '12px', color: '#059669', background: '#f0fdf4', padding: '6px 12px', borderRadius: '6px',
-                              marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '8px'
+                              marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px'
                             }}>
                               {lesson.type === 'video' ? <FiVideo /> : <FiFileText />}
                               <span>Link file: <a href={`http://localhost:5000${lesson.contentUrl}`} target="_blank" rel="noreferrer" style={{ color: '#059669', textDecoration: 'underline' }}>{lesson.fileName || 'Xem file bài giảng'}</a></span>

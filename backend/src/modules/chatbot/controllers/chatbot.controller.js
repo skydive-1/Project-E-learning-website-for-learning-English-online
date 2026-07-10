@@ -68,8 +68,10 @@ exports.processAudio = async (req, res, next) => {
 
     const filePath = req.file.path;
     const mimetype = req.file.mimetype;
+    const targetText = req.body.targetText || null;
+    const isQA = req.body.isQA === 'true';
 
-    const evaluation = await chatbotService.evaluateAudio(filePath, mimetype);
+    const evaluation = await chatbotService.evaluateAudio(filePath, mimetype, targetText, isQA);
 
     // Xóa file tạm sau khi đã đánh giá xong bằng AI
     const fs = require('fs');

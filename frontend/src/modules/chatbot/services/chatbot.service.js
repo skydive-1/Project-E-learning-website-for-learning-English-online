@@ -124,7 +124,7 @@ export const askChatbotAudio = async (audioBlob, lessonId, targetText = null, is
     });
 
     if (response.data && response.data.success) {
-      return response.data;
+      return response.data.data;
     }
     throw new Error('API response invalid structure');
   } catch (error) {

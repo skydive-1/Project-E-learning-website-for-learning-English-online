@@ -141,35 +141,81 @@ class ChatbotService {
     }
   }
 
-  async evaluateAudio(filePath, mimetype) {
+  async evaluateAudio(filePath, mimetype, targetText = null, isQA = false) {
     try {
       const fs = require('fs');
       // Đọc file âm thanh
       const audioData = fs.readFileSync(filePath);
       const audioBase64 = audioData.toString("base64");
       
-      const prompt = `Bạn là một giáo viên tiếng Anh chuyên nghiệp.
-Học viên vừa gửi một đoạn âm thanh (thu âm) phát âm.
-Nhiệm vụ của bạn:
-1. Ghi ra bản dịch chính xác (Transcript) những gì bạn nghe được từ học viên.
-2. Đánh giá chất lượng phát âm: độ trôi chảy, ngữ điệu, trọng âm.
-3. Chỉ ra cụ thể các lỗi phát âm và cách sửa chi tiết để giúp học viên cải thiện.
-Hãy trình bày thân thiện, tự nhiên và dễ hiểu bằng tiếng Việt.`;
+      let prompt = '';
+      if (targetText) {
+        prompt = `You are a professional English pronunciation coach.
+Analyze the user's spoken audio and compare it against the target text: "${targetText}".
+Evaluate the user's pronunciation, calculate an overall correctness score (0 to 100), and perform a word-by-word evaluation.
+Provide feedback and replies in friendly Vietnamese.
+Format the output EXACTLY in the following JSON schema:
+{
+  "success": true,
+  "score": 85,
+  "reply": "Nhận xét tổng quan bằng tiếng Việt...",
+  "words": [
+    {
+      "word": "word_from_target_text",
+      "correct": true,
+      "feedback": null
+    }
+  ]
+}`;
+      } else if (isQA) {
+        prompt = `You are an AI English tutor in a conversational practice session.
+Analyze the user's spoken audio response to the lesson.
+Perform speech-to-text to transcribe the audio, analyze grammar/vocabulary, analyze pronunciation/intonation, suggest a more natural version, and write a reply to continue the conversation.
+Provide feedback and replies in friendly Vietnamese.
+Format the output EXACTLY in the following JSON schema:
+{
+  "success": true,
+  "transcription": "Precise English transcription of what the user said in the audio",
+  "grammarFeedback": "Constructive grammar & vocabulary feedback in Vietnamese",
+  "pronunciationFeedback": "Fluency, stress, and pronunciation feedback in Vietnamese",
+  "suggestion": "A natural, native-like English alternative sentence",
+  "reply": "Your conversational response in Vietnamese to keep the discussion active"
+}`;
+      } else {
+        prompt = `You are an AI English tutor.
+Transcribe and respond to the student's audio.
+Format the output EXACTLY in the following JSON schema:
+{
+  "success": true,
+  "reply": "Your response in Vietnamese"
+}`;
+      }
 
-      const result = await geminiModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: audioBase64,
-            mimeType: mimetype || "audio/mp3"
+      const result = await geminiModel.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  data: audioBase64,
+                  mimeType: mimetype || "audio/mp3"
+                }
+              }
+            ]
           }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
         }
-      ]);
+      });
 
-      return result.response.text();
+      const responseText = result.response.text();
+      return JSON.parse(responseText);
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.evaluateAudio:", error);
-      throw new Error("Lỗi hệ thống khi AI xử lý nhận diện và đánh giá âm thanh.");
+      throw new Error("Lỗi hệ thống khi AI xử lý nhận diện và đánh giá âm thanh: " + error.message);
     }
   }
 }
@@ -180,7 +226,7 @@ module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
-  evaluateAudio: (filePath, mimetype) => serviceInstance.evaluateAudio(filePath, mimetype),
+  evaluateAudio: (filePath, mimetype, targetText, isQA) => serviceInstance.evaluateAudio(filePath, mimetype, targetText, isQA),
   handleRagChat
 };
 
