@@ -177,3 +177,24 @@ export const askChatbotAudio = async (audioBlob, lessonId, targetText = null, is
   }
 };
 
+/**
+ * Lấy hạn mức Token AI còn lại của học viên
+ */
+export const getTokenBalance = async (userId) => {
+  try {
+    const response = await apiClient.get(`/chatbot/token-balance/${userId}`);
+    if (response.data && response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    return response.data;
+  } catch (error) {
+    console.warn('⚠️ Lỗi gọi API ví token từ backend, sử dụng mock balance để demo:', error.message);
+    return {
+      tokens_used: 2500,
+      token_max_limit: 10000,
+      tokens_remaining: 7500
+    };
+  }
+};
+
+

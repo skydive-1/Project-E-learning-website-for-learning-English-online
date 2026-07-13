@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { 
   FiPlay, FiCheckSquare, FiSquare, FiFileText, 
@@ -24,6 +24,10 @@ const LessonDetailPage = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const videoRef = useRef(null);
+
+  const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
+  const currentUserId = user?.userId || user?.user_id || user?.id;
 
   // States
   const [activeRightTab, setActiveRightTab] = useState("playlist"); // "playlist" or "ai"
@@ -32,6 +36,91 @@ const LessonDetailPage = () => {
 
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  // States for Video Blob URL
+  const [videoBlobUrl, setVideoBlobUrl] = useState('');
+  const [videoLoading, setVideoLoading] = useState(false);
+
+  // Bảo mật video (chặn DevTools, chuột phải theo vai trò và cấu hình admin)
+  useEffect(() => {
+    // Lấy cấu hình bảo mật từ localStorage
+    const getSecurityConfig = () => {
+      const defaultConfig = {
+        blockStudent: true,
+        blockInstructor: false,
+        blockF12: true,
+        blockInspect: true,
+        blockViewSource: true,
+        blockRightClick: true
+      };
+      try {
+        const saved = localStorage.getItem('admin_security_config');
+        return saved ? JSON.parse(saved) : defaultConfig;
+      } catch (e) {
+        return defaultConfig;
+      }
+    };
+
+    const config = getSecurityConfig();
+    const isStudent = userRole === 3;
+    const isInstructor = userRole === 2;
+    const shouldBlock = (isStudent && config.blockStudent) || (isInstructor && config.blockInstructor);
+
+    if (!shouldBlock) return;
+
+    const handleKeyDown = (e) => {
+      // Chặn phím F12
+      if (config.blockF12 && (e.key === 'F12' || e.keyCode === 123)) {
+        e.preventDefault();
+        return false;
+      }
+      // Chặn Ctrl+Shift+I
+      if (config.blockInspect && e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.keyCode === 73)) {
+        e.preventDefault();
+        return false;
+      }
+      // Chặn Ctrl+Shift+C
+      if (config.blockInspect && e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c' || e.keyCode === 67)) {
+        e.preventDefault();
+        return false;
+      }
+      // Chặn Ctrl+U
+      if (config.blockViewSource && e.ctrlKey && (e.key === 'U' || e.key === 'u' || e.keyCode === 85)) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    const handleContextMenu = (e) => {
+      if (config.blockRightClick) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('contextmenu', handleContextMenu);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [userRole]);
+
+  // Tạm dừng video phát khi chuyển tab (Page Visibility API)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && videoRef.current) {
+        videoRef.current.pause();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
 
 
 
@@ -45,7 +134,6 @@ const LessonDetailPage = () => {
       setActiveRightTab(location.state.activeTab);
     }
   }, [location]);
-
   // 1. Tải thông tin meta của bài giảng để xác định courseId của bài giảng hiện tại
   const { data: initialLessonData } = useQuery({
     queryKey: ['lesson-meta', lessonId],
@@ -69,8 +157,6 @@ const LessonDetailPage = () => {
   const startDate = course?.startDate ? new Date(course.startDate) : null;
   const currentDate = new Date();
   const hasNotStarted = startDate && startDate > currentDate;
-  const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
-  const currentUserId = user?.userId || user?.user_id || user?.id;
   const isInstructorOrAdmin = user && (userRole === 1 || Number(currentUserId) === Number(course?.instructorId));
   const shouldLock = hasNotStarted && !isInstructorOrAdmin;
 
@@ -112,6 +198,49 @@ const LessonDetailPage = () => {
   });
 
   const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && lessonLoading);
+
+  // Tải video dạng Blob để ẩn URL gốc trong DOM
+  useEffect(() => {
+    if (!currentLesson?.videoUrl) {
+      setVideoBlobUrl('');
+      return;
+    }
+
+    let isCurrent = true;
+    let activeBlobUrl = '';
+    
+    const loadVideoBlob = async () => {
+      setVideoLoading(true);
+      try {
+        const response = await fetch(currentLesson.videoUrl);
+        if (!response.ok) throw new Error("Không thể tải file video");
+        const blob = await response.blob();
+        if (isCurrent) {
+          activeBlobUrl = URL.createObjectURL(blob);
+          setVideoBlobUrl(activeBlobUrl);
+        }
+      } catch (err) {
+        console.error("Lỗi tải video bảo mật:", err);
+        // Fallback về link gốc nếu gặp sự cố CORS/tải blob
+        if (isCurrent) {
+          setVideoBlobUrl(currentLesson.videoUrl);
+        }
+      } finally {
+        if (isCurrent) {
+          setVideoLoading(false);
+        }
+      }
+    };
+
+    loadVideoBlob();
+
+    return () => {
+      isCurrent = false;
+      if (activeBlobUrl) {
+        URL.revokeObjectURL(activeBlobUrl);
+      }
+    };
+  }, [currentLesson?.videoUrl]);
 
   // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
   useEffect(() => {
@@ -274,7 +403,7 @@ const LessonDetailPage = () => {
             {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 <QuizContent 
-                  lessonId={currentLesson.id.replace('quiz-', '')} 
+                  lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''} 
                   onComplete={async (score, total) => {
                     // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học
                     if (score >= total / 2 && !currentLesson.completed) {
@@ -292,7 +421,7 @@ const LessonDetailPage = () => {
             ) : currentLesson?.type === 'speaking' ? (
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 <SpeakingExercise 
-                  lessonId={currentLesson.id.replace('speaking-', '')} 
+                  lessonId={currentLesson?.id ? currentLesson.id.replace('speaking-', '') : ''} 
                   speakingSentences={currentLesson.speakingSentences}
                   speakingQuestions={currentLesson.speakingQuestions}
                   onComplete={async () => {
@@ -315,23 +444,37 @@ const LessonDetailPage = () => {
                 <div className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group">
                   {currentLesson?.type === 'pdf' ? (
                     <iframe 
-                      key={currentLesson.id}
+                      key={currentLesson?.id || 'pdf'}
                       src={currentLesson.pdfUrl} 
                       className="w-full h-full border-none bg-white"
                       title={currentLesson.title}
                     />
                   ) : currentLesson?.videoUrl ? (
-                    <video 
-                      key={currentLesson.id}
-                      src={currentLesson.videoUrl} 
-                      controls 
-                      autoPlay
-                      controlsList="nodownload"
-                      disablePictureInPicture
-                      onContextMenu={(e) => e.preventDefault()}
-                      onDragStart={(e) => e.preventDefault()}
-                      className="w-full h-full object-contain"
-                    />
+                    <>
+                      {videoLoading && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 text-slate-400 z-10">
+                          <div className="w-10 h-10 border-4 border-slate-700 border-t-smart-indigo rounded-full animate-spin mb-3"></div>
+                          <span className="text-xs font-semibold tracking-wide">Đang tải luồng video bảo mật...</span>
+                        </div>
+                      )}
+                      <video 
+                        ref={videoRef}
+                        key={currentLesson?.id || 'video'}
+                        src={videoBlobUrl} 
+                        controls 
+                        autoPlay
+                        controlsList="nodownload"
+                        disablePictureInPicture
+                        onContextMenu={(e) => e.preventDefault()}
+                        onDragStart={(e) => e.preventDefault()}
+                        onLoadedData={() => {
+                          if (videoBlobUrl && videoBlobUrl.startsWith('blob:')) {
+                            URL.revokeObjectURL(videoBlobUrl);
+                          }
+                        }}
+                        className="w-full h-full object-contain"
+                      />
+                    </>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
                       <FiPlay className="text-5xl animate-pulse mb-3" />
@@ -353,7 +496,7 @@ const LessonDetailPage = () => {
                     </div>
 
                     <button
-                      onClick={(e) => handleToggleComplete(e, currentLesson.id)}
+                      onClick={(e) => handleToggleComplete(e, currentLesson?.id)}
                       style={{
                         backgroundColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.1)' : 'var(--card-bg)',
                         color: currentLesson?.completed ? '#10b981' : 'var(--text-color)',

@@ -139,7 +139,19 @@ export const getCourseDetails = async (courseId = 1) => {
       apiClient.get(`/courses/${courseId}`),
       fetchAndCacheQuizzes(courseId).catch(err => console.warn("Lỗi tải quizzes ngầm:", err.message))
     ]);
-    const dbCourse = courseResponse.data.course;
+    const dbCourse = courseResponse.data?.course;
+
+    if (!dbCourse) {
+      return {
+        id: String(courseId),
+        title: "Khóa học không tồn tại",
+        instructor: "Chưa rõ",
+        progress: 0,
+        sections: [],
+        startDate: null,
+        instructorId: null
+      };
+    }
 
     // 2. Lấy userId từ JWT token
     const userId = getUserIdFromToken();
@@ -290,6 +302,17 @@ export const getCourseDetails = async (courseId = 1) => {
 
   } catch (error) {
     console.error("Lỗi getCourseDetails từ Backend:", error);
+    if (error.response && error.response.status === 404) {
+      return {
+        id: String(courseId),
+        title: "Khóa học không tồn tại",
+        instructor: "Chưa rõ",
+        progress: 0,
+        sections: [],
+        startDate: null,
+        instructorId: null
+      };
+    }
     throw error;
   }
 };
@@ -332,7 +355,11 @@ export const getLessonById = async (lessonId) => {
 
     // 1. Lấy chi tiết bài học từ API backend
     const response = await apiClient.get(`/courses/lessons/${cleanId}`);
-    const l = response.data.lesson;
+    const l = response.data?.lesson;
+
+    if (!l) {
+      return null;
+    }
 
     // 2. Lấy trạng thái hoàn thành từ backend
     const userId = getUserIdFromToken();
@@ -446,6 +473,9 @@ export const getLessonById = async (lessonId) => {
     };
   } catch (error) {
     console.error("Lỗi getLessonById từ Backend:", error);
+    if (error.response && error.response.status === 404) {
+      return null;
+    }
     throw error;
   }
 };

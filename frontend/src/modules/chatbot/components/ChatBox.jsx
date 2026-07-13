@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { askChatbot, getChatHistory, saveChatHistory, askChatbotAudio } from '../services/chatbot.service';
+import { askChatbot, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 
@@ -128,6 +128,11 @@ const ChatBox = ({ lessonId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [quizStates, setQuizStates] = useState({}); // Lưu trạng thái tương tác trắc nghiệm { [messageId]: { currentIdx, selectedOption, isAnswered, score } }
+  const [tokenBalance, setTokenBalance] = useState({
+    tokens_used: 0,
+    token_max_limit: 10000,
+    tokens_remaining: 10000
+  });
   
   const messagesEndRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
@@ -171,6 +176,7 @@ const ChatBox = ({ lessonId }) => {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiReplyMessage]);
+      fetchBalance();
 
       if (user?.userId && lessonId) {
         saveChatHistory(user.userId, lessonId, "[Ghi âm giọng nói]", result.reply).catch(err => {
@@ -197,6 +203,20 @@ const ChatBox = ({ lessonId }) => {
     }
     stopRecording();
   };
+
+  const fetchBalance = async () => {
+    if (user?.userId || user?.id) {
+      const uId = user.userId || user.id;
+      const balance = await getTokenBalance(uId);
+      if (balance) {
+        setTokenBalance(balance);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchBalance();
+  }, [user?.userId, user?.id]);
 
   // Cuộn xuống tin nhắn mới nhất
   const scrollToBottom = () => {
@@ -299,6 +319,7 @@ const ChatBox = ({ lessonId }) => {
         quizData: quizData
       };
       setMessages(prev => [...prev, aiMessage]);
+      fetchBalance();
 
       // 2. Lưu hội thoại ngầm (Auto-Save) vào CSDL
       if (user?.userId && lessonId) {
@@ -600,6 +621,33 @@ const ChatBox = ({ lessonId }) => {
                 {prompt.label}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Token Balance Progress Bar */}
+      {user && (
+        <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-750 bg-slate-50/50 dark:bg-slate-900/30 shrink-0">
+          <div className="flex justify-between items-center mb-1 text-[11px] font-bold">
+            <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400">
+              <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+              <span>Hạn mức Token AI hôm nay</span>
+            </div>
+            <span className="text-indigo-650 dark:text-indigo-400">
+              {((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) || 0).toLocaleString()} / {(tokenBalance.token_max_limit || 10000).toLocaleString()} Tokens
+            </span>
+          </div>
+          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+            <div 
+              className="bg-gradient-to-r from-indigo-500 to-blue-500 h-full transition-all duration-500 ease-out"
+              style={{ 
+                width: `${Math.min(100, Math.max(0, 
+                  (tokenBalance.token_max_limit || 10000) > 0 
+                    ? ((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) / (tokenBalance.token_max_limit || 10000)) * 100 
+                    : 0
+                ))}%` 
+              }}
+            ></div>
           </div>
         </div>
       )}

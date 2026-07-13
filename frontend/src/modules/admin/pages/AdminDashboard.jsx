@@ -24,6 +24,37 @@ const AdminDashboard = () => {
   // Tab active: 'users' (Quản lý tài khoản) hoặc 'quizzes' (Tạo đề trắc nghiệm)
   const [activeTab, setActiveTab] = useState('users');
 
+  // State Cấu hình bảo mật
+  const [securityConfig, setSecurityConfig] = useState({
+    blockStudent: true,
+    blockInstructor: false,
+    blockF12: true,
+    blockInspect: true,
+    blockViewSource: true,
+    blockRightClick: true
+  });
+
+  // Tải cấu hình bảo mật từ localStorage khi component load
+  useEffect(() => {
+    const savedConfig = localStorage.getItem('admin_security_config');
+    if (savedConfig) {
+      try {
+        setSecurityConfig(JSON.parse(savedConfig));
+      } catch (err) {
+        console.error('Lỗi parse security config:', err);
+      }
+    }
+  }, []);
+
+  const handleSecurityToggle = (key) => {
+    const updated = {
+      ...securityConfig,
+      [key]: !securityConfig[key]
+    };
+    setSecurityConfig(updated);
+    localStorage.setItem('admin_security_config', JSON.stringify(updated));
+  };
+
   // State Quản lý người dùng
   const [users, setUsers] = useState([]);
   const [filterRole, setFilterRole] = useState('all');
@@ -395,6 +426,12 @@ const AdminDashboard = () => {
             >
               <FiPlus className="inline mr-2" /> Tạo đề trắc nghiệm (Quiz)
             </button>
+            <button 
+              className={`admin-tab ${activeTab === 'security' ? 'active' : ''}`}
+              onClick={() => setActiveTab('security')}
+            >
+              <FiAlertTriangle className="inline mr-2" /> Cấu hình bảo mật
+            </button>
           </div>
 
           {/* Tab Content */}
@@ -717,6 +754,93 @@ const AdminDashboard = () => {
                   </div>
 
                 </form>
+              </div>
+            )}
+
+            {/* TAB 3: SECURITY SETTINGS */}
+            {activeTab === 'security' && (
+              <div className="quiz-creator-container bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 shadow-md border border-slate-100 dark:border-slate-700 animate-fade">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
+                  🛡️ Quản Lý Phím Tắt Bảo Mật & Chống Tải Lậu Video
+                </h3>
+                
+                <div className="space-y-8">
+                  {/* Đối tượng áp dụng */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-150 dark:border-slate-750">
+                    <h4 className="text-sm font-bold text-slate-750 dark:text-slate-300 mb-4">
+                      👥 Đối tượng áp dụng chặn phím tắt & chuột phải:
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Học viên (Students)</div>
+                          <div className="text-[10px] text-slate-400">Chặn xem nguồn bài giảng video</div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={securityConfig.blockStudent} 
+                            onChange={() => handleSecurityToggle('blockStudent')}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-650 peer-checked:bg-indigo-600"></div>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">Giảng viên (Instructors)</div>
+                          <div className="text-[10px] text-slate-400">Chặn inspect element khi xem bài học</div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={securityConfig.blockInstructor} 
+                            onChange={() => handleSecurityToggle('blockInstructor')}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-650 peer-checked:bg-indigo-600"></div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Danh sách phím tắt bị chặn */}
+                  <div className="p-5 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-150 dark:border-slate-750">
+                    <h4 className="text-sm font-bold text-slate-750 dark:text-slate-300 mb-4">
+                      🚫 Cấu hình các phím tắt và thao tác bị chặn:
+                    </h4>
+                    
+                    <div className="space-y-3.5">
+                      {[
+                        { key: 'blockF12', title: 'Chặn phím F12', desc: 'Ngăn chặn học viên nhấn phím F12 để mở trực tiếp thanh công cụ nhà phát triển (DevTools).' },
+                        { key: 'blockInspect', title: 'Chặn tổ hợp Ctrl + Shift + I & Ctrl + Shift + C', desc: 'Chặn phím tắt mở Inspector để săm soi các thuộc tính HTML/CSS hoặc tìm link video ẩn.' },
+                        { key: 'blockViewSource', title: 'Chặn tổ hợp Ctrl + U', desc: 'Ngăn chặn việc xem nguồn trang để tìm mã nguồn thô của ứng dụng.' },
+                        { key: 'blockRightClick', title: 'Chặn chuột phải (Context Menu)', desc: 'Chặn mở menu chuột phải trên toàn bộ khu vực bài học để không lưu hoặc kiểm tra phần tử.' }
+                      ].map((item) => (
+                        <div key={item.key} className="flex items-start justify-between p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                          <div className="pr-4">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-0.5">{item.title}</span>
+                            <span className="text-[10.5px] text-slate-450 dark:text-slate-400 leading-normal block">{item.desc}</span>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                            <input 
+                              type="checkbox" 
+                              checked={securityConfig[item.key]} 
+                              onChange={() => handleSecurityToggle(item.key)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-650 peer-checked:bg-indigo-600"></div>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-emerald-50 dark:bg-emerald-950/10 border border-emerald-250 dark:border-emerald-900 p-4 rounded-xl text-emerald-800 dark:text-emerald-400 text-xs font-medium">
+                    💡 <strong>Mẹo:</strong> Cấu hình này sẽ được lưu trữ tự động toàn cục và áp dụng ngay lập tức khi Giảng viên hoặc Học viên mở bất kỳ bài giảng nào có định dạng Video/Quizzes trên hệ thống.
+                  </div>
+                </div>
               </div>
             )}
 
