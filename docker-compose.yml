@@ -1,0 +1,70 @@
+services:
+  # 1. Cơ sở dữ liệu PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: elearning_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: elearning_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Tự động nạp cấu trúc database và dữ liệu mẫu từ schema.sql khi DB khởi chạy lần đầu
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+
+  # 2. Backend (Node.js/Express)
+  backend:
+    build:
+      context: ./backend
+    container_name: elearning_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=development
+      # Xóa DATABASE_URL để ép backend dùng cấu hình DB_HOST cục bộ không có SSL
+      - DATABASE_URL=
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres123
+      - DB_NAME=elearning_db
+      - DB_SSL=false
+      - JWT_SECRET=your-super-secret-key-change-this
+      - JWT_EXPIRE=7d
+      # Copy các key Pinecone và Gemini để Chatbot hoạt động (nếu có)
+      - PINECONE_API_KEY=pcsk_3DmT7x_RtwcNyBDBAkM65tAbgCBmWqsDL3AktxsWug2XgdoNf6RhGQKJeWEde2hLmnC1Vg
+      - PINECONE_ENV=us-east-1-aws
+      - PINECONE_INDEX=elearning-rag
+      - GEMINI_API_KEY=AQ.Ab8RN6IqvQwqCBOTVoJKThj6rtMyvrZpvHqWimAsgP0NGXcmag
+      - FRONTEND_URL=http://localhost:3001
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/usr/src/app
+      # Tránh mount đè node_modules từ máy thật vào container
+      - /usr/src/app/node_modules
+      - /usr/src/app/uploads
+
+  # 3. Frontend (React/Vite)
+  frontend:
+    build:
+      context: ./frontend
+    container_name: elearning_frontend
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+
+volumes:
+  postgres_data:

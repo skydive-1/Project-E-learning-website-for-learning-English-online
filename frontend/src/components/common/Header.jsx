@@ -56,7 +56,7 @@ const Header = () => {
           <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a>
 
           {/* Mobile-only auth links */}
-          {!user && (
+          {!user && isMobileMenuOpen && (
             <div className="mobile-auth-links">
               <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>Login</Link>
               <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>Register</Link>

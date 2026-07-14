@@ -77,3 +77,10 @@ video::-webkit-media-controls-enclosure {
 video::-webkit-media-controls-panel {
   width: calc(100% + 30px) !important;
 }
+
+/* Hide mobile-only auth links on desktop views (> 992px) */
+@media (min-width: 993px) {
+  .mobile-auth-links {
+    display: none !important;
+  }
+}
