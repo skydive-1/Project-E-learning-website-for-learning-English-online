@@ -23,8 +23,8 @@ exports.saveHistory = async (req, res, next) => {
     // Tiếp nhận các trường dữ liệu theo API Contract
     const { user_id, lesson_id, question, answer } = req.body;
 
-    if (!user_id || !lesson_id || !question || !answer) {
-      const err = new Error("Dữ liệu không đầy đủ. Yêu cầu 4 trường: user_id, lesson_id, question, answer");
+    if (!user_id || !question || !answer) {
+      const err = new Error("Dữ liệu không đầy đủ. Yêu cầu các trường: user_id, question, answer");
       err.status = 400;
       throw err;
     }

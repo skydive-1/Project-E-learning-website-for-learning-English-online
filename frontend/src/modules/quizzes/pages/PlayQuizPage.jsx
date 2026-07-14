@@ -111,9 +111,26 @@ const PlayQuizPage = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-6 text-center">
-        <div className="w-10 h-10 border-4 border-slate-200 border-t-smart-indigo rounded-full animate-spin"></div>
-        <p className="mt-4 text-xs font-bold uppercase tracking-wider text-slate-500">Đang chuẩn bị đề thi...</p>
+      <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300" style={{ fontFamily: "'Outfit', sans-serif" }}>
+        <Header />
+        <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-28 flex flex-col justify-center items-center">
+          <div className="w-full flex justify-between items-center mb-6 max-w-3xl animate-pulse">
+            <div className="h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded opacity-50"></div>
+            <div className="h-4 w-24 bg-slate-200 dark:bg-slate-700 rounded opacity-50"></div>
+          </div>
+          <div className="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm space-y-6 animate-pulse text-center">
+            <div className="flex justify-center">
+              <div className="h-6 w-32 bg-slate-200 dark:bg-slate-700 rounded-full opacity-50"></div>
+            </div>
+            <div className="h-8 w-3/4 bg-slate-200 dark:bg-slate-700 rounded mx-auto opacity-50"></div>
+            <div className="h-4 w-5/6 bg-slate-200 dark:bg-slate-700 rounded mx-auto opacity-50"></div>
+            <div className="pt-4 space-y-3">
+              <div className="h-12 w-full bg-slate-200 dark:bg-slate-700 rounded-xl opacity-50"></div>
+            </div>
+            <div className="h-12 w-full bg-slate-200 dark:bg-slate-700 rounded-xl opacity-50"></div>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }

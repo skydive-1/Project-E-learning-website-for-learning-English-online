@@ -285,9 +285,56 @@ const LessonDetailPage = () => {
 
   if (isLoading && !course) {
     return (
-      <div className="min-h-screen flex flex-col justify-center items-center" style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}>
-        <div className="w-12 h-12 border-4 border-slate-200 border-t-smart-indigo rounded-full animate-spin"></div>
-        <p className="mt-4 text-sm font-semibold text-slate-500">Đang chuẩn bị lớp học...</p>
+      <div className="min-h-screen flex flex-col font-sans" style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}>
+        <Header />
+        
+        {/* Main Content Area (Offset fixed Header) */}
+        <main className="flex-grow pt-24 pb-8">
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 animate-pulse">
+            
+            {/* Breadcrumbs & Exit back to Homepage Skeleton */}
+            <div className="flex justify-between items-center mb-5 shrink-0">
+              <div style={{ height: '16px', width: '120px', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px', opacity: 0.2 }}></div>
+              <div style={{ height: '32px', width: '200px', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+            </div>
+
+            {/* 70/30 Grid Layout Skeleton */}
+            <div className="grid grid-cols-10 gap-6 items-start">
+              
+              {/* Left Area Skeleton - 70% */}
+              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                {/* Video Block Skeleton */}
+                <div className="rounded-2xl overflow-hidden aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative" style={{ backgroundColor: 'var(--card-bg, #cbd5e1)', opacity: 0.2 }}></div>
+                
+                {/* Lesson title & description skeletons */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ height: '28px', width: '60%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', opacity: 0.2 }}></div>
+                  <div style={{ height: '18px', width: '40%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', opacity: 0.2 }}></div>
+                </div>
+              </div>
+
+              {/* Right Sidebar Area Skeleton - 30% */}
+              <div className="col-span-10 lg:col-span-3 flex flex-col h-[calc(100vh-140px)] border rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--card-bg, #cbd5e1)', borderColor: 'var(--border-color)', opacity: 0.2 }}>
+                {/* Sidebar header skeleton */}
+                <div style={{ display: 'flex', height: '45px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)' }}>
+                  <div style={{ flex: 1, backgroundColor: 'var(--border-color)', opacity: 0.1 }}></div>
+                  <div style={{ flex: 1, backgroundColor: 'var(--border-color)', opacity: 0.05 }}></div>
+                </div>
+                {/* Playlist skeletons */}
+                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} style={{ border: '1px solid var(--border-color, #cbd5e1)', borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ height: '16px', width: '80%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px' }}></div>
+                      <div style={{ height: '12px', width: '40%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px' }}></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }

@@ -5,6 +5,27 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { getFreeQuizzesList } from '../services/quizzes.service';
 
+// Component Skeleton Loading cho thẻ Quiz
+const QuizCardSkeleton = () => {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 p-6 flex flex-col justify-between shadow-sm animate-pulse min-h-[220px] gap-4">
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <div className="h-4 w-12 bg-slate-200 dark:bg-slate-700 rounded opacity-50"></div>
+          <div className="h-4 w-16 bg-slate-200 dark:bg-slate-700 rounded opacity-50"></div>
+        </div>
+        <div className="h-6 w-3/4 bg-slate-200 dark:bg-slate-700 rounded mb-2 opacity-50"></div>
+        <div className="h-4 w-full bg-slate-200 dark:bg-slate-700 rounded mb-1 opacity-50"></div>
+        <div className="h-4 w-2/3 bg-slate-200 dark:bg-slate-700 rounded opacity-50"></div>
+      </div>
+      <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
+        <div className="h-7 w-20 bg-slate-200 dark:bg-slate-700 rounded-lg opacity-50"></div>
+        <div className="h-9 w-24 bg-slate-200 dark:bg-slate-700 rounded-xl opacity-50"></div>
+      </div>
+    </div>
+  );
+};
+
 const QuizzesListPage = () => {
   const navigate = useNavigate();
   const [quizzesList, setQuizzesList] = useState([]);
@@ -57,14 +78,7 @@ const QuizzesListPage = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-900 text-slate-500">
-        <div className="w-10 h-10 border-4 border-slate-200 border-t-smart-indigo rounded-full animate-spin"></div>
-        <p className="mt-4 text-xs font-bold uppercase tracking-wider">Đang tải danh sách đề thi...</p>
-      </div>
-    );
-  }
+
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300" style={{ fontFamily: "'Outfit', sans-serif" }}>
@@ -123,49 +137,53 @@ const QuizzesListPage = () => {
 
         {/* Quizzes Grid (Clean White/Slate Theme) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-          {quizzesList.map((quiz) => (
-            <div 
-              key={quiz.id} 
-              className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 p-6 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-300 group min-h-[220px]"
-            >
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <span className={`px-2.5 py-0.5 rounded-lg border text-[10px] font-extrabold uppercase tracking-wider ${getDifficultyColor(quiz.difficulty)}`}>
-                    {quiz.difficulty === 'Easy' ? '☘️ Dễ' : quiz.difficulty === 'Medium' ? '⚡ Trung bình' : '🔥 Khó'}
-                  </span>
-                  
-                  <div className="flex items-center space-x-1 text-slate-400 dark:text-slate-500 text-xs font-semibold">
-                    <FiClock />
-                    <span>{quiz.timeLimit} phút</span>
+          {loading ? (
+            [...Array(4)].map((_, i) => <QuizCardSkeleton key={i} />)
+          ) : (
+            quizzesList.map((quiz) => (
+              <div 
+                key={quiz.id} 
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 p-6 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all duration-300 group min-h-[220px]"
+              >
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <span className={`px-2.5 py-0.5 rounded-lg border text-[10px] font-extrabold uppercase tracking-wider ${getDifficultyColor(quiz.difficulty)}`}>
+                      {quiz.difficulty === 'Easy' ? '☘️ Dễ' : quiz.difficulty === 'Medium' ? '⚡ Trung bình' : '🔥 Khó'}
+                    </span>
+                    
+                    <div className="flex items-center space-x-1 text-slate-400 dark:text-slate-500 text-xs font-semibold">
+                      <FiClock />
+                      <span>{quiz.timeLimit} phút</span>
+                    </div>
                   </div>
+
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 leading-tight group-hover:text-smart-indigo dark:group-hover:text-indigo-400 transition-colors mb-2">
+                    {quiz.title}
+                  </h3>
+                  
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
+                    {quiz.description}
+                  </p>
                 </div>
 
-                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 leading-tight group-hover:text-smart-indigo dark:group-hover:text-indigo-400 transition-colors mb-2">
-                  {quiz.title}
-                </h3>
-                
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
-                  {quiz.description}
-                </p>
-              </div>
+                {/* Action buttons */}
+                <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <span className="flex items-center space-x-1.5 text-xs text-slate-400 dark:text-slate-350 font-bold bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-800">
+                    <FiBookOpen className="text-smart-indigo dark:text-indigo-400" />
+                    <span>{quiz.questions?.length || 0} câu hỏi</span>
+                  </span>
 
-              {/* Action buttons */}
-              <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-700">
-                <span className="flex items-center space-x-1.5 text-xs text-slate-400 dark:text-slate-350 font-bold bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-800">
-                  <FiBookOpen className="text-smart-indigo dark:text-indigo-400" />
-                  <span>{quiz.questions?.length || 0} câu hỏi</span>
-                </span>
-
-                <button
-                  onClick={() => navigate(`/quizzes/play/${quiz.id}`)}
-                  className="flex items-center space-x-1.5 px-5 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
-                >
-                  <FiPlay />
-                  <span>Bắt đầu thi</span>
-                </button>
+                  <button
+                    onClick={() => navigate(`/quizzes/play/${quiz.id}`)}
+                    className="flex items-center space-x-1.5 px-5 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
+                  >
+                    <FiPlay />
+                    <span>Bắt đầu thi</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </main>
 

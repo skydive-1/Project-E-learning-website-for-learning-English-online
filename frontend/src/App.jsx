@@ -19,6 +19,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
 import PlayQuizPage from './modules/quizzes/pages/PlayQuizPage';
 import AdminDashboard from './modules/admin/pages/AdminDashboard';
+import GlobalChatbot from './components/common/GlobalChatbot';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -128,6 +129,7 @@ function App() {
                   element={<Navigate to="/" replace />}
                 />
               </Routes>
+              <GlobalChatbot />
             </AuthProvider>
           </BrowserRouter>
         </ThemeProvider>

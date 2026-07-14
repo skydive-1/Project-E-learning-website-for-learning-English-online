@@ -39,7 +39,13 @@ const AdminDashboard = () => {
     const savedConfig = localStorage.getItem('admin_security_config');
     if (savedConfig) {
       try {
-        setSecurityConfig(JSON.parse(savedConfig));
+        const parsed = JSON.parse(savedConfig);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          setSecurityConfig(prev => ({
+            ...prev,
+            ...parsed
+          }));
+        }
       } catch (err) {
         console.error('Lỗi parse security config:', err);
       }

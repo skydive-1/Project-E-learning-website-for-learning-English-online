@@ -9,7 +9,7 @@ const upload = require('../../middleware/upload.middleware');
 const askSchema = {
   body: {
     question: { required: true },
-    lessonId: { required: true }
+    lessonId: { required: false }
   }
 };
 

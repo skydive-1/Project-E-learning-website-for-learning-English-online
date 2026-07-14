@@ -1,0 +1,310 @@
+/* CSS styling for Global Floating AI Chatbot */
+
+.global-chatbot-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* 1. Nút kích hoạt chính (Trigger Button) */
+.chatbot-floating-trigger {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.5), 0 8px 16px -6px rgba(59, 130, 246, 0.3);
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  outline: none;
+}
+
+.chatbot-floating-trigger:hover {
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: 0 12px 30px -5px rgba(99, 102, 241, 0.6), 0 10px 20px -6px rgba(59, 130, 246, 0.4);
+}
+
+.chatbot-floating-trigger:active {
+  transform: scale(0.95);
+}
+
+.chatbot-floating-trigger.active-open {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.5);
+  transform: scale(1.0) rotate(90deg);
+}
+
+.chatbot-trigger-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trigger-icon {
+  font-size: 24px;
+  transition: transform 0.3s ease;
+}
+
+/* Sóng radar tỏa ra xung quanh nút khi chưa mở */
+.radar-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.4);
+  z-index: -1;
+  animation: pulse-radar 2.5s infinite;
+}
+
+@keyframes pulse-radar {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* 2. Bong bóng thông báo chào mừng nhỏ (Notification Bubble) */
+.chatbot-notification-bubble {
+  position: absolute;
+  bottom: 76px;
+  right: 4px;
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 16px -6px rgba(0, 0, 0, 0.04);
+  padding: 12px 16px;
+  border-radius: 18px 18px 4px 18px;
+  width: 250px;
+  cursor: pointer;
+  z-index: 1001;
+  transition: all 0.3s ease;
+}
+
+.dark .chatbot-notification-bubble {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(71, 85, 105, 0.5);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.chatbot-notification-bubble:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.12);
+  border-color: #6366f1;
+}
+
+.bubble-text {
+  font-size: 12px;
+  color: #334155;
+  margin: 0;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.dark .bubble-text {
+  color: #e2e8f0;
+}
+
+.bubble-close-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.bubble-close-btn:hover {
+  color: #ef4444;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.dark .bubble-close-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 3. Cửa sổ Popover Chatbot */
+.chatbot-floating-window {
+  position: absolute;
+  bottom: 80px;
+  right: 0;
+  width: 390px;
+  height: 580px;
+  max-height: 82vh;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 1002;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .chatbot-floating-window {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(51, 65, 85, 0.7);
+  box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.4);
+}
+
+/* Thiết lập body bên trong để chứa ChatBox component */
+.chatbot-popup-body {
+  flex-grow: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Thay thế các layout của ChatBox cho khớp khung popup */
+.chatbot-window-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Cho phép ChatBox bên trong chiếm hết chiều cao */
+.chatbot-window-body > div {
+  height: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 4. Header của cửa sổ Chatbot */
+.chatbot-window-header {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.chatbot-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chatbot-avatar-icon {
+  width: 38px;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  animation: float-avatar 3s ease-in-out infinite;
+}
+
+@keyframes float-avatar {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.chatbot-header-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+.chatbot-header-subtitle {
+  font-size: 10.5px;
+  margin: 0;
+  opacity: 0.85;
+}
+
+.chatbot-header-close-btn {
+  color: rgba(255, 255, 255, 0.85);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.chatbot-header-close-btn:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+
+/* 5. Animations */
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes bounce-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 4s ease-in-out infinite;
+}
+
+/* Responsive cho màn hình nhỏ di động */
+@media (max-width: 480px) {
+  .global-chatbot-container {
+    bottom: 16px;
+    right: 16px;
+  }
+  .chatbot-floating-window {
+    width: calc(100vw - 32px);
+    height: calc(100vh - 120px);
+    bottom: 70px;
+    right: 0;
+  }
+}

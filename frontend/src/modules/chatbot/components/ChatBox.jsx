@@ -120,7 +120,7 @@ const getLessonSpecificQuiz = (lessonId) => {
   return quizzes[cleanId] || quizzes["3"]; // Mặc định trả về bộ câu hỏi ngữ pháp (Bài 3)
 };
 
-const ChatBox = ({ lessonId }) => {
+const ChatBox = ({ lessonId = 0, onClose = null }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
@@ -178,7 +178,7 @@ const ChatBox = ({ lessonId }) => {
       setMessages(prev => [...prev, aiReplyMessage]);
       fetchBalance();
 
-      if (user?.userId && lessonId) {
+      if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
         saveChatHistory(user.userId, lessonId, "[Ghi âm giọng nói]", result.reply).catch(err => {
           console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
         });
@@ -227,7 +227,7 @@ const ChatBox = ({ lessonId }) => {
   useEffect(() => {
     let isCurrent = true;
     const fetchHistory = async () => {
-      if (!user?.userId || !lessonId) {
+      if (!user?.userId || (lessonId === undefined || lessonId === null)) {
         setIsHistoryLoading(false);
         return;
       }
@@ -245,11 +245,14 @@ const ChatBox = ({ lessonId }) => {
             }));
             setMessages(mappedMessages);
           } else {
+            const welcomeText = (lessonId === 0 || lessonId === '0' || !lessonId)
+              ? "Hello! Tôi là Trợ lý học tiếng Anh AI của bạn. Tôi có thể hỗ trợ giải thích ngữ pháp, từ vựng, luyện viết hoặc chat tiếng Anh cùng bạn để nâng cao phản xạ. Hôm nay bạn muốn học gì nào?"
+              : "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?";
             setMessages([
               {
                 id: "msg-welcome",
                 sender: "ai",
-                text: "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?",
+                text: welcomeText,
                 timestamp: new Date()
               }
             ]);
@@ -322,7 +325,7 @@ const ChatBox = ({ lessonId }) => {
       fetchBalance();
 
       // 2. Lưu hội thoại ngầm (Auto-Save) vào CSDL
-      if (user?.userId && lessonId) {
+      if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
         saveChatHistory(user.userId, lessonId, text, aiReply).catch(err => {
           console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
         });
@@ -349,23 +352,32 @@ const ChatBox = ({ lessonId }) => {
 
   const handleClearChat = () => {
     if (window.confirm("Bạn có muốn xóa cuộc hội thoại này không?")) {
+      const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
+        ? "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn?"
+        : "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?";
       setMessages([
         {
           id: "msg-welcome-new",
           sender: "ai",
-          text: "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?",
+          text: resetText,
           timestamp: new Date()
         }
       ]);
     }
   };
 
-  // Các gợi ý câu hỏi nhanh
-  const quickPrompts = [
-    { label: "Giải thích ngữ pháp bài này", text: "Giải thích ngữ pháp trọng tâm trong video bài học này" },
-    { label: "Cho ví dụ từ vựng", text: "Cho tôi 3 từ vựng mới trong bài học này kèm câu ví dụ cụ thể" },
-    { label: "Tạo một bài tập nhỏ", text: "Tạo cho tôi một bài tập trắc nghiệm nhỏ để kiểm tra kiến thức bài học này" }
-  ];
+  // Các gợi ý câu hỏi nhanh (Thay đổi động theo chế độ bài học hoặc toàn cục)
+  const quickPrompts = (lessonId === 0 || lessonId === '0' || !lessonId)
+    ? [
+        { label: "🌐 Giới thiệu về E-Learn Academy", text: "Hãy giới thiệu chi tiết cho tôi về trang web học tiếng Anh E-Learn Academy này và các tính năng chính." },
+        { label: "📚 Các khóa học hiện có", text: "Trang web đang cung cấp những khóa học tiếng Anh nào? Tôi có thể tìm thấy khóa học cho người mới bắt đầu không?" },
+        { label: "🧭 Lộ trình học tiếng Anh", text: "Lộ trình học tiếng Anh giao tiếp chuẩn và hiệu quả trên trang web này được thiết kế như thế nào?" }
+      ]
+    : [
+        { label: "Giải thích ngữ pháp bài này", text: "Giải thích ngữ pháp trọng tâm trong video bài học này" },
+        { label: "Cho ví dụ từ vựng", text: "Cho tôi 3 từ vựng mới trong bài học này kèm câu ví dụ cụ thể" },
+        { label: "Tạo một bài tập nhỏ", text: "Tạo cho tôi một bài tập trắc nghiệm nhỏ để kiểm tra kiến thức bài học này" }
+      ];
 
   // Trạng thái chưa đăng nhập: Hiển thị giao diện khóa sang trọng
   if (!user) {
@@ -398,17 +410,32 @@ const ChatBox = ({ lessonId }) => {
             <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white"></span>
           </div>
           <div>
-            <h3 className="font-semibold text-sm tracking-wide">AI Assistant</h3>
-            <span className="text-[10.5px] opacity-80">RAG-powered Tutor</span>
+            <h3 className="font-semibold text-sm tracking-wide">
+              {Number(lessonId) === 0 ? "Trợ Lý Học Tiếng Anh AI" : "AI Assistant"}
+            </h3>
+            <span className="text-[10.5px] opacity-80">
+              {Number(lessonId) === 0 ? "Học tập & Phản xạ tự do" : "RAG-powered Tutor"}
+            </span>
           </div>
         </div>
-        <button 
-          onClick={handleClearChat}
-          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-          title="Xóa lịch sử chat"
-        >
-          <FiTrash2 className="text-sm" />
-        </button>
+        <div className="flex items-center space-x-1">
+          <button 
+            onClick={handleClearChat}
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/90 hover:text-white"
+            title="Xóa lịch sử chat"
+          >
+            <FiTrash2 className="text-sm" />
+          </button>
+          {onClose && (
+            <button 
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/90 hover:text-white"
+              title="Đóng cửa sổ chat"
+            >
+              <FiX className="text-sm" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Message Area with Custom Scrollbar */}

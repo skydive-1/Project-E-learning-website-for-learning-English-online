@@ -139,9 +139,60 @@ const ProfilePage = () => {
 
   if (isLoading) {
     return (
-      <div className="loading-wrapper">
-        <div className="spinner-large"></div>
-        <p>Đang tải thông tin cá nhân...</p>
+      <div className="profile-page-wrapper">
+        <Header />
+        <main className="profile-main-content">
+          <div className="profile-container animate-pulse">
+            {/* Back Nav Link Skeleton */}
+            <div className="back-to-home" style={{ opacity: 0.5 }}>
+              <div style={{ height: '16px', width: '120px', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px' }}></div>
+            </div>
+
+            <div className="profile-layout-grid">
+              {/* Left Panel Skeleton */}
+              <div className="profile-left-panel">
+                <div className="profile-summary-card" style={{ gap: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: 'var(--border-color, #cbd5e1)', opacity: 0.2 }}></div>
+                  <div style={{ height: '24px', width: '60%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', opacity: 0.2 }}></div>
+                  <div style={{ height: '20px', width: '40%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                  <div className="panel-divider" style={{ width: '100%' }}></div>
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ height: '40px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                    <div style={{ height: '40px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                    <div style={{ height: '40px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Panel Skeleton */}
+              <div className="profile-right-panel" style={{ background: 'var(--card-bg, #ffffff)', border: '1px solid var(--border-color, #e2e8f0)', borderRadius: '24px', padding: '32px' }}>
+                <div style={{ height: '28px', width: '40%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', marginBottom: '24px', opacity: 0.2 }}></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div>
+                      <div style={{ height: '16px', width: '30%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px', marginBottom: '8px', opacity: 0.2 }}></div>
+                      <div style={{ height: '44px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                    </div>
+                    <div>
+                      <div style={{ height: '16px', width: '30%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px', marginBottom: '8px', opacity: 0.2 }}></div>
+                      <div style={{ height: '44px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ height: '16px', width: '20%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px', marginBottom: '8px', opacity: 0.2 }}></div>
+                    <div style={{ height: '44px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                  </div>
+                  <div>
+                    <div style={{ height: '16px', width: '20%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px', marginBottom: '8px', opacity: 0.2 }}></div>
+                    <div style={{ height: '44px', width: '100%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '12px', opacity: 0.2 }}></div>
+                  </div>
+                  <div style={{ height: '48px', width: '140px', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '14px', marginTop: '12px', opacity: 0.2 }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }

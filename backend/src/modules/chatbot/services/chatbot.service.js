@@ -3,6 +3,7 @@
  */
 
 const { geminiModel, embeddingModel, pineconeIndex } = require("../../../utils/ai-clients");
+const db = require("../../../config/database");
 
 /**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
@@ -13,40 +14,76 @@ const handleRagChat = async (userId, lessonId, question) => {
       return { success: false, reply: "Vui lòng nhập câu hỏi." };
     }
 
-    // 1. Tạo vector embedding từ câu hỏi
-    const embeddingResult = await embeddingModel.embedContent({
-      content: { parts: [{ text: question }] },
-      outputDimensionality: 768
-    });
-    const queryVector = embeddingResult.embedding?.values;
+    const isGlobalChat = !lessonId || Number(lessonId) === 0;
+    let contextText = "";
 
-    if (!queryVector) {
-      throw new Error("Không thể tạo vector embedding từ câu hỏi.");
+    if (isGlobalChat) {
+      // 1. Đối với Chatbot toàn cục: Lấy dữ liệu khóa học thật từ DB để AI trả lời đúng trọng tâm thông tin hệ thống
+      try {
+        const coursesResult = await db.query(`
+          SELECT course_name, description 
+          FROM courses 
+          ORDER BY course_id ASC
+        `);
+        const coursesList = coursesResult.rows;
+        if (coursesList.length > 0) {
+          contextText = "Dưới đây là danh sách các khóa học thực tế đang hoạt động trên hệ thống E-Learn Academy:\n" +
+            coursesList.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - Mô tả: ${c.description || "Không có mô tả"}`).join("\n");
+        } else {
+          contextText = "Hiện tại chưa có khóa học nào được đăng tải trên hệ thống.";
+        }
+      } catch (dbErr) {
+        console.error("Lỗi lấy danh sách khóa học cho chatbot:", dbErr);
+        contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
+      }
+    } else {
+      // 2. Đối với AI Assistant trong bài học: Sử dụng RAG Pinecone để lấy ngữ cảnh từ transcript video bài giảng
+      const embeddingResult = await embeddingModel.embedContent({
+        content: { parts: [{ text: question }] },
+        outputDimensionality: 768
+      });
+      const queryVector = embeddingResult.embedding?.values;
+
+      if (!queryVector) {
+        throw new Error("Không thể tạo vector embedding từ câu hỏi.");
+      }
+
+      const queryOptions = {
+        vector: queryVector,
+        topK: 2,
+        includeMetadata: true
+      };
+
+      const parsedLessonId = Number(lessonId);
+      if (!isNaN(parsedLessonId)) {
+        queryOptions.filter = { lesson_id: { $eq: parsedLessonId } };
+      }
+
+      const queryResponse = await pineconeIndex.query(queryOptions);
+
+      const matches = queryResponse.matches || [];
+      contextText = matches
+        .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
+        .filter(Boolean)
+        .join("\n");
     }
 
-    const queryOptions = {
-      vector: queryVector,
-      topK: 2,
-      includeMetadata: true
-    };
+    // 3. Tạo Prompt Engineering gửi cho Gemini (Đã tối ưu hóa tính tự nhiên)
+    const systemPrompt = isGlobalChat
+      ? `Bạn là Trợ lý ảo học tiếng Anh của E-Learn Academy. E-Learn Academy là một nền tảng học tiếng Anh trực tuyến thông minh với các tính năng chính: Học từ vựng, ngữ pháp, luyện nghe qua video bảo mật, luyện phát âm/nói (Speaking) chấm điểm bằng AI, và làm bài trắc nghiệm (Quiz).
+  
+HƯỚNG DẪN TRẢ LỜI:
+- Hãy trả lời một cách tự nhiên, thân thiện và trực tiếp (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
+- Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, hãy sử dụng NGỮ CẢNH HỆ THỐNG dưới đây để cung cấp thông tin chính xác về các khóa học thực tế đang hoạt động trên trang web. Hãy giới thiệu tự nhiên và hấp dẫn.
+- Nếu học viên hỏi các câu hỏi tiếng Anh chung (ví dụ: giải thích ngữ pháp, từ vựng, giao tiếp tự do, dịch thuật), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để giảng dạy và hỗ trợ họ một cách chuyên nghiệp. Khi cung cấp từ vựng/câu mẫu tiếng Anh, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
+- Tuyệt đối không nhắc đến các cụm từ kỹ thuật như "dựa vào ngữ cảnh cung cấp", "theo tài liệu".
 
-    const parsedLessonId = Number(lessonId);
-    if (lessonId !== undefined && lessonId !== null && !isNaN(parsedLessonId)) {
-      queryOptions.filter = { lesson_id: { $eq: parsedLessonId } };
-    }
+NGỮ CẢNH HỆ THỐNG:
+${contextText}
 
-    // 2. Truy vấn Pinecone
-    const queryResponse = await pineconeIndex.query(queryOptions);
-
-    // 3. Trích xuất text từ kết quả trả về của Pinecone
-    const matches = queryResponse.matches || [];
-    let contextText = matches
-      .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
-      .filter(Boolean)
-      .join("\n");
-
-    // 4. Tạo cấu trúc Prompt Engineering gửi cho Gemini (Đã tối ưu hóa tính tự nhiên và loại bỏ thương hiệu LingoMate)
-    const systemPrompt = `Bạn là một Trợ lý ảo học tiếng Anh thân thiện và nhiệt tình. Hãy đóng vai một giáo viên hướng dẫn tiếng Anh để trả lời câu hỏi của học viên một cách tự nhiên, sinh động và dễ hiểu.
+CÂU HỎI CỦA HỌC VIÊN:
+"${question}"`
+      : `Bạn là một Trợ lý ảo học tiếng Anh thân thiện và nhiệt tình. Hãy đóng vai một giáo viên hướng dẫn tiếng Anh để trả lời câu hỏi của học viên một cách tự nhiên, sinh động và dễ hiểu.
 
 HƯỚNG DẪN TRẢ LỜI:
 - Trả lời một cách trực tiếp, tự nhiên và thân thiện (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
@@ -70,8 +107,6 @@ CÂU HỎI CỦA HỌC VIÊN:
   }
 };
 
-const db = require("../../../config/database");
-
 /**
  * Đối tượng service tương thích với các API hiện tại
  */
@@ -92,13 +127,15 @@ class ChatbotService {
 
   async saveHistory(userId, lessonId, question, answer) {
     try {
+      const finalLessonId = (lessonId === 0 || lessonId === '0' || lessonId === null || lessonId === undefined || lessonId === 'null') ? null : lessonId;
+
       // 1. Lưu câu hỏi của user
       const insertUserQuery = `
         INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
         VALUES ($1, $2, $3, 'user', NOW())
         RETURNING ai_chat, student_id, lesson_id, title, sender_type, created_at AS created_date
       `;
-      const userResult = await db.query(insertUserQuery, [userId, lessonId, question]);
+      const userResult = await db.query(insertUserQuery, [userId, finalLessonId, question]);
 
       // 2. Lưu câu trả lời của bot/ai
       const insertBotQuery = `
@@ -106,7 +143,7 @@ class ChatbotService {
         VALUES ($1, $2, $3, 'bot', NOW())
         RETURNING ai_chat, student_id, lesson_id, title, sender_type, created_at AS created_date
       `;
-      const botResult = await db.query(insertBotQuery, [userId, lessonId, answer]);
+      const botResult = await db.query(insertBotQuery, [userId, finalLessonId, answer]);
 
       return {
         userMessage: userResult.rows[0],
@@ -120,14 +157,24 @@ class ChatbotService {
 
   async getHistory(userId, lessonId) {
     try {
-      // 2. Truy vấn bảng ai_chat và trả về danh sách hội thoại cũ theo thứ tự thời gian tăng dần
-      const queryText = `
-        SELECT ai_chat, sender_type, title, created_at AS created_date
-        FROM ai_chat
-        WHERE student_id = $1 AND lesson_id = $2
-        ORDER BY created_date ASC
-      `;
-      const result = await db.query(queryText, [userId, lessonId]);
+      const hasLesson = lessonId && lessonId !== 'null' && lessonId !== 'undefined' && Number(lessonId) !== 0;
+      
+      const queryText = hasLesson
+        ? `
+          SELECT ai_chat, sender_type, title, created_at AS created_date
+          FROM ai_chat
+          WHERE student_id = $1 AND lesson_id = $2
+          ORDER BY created_date ASC
+        `
+        : `
+          SELECT ai_chat, sender_type, title, created_at AS created_date
+          FROM ai_chat
+          WHERE student_id = $1 AND lesson_id IS NULL
+          ORDER BY created_date ASC
+        `;
+      
+      const params = hasLesson ? [userId, lessonId] : [userId];
+      const result = await db.query(queryText, params);
       
       return result.rows.map(row => ({
         chat_id: row.ai_chat,
