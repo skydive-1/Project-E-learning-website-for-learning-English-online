@@ -16,7 +16,13 @@ class LessonsService {
           ORDER BY s.order_index, l.order_index
         `;
         const result = await db.query(queryText, [parseInt(courseId, 10)]);
-        return result.rows;
+        const rows = result.rows;
+        for (let row of rows) {
+          if (row.content_type === 'video' && row.content_url) {
+            row.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(row.content_url, 'videos', 3600);
+          }
+        }
+        return rows;
       } else if (sectionId) {
         const queryText = `
           SELECT * FROM lessons 
@@ -24,7 +30,13 @@ class LessonsService {
           ORDER BY order_index
         `;
         const result = await db.query(queryText, [parseInt(sectionId, 10)]);
-        return result.rows;
+        const rows = result.rows;
+        for (let row of rows) {
+          if (row.content_type === 'video' && row.content_url) {
+            row.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(row.content_url, 'videos', 3600);
+          }
+        }
+        return rows;
       }
       return [];
     } catch (error) {
@@ -182,7 +194,11 @@ class LessonsService {
   async getLessonById(lessonId) {
     try {
       const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [parseInt(lessonId, 10)]);
-      return result.rows[0];
+      const lesson = result.rows[0];
+      if (lesson && lesson.content_type === 'video' && lesson.content_url) {
+        lesson.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(lesson.content_url, 'videos', 3600);
+      }
+      return lesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin bài giảng');
     }

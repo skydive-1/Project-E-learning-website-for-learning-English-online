@@ -229,6 +229,21 @@ class CoursesService {
         }
       });
 
+      for (let section of course.sections) {
+        if (section.lessons && section.lessons.length > 0) {
+          for (let lesson of section.lessons) {
+            if (lesson.content_type === 'video' && lesson.content_url) {
+              try {
+                const { generateSignedUrl } = require('../../../utils/supabaseStorage');
+                lesson.content_url = await generateSignedUrl(lesson.content_url, 'videos', 3600);
+              } catch (e) {
+                console.error('Failed to generate signed url for lesson', lesson.lesson_id, e);
+              }
+            }
+          }
+        }
+      }
+
       return course;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin chi tiết khóa học');

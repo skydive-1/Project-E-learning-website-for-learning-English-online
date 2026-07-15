@@ -4,6 +4,7 @@ const chatbotController = require('./controllers/chatbot.controller');
 const { authenticate } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validation.middleware');
 const upload = require('../../middleware/upload.middleware');
+const { checkTokenLimit } = require('../../middleware/tokenLimit.middleware');
 
 // Schema Validation
 const askSchema = {
@@ -14,7 +15,7 @@ const askSchema = {
 };
 
 // Route: POST /api/chatbot/ask (Yêu cầu đăng nhập để tránh lạm dụng hạn mức dịch vụ AI)
-router.post('/ask', authenticate, validate(askSchema), chatbotController.ask);
+router.post('/ask', authenticate, checkTokenLimit, validate(askSchema), chatbotController.ask);
 
 // API Lịch sử Chat (Độc lập, nhận trực tiếp userId/lessonId từ Frontend)
 router.post('/history', chatbotController.saveHistory);
