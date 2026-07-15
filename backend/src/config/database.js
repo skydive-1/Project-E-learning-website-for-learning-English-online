@@ -43,6 +43,14 @@ const testConnection = async () => {
     const res = await client.query('SELECT 1 + 1 AS result');
     console.log(`✅ DB Health Check: Connection verified successfully (1 + 1 = ${res.rows[0].result})`);
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo cột supabase_uid tồn tại trong bảng users
+    try {
+      await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid UUID UNIQUE;');
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột supabase_uid tồn tại trong bảng users');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột supabase_uid (có thể bảng users chưa được khởi tạo):', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {

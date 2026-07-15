@@ -172,7 +172,7 @@ const LoginPage = () => {
         </div>
 
         <div className="forgot-link-wrapper">
-          <a href="#" className="forgot-link" onClick={(e) => { e.preventDefault(); alert('Chức năng lấy lại mật khẩu qua Email đang phát triển!'); }}>
+          <a href="#" className="forgot-link" onClick={(e) => { e.preventDefault(); navigate('/forgot-password'); }}>
             Quên mật khẩu?
           </a>
         </div>

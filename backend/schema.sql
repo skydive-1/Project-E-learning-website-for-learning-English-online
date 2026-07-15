@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
   role_id INT NOT NULL DEFAULT 3,
   gender VARCHAR(10) CHECK (gender IN ('Male','Female','Other')),
   profile_picture_url VARCHAR(255),
+  supabase_uid UUID UNIQUE,
   CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(role_id)
 );
 

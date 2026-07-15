@@ -108,4 +108,8 @@ router.put('/profile', authenticate, validate(updateProfileSchema), authControll
 router.post('/google', authController.googleLogin);
 router.post('/google/confirm-role', authController.googleConfirmRole);
 
+// Password Reset Endpoints
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
+
 module.exports = router;

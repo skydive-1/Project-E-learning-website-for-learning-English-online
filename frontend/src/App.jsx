@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './modules/auth/pages/LoginPage';
 import RegisterPage from './modules/auth/pages/RegisterPage';
+import ForgotPasswordPage from './modules/auth/pages/ForgotPasswordPage';
+import ResetPasswordPage from './modules/auth/pages/ResetPasswordPage';
 import HomePage from './modules/homepage/pages/HomePage';
 import AuthLayout from './modules/auth/components/AuthLayout';
 import ProfilePage from './modules/profile/pages/ProfilePage';
@@ -51,6 +53,8 @@ function App() {
                 <Route element={<AuthLayout />}>
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
                 </Route>
 
                 {/* Protected Routes */}

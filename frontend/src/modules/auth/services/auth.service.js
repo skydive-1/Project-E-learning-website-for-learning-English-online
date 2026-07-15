@@ -55,3 +55,19 @@ export const googleConfirmRole = async ({ tempToken, roleId }) => {
   const response = await apiClient.post('/auth/google/confirm-role', { tempToken, roleId });
   return response.data;
 };
+
+/**
+ * Gửi yêu cầu khôi phục mật khẩu (Quên mật khẩu)
+ */
+export const forgotPasswordApi = async ({ email }) => {
+  const response = await apiClient.post('/auth/forgot-password', { email });
+  return response.data;
+};
+
+/**
+ * Đặt lại mật khẩu mới
+ */
+export const resetPasswordApi = async ({ accessToken, newPassword }) => {
+  const response = await apiClient.post('/auth/reset-password', { accessToken, newPassword });
+  return response.data;
+};

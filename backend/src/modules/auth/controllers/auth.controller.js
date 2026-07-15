@@ -149,3 +149,39 @@ exports.googleConfirmRole = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      const err = new Error('Thiếu thông tin email');
+      err.status = 400;
+      throw err;
+    }
+    await authService.forgotPassword(email);
+    res.status(200).json({
+      success: true,
+      message: 'Email khôi phục mật khẩu đã được gửi thành công'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { accessToken, newPassword } = req.body;
+    if (!accessToken || !newPassword) {
+      const err = new Error('Thiếu thông tin khôi phục mật khẩu (accessToken hoặc mật khẩu mới)');
+      err.status = 400;
+      throw err;
+    }
+    await authService.resetPassword({ accessToken, newPassword });
+    res.status(200).json({
+      success: true,
+      message: 'Mật khẩu đã được đặt lại thành công'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

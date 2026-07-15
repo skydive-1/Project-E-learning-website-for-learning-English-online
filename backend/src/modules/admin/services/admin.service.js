@@ -3,6 +3,7 @@
  */
 
 const { pool } = require('../../../config/database');
+const { supabaseAdmin } = require('../../../config/supabase');
 
 /**
  * Lấy danh sách tất cả người dùng kèm thông tin vai trò
@@ -56,23 +57,57 @@ const deleteUser = async (userId) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // 1. Lấy thông tin supabase_uid để xóa tài khoản trên Supabase Auth
+    const userRes = await client.query('SELECT supabase_uid FROM users WHERE user_id = $1', [userId]);
+    if (userRes.rows.length > 0) {
+      const supabaseUid = userRes.rows[0].supabase_uid;
+      if (supabaseUid && supabaseAdmin) {
+        try {
+          const { error: sbErr } = await supabaseAdmin.auth.admin.deleteUser(supabaseUid);
+          if (sbErr) {
+            console.warn(`⚠️ Cảnh báo: Không thể xóa user ${userId} trên Supabase Auth:`, sbErr.message);
+          } else {
+            console.log(`✅ Đã xóa user ${userId} trên Supabase Auth`);
+          }
+        } catch (sbException) {
+          console.warn(`⚠️ Ngoại lệ khi xóa user trên Supabase Auth:`, sbException.message);
+        }
+      }
+    }
     
-    // 1. Xóa tiến trình học tập (user_progress)
+    // 2. Xóa tiến trình học tập (user_progress)
     await client.query('DELETE FROM user_progress WHERE user_id = $1', [userId]);
     
-    // 2. Xóa lịch sử AI chat
+    // 3. Xóa lịch sử AI chat
     await client.query('DELETE FROM ai_chat WHERE student_id = $1', [userId]);
+
+    // 4. Xóa thông tin chi tiết giảng viên (teachers) (nếu bảng tồn tại)
+    const teachersExistRes = await client.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'teachers'
+      );
+    `);
+    if (teachersExistRes.rows[0].exists) {
+      await client.query('DELETE FROM teachers WHERE user_id = $1', [userId]);
+    }
+
+    // 5. Xóa thông tin chi tiết học sinh (students) (nếu bảng tồn tại)
+    const studentsExistRes = await client.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'students'
+      );
+    `);
+    if (studentsExistRes.rows[0].exists) {
+      await client.query('DELETE FROM students WHERE user_id = $1', [userId]);
+    }
     
-    // 3. Xóa thông tin chi tiết giảng viên (teachers)
-    await client.query('DELETE FROM teachers WHERE user_id = $1', [userId]);
-    
-    // 4. Xóa thông tin chi tiết học sinh (students)
-    await client.query('DELETE FROM students WHERE user_id = $1', [userId]);
-    
-    // 5. Cập nhật các khóa học do giảng viên này đứng lớp (instructor_id = null) thay vì xóa khóa học
+    // 6. Cập nhật các khóa học do giảng viên này đứng lớp (instructor_id = null) thay vì xóa khóa học
     await client.query('UPDATE courses SET instructor_id = NULL WHERE instructor_id = $1', [userId]);
 
-    // 6. Xóa tài khoản người dùng
+    // 5. Xóa tài khoản người dùng cục bộ
     const result = await client.query(
       'DELETE FROM users WHERE user_id = $1 RETURNING user_id, username, email', 
       [userId]

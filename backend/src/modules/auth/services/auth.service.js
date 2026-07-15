@@ -6,11 +6,17 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
+const { supabaseAdmin, supabaseClient } = require('../../../config/supabase');
+const { createClient } = require('@supabase/supabase-js');
 
 class AuthService {
   async register({ email, username, password, fullName, roleId }) {
     try {
-      // 1. Kiểm tra email trùng lặp
+      if (!supabaseAdmin) {
+        throw new Error('Supabase Admin client chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      }
+
+      // 1. Kiểm tra email trùng lặp trong PostgreSQL cục bộ
       const existingUser = await db.query('SELECT user_id FROM users WHERE email = $1', [email]);
       if (existingUser.rows.length > 0) {
         const error = new Error('Email đã được sử dụng bởi một tài khoản khác');
@@ -19,22 +25,37 @@ class AuthService {
         throw error;
       }
 
-      // 2. Hash mật khẩu trước khi lưu
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // 3. Lưu thông tin người dùng vào database PostgreSQL (mặc định role_id = 3 là Student)
       // Chặn đăng ký vai trò Admin hoặc các vai trò không hợp lệ qua API công khai
       let finalRoleId = parseInt(roleId, 10);
       if (finalRoleId !== 2 && finalRoleId !== 3) {
         finalRoleId = 3; // Chỉ cho phép đăng ký trực tiếp vai trò Student hoặc Instructor
       }
 
+      // 2. Tạo tài khoản trong Supabase Auth bằng Admin SDK (tự động kích hoạt email)
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          username,
+          full_name: fullName || username,
+          role_id: finalRoleId
+        }
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      const supabaseUser = authData.user;
+
+      // 3. Lưu thông tin người dùng vào database PostgreSQL (sử dụng supabase_uid)
       const queryText = `
-        INSERT INTO users (email, password_hash, username, full_name, role_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING user_id, email, username, full_name, role_id, created_date
+        INSERT INTO users (email, password_hash, username, full_name, role_id, supabase_uid)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING user_id, email, username, full_name, role_id, created_date, supabase_uid
       `;
-      const values = [email, hashedPassword, username, fullName || username, finalRoleId];
+      const values = [email, '', username, fullName || username, finalRoleId, supabaseUser.id];
       const result = await db.query(queryText, values);
 
       const newUser = result.rows[0];
@@ -45,7 +66,8 @@ class AuthService {
         username: newUser.username,
         fullName: newUser.full_name,
         roleId: newUser.role_id,
-        createdDate: newUser.created_date
+        createdDate: newUser.created_date,
+        supabaseUid: newUser.supabase_uid
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi đăng ký trong AuthService');
@@ -54,29 +76,115 @@ class AuthService {
 
   async login({ email, password }) {
     try {
-      // 1. Lấy thông tin user từ PostgreSQL theo cấu trúc mới
-      const queryText = 'SELECT user_id, email, password_hash, username, full_name, role_id FROM users WHERE email = $1';
-      const result = await db.query(queryText, [email]);
-
-      if (result.rows.length === 0) {
-        const error = new Error('Email hoặc mật khẩu không chính xác');
-        error.name = 'AuthError';
-        error.status = 401;
-        throw error;
+      if (!supabaseClient) {
+        throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
       }
 
-      const user = result.rows[0];
-
-      // 2. Kiểm tra mật khẩu (verify password)
-      const isMatch = await bcrypt.compare(password, user.password_hash);
-      if (!isMatch) {
-        const error = new Error('Email hoặc mật khẩu không chính xác');
-        error.name = 'AuthError';
-        error.status = 401;
-        throw error;
+      // 1. Đăng nhập qua Supabase Auth
+      let authData;
+      let authError;
+      try {
+        const res = await supabaseClient.auth.signInWithPassword({
+          email,
+          password
+        });
+        authData = res.data;
+        authError = res.error;
+      } catch (err) {
+        authError = err;
       }
 
-      // 3. Tạo JWT Token
+      let supabaseUser;
+      let user;
+
+      if (authError) {
+        // Tự động di trú người dùng cũ (Lazy Migration / Shadow Migration):
+        // Nếu không đăng nhập được qua Supabase, kiểm tra xem user có tồn tại ở PostgreSQL cục bộ với mật khẩu cũ không
+        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid FROM users WHERE email = $1';
+        const localUserResult = await db.query(localUserQuery, [email]);
+
+        if (localUserResult.rows.length > 0) {
+          const matchedUser = localUserResult.rows[0];
+          // Nếu tài khoản cũ chưa được đồng bộ và có password_hash (hệ thống cũ)
+          if (matchedUser.password_hash) {
+            const isMatch = await bcrypt.compare(password, matchedUser.password_hash);
+            if (isMatch) {
+              console.log(`[Lazy Migration] Đang di trú tài khoản cũ sang Supabase Auth: ${email}`);
+              // Tạo tài khoản trên Supabase Auth bằng Admin SDK
+              const { data: migratedData, error: migrateError } = await supabaseAdmin.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true,
+                user_metadata: {
+                  username: matchedUser.username,
+                  full_name: matchedUser.full_name,
+                  role_id: matchedUser.role_id
+                }
+              });
+
+              if (migrateError) {
+                console.error('❌ Lỗi tự động di trú sang Supabase Auth:', migrateError.message);
+                const error = new Error('Email hoặc mật khẩu không chính xác');
+                error.name = 'AuthError';
+                error.status = 401;
+                throw error;
+              }
+
+              supabaseUser = migratedData.user;
+              // Cập nhật supabase_uid vào PostgreSQL cục bộ để liên kết
+              await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, matchedUser.user_id]);
+              
+              user = matchedUser;
+              user.supabase_uid = supabaseUser.id;
+            } else {
+              const error = new Error('Email hoặc mật khẩu không chính xác');
+              error.name = 'AuthError';
+              error.status = 401;
+              throw error;
+            }
+          } else {
+            const error = new Error('Email hoặc mật khẩu không chính xác');
+            error.name = 'AuthError';
+            error.status = 401;
+            throw error;
+          }
+        } else {
+          const error = new Error('Email hoặc mật khẩu không chính xác');
+          error.name = 'AuthError';
+          error.status = 401;
+          throw error;
+        }
+      } else {
+        supabaseUser = authData.user;
+
+        // 2. Tìm kiếm thông tin user cục bộ bằng supabase_uid hoặc email để liên kết
+        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid FROM users WHERE supabase_uid = $1 OR email = $2';
+        const result = await db.query(queryText, [supabaseUser.id, email]);
+
+        if (result.rows.length === 0) {
+          // Tự động đồng bộ nếu user tồn tại trên Supabase nhưng chưa có ở DB của mình
+          const roleId = supabaseUser.user_metadata?.role_id || 3;
+          const username = supabaseUser.user_metadata?.username || email.split('@')[0];
+          const fullName = supabaseUser.user_metadata?.full_name || username;
+
+          const insertQuery = `
+            INSERT INTO users (email, password_hash, username, full_name, role_id, supabase_uid)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING user_id, email, username, full_name, role_id, supabase_uid
+          `;
+          const insertRes = await db.query(insertQuery, [email, '', username, fullName, roleId, supabaseUser.id]);
+          user = insertRes.rows[0];
+        } else {
+          user = result.rows[0];
+          // Nếu user cũ chưa có supabase_uid, tự động cập nhật liên kết
+          if (!user.supabase_uid) {
+            await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, user.user_id]);
+            user.supabase_uid = supabaseUser.id;
+          }
+        }
+      }
+
+      // 3. Tạo local JWT Token trả về cho client giống hệ thống cũ
       if (!process.env.JWT_SECRET) {
         throw new Error('JWT_SECRET chưa được cấu hình trên hệ thống');
       }
@@ -139,8 +247,12 @@ class AuthService {
 
   async changePassword({ userId, oldPassword, newPassword }) {
     try {
-      // 1. Lấy mật khẩu cũ từ database
-      const queryText = 'SELECT password_hash FROM users WHERE user_id = $1';
+      if (!supabaseAdmin || !supabaseClient) {
+        throw new Error('Supabase clients chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      }
+
+      // 1. Lấy thông tin user cục bộ
+      const queryText = 'SELECT email, supabase_uid FROM users WHERE user_id = $1';
       const result = await db.query(queryText, [userId]);
 
       if (result.rows.length === 0) {
@@ -151,22 +263,34 @@ class AuthService {
       }
 
       const user = result.rows[0];
+      if (!user.supabase_uid) {
+        const error = new Error('Tài khoản chưa được liên kết với Supabase. Hãy đăng xuất và đăng nhập lại.');
+        error.name = 'AuthError';
+        error.status = 400;
+        throw error;
+      }
 
-      // 2. Kiểm tra mật khẩu cũ
-      const isMatch = await bcrypt.compare(oldPassword, user.password_hash);
-      if (!isMatch) {
+      // 2. Xác thực mật khẩu cũ bằng cách thử đăng nhập Supabase
+      const { error: signInError } = await supabaseClient.auth.signInWithPassword({
+        email: user.email,
+        password: oldPassword
+      });
+
+      if (signInError) {
         const error = new Error('Mật khẩu cũ không chính xác');
         error.name = 'ValidationError';
         error.status = 400;
         throw error;
       }
 
-      // 3. Hash mật khẩu mới trước khi lưu
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      // 3. Cập nhật mật khẩu mới trên Supabase
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.supabase_uid, {
+        password: newPassword
+      });
 
-      // 4. Cập nhật mật khẩu mới vào database (loại bỏ updated_at vì bảng mới không có)
-      const updateQuery = 'UPDATE users SET password_hash = $1 WHERE user_id = $2';
-      await db.query(updateQuery, [hashedPassword, userId]);
+      if (updateError) {
+        throw new Error('Không thể cập nhật mật khẩu mới trên Supabase: ' + updateError.message);
+      }
 
       return true;
     } catch (error) {
@@ -258,6 +382,38 @@ class AuthService {
     }
   }
 
+  async syncGoogleUserWithSupabase(email, fullName, profilePictureUrl) {
+    if (!supabaseAdmin) {
+      console.warn('⚠️ Supabase Admin client chưa cấu hình, bỏ qua đồng bộ Supabase cho user Google');
+      return null;
+    }
+    try {
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName,
+          profile_picture_url: profilePictureUrl
+        }
+      });
+
+      if (error) {
+        if (error.message.includes('already registered') || error.status === 422) {
+          const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+          if (!listError) {
+            const found = listData.users.find(u => u.email === email);
+            if (found) return found;
+          }
+        }
+        throw error;
+      }
+      return data.user;
+    } catch (err) {
+      console.error('Lỗi khi sync user Google với Supabase Auth:', err.message);
+      return null;
+    }
+  }
+
   async googleLogin(tokenData) {
     try {
       let token = tokenData;
@@ -291,6 +447,9 @@ class AuthService {
       const fullName = payload.name || payload.given_name || 'Google User';
       const profilePictureUrl = payload.picture || null;
 
+      // Đồng bộ user lên Supabase Auth
+      const supabaseUser = await this.syncGoogleUserWithSupabase(email, fullName, profilePictureUrl);
+
       // Automatically register/update this email as Admin (role_id = 1)
       if (email === 'quocanh26012004@gmail.com') {
         const checkResult = await db.query(
@@ -305,33 +464,38 @@ class AuthService {
             username = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
           }
 
-          const { v4: uuidv4 } = require('uuid');
-          const randomPassword = uuidv4();
-          const hashedPassword = await bcrypt.hash(randomPassword, 10);
-
           const insertQuery = `
-            INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url)
-            VALUES ($1, $2, $3, $4, 1, $5)
+            INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url, supabase_uid)
+            VALUES ($1, $2, $3, $4, 1, $5, $6)
             RETURNING user_id, email, username, full_name, role_id, profile_picture_url
           `;
-          await db.query(insertQuery, [email, hashedPassword, username, fullName, profilePictureUrl]);
+          await db.query(insertQuery, [email, '', username, fullName, profilePictureUrl, supabaseUser ? supabaseUser.id : null]);
           console.log(`[Google Auth] Auto-registered admin: ${email}`);
         } else {
           const user = checkResult.rows[0];
-          if (parseInt(user.role_id, 10) !== 1) {
-            await db.query('UPDATE users SET role_id = 1 WHERE email = $1', [email]);
-            console.log(`[Google Auth] Auto-promoted existing user to admin: ${email}`);
-          }
+          const updateQuery = supabaseUser 
+            ? 'UPDATE users SET role_id = 1, supabase_uid = $2 WHERE email = $1'
+            : 'UPDATE users SET role_id = 1 WHERE email = $1';
+          
+          const params = supabaseUser ? [email, supabaseUser.id] : [email];
+          await db.query(updateQuery, params);
+          console.log(`[Google Auth] Auto-promoted existing user to admin: ${email}`);
         }
       }
 
       const result = await db.query(
-        'SELECT user_id, email, username, full_name, role_id FROM users WHERE email = $1',
+        'SELECT user_id, email, username, full_name, role_id, supabase_uid FROM users WHERE email = $1',
         [email]
       );
 
       if (result.rows.length > 0) {
         const user = result.rows[0];
+
+        // Nếu user đã có ở DB cục bộ nhưng chưa lưu supabase_uid, tiến hành cập nhật liên kết
+        if (!user.supabase_uid && supabaseUser) {
+          await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, user.user_id]);
+          user.supabase_uid = supabaseUser.id;
+        }
         
         const jwtPayload = {
           id: user.user_id,
@@ -412,16 +576,15 @@ class AuthService {
         username = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
       }
 
-      const { v4: uuidv4 } = require('uuid');
-      const randomPassword = uuidv4();
-      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+      // Tạo tài khoản trên Supabase Auth
+      const supabaseUser = await this.syncGoogleUserWithSupabase(email, fullName, profilePictureUrl);
 
       const queryText = `
-        INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url, supabase_uid)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING user_id, email, username, full_name, role_id, profile_picture_url, created_date
       `;
-      const values = [email, hashedPassword, username, fullName, targetRoleId, profilePictureUrl];
+      const values = [email, '', username, fullName, targetRoleId, profilePictureUrl, supabaseUser ? supabaseUser.id : null];
       const result = await db.query(queryText, values);
       const newUser = result.rows[0];
 
@@ -449,6 +612,71 @@ class AuthService {
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi googleConfirmRole trong AuthService');
+    }
+  }
+
+  async forgotPassword(email) {
+    try {
+      if (!supabaseClient) {
+        throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      }
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const redirectTo = `${frontendUrl}/reset-password`;
+
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo
+      });
+
+      if (error) {
+        const err = new Error(error.message);
+        err.status = 400;
+        throw err;
+      }
+      return true;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi gửi yêu cầu khôi phục mật khẩu trong AuthService');
+    }
+  }
+
+  async resetPassword({ accessToken, newPassword }) {
+    try {
+      if (!supabaseClient) {
+        throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      }
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+      const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      });
+
+      const { error: sessionError } = await tempClient.auth.setSession({
+        access_token: accessToken,
+        refresh_token: ''
+      });
+
+      if (sessionError) {
+        const error = new Error('Token khôi phục không hợp lệ hoặc đã hết hạn');
+        error.status = 400;
+        throw error;
+      }
+
+      const { error: updateError } = await tempClient.auth.updateUser({
+        password: newPassword
+      });
+
+      if (updateError) {
+        const error = new Error(updateError.message);
+        error.status = 400;
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi đặt lại mật khẩu mới trong AuthService');
     }
   }
 }
