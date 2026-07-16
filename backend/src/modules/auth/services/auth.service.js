@@ -643,28 +643,21 @@ class AuthService {
       if (!supabaseClient) {
         throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
       }
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+      if (!supabaseAdmin) {
+        throw new Error('Supabase Admin Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      }
 
-      const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false
-        }
-      });
+      // 1. Xác thực access token và lấy thông tin user từ Supabase
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
 
-      const { error: sessionError } = await tempClient.auth.setSession({
-        access_token: accessToken,
-        refresh_token: ''
-      });
-
-      if (sessionError) {
+      if (userError || !user) {
         const error = new Error('Token khôi phục không hợp lệ hoặc đã hết hạn');
         error.status = 400;
         throw error;
       }
 
-      const { error: updateError } = await tempClient.auth.updateUser({
+      // 2. Cập nhật mật khẩu mới bằng Admin SDK (bỏ qua session phức tạp)
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
         password: newPassword
       });
 
