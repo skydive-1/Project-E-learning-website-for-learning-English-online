@@ -52,6 +52,10 @@ export const askChatbot = async (question, lessonId) => {
     }
     throw new Error('API response invalid structure');
   } catch (error) {
+    if (error.response && (error.response.status === 429 || error.response.status === 403)) {
+      return error.response.data?.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!";
+    }
+
     console.warn('⚠️ Lỗi kết nối tới API Chatbot hoặc chưa cài đặt key AI ở backend. Chuyển sang sử dụng bộ phản hồi giả lập của frontend.', error.message);
     
     // Giả lập độ trễ phản hồi của AI (từ 1.2s - 2.5s) để người dùng thấy hiệu ứng loading chân thực

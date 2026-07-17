@@ -265,6 +265,39 @@ Format the output EXACTLY in the following JSON schema:
       throw new Error("Lỗi hệ thống khi AI xử lý nhận diện và đánh giá âm thanh: " + error.message);
     }
   }
+  async getTokenBalance(userId) {
+    try {
+      // 1. Lấy role của user
+      const userRes = await db.query('SELECT role_id FROM users WHERE user_id = $1', [userId]);
+      if (userRes.rows.length === 0) {
+        throw new Error('Người dùng không tồn tại');
+      }
+      
+      const roleId = userRes.rows[0].role_id;
+      let limit = 10000; // Học viên
+      if (roleId === 1) limit = 999999999; // Admin
+      else if (roleId === 2) limit = 50000; // Giảng viên
+
+      // 2. Lấy số lượng token đã sử dụng trong ngày hôm nay
+      const today = new Date().toISOString().split('T')[0];
+      const usageRes = await db.query(
+        'SELECT used_tokens FROM user_token_usage WHERE user_id = $1 AND date = $2',
+        [userId, today]
+      );
+      
+      const tokens_used = usageRes.rows.length > 0 ? usageRes.rows[0].used_tokens : 0;
+      const tokens_remaining = Math.max(0, limit - tokens_used);
+
+      return {
+        tokens_used,
+        token_max_limit: limit,
+        tokens_remaining
+      };
+    } catch (error) {
+      console.error('Lỗi tại ChatbotService.getTokenBalance:', error);
+      throw error;
+    }
+  }
 }
 
 const serviceInstance = new ChatbotService();
@@ -274,6 +307,7 @@ module.exports = {
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   evaluateAudio: (filePath, mimetype, targetText, isQA) => serviceInstance.evaluateAudio(filePath, mimetype, targetText, isQA),
+  getTokenBalance: (userId) => serviceInstance.getTokenBalance(userId),
   handleRagChat
 };
 

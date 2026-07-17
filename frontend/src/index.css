@@ -83,4 +83,22 @@ video::-webkit-media-controls-panel {
   .mobile-auth-links {
     display: none !important;
   }
+}
+
+/* Fix browser autofill background and text color issues in light/dark mode */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg, #ffffff) inset !important;
+  -webkit-text-fill-color: var(--text-color, #0f172a) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover, 
+html.dark input:-webkit-autofill:focus, 
+html.dark input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg, #111214) inset !important;
+  -webkit-text-fill-color: var(--text-color, #f3f4f6) !important;
 }

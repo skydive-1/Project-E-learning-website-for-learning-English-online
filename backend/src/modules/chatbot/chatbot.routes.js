@@ -17,6 +17,9 @@ const askSchema = {
 // Route: POST /api/chatbot/ask (Yêu cầu đăng nhập để tránh lạm dụng hạn mức dịch vụ AI)
 router.post('/ask', authenticate, checkTokenLimit, validate(askSchema), chatbotController.ask);
 
+// API Kiểm tra ví Token AI còn lại
+router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBalance);
+
 // API Lịch sử Chat (Độc lập, nhận trực tiếp userId/lessonId từ Frontend)
 router.post('/history', chatbotController.saveHistory);
 router.get('/history/:userId/:lessonId', chatbotController.getHistory);

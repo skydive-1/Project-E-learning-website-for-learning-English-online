@@ -51,6 +51,22 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột supabase_uid (có thể bảng users chưa được khởi tạo):', migErr.message);
     }
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng user_token_usage tồn tại để tránh lỗi Token Limit
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS user_token_usage (
+          id SERIAL PRIMARY KEY,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          date DATE NOT NULL,
+          used_tokens INT DEFAULT 0,
+          CONSTRAINT uq_user_date UNIQUE (user_id, date)
+        );
+      `);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng user_token_usage tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng user_token_usage:', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {

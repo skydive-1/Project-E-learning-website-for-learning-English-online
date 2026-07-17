@@ -89,3 +89,22 @@ exports.processAudio = async (req, res, next) => {
   }
 };
 
+exports.getTokenBalance = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    
+    // Đảm bảo user chỉ có thể xem số dư của chính mình, trừ phi là Admin (role 1)
+    if (parseInt(req.user.id) !== parseInt(userId) && req.user.roleId !== 1) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xem thông tin ví của người dùng khác'
+      });
+    }
+
+    const balance = await chatbotService.getTokenBalance(userId);
+    res.status(200).json(balance);
+  } catch (error) {
+    next(error);
+  }
+};
+
