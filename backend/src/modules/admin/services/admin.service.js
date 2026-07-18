@@ -5,6 +5,16 @@
 const { pool } = require('../../../config/database');
 const { supabaseAdmin } = require('../../../config/supabase');
 
+// Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
+const getVietnamDateString = (date = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+};
+
 /**
  * Lấy danh sách tất cả người dùng kèm thông tin vai trò
  */
@@ -145,7 +155,7 @@ const resetUserToken = async (userId) => {
   if (roleId === 1) limit = 999999999;
   else if (roleId === 2) limit = 50000;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getVietnamDateString();
 
   const query = `
     INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date, updated_at)
@@ -166,7 +176,7 @@ const resetTokensByRole = async (roleId) => {
   if (roleId === 1) limit = 999999999;
   else if (roleId === 2) limit = 50000;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getVietnamDateString();
 
   const query = `
     INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date, updated_at)

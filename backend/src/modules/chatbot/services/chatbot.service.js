@@ -5,6 +5,16 @@
 const { geminiModel, embeddingModel, pineconeIndex } = require("../../../utils/ai-clients");
 const db = require("../../../config/database");
 
+// Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
+const getVietnamDateString = (date = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+};
+
 /**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
  */
@@ -288,7 +298,7 @@ Format the output EXACTLY in the following JSON schema:
       if (roleId === 1) limit = 999999999; // Admin
       else if (roleId === 2) limit = 50000; // Giảng viên
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getVietnamDateString();
 
       // 2. Lấy thông tin ví token từ bảng user_token_limits
       const usageRes = await db.query(

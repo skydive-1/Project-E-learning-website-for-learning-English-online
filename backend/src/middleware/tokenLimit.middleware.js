@@ -1,6 +1,16 @@
 const db = require('../config/database');
 const { geminiModel } = require('../utils/ai-clients');
 
+// Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
+const getVietnamDateString = (date = new Date()) => {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+};
+
 /**
  * Middleware kiểm tra và giới hạn số lượng Token AI theo Role
  * Role 1 (Admin): Không giới hạn (999,999,999 tokens)
@@ -21,7 +31,7 @@ const checkTokenLimit = async (req, res, next) => {
     if (roleId === 1) limit = 999999999; // Admin
     else if (roleId === 2) limit = 50000; // Giảng viên
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getVietnamDateString();
 
     // Lấy thông tin hạn mức từ bảng user_token_limits
     const selectQuery = 'SELECT * FROM user_token_limits WHERE user_id = $1';
