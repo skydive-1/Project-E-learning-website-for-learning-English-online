@@ -14,6 +14,16 @@ const handleRagChat = async (userId, lessonId, question) => {
       return { success: false, reply: "Vui lòng nhập câu hỏi." };
     }
 
+    // Kiểm tra an toàn (Guardrails) ngăn chặn lạm dụng AI để tìm cách hack hệ thống / gỡ bảo mật
+    const checkSafety = question.toLowerCase();
+    const toxicKeywords = ['hack', 'bypass', 'bẻ khóa', 'gỡ bảo mật', 'quocanh26012004', 'super admin', 'superadmin', 'cướp quyền', 'lạm quyền', 'user_token_limits', 'tokenlimit', 'reset-token'];
+    if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
+      return { 
+        success: true, 
+        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của LingoMate. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!" 
+      };
+    }
+
     const isGlobalChat = !lessonId || Number(lessonId) === 0;
     let contextText = "";
 
@@ -278,15 +288,33 @@ Format the output EXACTLY in the following JSON schema:
       if (roleId === 1) limit = 999999999; // Admin
       else if (roleId === 2) limit = 50000; // Giảng viên
 
-      // 2. Lấy số lượng token đã sử dụng trong ngày hôm nay
       const today = new Date().toISOString().split('T')[0];
+
+      // 2. Lấy thông tin ví token từ bảng user_token_limits
       const usageRes = await db.query(
-        'SELECT used_tokens FROM user_token_usage WHERE user_id = $1 AND date = $2',
-        [userId, today]
+        'SELECT max_tokens, used_tokens, remaining_tokens, reset_date FROM user_token_limits WHERE user_id = $1',
+        [userId]
       );
       
-      const tokens_used = usageRes.rows.length > 0 ? usageRes.rows[0].used_tokens : 0;
-      const tokens_remaining = Math.max(0, limit - tokens_used);
+      let tokens_used = 0;
+      let tokens_remaining = limit;
+
+      if (usageRes.rows.length > 0) {
+        const record = usageRes.rows[0];
+        const recordResetDate = record.reset_date ? new Date(record.reset_date).toISOString().split('T')[0] : '';
+        
+        if (recordResetDate !== today) {
+          // Ngày mới: tự động reset hiển thị về 0/đầy
+          tokens_used = 0;
+          tokens_remaining = limit;
+        } else {
+          tokens_used = record.used_tokens;
+          limit = record.max_tokens;
+          tokens_remaining = record.remaining_tokens !== null && record.remaining_tokens !== undefined
+            ? record.remaining_tokens
+            : Math.max(0, limit - tokens_used);
+        }
+      }
 
       return {
         tokens_used,

@@ -20,6 +20,12 @@ router.put('/users/:userId/role', adminController.updateUserRole);
 // DELETE /api/admin/users/:userId - Xóa tài khoản người dùng
 router.delete('/users/:userId', adminController.deleteUser);
 
+// POST /api/admin/users/:userId/reset-token - Reset token cho một tài khoản cụ thể
+router.post('/users/:userId/reset-token', adminController.resetUserToken);
+
+// POST /api/admin/users/reset-tokens - Reset token hàng loạt theo Role
+router.post('/users/reset-tokens', adminController.resetTokensByRole);
+
 /**
  * @swagger
  * tags:

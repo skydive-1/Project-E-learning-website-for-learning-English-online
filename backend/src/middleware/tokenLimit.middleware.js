@@ -3,7 +3,7 @@ const { geminiModel } = require('../utils/ai-clients');
 
 /**
  * Middleware kiểm tra và giới hạn số lượng Token AI theo Role
- * Role 1 (Admin): Không giới hạn
+ * Role 1 (Admin): Không giới hạn (999,999,999 tokens)
  * Role 2 (Instructor): Max 50,000 tokens / ngày
  * Role 3 (Student) & Khác: Max 10,000 tokens / ngày
  */
@@ -18,24 +18,43 @@ const checkTokenLimit = async (req, res, next) => {
 
     // Xác định hạn mức
     let limit = 10000; // Học viên
-    if (roleId === 1) limit = Infinity; // Admin
+    if (roleId === 1) limit = 999999999; // Admin
     else if (roleId === 2) limit = 50000; // Giảng viên
 
     const today = new Date().toISOString().split('T')[0];
 
-    // Lấy số token đã dùng hôm nay
-    const query = 'SELECT used_tokens FROM user_token_usage WHERE user_id = $1 AND date = $2';
-    const result = await db.query(query, [userId, today]);
+    // Lấy thông tin hạn mức từ bảng user_token_limits
+    const selectQuery = 'SELECT * FROM user_token_limits WHERE user_id = $1';
+    const result = await db.query(selectQuery, [userId]);
+    
     let usedTokens = 0;
 
     if (result.rows.length > 0) {
-      usedTokens = result.rows[0].used_tokens;
+      const record = result.rows[0];
+      const recordResetDate = record.reset_date ? new Date(record.reset_date).toISOString().split('T')[0] : '';
+
+      if (recordResetDate !== today) {
+        // Ngày mới: reset used_tokens về 0, cập nhật reset_date và max_tokens
+        await db.query(
+          `UPDATE user_token_limits 
+           SET used_tokens = 0, max_tokens = $1, reset_date = $2, updated_at = NOW() 
+           WHERE user_id = $3`,
+          [limit, today, userId]
+        );
+        usedTokens = 0;
+      } else {
+        usedTokens = record.used_tokens;
+        limit = record.max_tokens; // Sử dụng max_tokens thực tế trong DB
+      }
     } else {
-      // Nếu chưa có, tạo record mới cho ngày hôm nay
+      // Chưa có record: Tạo mới
       await db.query(
-        'INSERT INTO user_token_usage (user_id, date, used_tokens) VALUES ($1, $2, 0) ON CONFLICT (user_id, date) DO NOTHING',
-        [userId, today]
+        `INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date, created_at, updated_at) 
+         VALUES ($1, $2, 0, $3, NOW(), NOW()) 
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId, limit, today]
       );
+      usedTokens = 0;
     }
 
     if (usedTokens >= limit) {
@@ -75,7 +94,10 @@ const checkTokenLimit = async (req, res, next) => {
 
           if (totalTokens > 0) {
             await db.query(
-              'UPDATE user_token_usage SET used_tokens = used_tokens + $1 WHERE user_id = $2 AND date = $3',
+              `UPDATE user_token_limits 
+               SET used_tokens = used_tokens + $1, 
+                   updated_at = NOW() 
+               WHERE user_id = $2 AND reset_date = $3`,
               [totalTokens, userId, today]
             );
             console.log(`[Token Limit] Đã cập nhật thêm ${totalTokens} token cho user ${userId}`);

@@ -150,11 +150,14 @@ CREATE TABLE IF NOT EXISTS ai_chat (
   CONSTRAINT fk_ai_chat_lesson FOREIGN KEY (lesson_id) REFERENCES lessons(lesson_id) ON DELETE CASCADE
 );
 
--- 12. Tạo bảng Quản lý Hạn mức Token (user_token_usage)
-CREATE TABLE IF NOT EXISTS user_token_usage (
-  id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-  date DATE NOT NULL,
-  used_tokens INT DEFAULT 0,
-  CONSTRAINT uq_user_date UNIQUE (user_id, date)
+-- 12. Tạo bảng Quản lý Hạn mức Token (user_token_limits)
+CREATE TABLE IF NOT EXISTS user_token_limits (
+  token_limit_id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+  max_tokens INT NOT NULL CHECK (max_tokens >= 0) DEFAULT 10000,
+  used_tokens INT NOT NULL CHECK (used_tokens >= 0) DEFAULT 0,
+  remaining_tokens INT GENERATED ALWAYS AS (max_tokens - used_tokens) STORED,
+  reset_date DATE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

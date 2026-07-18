@@ -14,12 +14,17 @@ import {
   FiArrowUp, 
   FiArrowDown,
   FiBookOpen,
-  FiAlertTriangle
+  FiAlertTriangle,
+  FiRefreshCw
 } from 'react-icons/fi';
 import '../styles/admin.scss';
+import { useAuth } from '../../../context/AuthContext';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  
+  const isSuperAdmin = currentUser?.email === 'quocanh26012004@gmail.com';
   
   // Tab active: 'users' (Quản lý tài khoản) hoặc 'quizzes' (Tạo đề trắc nghiệm)
   const [activeTab, setActiveTab] = useState('users');
@@ -197,6 +202,41 @@ const AdminDashboard = () => {
     } catch (err) {
       console.error('Lỗi xóa user:', err);
       alert(err.response?.data?.message || 'Có lỗi xảy ra khi xóa người dùng');
+    }
+  };
+
+  const handleResetUserToken = async (userId, username) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn reset lượng Token AI đã sử dụng của "${username}" về 0?`)) {
+      return;
+    }
+
+    try {
+      const response = await apiClient.post(`/admin/users/${userId}/reset-token`);
+      if (response.data && response.data.success) {
+        alert(`Đã reset thành công hạn mức Token AI của "${username}"!`);
+        fetchUsers();
+      }
+    } catch (err) {
+      console.error('Lỗi reset token:', err);
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi reset token');
+    }
+  };
+
+  const handleBulkResetTokens = async (roleId) => {
+    const roleName = roleId === 2 ? 'Giảng viên' : 'Học sinh';
+    if (!window.confirm(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn reset lượng Token AI đã sử dụng của TOÀN BỘ ${roleName} về 0?`)) {
+      return;
+    }
+
+    try {
+      const response = await apiClient.post('/admin/users/reset-tokens', { roleId });
+      if (response.data && response.data.success) {
+        alert(response.data.message || `Đã reset thành công hạn mức Token AI của toàn bộ ${roleName}!`);
+        fetchUsers();
+      }
+    } catch (err) {
+      console.error('Lỗi reset token hàng loạt:', err);
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi reset token');
     }
   };
 
@@ -467,6 +507,23 @@ const AdminDashboard = () => {
                   </button>
                 </div>
 
+                <div className="bulk-actions mb-4 flex gap-3 flex-wrap">
+                  <button 
+                    type="button"
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    onClick={() => handleBulkResetTokens(3)}
+                  >
+                    <FiRefreshCw className="text-xs" /> Reset toàn bộ Token của Học sinh
+                  </button>
+                  <button 
+                    type="button"
+                    className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    onClick={() => handleBulkResetTokens(2)}
+                  >
+                    <FiRefreshCw className="text-xs" /> Reset toàn bộ Token của Giảng viên
+                  </button>
+                </div>
+
                 {loadingUsers ? (
                   <div className="text-center py-10">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto"></div>
@@ -513,7 +570,7 @@ const AdminDashboard = () => {
                           </td>
                           <td>
                             <div className="action-buttons">
-                              {user.role_id !== 1 && (
+                              {((user.role_id !== 1 || isSuperAdmin) && user.user_id !== currentUser?.userId) ? (
                                 <>
                                   <button 
                                     className={`btn-action ${user.role_id === 3 ? 'btn-promote' : 'btn-demote'}`}
@@ -523,6 +580,13 @@ const AdminDashboard = () => {
                                     {user.role_id === 3 ? <FiArrowUp /> : <FiArrowDown />}
                                   </button>
                                   <button 
+                                    className="btn-action btn-reset"
+                                    onClick={() => handleResetUserToken(user.user_id, user.username)}
+                                    title="Reset ví Token AI"
+                                  >
+                                    <FiRefreshCw />
+                                  </button>
+                                  <button 
                                     className="btn-action btn-delete"
                                     onClick={() => handleDeleteUser(user.user_id, user.username)}
                                     title="Xóa tài khoản"
@@ -530,9 +594,10 @@ const AdminDashboard = () => {
                                     <FiTrash2 />
                                   </button>
                                 </>
-                              )}
-                              {user.role_id === 1 && (
-                                <span className="text-xs text-slate-400 font-semibold italic">Không thể tác động</span>
+                              ) : (
+                                <span className="text-xs text-slate-400 font-semibold italic">
+                                  {user.user_id === currentUser?.userId ? 'Tài khoản của bạn' : 'Không thể tác động'}
+                                </span>
                               )}
                             </div>
                           </td>

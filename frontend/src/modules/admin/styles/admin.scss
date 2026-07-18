@@ -194,6 +194,14 @@
           color: #ef4444;
         }
       }
+
+      &.btn-reset {
+        &:hover {
+          background-color: rgba(59, 130, 246, 0.1);
+          border-color: rgba(59, 130, 246, 0.2);
+          color: #3b82f6;
+        }
+      }
     }
   }
 

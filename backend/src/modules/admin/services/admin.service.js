@@ -129,8 +129,62 @@ const deleteUser = async (userId) => {
   }
 };
 
+/**
+ * Reset token cho một người dùng bằng cách đặt used_tokens = 0 và reset_date = hôm nay
+ */
+const resetUserToken = async (userId) => {
+  const userRes = await pool.query('SELECT role_id FROM users WHERE user_id = $1', [userId]);
+  if (userRes.rows.length === 0) {
+    const error = new Error('Không tìm thấy người dùng');
+    error.status = 404;
+    throw error;
+  }
+  
+  const roleId = userRes.rows[0].role_id;
+  let limit = 10000;
+  if (roleId === 1) limit = 999999999;
+  else if (roleId === 2) limit = 50000;
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const query = `
+    INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date, updated_at)
+    VALUES ($1, $2, 0, $3, NOW())
+    ON CONFLICT (user_id) DO UPDATE 
+    SET used_tokens = 0, max_tokens = $2, reset_date = $3, updated_at = NOW()
+    RETURNING *
+  `;
+  const result = await pool.query(query, [userId, limit, today]);
+  return result.rows[0];
+};
+
+/**
+ * Reset token hàng loạt cho toàn bộ người dùng thuộc một Role cụ thể
+ */
+const resetTokensByRole = async (roleId) => {
+  let limit = 10000;
+  if (roleId === 1) limit = 999999999;
+  else if (roleId === 2) limit = 50000;
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const query = `
+    INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date, updated_at)
+    SELECT user_id, $1, 0, $2, NOW()
+    FROM users
+    WHERE role_id = $3
+    ON CONFLICT (user_id) DO UPDATE
+    SET used_tokens = 0, max_tokens = $1, reset_date = $2, updated_at = NOW()
+    RETURNING *
+  `;
+  const result = await pool.query(query, [limit, today, roleId]);
+  return result.rows;
+};
+
 module.exports = {
   getAllUsers,
   updateUserRole,
-  deleteUser
+  deleteUser,
+  resetUserToken,
+  resetTokensByRole
 };
