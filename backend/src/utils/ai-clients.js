@@ -15,7 +15,7 @@ const pineconeIndexName = process.env.PINECONE_INDEX_NAME || process.env.PINECON
 
 // Khởi tạo các client AI thực tế bằng API Key từ môi trường
 const ai = new GoogleGenerativeAI(geminiApiKey);
-const geminiModel = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+const geminiModel = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
 const embeddingModel = ai.getGenerativeModel({ model: "gemini-embedding-001" });
 
 const pc = new Pinecone({ apiKey: pineconeApiKey });

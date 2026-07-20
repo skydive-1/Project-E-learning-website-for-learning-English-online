@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
+import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
 import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';

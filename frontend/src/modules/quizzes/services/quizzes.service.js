@@ -19,7 +19,8 @@ const mapQuizToFrontend = (quiz) => {
       question: q.question_text,
       options: q.options,
       correctAnswer: q.correct_answer,
-      explanation: q.explanation
+      explanation: q.explanation,
+      questionType: q.question_type || 'multiple_choice'
     }))
   };
 };
@@ -118,3 +119,43 @@ export const saveCourseQuizQuestions = () => true;
 export const saveFreeQuiz = () => true;
 export const deleteFreeQuiz = () => true;
 export const resetToDefaultQuizzes = () => true;
+
+/**
+ * Gửi bài viết tự luận của học viên lên backend để AI chấm điểm
+ */
+export const submitWritingAnswer = async (quizId, questionId, text) => {
+  try {
+    const response = await apiClient.post('/quizzes/submit-writing', {
+      quizId: Number(quizId),
+      questionId: Number(questionId),
+      text
+    });
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi nộp bài tự luận lên backend:", error.message);
+    throw error;
+  }
+};
+
+/**
+ * Gửi file ghi âm của học viên lên backend để AI nhận diện và chấm điểm
+ */
+export const submitAudioAnswer = async (quizId, questionId, audioFile) => {
+  try {
+    const formData = new FormData();
+    formData.append('quizId', Number(quizId));
+    formData.append('questionId', Number(questionId));
+    formData.append('audio', audioFile);
+
+    const response = await apiClient.post('/quizzes/submit-audio', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi nộp bài phát âm lên backend:", error.message);
+    throw error;
+  }
+};
+

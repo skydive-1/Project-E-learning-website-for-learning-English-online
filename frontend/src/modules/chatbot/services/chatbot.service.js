@@ -168,7 +168,9 @@ export const askChatbotAudio = async (audioBlob, lessonId, targetText = null, is
       return {
         success: true,
         score: score,
-        reply: `Chúc mừng bạn! Bạn đã đạt điểm số khá tốt (${score}%). Lỗi phát âm duy nhất của bạn nằm ở từ "${words[errorIndex]}", cần chú ý bật hơi và âm đuôi rõ ràng hơn.`,
+        reply: errorIndex !== -1 
+          ? `Chúc mừng bạn! Bạn đã đạt điểm số khá tốt (${score}%). Lỗi phát âm duy nhất của bạn nằm ở từ "${words[errorIndex]}", cần chú ý bật hơi và âm đuôi rõ ràng hơn.`
+          : `Chúc mừng bạn! Bạn đã đạt điểm số xuất sắc (${score}%). Trợ lý AI không phát hiện lỗi phát âm nào đáng kể.`,
         words: evaluatedWords
       };
     } else {
