@@ -19,7 +19,8 @@ const tables = [
   { name: 'quizzes', pk: 'quiz_id' },
   { name: 'questions', pk: 'question_id' },
   { name: 'quiz_attempts', pk: 'attempt_id' },
-  { name: 'ai_chat', pk: 'ai_chat' }
+  { name: 'ai_chat', pk: 'ai_chat' },
+  { name: 'user_token_limits', pk: 'token_limit_id' },
 ];
 
 // Hàm tự động phát hiện và đồng bộ hóa cột còn thiếu giữa hai DB
