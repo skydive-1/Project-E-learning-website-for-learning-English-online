@@ -2,7 +2,7 @@
   min-height: 100vh;
   background-color: var(--bg-color);
   color: var(--text-color);
-  padding: 40px 20px;
+  padding: 105px 20px 50px 20px;
   font-family: 'Outfit', sans-serif;
 
   .admin-container {
@@ -364,7 +364,7 @@
 
 @media (max-width: 768px) {
   .admin-dashboard-wrapper {
-    padding: 20px 10px;
+    padding: 95px 14px 40px 14px;
 
     .admin-header {
       flex-direction: column;

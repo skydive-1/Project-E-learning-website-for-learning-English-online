@@ -57,7 +57,7 @@ const testConnection = async () => {
         CREATE TABLE IF NOT EXISTS user_token_limits (
           token_limit_id SERIAL PRIMARY KEY,
           user_id INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
-          max_tokens INT NOT NULL CHECK (max_tokens >= 0) DEFAULT 10000,
+          max_tokens INT NOT NULL CHECK (max_tokens >= 0) DEFAULT 6000,
           used_tokens INT NOT NULL CHECK (used_tokens >= 0) DEFAULT 0,
           remaining_tokens INT GENERATED ALWAYS AS (max_tokens - used_tokens) STORED,
           reset_date DATE,

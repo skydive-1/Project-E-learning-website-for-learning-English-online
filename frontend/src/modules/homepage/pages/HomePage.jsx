@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FiHeadphones, FiDollarSign, FiClock, FiTrendingUp, FiUsers, FiShield,
   FiFileText, FiSliders, FiPlayCircle, FiMic, FiEdit3, FiMessageSquare,
-  FiPhone, FiUser, FiArrowRight, FiCheck, FiAward
+  FiMail, FiUser, FiArrowRight, FiCheck, FiAward
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
+import apiClient from '../../../config/api.config';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const [fullname, setFullname] = useState('');
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -41,27 +43,42 @@ const HomePage = () => {
     };
   }, []);
 
-  const handleConsultationSubmit = (e) => {
+  const handleConsultationSubmit = async (e) => {
     e.preventDefault();
-    if (!fullname.trim() || !phone.trim()) {
-      setFormError('Vui lòng nhập đầy đủ Họ tên và Số điện thoại.');
+    if (!fullname.trim() || !email.trim()) {
+      setFormError('Vui lòng nhập đầy đủ Họ tên và địa chỉ Gmail.');
       return;
     }
-    // Simple phone regex
-    const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/g;
-    if (!phoneRegex.test(phone.replace(/\s+/g, ''))) {
-      setFormError('Số điện thoại không hợp lệ. Vui lòng kiểm tra lại.');
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setFormError('Địa chỉ Gmail không hợp lệ. Vui lòng kiểm tra lại.');
       return;
     }
 
     setFormError('');
-    setFormSubmitted(true);
-    // Auto-close success modal after 4 seconds
-    setTimeout(() => {
-      setFormSubmitted(false);
-      setFullname('');
-      setPhone('');
-    }, 4000);
+    setSubmitting(true);
+
+    try {
+      await apiClient.post('/consultation/register', {
+        fullname: fullname.trim(),
+        email: email.trim()
+      });
+      
+      setFormSubmitted(true);
+      setSubmitting(false);
+
+      // Reset form sau 5 giây
+      setTimeout(() => {
+        setFormSubmitted(false);
+        setFullname('');
+        setEmail('');
+      }, 5000);
+    } catch (err) {
+      console.error('Lỗi khi gửi đăng ký tư vấn:', err);
+      setSubmitting(false);
+      setFormError(err.response?.data?.message || 'Không thể gửi đăng ký lúc này. Vui lòng thử lại sau!');
+    }
   };
 
   return (
@@ -539,17 +556,18 @@ const HomePage = () => {
                 </div>
                 
                 <div className="input-group">
-                  <FiPhone className="input-icon" />
+                  <FiMail className="input-icon" />
                   <input 
-                    type="tel" 
-                    placeholder="Số điện thoại" 
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    type="email" 
+                    placeholder="Địa chỉ Gmail của bạn" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={submitting}
                   />
                 </div>
                 
-                <button type="submit" className="btn-submit-orange">
-                  Đăng ký ngay
+                <button type="submit" className="btn-submit-orange" disabled={submitting}>
+                  {submitting ? 'Đang gửi...' : 'Đăng ký ngay'}
                 </button>
               </form>
               
@@ -562,7 +580,7 @@ const HomePage = () => {
                       <FiCheck />
                     </div>
                     <h4>Đăng ký thành công!</h4>
-                    <p>Chúng tôi sẽ liên hệ tư vấn lộ trình học cho bạn sớm nhất.</p>
+                    <p>Hệ thống đã tự động gửi <strong>Lộ trình học cá nhân hóa</strong> vào Gmail của bạn. Vui lòng kiểm tra hộp thư!</p>
                   </div>
                 </div>
               )}

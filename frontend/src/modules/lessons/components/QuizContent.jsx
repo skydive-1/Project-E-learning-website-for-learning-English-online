@@ -195,7 +195,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
       {/* Main Grid: Left is Question Card, Right is Jump Grid */}
       <div className="grid grid-cols-10 gap-6 items-start">
         {/* Left Card: Question Area */}
-        <div className="col-span-10 lg:col-span-7 bg-white border border-slate-200/60 rounded-2xl p-6 shadow-sm flex flex-col space-y-6 relative overflow-hidden">
+        <div className="col-span-10 lg:col-span-7 bg-white border border-slate-200/60 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col space-y-6 relative overflow-hidden">
           {/* Submission Banner */}
           {isSubmitted && (
             <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-100 rounded-xl mb-2 text-emerald-800">

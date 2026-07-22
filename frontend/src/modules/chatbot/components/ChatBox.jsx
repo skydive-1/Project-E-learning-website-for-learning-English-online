@@ -130,8 +130,8 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
   const [quizStates, setQuizStates] = useState({}); // Lưu trạng thái tương tác trắc nghiệm { [messageId]: { currentIdx, selectedOption, isAnswered, score } }
   const [tokenBalance, setTokenBalance] = useState({
     tokens_used: 0,
-    token_max_limit: 10000,
-    tokens_remaining: 10000
+    token_max_limit: 6000,
+    tokens_remaining: 6000
   });
   
   const messagesEndRef = useRef(null);
@@ -661,7 +661,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
               <span>Hạn mức Token AI hôm nay</span>
             </div>
             <span className="text-indigo-650 dark:text-indigo-400">
-              {((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) || 0).toLocaleString()} / {(tokenBalance.token_max_limit || 10000).toLocaleString()} Tokens
+              {((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) || 0).toLocaleString()} / {(tokenBalance.token_max_limit || 6000).toLocaleString()} Tokens
             </span>
           </div>
           <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
@@ -669,8 +669,8 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
               className="bg-gradient-to-r from-indigo-500 to-blue-500 h-full transition-all duration-500 ease-out"
               style={{ 
                 width: `${Math.min(100, Math.max(0, 
-                  (tokenBalance.token_max_limit || 10000) > 0 
-                    ? ((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) / (tokenBalance.token_max_limit || 10000)) * 100 
+                  (tokenBalance.token_max_limit || 6000) > 0 
+                    ? ((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) / (tokenBalance.token_max_limit || 6000)) * 100 
                     : 0
                 ))}%` 
               }}

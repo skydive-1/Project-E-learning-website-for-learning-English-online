@@ -21,6 +21,7 @@ const lessonsRoutes = require('./modules/lessons/lessons.routes');
 const instructorRoutes = require('./modules/instructor/instructor.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const quizzesRoutes = require('./modules/quizzes/quizzes.routes');
+const consultationRoutes = require('./modules/consultation/consultation.routes');
 
 // ===== SWAGGER =====
 const swaggerSpec = require('./swagger');
@@ -87,6 +88,7 @@ app.use('/api/lessons', lessonsRoutes);
 app.use('/api/instructor', instructorRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quizzes', quizzesRoutes);
+app.use('/api/consultation', consultationRoutes);
 
 // Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

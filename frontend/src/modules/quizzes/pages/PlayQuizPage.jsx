@@ -424,7 +424,7 @@ const PlayQuizPage = () => {
           </div>
         )}
         {gameState === 'playing' && (
-          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
+          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
             {/* Top Stats Panel */}
             <div className="flex justify-between items-center w-full pb-4 border-b border-slate-100 dark:border-slate-700">
               <span className="text-xs font-bold text-slate-400 dark:text-slate-505 uppercase tracking-widest">
@@ -769,7 +769,7 @@ const PlayQuizPage = () => {
                 <div className="flex items-end justify-center gap-3 w-full h-32 mt-4">
                   {/* 2nd Place */}
                   <div className="flex flex-col items-center w-20">
-                    <span className="text-[10px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[65px]">LingoBot</span>
+                    <span className="text-[10px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[65px]">AIBot</span>
                     <div className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-t-xl flex flex-col items-center justify-center py-2 shadow-sm" style={{ height: '48px' }}>
                       <span className="text-base font-black text-slate-650 dark:text-slate-350">2</span>
                       <span className="text-[8px] font-bold text-slate-400 dark:text-slate-505">3,450 pts</span>

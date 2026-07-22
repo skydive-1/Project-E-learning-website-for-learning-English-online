@@ -295,16 +295,49 @@
   animation: bounce-subtle 4s ease-in-out infinite;
 }
 
-/* Responsive cho màn hình nhỏ di động */
-@media (max-width: 480px) {
+/* Responsive cho màn hình nhỏ di động (Impeccable Floating Sheet) */
+@media (max-width: 600px) {
   .global-chatbot-container {
     bottom: 16px;
     right: 16px;
+    left: 16px;
+    align-items: flex-end;
   }
-  .chatbot-floating-window {
-    width: calc(100vw - 32px);
-    height: calc(100vh - 120px);
-    bottom: 70px;
+
+  .chatbot-floating-trigger {
+    width: 52px;
+    height: 52px;
+
+    .trigger-icon {
+      font-size: 20px;
+    }
+  }
+
+  .chatbot-notification-bubble {
+    width: calc(100vw - 48px);
+    max-width: 260px;
+    bottom: 68px;
     right: 0;
+    padding: 10px 14px;
+    border-radius: 16px;
+
+    .bubble-text {
+      font-size: 11.5px;
+      line-height: 1.4;
+    }
+  }
+
+  .chatbot-floating-window {
+    position: fixed;
+    top: 60px;
+    bottom: 80px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    height: auto;
+    max-height: none;
+    border-radius: 20px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
   }
 }
+

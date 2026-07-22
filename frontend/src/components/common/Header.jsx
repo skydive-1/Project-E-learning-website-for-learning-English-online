@@ -48,6 +48,15 @@ const Header = () => {
           <span>E-Learn Academy</span>
         </Link>
 
+        {/* Mobile menu backdrop overlay */}
+        {isMobileMenuOpen && (
+          <div 
+            className="mobile-menu-backdrop" 
+            onClick={() => setIsMobileMenuOpen(false)} 
+            aria-hidden="true"
+          />
+        )}
+
         <nav className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`}>
           <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>Programs</Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>Academy</Link>

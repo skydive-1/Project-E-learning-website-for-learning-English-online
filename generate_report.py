@@ -50,7 +50,7 @@ def create_report():
 
     sub_p = doc.add_paragraph()
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    sub_run = sub_p.add_run("Dự án: Website Học Tiếng Anh Trực Tuyến Tích Hợp Trợ Lý AI (LingoMate)\nPhân khúc: Tích hợp Module Chatbot, Module Quizzes & Vá lỗi Kiến trúc hệ thống")
+    sub_run = sub_p.add_run("Dự án: Website Học Tiếng Anh Trực Tuyến Tích Hợp Trợ Lý AI (E-Learn Academy)\nPhân khúc: Tích hợp Module Chatbot, Module Quizzes & Vá lỗi Kiến trúc hệ thống")
     sub_run.font.name = 'Arial'
     sub_run.font.size = Pt(11)
     sub_run.font.italic = True
@@ -70,7 +70,7 @@ def create_report():
     h1.paragraph_format.space_after = Pt(6)
 
     p1 = doc.add_paragraph()
-    p1_run = p1.add_run("Báo cáo ghi nhận kết quả làm việc của nhóm 3 thành viên phát triển dự án LingoMate trong tuần học thứ 5. Toàn bộ các hạng mục công việc được phân chia theo tài liệu phân vai, tích hợp API thật và xử lý toàn bộ các lỗi kiến trúc của hệ thống đã được kiểm thử thành công 100%.")
+    p1_run = p1.add_run("Báo cáo ghi nhận kết quả làm việc của nhóm 3 thành viên phát triển dự án E-Learn Academy trong tuần học thứ 5. Toàn bộ các hạng mục công việc được phân chia theo tài liệu phân vai, tích hợp API thật và xử lý toàn bộ các lỗi kiến trúc của hệ thống đã được kiểm thử thành công 100%.")
     p1_run.font.name = 'Arial'
     p1_run.font.size = Pt(10.5)
     p1_run.font.color.rgb = CHARCOAL
@@ -256,7 +256,7 @@ def create_report():
     h3.paragraph_format.space_after = Pt(6)
 
     p2 = doc.add_paragraph()
-    p2_run = p2.add_run("Toàn bộ các thành viên trong nhóm phát triển dự án LingoMate đã hoàn thành xuất sắc các mục tiêu đề ra cho tuần 5. Hệ thống hiện tại có cấu trúc cơ sở dữ liệu Supabase đồng bộ, backend xử lý API tối ưu hiệu năng và frontend kết nối dữ liệu động hoàn chỉnh.")
+    p2_run = p2.add_run("Toàn bộ các thành viên trong nhóm phát triển dự án E-Learn Academy đã hoàn thành xuất sắc các mục tiêu đề ra cho tuần 5. Hệ thống hiện tại có cấu trúc cơ sở dữ liệu Supabase đồng bộ, backend xử lý API tối ưu hiệu năng và frontend kết nối dữ liệu động hoàn chỉnh.")
     p2_run.font.name = 'Arial'
     p2_run.font.size = Pt(10.5)
     p2_run.font.color.rgb = CHARCOAL

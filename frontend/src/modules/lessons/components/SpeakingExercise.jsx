@@ -224,7 +224,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   return (
     <div className="space-y-5 py-2">
       {/* Sub-tabs header */}
-      <div className="flex bg-slate-100 dark:bg-slate-700/60 p-1.5 rounded-2xl border border-slate-200/40 dark:border-slate-700 gap-1 shrink-0">
+      <div className="flex flex-col sm:flex-row bg-slate-100 dark:bg-slate-700/60 p-1.5 rounded-2xl border border-slate-200/40 dark:border-slate-700 gap-1 shrink-0">
         <button
           type="button"
           onClick={() => {

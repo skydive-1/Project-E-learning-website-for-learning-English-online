@@ -151,9 +151,9 @@ const resetUserToken = async (userId) => {
   }
   
   const roleId = userRes.rows[0].role_id;
-  let limit = 10000;
+  let limit = 6000;
   if (roleId === 1) limit = 999999999;
-  else if (roleId === 2) limit = 50000;
+  else if (roleId === 2) limit = 7000;
 
   const today = getVietnamDateString();
 
@@ -172,9 +172,9 @@ const resetUserToken = async (userId) => {
  * Reset token hàng loạt cho toàn bộ người dùng thuộc một Role cụ thể
  */
 const resetTokensByRole = async (roleId) => {
-  let limit = 10000;
+  let limit = 6000;
   if (roleId === 1) limit = 999999999;
-  else if (roleId === 2) limit = 50000;
+  else if (roleId === 2) limit = 7000;
 
   const today = getVietnamDateString();
 

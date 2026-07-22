@@ -14,8 +14,8 @@ const getVietnamDateString = (date = new Date()) => {
 /**
  * Middleware kiểm tra và giới hạn số lượng Token AI theo Role
  * Role 1 (Admin): Không giới hạn (999,999,999 tokens)
- * Role 2 (Instructor): Max 50,000 tokens / ngày
- * Role 3 (Student) & Khác: Max 10,000 tokens / ngày
+ * Role 2 (Instructor): Max 7,000 tokens / ngày
+ * Role 3 (Student) & Khác: Max 6,000 tokens / ngày
  */
 const checkTokenLimit = async (req, res, next) => {
   try {
@@ -27,9 +27,9 @@ const checkTokenLimit = async (req, res, next) => {
     }
 
     // Xác định hạn mức
-    let limit = 10000; // Học viên
+    let limit = 6000; // Học viên
     if (roleId === 1) limit = 999999999; // Admin
-    else if (roleId === 2) limit = 50000; // Giảng viên
+    else if (roleId === 2) limit = 7000; // Giảng viên
 
     const today = getVietnamDateString();
 

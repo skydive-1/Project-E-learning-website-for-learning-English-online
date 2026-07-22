@@ -196,9 +196,9 @@ export const getTokenBalance = async (userId) => {
   } catch (error) {
     console.warn('⚠️ Lỗi gọi API ví token từ backend, sử dụng mock balance để demo:', error.message);
     return {
-      tokens_used: 2500,
-      token_max_limit: 10000,
-      tokens_remaining: 7500
+      tokens_used: 1500,
+      token_max_limit: 6000,
+      tokens_remaining: 4500
     };
   }
 };

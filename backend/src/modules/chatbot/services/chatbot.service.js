@@ -30,7 +30,7 @@ const handleRagChat = async (userId, lessonId, question) => {
     if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
       return { 
         success: true, 
-        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của LingoMate. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!" 
+        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!" 
       };
     }
 
@@ -294,9 +294,9 @@ Format the output EXACTLY in the following JSON schema:
       }
       
       const roleId = userRes.rows[0].role_id;
-      let limit = 10000; // Học viên
+      let limit = 6000; // Học viên
       if (roleId === 1) limit = 999999999; // Admin
-      else if (roleId === 2) limit = 50000; // Giảng viên
+      else if (roleId === 2) limit = 7000; // Giảng viên
 
       const today = getVietnamDateString();
 

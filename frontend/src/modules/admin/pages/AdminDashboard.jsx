@@ -452,7 +452,7 @@ const AdminDashboard = () => {
           
           <div className="admin-header">
             <div>
-              <h1>Hệ Thống Quản Trị LingoMate</h1>
+              <h1>Hệ Thống Quản Trị E-Learn Academy</h1>
               <p className="text-slate-500 text-sm mt-1">Quản lý cơ sở dữ liệu người dùng và kiểm soát kho câu hỏi học tập</p>
             </div>
             <span className="admin-badge">System Admin Role</span>

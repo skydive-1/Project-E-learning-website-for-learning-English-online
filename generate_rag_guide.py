@@ -159,7 +159,7 @@ def main():
     run_sub.font.bold = True
     run_sub.font.color.rgb = c_orange
     
-    run_main = p_title.add_run("CƠ CHẾ HOẠT ĐỘNG CỦA RAG CHATBOT AI\nVÀ TÍNH ỨNG DỤNG TRONG DỰ ÁN E-LEARNING LINGOMATE\n")
+    run_main = p_title.add_run("CƠ CHẾ HOẠT ĐỘNG CỦA RAG CHATBOT AI\nVÀ TÍNH ỨNG DỤNG TRONG DỰ ÁN E-LEARNING E-LEARN ACADEMY\n")
     run_main.font.size = Pt(16)
     run_main.font.bold = True
     run_main.font.color.rgb = c_indigo
@@ -226,7 +226,7 @@ def main():
     add_heading_1(doc, "II. CƠ CHẾ PHÂN LOẠI THEO BÀI HỌC (LESSON-SCOPED RAG)", c_indigo)
     
     add_body_paragraph(doc,
-        "Trong một ứng dụng E-learning như LingoMate, khóa học chứa rất nhiều bài giảng video và tài liệu PDF bổ trợ khác nhau. "
+        "Trong một ứng dụng E-learning như E-Learn Academy, khóa học chứa rất nhiều bài giảng video và tài liệu PDF bổ trợ khác nhau. "
         "Nếu học viên đang xem bài giảng số 16 (Lesson 16) và hỏi về cấu trúc ngữ pháp có trong video, hệ thống RAG không thể tìm kiếm "
         "tất cả tài liệu của toàn bộ khóa học vì điều đó sẽ gây loãng thông tin và có nguy cơ lấy nhầm ngữ cảnh của bài học khác. "
         "Do đó, hệ thống triển khai cơ chế lọc theo bài học (Lesson-scoped RAG) dựa trên thuộc tính Metadata.",
@@ -290,12 +290,12 @@ def main():
     )
     
     # --- SECTION 3 ---
-    add_heading_1(doc, "III. TÍNH ỨNG DỤNG THỰC TIỄN CỦA RAG TRONG DỰ ÁN LINGOMATE", c_indigo)
+    add_heading_1(doc, "III. TÍNH ỨNG DỤNG THỰC TIỄN CỦA RAG TRONG DỰ ÁN E-LEARN ACADEMY", c_indigo)
     
     add_body_paragraph(doc,
-        "Việc tích hợp công nghệ RAG mang lại giá trị gia tăng cực kỳ lớn cho ứng dụng E-learning LingoMate, "
+        "Việc tích hợp công nghệ RAG mang lại giá trị gia tăng cực kỳ lớn cho ứng dụng E-learning E-Learn Academy, "
         "nâng cấp trải nghiệm học tập truyền thống (chỉ xem và làm bài tập thụ động) thành trải nghiệm tương tác thông minh hai chiều chủ động.",
-        ["LingoMate"]
+        ["E-Learn Academy"]
     )
     
     # Applications
@@ -317,7 +317,7 @@ def main():
     p_app4 = doc.add_paragraph(style='List Bullet')
     r = p_app4.add_run("4. Mô hình kinh doanh VIP Subscription hấp dẫn:\n")
     r.bold = True
-    p_app4.add_run("Trong dự án LingoMate, tính năng trò chuyện và hỏi đáp chuyên sâu với Trợ lý RAG Chatbot AI có thể được đóng gói làm một đặc quyền dành riêng cho học viên đăng ký tài khoản VIP. Đây là động lực thương mại hóa rất tốt, khuyến khích học viên nâng cấp gói trả phí để có trải nghiệm học tập tối ưu nhất.")
+    p_app4.add_run("Trong dự án E-Learn Academy, tính năng trò chuyện và hỏi đáp chuyên sâu với Trợ lý RAG Chatbot AI có thể được đóng gói làm một đặc quyền dành riêng cho học viên đăng ký tài khoản VIP. Đây là động lực thương mại hóa rất tốt, khuyến khích học viên nâng cấp gói trả phí để có trải nghiệm học tập tối ưu nhất.")
     
     # Final Callout
     make_callout_box(
@@ -325,7 +325,7 @@ def main():
         [
             "Giúp lập trình viên nắm rõ luồng xử lý dữ liệu và cách tích hợp tự động hóa ở Backend.",
             "Làm tài liệu thuyết trình (Slides/Thesis Report) cực kỳ đắt giá cho Hội đồng bảo vệ đồ án tốt nghiệp.",
-            "Khẳng định chiều sâu kỹ thuật của dự án LingoMate so với các dự án E-learning thông thường khác."
+            "Khẳng định chiều sâu kỹ thuật của dự án E-Learn Academy so với các dự án E-learning thông thường khác."
         ],
         "Ý NGHĨA CỦA TÀI LIỆU PHÂN TÍCH RAG"
     )
