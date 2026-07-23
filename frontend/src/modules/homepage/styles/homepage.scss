@@ -87,6 +87,17 @@ body {
     .logo-icon {
       font-size: 24px;
     }
+
+    .logo-text {
+      display: inline-block;
+
+      .scramble-churning {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace !important;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+      }
+    }
   }
 
   .nav-menu {
@@ -469,11 +480,79 @@ body {
 
 // ---------------- CONSULTATION FORM ----------------
 .consultation-section {
-  padding: 80px 0;
+  padding: 120px 0;
   position: relative;
   z-index: 10;
-  background-color: #ffffff;
+  overflow: hidden;
+  background: linear-gradient(135deg, #090f1d 0%, #151b2e 100%);
 
+  .parallax-shape {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 2;
+    filter: blur(40px);
+
+    &.shape-1 {
+      top: 15%;
+      left: 10%;
+      width: 150px;
+      height: 150px;
+      background: radial-gradient(circle, rgba(29, 78, 216, 0.4) 0%, rgba(29, 78, 216, 0) 70%);
+    }
+
+    &.shape-2 {
+      bottom: 15%;
+      right: 10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(249, 115, 22, 0.35) 0%, rgba(249, 115, 22, 0) 70%);
+    }
+  }
+
+  .parallax-fg-layer {
+    position: relative;
+    z-index: 3;
+  }
+
+  @keyframes parallax-translate-shape-1 {
+    from {
+      transform: translateY(-100px) rotate(0deg);
+    }
+    to {
+      transform: translateY(100px) rotate(180deg);
+    }
+  }
+
+  @keyframes parallax-translate-shape-2 {
+    from {
+      transform: translateY(60px);
+    }
+    to {
+      transform: translateY(-60px);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: scroll()) {
+      .parallax-shape.shape-1 {
+        animation: parallax-translate-shape-1 linear;
+        animation-timeline: scroll();
+      }
+
+      .parallax-shape.shape-2 {
+        animation: parallax-translate-shape-2 linear;
+        animation-timeline: scroll();
+      }
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .parallax-shape {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
   .consultation-card {
     background-color: #ffffff;
     border-radius: 24px;

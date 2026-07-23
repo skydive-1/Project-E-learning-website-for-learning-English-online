@@ -8,9 +8,11 @@ import {
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import apiClient from '../../../config/api.config';
+import { useAuth } from '../../../context/AuthContext';
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -169,7 +171,7 @@ const HomePage = () => {
                 </li>
               </ul>
 
-              <button className="btn-explore" onClick={() => navigate('/register')}>
+              <button className="btn-explore" onClick={() => navigate(user ? '/courses' : '/register')}>
                 Khám phá khóa học ngay
               </button>
             </div>
@@ -535,9 +537,11 @@ const HomePage = () => {
           </div>
         </section>
 
-        {/* QUICK CONTACT / CONSULTATION FORM */}
-        <section className="consultation-section">
-          <div className="container">
+        {/* QUICK CONTACT / CONSULTATION FORM WITH PARALLAX */}
+        <section className="consultation-section parallax-container">
+          <div className="parallax-shape shape-1"></div>
+          <div className="parallax-shape shape-2"></div>
+          <div className="container parallax-fg-layer">
             <div className="consultation-card scroll-animate">
               <div className="form-header">
                 <h3>Đăng ký tư vấn miễn phí</h3>

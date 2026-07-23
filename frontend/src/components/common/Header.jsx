@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import ScrambleText from './ScrambleText';
 import '../../modules/homepage/styles/homepage.scss'; // Link global/homepage styles
 
 const Header = () => {
@@ -45,7 +46,7 @@ const Header = () => {
       <div className="header-container">
         <Link to="/" className="logo" onClick={() => setIsMobileMenuOpen(false)}>
           <FiBookOpen className="logo-icon" />
-          <span>E-Learn Academy</span>
+          <ScrambleText text="E-Learn Academy" className="logo-text" />
         </Link>
 
         {/* Mobile menu backdrop overlay */}
