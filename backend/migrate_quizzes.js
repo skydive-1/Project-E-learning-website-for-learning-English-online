@@ -69,6 +69,7 @@ async function migrate() {
         user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
         quiz_id INT REFERENCES quizzes(quiz_id) ON DELETE CASCADE,
         score INT NOT NULL,
+        nickname VARCHAR(100),
         completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

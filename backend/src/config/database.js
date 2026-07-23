@@ -51,6 +51,14 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột supabase_uid (có thể bảng users chưa được khởi tạo):', migErr.message);
     }
 
+    try {
+      await client.query('ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS nickname VARCHAR(100);');
+      await client.query('ALTER TABLE quiz_attempts ALTER COLUMN user_id DROP NOT NULL;');
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột nickname tồn tại và user_id cho phép NULL trong quiz_attempts');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột nickname:', migErr.message);
+    }
+
     // Tự động đồng bộ cấu trúc: Đảm bảo bảng user_token_limits tồn tại để tránh lỗi Token Limit
     try {
       await client.query(`

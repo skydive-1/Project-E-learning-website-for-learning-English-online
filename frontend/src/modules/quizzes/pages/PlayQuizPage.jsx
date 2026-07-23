@@ -18,9 +18,11 @@ import {
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
+import { useAuth } from '../../../context/AuthContext';
 import { 
   getFreeQuizById, 
   submitQuizAttempt, 
+  getQuizLeaderboard,
   submitWritingAnswer, 
   submitAudioAnswer 
 } from '../services/quizzes.service';
@@ -28,18 +30,26 @@ import {
 const PlayQuizPage = () => {
   const { quizId } = useParams();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState({});
 
   // States
   const [gameState, setGameState] = useState('intro'); // 'intro', 'playing', 'feedback', 'podium'
-  const [nickname, setNickname] = useState(localStorage.getItem('username') || 'Người chơi');
+  const [nickname, setNickname] = useState('');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [timeLeft, setTimeLeft] = useState(20); // 20s per question
   const [score, setScore] = useState(0);
   const [answersLog, setAnswersLog] = useState([]); // Array of { isCorrect, pointsEarned }
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [leaderboard, setLeaderboard] = useState([]);
+
+  useEffect(() => {
+    if (user) {
+      setNickname(user.full_name || user.username || 'Học viên');
+    }
+  }, [user]);
 
   // Feedback states
   const [selectedOptionKey, setSelectedOptionKey] = useState(null);
@@ -345,7 +355,9 @@ const PlayQuizPage = () => {
     } else {
       setGameState('podium');
       try {
-        await submitQuizAttempt(quiz.id, selectedAnswers);
+        await submitQuizAttempt(quiz.id, selectedAnswers, nickname);
+        const lbData = await getQuizLeaderboard(quiz.id);
+        setLeaderboard(lbData);
       } catch (err) {
         console.warn("⚠️ Lỗi lưu kết quả thi lên máy chủ:", err.message);
       }
@@ -384,45 +396,80 @@ const PlayQuizPage = () => {
           </button>
         </div>
 
-        {/* INTRO SCREEN */}
-        {gameState === 'intro' && (
+        {/* LOGIN REQUIRED SCREEN */}
+        {!authLoading && !user ? (
           <div className="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm text-center space-y-6 animate-fade">
+            <div className="w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border-2 border-smart-indigo dark:border-indigo-500 flex items-center justify-center text-3xl text-smart-indigo dark:text-indigo-400 mx-auto shadow-sm">
+              🔐
+            </div>
             <div>
               <span className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase">
-                🚀 Trắc nghiệm phản xạ nhanh
+                Yêu cầu đăng nhập
               </span>
-              <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 mt-4 mb-2 leading-tight">
-                {quiz.title}
+              <h1 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 mt-4 mb-2 leading-tight">
+                Đăng nhập để làm bài thi
               </h1>
               <p className="text-xs text-slate-400 dark:text-slate-450 leading-relaxed font-semibold">
-                {quiz.description}
+                Vui lòng đăng nhập tài khoản để tham gia thử thách phản xạ tiếng Anh, lưu lịch sử làm bài và ghi tên trên Bảng xếp hạng!
               </p>
             </div>
 
-            <form onSubmit={handleStartGame} className="space-y-4 pt-2">
-              <div className="text-left">
-                <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                  Nhập biệt danh của bạn
-                </label>
-                <input
-                  type="text"
-                  maxLength={15}
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  className="w-full text-center py-3 px-4 font-bold border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 rounded-xl focus:border-smart-indigo focus:ring-0 outline-none transition-all"
-                  required
-                />
-              </div>
-
+            <div className="pt-2 space-y-3">
               <button
-                type="submit"
+                onClick={() => navigate(`/login?redirect=/quizzes/play/${quizId}`)}
                 className="w-full py-3.5 px-6 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-widest transition-all cursor-pointer shadow-md active:scale-98"
               >
-                Bắt đầu chơi
+                Đăng nhập ngay
               </button>
-            </form>
+              <button
+                onClick={() => navigate('/quizzes')}
+                className="w-full py-3 px-6 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider transition-all cursor-pointer"
+              >
+                Quay lại sảnh bài tập
+              </button>
+            </div>
           </div>
-        )}
+        ) : (
+          <>
+            {/* INTRO SCREEN */}
+            {gameState === 'intro' && (
+              <div className="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm text-center space-y-6 animate-fade">
+                <div>
+                  <span className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase">
+                    🚀 Trắc nghiệm phản xạ nhanh
+                  </span>
+                  <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 mt-4 mb-2 leading-tight">
+                    {quiz.title}
+                  </h1>
+                  <p className="text-xs text-slate-400 dark:text-slate-450 leading-relaxed font-semibold">
+                    {quiz.description}
+                  </p>
+                </div>
+
+                <form onSubmit={handleStartGame} className="space-y-4 pt-2">
+                  <div className="text-left">
+                    <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                      Tên hiển thị thi đấu của bạn
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={20}
+                      value={nickname}
+                      onChange={(e) => setNickname(e.target.value)}
+                      className="w-full text-center py-3 px-4 font-bold border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 rounded-xl focus:border-smart-indigo focus:ring-0 outline-none transition-all"
+                      required
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 px-6 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-widest transition-all cursor-pointer shadow-md active:scale-98"
+                  >
+                    Bắt đầu chơi
+                  </button>
+                </form>
+              </div>
+            )}
         {gameState === 'playing' && (
           <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
             {/* Top Stats Panel */}
@@ -645,7 +692,7 @@ const PlayQuizPage = () => {
                     <p className="text-sm text-slate-500 dark:text-slate-400 font-bold">
                       Đáp án chính xác là:{' '}
                       <span className="bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-750 font-black text-slate-800 dark:text-slate-100 ml-1">
-                        {currentQuestion.correctAnswer}
+                        {currentQuestion.options?.find(opt => typeof opt === 'string' && opt.trim().startsWith(currentQuestion.correctAnswer)) || currentQuestion.correctAnswer}
                       </span>
                     </p>
                   </div>
@@ -766,36 +813,53 @@ const PlayQuizPage = () => {
                   <h3 className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">Bảng xếp hạng danh dự</h3>
                 </div>
                 
-                <div className="flex items-end justify-center gap-3 w-full h-32 mt-4">
-                  {/* 2nd Place */}
-                  <div className="flex flex-col items-center w-20">
-                    <span className="text-[10px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[65px]">AIBot</span>
-                    <div className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-t-xl flex flex-col items-center justify-center py-2 shadow-sm" style={{ height: '48px' }}>
-                      <span className="text-base font-black text-slate-650 dark:text-slate-350">2</span>
-                      <span className="text-[8px] font-bold text-slate-400 dark:text-slate-505">3,450 pts</span>
-                    </div>
-                  </div>
+                {(() => {
+                  // Leaderboard dynamic mapping
+                  const rank1 = leaderboard[0] || { user_name: nickname || 'Học viên', score: score };
+                  const rank2 = leaderboard[1] || null;
+                  const rank3 = leaderboard[2] || null;
 
-                  {/* 1st Place */}
-                  <div className="flex flex-col items-center w-24">
-                    <span className="text-xs font-black text-smart-indigo dark:text-indigo-400 mb-1 flex items-center gap-0.5">
-                      👑 <span className="truncate max-w-[65px]">{nickname}</span>
-                    </span>
-                    <div className="w-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-250 dark:border-indigo-800 rounded-t-xl flex flex-col items-center justify-center py-3 shadow-md" style={{ height: '70px' }}>
-                      <span className="text-xl font-black text-smart-indigo dark:text-indigo-400">1</span>
-                      <span className="text-[9px] font-black text-smart-indigo dark:text-indigo-400 mt-0.5">{score} pts</span>
-                    </div>
-                  </div>
+                  return (
+                    <div className="flex items-end justify-center gap-3 w-full h-32 mt-4">
+                      {/* 2nd Place */}
+                      <div className="flex flex-col items-center w-20">
+                        <span className="text-[10px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[65px]">
+                          {rank2 ? rank2.user_name : '---'}
+                        </span>
+                        <div className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-t-xl flex flex-col items-center justify-center py-2 shadow-sm" style={{ height: '48px' }}>
+                          <span className="text-base font-black text-slate-650 dark:text-slate-350">2</span>
+                          <span className="text-[8px] font-bold text-slate-400 dark:text-slate-505">
+                            {rank2 ? `${rank2.score} pts` : '0 pts'}
+                          </span>
+                        </div>
+                      </div>
 
-                  {/* 3rd Place */}
-                  <div className="flex flex-col items-center w-18">
-                    <span className="text-[9px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[60px]">Guru99</span>
-                    <div className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-t-xl flex flex-col items-center justify-center py-1.5 shadow-sm" style={{ height: '32px' }}>
-                      <span className="text-sm font-black text-slate-500 dark:text-slate-455">3</span>
-                      <span className="text-[7px] font-bold text-slate-400 dark:text-slate-505">2,800 pts</span>
+                      {/* 1st Place */}
+                      <div className="flex flex-col items-center w-24">
+                        <span className="text-xs font-black text-smart-indigo dark:text-indigo-400 mb-1 flex items-center gap-0.5">
+                          👑 <span className="truncate max-w-[65px]">{rank1.user_name}</span>
+                        </span>
+                        <div className="w-full bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-250 dark:border-indigo-800 rounded-t-xl flex flex-col items-center justify-center py-3 shadow-md" style={{ height: '70px' }}>
+                          <span className="text-xl font-black text-smart-indigo dark:text-indigo-400">1</span>
+                          <span className="text-[9px] font-black text-smart-indigo dark:text-indigo-400 mt-0.5">{rank1.score} pts</span>
+                        </div>
+                      </div>
+
+                      {/* 3rd Place */}
+                      <div className="flex flex-col items-center w-18">
+                        <span className="text-[9px] font-bold text-slate-550 dark:text-slate-400 mb-1 truncate max-w-[60px]">
+                          {rank3 ? rank3.user_name : '---'}
+                        </span>
+                        <div className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-t-xl flex flex-col items-center justify-center py-1.5 shadow-sm" style={{ height: '32px' }}>
+                          <span className="text-sm font-black text-slate-500 dark:text-slate-455">3</span>
+                          <span className="text-[7px] font-bold text-slate-400 dark:text-slate-505">
+                            {rank3 ? `${rank3.score} pts` : '0 pts'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
 
               {/* Right Column: Dynamic SVG Donut Chart */}
@@ -915,6 +979,8 @@ const PlayQuizPage = () => {
               </button>
             </div>
           </div>
+        )}
+        </>
         )}
       </main>
 

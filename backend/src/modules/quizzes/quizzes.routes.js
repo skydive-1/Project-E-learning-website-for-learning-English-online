@@ -4,11 +4,14 @@ const quizzesController = require('./controllers/quizzes.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
 
+// Route: GET /api/quizzes/:quizId/leaderboard
+router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
+
 // Route: GET /api/quizzes/:courseId
 router.get('/:courseId', quizzesController.getQuizzes);
 
-// Route: POST /api/quizzes/submit
-router.post('/submit', quizzesController.submitQuiz);
+// Route: POST /api/quizzes/submit (Yêu cầu đăng nhập)
+router.post('/submit', authenticate, quizzesController.submitQuiz);
 
 // Route: POST /api/quizzes/submit-writing
 router.post('/submit-writing', authenticate, quizzesController.submitWriting);

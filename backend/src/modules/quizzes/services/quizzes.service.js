@@ -92,7 +92,7 @@ class QuizzesService {
     }
   }
 
-  async submitQuiz(userId, quizId, answers) {
+  async submitQuiz(userId, quizId, answers, nickname = '') {
     try {
       // 1. Lấy danh sách câu hỏi của đề thi
       const questionsQuery = `
@@ -123,17 +123,19 @@ class QuizzesService {
       });
 
       const score = Math.round((correctCount / totalQuestions) * 100);
+      const validUserId = (userId && !isNaN(parseInt(userId, 10))) ? parseInt(userId, 10) : null;
 
       // 3. Lưu lịch sử làm bài vào quiz_attempts
       const insertAttemptQuery = `
-        INSERT INTO quiz_attempts (user_id, quiz_id, score, completed_at)
-        VALUES ($1, $2, $3, NOW())
+        INSERT INTO quiz_attempts (user_id, quiz_id, score, nickname, completed_at)
+        VALUES ($1, $2, $3, $4, NOW())
         RETURNING *
       `;
       const attemptResult = await db.query(insertAttemptQuery, [
-        parseInt(userId, 10),
+        validUserId,
         parseInt(quizId, 10),
-        score
+        score,
+        nickname || null
       ]);
 
       return {
@@ -144,6 +146,29 @@ class QuizzesService {
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.submitQuiz:", error);
+      throw error;
+    }
+  }
+
+  async getQuizLeaderboard(quizId, limit = 5) {
+    try {
+      const query = `
+        SELECT 
+          qa.attempt_id,
+          qa.score,
+          qa.completed_at,
+          COALESCE(u.full_name, u.username, qa.nickname, 'Học viên') AS user_name,
+          qa.nickname
+        FROM quiz_attempts qa
+        LEFT JOIN users u ON qa.user_id = u.user_id
+        WHERE qa.quiz_id = $1
+        ORDER BY qa.score DESC, qa.completed_at ASC
+        LIMIT $2
+      `;
+      const result = await db.query(query, [parseInt(quizId, 10), parseInt(limit, 10)]);
+      return result.rows;
+    } catch (error) {
+      console.error("Lỗi xảy ra tại QuizzesService.getQuizLeaderboard:", error);
       throw error;
     }
   }

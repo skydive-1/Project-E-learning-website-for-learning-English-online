@@ -94,7 +94,7 @@ export const getFreeQuizById = async (quizId) => {
 /**
  * Gửi nộp kết quả thi trắc nghiệm lên Backend
  */
-export const submitQuizAttempt = async (quizId, selectedAnswers) => {
+export const submitQuizAttempt = async (quizId, selectedAnswers, nickname = '') => {
   try {
     // Chuyển đổi object selectedAnswers { questionId: selectedOption } sang định dạng mảng API mong muốn
     const answers = Object.entries(selectedAnswers).map(([qId, ans]) => ({
@@ -104,13 +104,27 @@ export const submitQuizAttempt = async (quizId, selectedAnswers) => {
 
     const response = await apiClient.post('/quizzes/submit', {
       quizId: Number(quizId),
-      answers
+      answers,
+      nickname
     });
     
     return response.data;
   } catch (error) {
     console.error("⚠️ Lỗi nộp bài thi trắc nghiệm lên backend:", error.message);
     throw error;
+  }
+};
+
+/**
+ * Lấy Bảng xếp hạng điểm cao thời gian thực của bài Quiz
+ */
+export const getQuizLeaderboard = async (quizId) => {
+  try {
+    const response = await apiClient.get(`/quizzes/${quizId}/leaderboard`);
+    return response.data?.data || [];
+  } catch (error) {
+    console.error(`⚠️ Lỗi tải Bảng xếp hạng cho Quiz ${quizId}:`, error.message);
+    return [];
   }
 };
 

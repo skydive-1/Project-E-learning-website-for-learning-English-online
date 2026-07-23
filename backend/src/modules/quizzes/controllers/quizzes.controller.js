@@ -13,7 +13,7 @@ exports.getQuizzes = async (req, res, next) => {
 
     const data = await quizzesService.getQuizzesByCourseId(courseId);
     
-    // Ẩn đáp án đúng và giải thích trước khi trả về cho Frontend làm bài
+    // Trả về dữ liệu câu hỏi đầy đủ bao gồm đáp án và giải thích cho Frontend hiển thị kết quả
     const sanitizedData = data.map(quiz => ({
       quiz_id: quiz.quiz_id,
       course_id: quiz.course_id,
@@ -24,7 +24,10 @@ exports.getQuizzes = async (req, res, next) => {
       questions: quiz.questions.map(q => ({
         question_id: q.question_id,
         question_text: q.question_text,
-        options: q.options
+        options: q.options,
+        correct_answer: q.correct_answer,
+        explanation: q.explanation,
+        question_type: q.question_type || 'multiple_choice'
       }))
     }));
 
@@ -39,12 +42,18 @@ exports.getQuizzes = async (req, res, next) => {
 
 exports.submitQuiz = async (req, res, next) => {
   try {
-    // Tiếp nhận userId, quizId/courseId và mảng đáp án answers
-    const userId = req.body.userId || req.user?.id || req.user?.userId;
-    const { quizId, courseId, answers } = req.body;
+    // Tiếp nhận userId từ middleware authenticate
+    const userId = req.user?.id || req.user?.userId;
+    const { quizId, courseId, answers, nickname } = req.body;
     
-    if (!userId || (!quizId && !courseId) || !answers || !Array.isArray(answers)) {
-      const err = new Error("Dữ liệu không hợp lệ. Yêu cầu có: userId, quizId hoặc courseId, answers (dạng mảng)");
+    if (!userId) {
+      const err = new Error("Bạn cần đăng nhập tài khoản để thực hiện nộp bài thi.");
+      err.status = 401;
+      throw err;
+    }
+
+    if ((!quizId && !courseId) || !answers || !Array.isArray(answers)) {
+      const err = new Error("Dữ liệu không hợp lệ. Yêu cầu có: quizId hoặc courseId, answers (dạng mảng)");
       err.status = 400;
       throw err;
     }
@@ -62,11 +71,30 @@ exports.submitQuiz = async (req, res, next) => {
       }
     }
 
-    const result = await quizzesService.submitQuiz(userId, finalQuizId, answers);
+    const result = await quizzesService.submitQuiz(userId, finalQuizId, answers, nickname);
     res.status(201).json({
       success: true,
       message: "Nộp bài thi thành công",
       data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getLeaderboard = async (req, res, next) => {
+  try {
+    const { quizId } = req.params;
+    const limit = req.query.limit || 5;
+    if (!quizId) {
+      const err = new Error("Thiếu quizId");
+      err.status = 400;
+      throw err;
+    }
+    const leaderboard = await quizzesService.getQuizLeaderboard(quizId, limit);
+    res.status(200).json({
+      success: true,
+      data: leaderboard
     });
   } catch (error) {
     next(error);
