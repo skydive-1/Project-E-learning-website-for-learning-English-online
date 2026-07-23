@@ -583,68 +583,167 @@ $hover-orange: #ea580c;
 
 html.dark {
   .profile-page-wrapper {
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    
-    .profile-summary-card,
-    .profile-right-panel .profile-content-card,
-    .stat-card-item {
-      background: var(--card-bg);
-      border-color: var(--border-color);
-      box-shadow: none;
-      color: var(--text-color);
-    }
-    
-    .profile-tabs button {
-      color: var(--text-light);
+    background-color: var(--bg-color, #08090a);
+    color: var(--text-color, #f3f4f6);
+
+    .back-to-home {
+      color: var(--text-light, #9ca3af);
       &:hover {
-        color: var(--text-color);
-        background: var(--dropdown-hover);
-      }
-      &.active {
-        color: #3b82f6;
-        border-color: #3b82f6;
-        background: none;
+        color: #60a5fa;
       }
     }
-    
+
+    .profile-summary-card,
+    .profile-right-panel .profile-content-card {
+      background-color: var(--card-bg, #111214) !important;
+      border-color: var(--border-color, #1f2023) !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      color: var(--text-color, #f3f4f6);
+
+      h2, h3 {
+        color: var(--text-color, #f3f4f6);
+      }
+
+      .tab-subtitle {
+        color: var(--text-light, #9ca3af);
+      }
+    }
+
     .avatar-container {
-      border-color: var(--card-bg) !important;
-      background-color: var(--dropdown-hover) !important;
+      border-color: var(--card-bg, #111214) !important;
+      background-color: var(--dropdown-hover, #1e2023) !important;
     }
-    
-    .user-info-display {
-      background: var(--dropdown-hover);
-      border-color: var(--border-color);
-      .info-label {
-        color: var(--text-light);
+
+    .role-tag {
+      background-color: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .panel-divider {
+      background-color: var(--border-color, #1f2023);
+    }
+
+    .profile-nav-tabs {
+      .tab-btn {
+        color: var(--text-light, #9ca3af);
+
+        .tab-icon {
+          color: var(--text-light, #9ca3af);
+        }
+
+        &:hover {
+          background-color: var(--dropdown-hover, #1e2023);
+          color: var(--text-color, #f3f4f6);
+
+          .tab-icon {
+            color: var(--text-color, #f3f4f6);
+          }
+        }
+
+        &.active {
+          background-color: rgba(59, 130, 246, 0.15) !important;
+          color: #60a5fa !important;
+
+          .tab-icon {
+            color: #60a5fa !important;
+          }
+        }
       }
-      .info-value {
-        color: var(--text-color);
+    }
+
+    /* Form Styles */
+    .profile-form {
+      .form-group {
+        label {
+          color: var(--text-color, #f3f4f6);
+        }
+
+        .input-with-icon {
+          .field-icon {
+            color: var(--text-light, #9ca3af);
+          }
+
+          input {
+            background-color: #16181c !important;
+            border-color: var(--border-color, #262930) !important;
+            color: var(--text-color, #f3f4f6) !important;
+
+            &::placeholder {
+              color: var(--text-light, #6b7280);
+            }
+
+            &:focus {
+              border-color: #3b82f6 !important;
+              background-color: #1a1d24 !important;
+              box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+            }
+          }
+        }
+
+        .field-hint {
+          color: var(--text-light, #9ca3af);
+        }
+
+        &.disabled-group {
+          opacity: 1;
+
+          input {
+            background-color: #1a1c23 !important;
+            border-color: var(--border-color, #262930) !important;
+            color: #94a3b8 !important;
+          }
+        }
       }
     }
-    
-    input, select, textarea {
-      background-color: var(--input-bg);
-      border-color: var(--border-color);
-      color: var(--text-color);
-      &::placeholder {
-        color: var(--text-light);
+
+    /* Stats Tab */
+    .profile-stat-card {
+      background-color: #16181c !important;
+      border-color: var(--border-color, #262930) !important;
+
+      &:hover {
+        background-color: #1a1d24 !important;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      }
+
+      .stat-details {
+        .label {
+          color: var(--text-light, #9ca3af) !important;
+        }
+
+        .value {
+          color: var(--text-color, #f3f4f6) !important;
+        }
       }
     }
-    
-    option {
-      background-color: #111214 !important;
-      color: #f3f4f6 !important;
-    }
-    
-    .form-group label {
-      color: #cbd5e1;
-    }
-    
-    .stats-cards-grid .stat-card-item {
-      .stat-num { color: #3b82f6; }
-      .stat-label { color: var(--text-light); }
+
+    .activity-summary {
+      h3 {
+        color: var(--text-color, #f3f4f6);
+      }
+
+      .activity-timeline {
+        &::before {
+          background-color: var(--border-color, #262930);
+        }
+
+        .timeline-item {
+          .timeline-dot {
+            border-color: var(--card-bg, #111214);
+          }
+
+          .timeline-info {
+            .time {
+              color: var(--text-light, #9ca3af);
+            }
+
+            p {
+              color: var(--text-color, #f3f4f6);
+            }
+          }
+        }
+      }
     }
   }
 }

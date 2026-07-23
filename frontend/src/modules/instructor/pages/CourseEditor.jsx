@@ -38,27 +38,30 @@ const CustomDateInput = ({ value, onChange }) => {
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        padding: '12px 16px',
-        borderRadius: '10px',
-        border: '1px solid',
-        borderColor: isFocused ? '#3b82f6' : '#cbd5e1',
-        boxShadow: isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.15)' : 'none',
-        fontSize: '14px',
-        backgroundColor: '#fff',
-        color: '#1e293b',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        pointerEvents: 'none',
-        zIndex: 1,
-        transition: 'all 0.15s ease'
-      }}>
+      <div 
+        className="custom-date-input-overlay"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          padding: '12px 16px',
+          borderRadius: '10px',
+          border: '1px solid',
+          borderColor: isFocused ? '#3b82f6' : 'var(--border-color, #cbd5e1)',
+          boxShadow: isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.15)' : 'none',
+          fontSize: '14px',
+          backgroundColor: 'var(--input-bg, #fff)',
+          color: 'var(--text-color, #1e293b)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          pointerEvents: 'none',
+          zIndex: 1,
+          transition: 'all 0.15s ease'
+        }}
+      >
         <span>{formatDateForDisplay(value) || 'Chọn ngày'}</span>
         <span style={{ color: '#94a3b8' }}>📅</span>
       </div>
@@ -398,43 +401,17 @@ const CourseEditor = () => {
           </button>
           
           <div className="course-nav-guide">
-            <h3 style={{ textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontSize: '11px', fontWeight: '800', marginBottom: '16px' }}>Course Creation Hub</h3>
+            <h3 style={{ textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-light, #64748b)', fontSize: '11px', fontWeight: '800', marginBottom: '16px' }}>Course Creation Hub</h3>
             <ul style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: 0, listStyle: 'none' }}>
               <li 
                 onClick={() => setActiveHubTab('basic')}
-                style={{ 
-                  cursor: 'pointer', 
-                  padding: '12px 16px', 
-                  borderRadius: '10px', 
-                  fontSize: '13px', 
-                  fontWeight: '700',
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px',
-                  transition: 'all 0.2s',
-                  background: activeHubTab === 'basic' ? '#eef2ff' : 'transparent',
-                  color: activeHubTab === 'basic' ? '#4f46e5' : '#475569',
-                  borderLeft: activeHubTab === 'basic' ? '3px solid #4f46e5' : '3px solid transparent'
-                }}
+                className={`hub-nav-item ${activeHubTab === 'basic' ? 'active' : ''}`}
               >
                 📝 Thông tin khóa học
               </li>
               <li 
                 onClick={() => setActiveHubTab('curriculum')}
-                style={{ 
-                  cursor: 'pointer', 
-                  padding: '12px 16px', 
-                  borderRadius: '10px', 
-                  fontSize: '13px', 
-                  fontWeight: '700',
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px',
-                  transition: 'all 0.2s',
-                  background: activeHubTab === 'curriculum' ? '#eef2ff' : 'transparent',
-                  color: activeHubTab === 'curriculum' ? '#4f46e5' : '#475569',
-                  borderLeft: activeHubTab === 'curriculum' ? '3px solid #4f46e5' : '3px solid transparent'
-                }}
+                className={`hub-nav-item ${activeHubTab === 'curriculum' ? 'active' : ''}`}
               >
                 📚 Chương trình học
               </li>
@@ -488,28 +465,28 @@ const CourseEditor = () => {
           {/* Basic Course Info Form */}
           {activeHubTab === 'basic' && (
             <div className="course-basic-form" style={{
-              background: '#ffffff', padding: '24px', borderRadius: '20px', border: '1px solid #e2e8f0', marginBottom: '32px'
+              padding: '24px', borderRadius: '20px', marginBottom: '32px'
             }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px', color: '#0f172a' }}>Thông tin khóa học cơ bản</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px' }} className="form-section-title">Thông tin khóa học cơ bản</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Tên khóa học *</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Tên khóa học *</label>
                   <input 
                     type="text" 
                     value={courseName}
                     onChange={(e) => setCourseName(e.target.value)}
                     placeholder="Ví dụ: Luyện thi IELTS mục tiêu 6.5+"
                     style={{
-                      width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px'
+                      width: '100%', padding: '12px', borderRadius: '10px', fontSize: '14px'
                     }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Môn học liên kết *</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Môn học liên kết *</label>
                   {fetchingSubjects ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', color: '#64748b' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', color: 'var(--text-light, #64748b)' }}>
                       <FiLoader className="spin" /> Đang tải môn học...
                     </div>
                   ) : (
@@ -517,7 +494,7 @@ const CourseEditor = () => {
                       value={subjectId}
                       onChange={(e) => setSubjectId(e.target.value)}
                       style={{
-                        width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#fff'
+                        width: '100%', padding: '12px', borderRadius: '10px', fontSize: '14px'
                       }}
                     >
                       {subjects.map(sub => (
@@ -532,14 +509,14 @@ const CourseEditor = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Ngày khai giảng</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Ngày khai giảng</label>
                   <CustomDateInput 
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#475569', marginBottom: '8px' }}>Ngày kết thúc</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Ngày kết thúc</label>
                   <CustomDateInput 
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
@@ -552,8 +529,8 @@ const CourseEditor = () => {
           {/* Curriculum Builder */}
           {activeHubTab === 'curriculum' && (
             <div className="curriculum-builder">
-              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>Curriculum Builder</h2>
-              <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>Thêm các chương học và bài giảng dưới dạng PDF hoặc Video để cấu thành khóa học của bạn.</p>
+              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }} className="builder-title">Curriculum Builder</h2>
+              <p style={{ fontSize: '14px', marginBottom: '20px' }} className="builder-subtitle">Thêm các chương học và bài giảng dưới dạng PDF hoặc Video để cấu thành khóa học của bạn.</p>
 
               {sections.map((section, sIdx) => (
                 <div key={section.id} className="section-container">
@@ -701,15 +678,15 @@ const CourseEditor = () => {
                               gap: '16px',
                               marginTop: '6px',
                               padding: '16px',
-                              background: '#f8fafc',
+                              background: 'var(--bg-color, #f8fafc)',
                               borderRadius: '12px',
-                              border: '1px solid #e2e8f0',
+                              border: '1px solid var(--border-color, #e2e8f0)',
                               marginLeft: '28px'
                             }}>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: '700', color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }} className="speaking-label">
                                   <span>1. Câu luyện phát âm AI (Đọc mẫu - mỗi câu một dòng):</span>
-                                  <span style={{ fontWeight: '500', color: '#94a3b8', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
+                                  <span style={{ fontWeight: '500', color: 'var(--text-light, #94a3b8)', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
                                 </span>
                                 <textarea
                                   value={lesson.speakingSentences || ''}
@@ -720,20 +697,20 @@ const CourseEditor = () => {
                                     width: '100%',
                                     padding: '8px 12px',
                                     borderRadius: '8px',
-                                    border: '1px solid #cbd5e1',
+                                    border: '1px solid var(--border-color, #cbd5e1)',
                                     fontSize: '12px',
                                     outline: 'none',
-                                    color: '#334155',
-                                    background: '#ffffff',
+                                    color: 'var(--text-color, #334155)',
+                                    background: 'var(--input-bg, #ffffff)',
                                     resize: 'vertical'
                                   }}
                                 />
                               </div>
                               
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: '700', color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }} className="speaking-label">
                                   <span>2. Câu hỏi phản xạ nói Q&A (Trả lời tự do - mỗi câu một dòng):</span>
-                                  <span style={{ fontWeight: '500', color: '#94a3b8', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
+                                  <span style={{ fontWeight: '500', color: 'var(--text-light, #94a3b8)', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
                                 </span>
                                 <textarea
                                   value={lesson.speakingQuestions || ''}
@@ -744,11 +721,11 @@ const CourseEditor = () => {
                                     width: '100%',
                                     padding: '8px 12px',
                                     borderRadius: '8px',
-                                    border: '1px solid #cbd5e1',
+                                    border: '1px solid var(--border-color, #cbd5e1)',
                                     fontSize: '12px',
                                     outline: 'none',
-                                    color: '#334155',
-                                    background: '#ffffff',
+                                    color: 'var(--text-color, #334155)',
+                                    background: 'var(--input-bg, #ffffff)',
                                     resize: 'vertical'
                                   }}
                                 />
