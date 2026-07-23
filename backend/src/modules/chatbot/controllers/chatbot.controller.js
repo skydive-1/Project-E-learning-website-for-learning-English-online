@@ -58,6 +58,23 @@ exports.getHistory = async (req, res, next) => {
   }
 };
 
+exports.clearHistory = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Người dùng chưa xác thực' });
+    }
+
+    const result = await chatbotService.clearHistory(userId);
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.processAudio = async (req, res, next) => {
   try {
     if (!req.file) {

@@ -98,6 +98,19 @@ export const saveChatHistory = async (userId, lessonId, question, answer) => {
 };
 
 /**
+ * Xóa sạch lịch sử trò chuyện AI khi đăng xuất
+ */
+export const clearChatHistory = async () => {
+  try {
+    const response = await apiClient.delete('/chatbot/history');
+    return response.data;
+  } catch (error) {
+    console.warn('⚠️ Lỗi xóa lịch sử chat khi logout:', error.message);
+    return null;
+  }
+};
+
+/**
  * Gửi file ghi âm của học viên lên API để giải mã hoặc chấm điểm phát âm
  * @param {Blob} audioBlob - Tệp âm thanh ghi âm từ client
  * @param {string|number} lessonId - ID của bài học

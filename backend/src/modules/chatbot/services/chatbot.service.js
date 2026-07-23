@@ -179,17 +179,31 @@ class ChatbotService {
     try {
       const hasLesson = lessonId && lessonId !== 'null' && lessonId !== 'undefined' && Number(lessonId) !== 0;
       
+      // Tự động dọn dẹp các bản ghi cũ trước 00:00 giờ Việt Nam (UTC+7)
+      try {
+        await db.query(`
+          DELETE FROM ai_chat 
+          WHERE created_at < (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AT TIME ZONE 'Asia/Ho_Chi_Minh'
+        `);
+      } catch (cleanErr) {
+        console.warn('⚠️ Cảnh báo dọn dẹp tin nhắn AI cũ:', cleanErr.message);
+      }
+
       const queryText = hasLesson
         ? `
           SELECT ai_chat, sender_type, title, created_at AS created_date
           FROM ai_chat
-          WHERE student_id = $1 AND lesson_id = $2
+          WHERE student_id = $1 
+            AND lesson_id = $2 
+            AND created_at >= (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AT TIME ZONE 'Asia/Ho_Chi_Minh'
           ORDER BY created_date ASC
         `
         : `
           SELECT ai_chat, sender_type, title, created_at AS created_date
           FROM ai_chat
-          WHERE student_id = $1 AND lesson_id IS NULL
+          WHERE student_id = $1 
+            AND lesson_id IS NULL 
+            AND created_at >= (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AT TIME ZONE 'Asia/Ho_Chi_Minh'
           ORDER BY created_date ASC
         `;
       
@@ -204,6 +218,16 @@ class ChatbotService {
       }));
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.getHistory:", error);
+      throw error;
+    }
+  }
+
+  async clearHistory(userId) {
+    try {
+      await db.query('DELETE FROM ai_chat WHERE student_id = $1', [userId]);
+      return { success: true, message: 'Đã xóa toàn bộ lịch sử trò chuyện AI' };
+    } catch (error) {
+      console.error("Lỗi xảy ra tại ChatbotService.clearHistory:", error);
       throw error;
     }
   }

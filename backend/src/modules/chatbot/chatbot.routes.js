@@ -23,6 +23,7 @@ router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBal
 // API Lịch sử Chat (Độc lập, nhận trực tiếp userId/lessonId từ Frontend)
 router.post('/history', chatbotController.saveHistory);
 router.get('/history/:userId/:lessonId', chatbotController.getHistory);
+router.delete('/history', authenticate, chatbotController.clearHistory);
 
 // API xử lý phát âm (Audio)
 router.post('/audio', authenticate, upload.single('audio'), chatbotController.processAudio);

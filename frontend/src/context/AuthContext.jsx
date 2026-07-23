@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getProfile } from '../modules/auth/services/auth.service';
+import { clearChatHistory } from '../modules/chatbot/services/chatbot.service';
 
 const AuthContext = createContext(null);
 
@@ -35,7 +36,12 @@ export const AuthProvider = ({ children }) => {
     }
 
     // Lắng nghe sự kiện đăng xuất mềm từ API Interceptor
-    const handleAuthLogout = () => {
+    const handleAuthLogout = async () => {
+      try {
+        await clearChatHistory();
+      } catch (e) {
+        console.warn('Lỗi dọn lịch sử chat khi logout mềm:', e);
+      }
       localStorage.removeItem('token');
       setUser(null);
       setLoading(false);
@@ -56,7 +62,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Phương thức đăng xuất
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await clearChatHistory();
+    } catch (e) {
+      console.warn('Lỗi dọn lịch sử chat khi logout:', e);
+    }
     localStorage.removeItem('token');
     setUser(null);
     navigate('/login');
