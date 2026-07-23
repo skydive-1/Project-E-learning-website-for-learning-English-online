@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const quizzesController = require('./controllers/quizzes.controller');
-const { authenticate } = require('../../middleware/auth.middleware');
+const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
 
 // Route: GET /api/quizzes/:courseId
@@ -15,6 +15,12 @@ router.post('/submit-writing', authenticate, quizzesController.submitWriting);
 
 // Route: POST /api/quizzes/submit-audio
 router.post('/submit-audio', authenticate, upload.single('audio'), quizzesController.submitAudio);
+
+// Route: POST /api/quizzes - Tạo đề thi tự luyện mới (Chỉ dành cho Giảng viên / Admin)
+router.post('/', authenticate, authorize([1, 2]), quizzesController.createQuiz);
+
+// Route: POST /api/quizzes/generate-ai - Sinh câu hỏi bằng AI (Chỉ dành riêng cho Admin)
+router.post('/generate-ai', authenticate, authorize([1]), quizzesController.generateQuizAi);
 
 /**
  * @swagger

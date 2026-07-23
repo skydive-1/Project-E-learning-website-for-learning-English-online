@@ -198,6 +198,43 @@ Trình bày thân thiện, tự nhiên bằng tiếng Việt.`;
       throw new Error("Lỗi hệ thống khi AI chấm điểm phát âm.");
     }
   }
+
+  async createQuiz(title, description, difficulty, timeLimit, questions) {
+    try {
+      await db.query('BEGIN');
+      const insertQuizQuery = `
+        INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit)
+        VALUES (NULL, NULL, $1, $2, $3, $4)
+        RETURNING quiz_id
+      `;
+      const quizResult = await db.query(insertQuizQuery, [title, description, difficulty || 'Medium', parseInt(timeLimit, 10) || 10]);
+      const quizId = quizResult.rows[0].quiz_id;
+
+      if (questions && Array.isArray(questions) && questions.length > 0) {
+        for (const q of questions) {
+          const insertQuestionQuery = `
+            INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type)
+            VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+          `;
+          const opts = Array.isArray(q.options) ? q.options : [];
+          await db.query(insertQuestionQuery, [
+            quizId,
+            q.questionText,
+            JSON.stringify(opts),
+            q.correctAnswer || '',
+            q.explanation || '',
+            q.questionType || 'multiple_choice'
+          ]);
+        }
+      }
+      await db.query('COMMIT');
+      return { quizId, title, description };
+    } catch (error) {
+      await db.query('ROLLBACK');
+      console.error("Lỗi xảy ra tại QuizzesService.createQuiz:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new QuizzesService();

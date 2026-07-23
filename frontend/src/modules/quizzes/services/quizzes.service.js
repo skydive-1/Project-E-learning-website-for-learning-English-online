@@ -159,3 +159,23 @@ export const submitAudioAnswer = async (quizId, questionId, audioFile) => {
   }
 };
 
+export const createQuiz = async (quizData) => {
+  try {
+    const response = await apiClient.post('/quizzes', quizData);
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi tạo đề thi trắc nghiệm mới:", error.message);
+    throw error;
+  }
+};
+
+export const generateQuizAi = async (payload) => {
+  try {
+    const response = await apiClient.post('/quizzes/generate-ai', payload);
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi sinh câu hỏi bằng AI:", error.message);
+    throw error;
+  }
+};
+
