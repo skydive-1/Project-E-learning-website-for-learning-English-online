@@ -1,4 +1,5 @@
 const db = require('../../../config/database');
+const { geminiModel } = require("../../../utils/ai-clients");
 
 class QuizzesService {
   async getQuizzesByCourseId(courseId) {
@@ -144,6 +145,57 @@ class QuizzesService {
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.submitQuiz:", error);
       throw error;
+    }
+  }
+
+  async evaluateWriting(writingText) {
+    try {
+      const prompt = `Bạn là một giáo viên tiếng Anh chuyên chấm thi. Hãy đọc bài luận sau của học viên và thực hiện các bước sau:
+1. Chấm điểm bài luận theo thang 10.
+2. Tìm và chỉ ra các lỗi sai về ngữ pháp, từ vựng hoặc cấu trúc câu.
+3. Gợi ý cách sửa và viết lại sao cho tự nhiên, chuẩn bản ngữ hơn.
+Trình bày thân thiện, dễ hiểu bằng tiếng Việt.
+
+Đoạn văn của học viên:
+"${writingText}"`;
+
+      const result = await geminiModel.generateContent(prompt);
+      return result.response.text();
+    } catch (error) {
+      console.error("Lỗi xảy ra tại QuizzesService.evaluateWriting:", error);
+      throw new Error("Lỗi hệ thống khi AI chấm điểm bài luận.");
+    }
+  }
+
+  async evaluateAudio(filePath, mimetype, expectedSentence) {
+    try {
+      const fs = require('fs');
+      const audioData = fs.readFileSync(filePath);
+      const audioBase64 = audioData.toString("base64");
+      
+      const expectedText = expectedSentence ? `\nCâu mẫu học viên cần đọc: "${expectedSentence}"\nHãy đối chiếu Transcript của bạn với câu mẫu trên để xem học viên đọc có đúng không.` : '';
+
+      const prompt = `Bạn là một chuyên gia chấm điểm phát âm tiếng Anh.
+Hãy nghe đoạn âm thanh thu âm của học viên và thực hiện:
+1. Ghi ra bản Transcript chính xác những gì học viên đã nói.${expectedText}
+2. Chấm điểm phát âm tổng quan theo thang 10.
+3. Chỉ ra những lỗi phát âm sai so với từ chuẩn, nhận xét về trọng âm, ngữ điệu và hướng dẫn cách sửa chi tiết.
+Trình bày thân thiện, tự nhiên bằng tiếng Việt.`;
+
+      const result = await geminiModel.generateContent([
+        prompt,
+        {
+          inlineData: {
+            data: audioBase64,
+            mimeType: mimetype || "audio/mp3"
+          }
+        }
+      ]);
+
+      return result.response.text();
+    } catch (error) {
+      console.error("Lỗi xảy ra tại QuizzesService.evaluateAudio:", error);
+      throw new Error("Lỗi hệ thống khi AI chấm điểm phát âm.");
     }
   }
 }

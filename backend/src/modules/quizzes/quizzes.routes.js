@@ -1,12 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const quizzesController = require('./controllers/quizzes.controller');
+const { authenticate } = require('../../middleware/auth.middleware');
+const upload = require('../../middleware/upload.middleware');
 
 // Route: GET /api/quizzes/:courseId
 router.get('/:courseId', quizzesController.getQuizzes);
 
 // Route: POST /api/quizzes/submit
 router.post('/submit', quizzesController.submitQuiz);
+
+// Route: POST /api/quizzes/submit-writing
+router.post('/submit-writing', authenticate, quizzesController.submitWriting);
+
+// Route: POST /api/quizzes/submit-audio
+router.post('/submit-audio', authenticate, upload.single('audio'), quizzesController.submitAudio);
 
 /**
  * @swagger
@@ -42,5 +50,45 @@ router.post('/submit', quizzesController.submitQuiz);
  *     responses:
  *       200:
  *         description: Nộp bài thành công
+ * 
+ * /api/quizzes/submit-writing:
+ *   post:
+ *     summary: Nộp bài luận tự luận chấm bằng AI
+ *     tags: [Quizzes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               writing:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Trả về kết quả đánh giá bài viết
+ * 
+ * /api/quizzes/submit-audio:
+ *   post:
+ *     summary: Nộp file ghi âm để chấm điểm phát âm bằng AI
+ *     tags: [Quizzes]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               audio:
+ *                 type: string
+ *                 format: binary
+ *               expectedSentence:
+ *                 type: string
+ *                 description: Câu mẫu ban đầu để đối chiếu
+ *     responses:
+ *       200:
+ *         description: Trả về kết quả đánh giá phát âm
  */
 module.exports = router;

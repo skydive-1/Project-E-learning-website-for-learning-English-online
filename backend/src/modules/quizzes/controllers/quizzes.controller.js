@@ -71,3 +71,52 @@ exports.submitQuiz = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.submitWriting = async (req, res, next) => {
+  try {
+    const { writing } = req.body;
+    if (!writing) {
+      const err = new Error("Vui lòng gửi nội dung bài luận (field: writing)");
+      err.status = 400;
+      throw err;
+    }
+    
+    const evaluation = await quizzesService.evaluateWriting(writing);
+    
+    res.status(200).json({
+      success: true,
+      data: evaluation
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.submitAudio = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      const err = new Error("Vui lòng cung cấp file âm thanh (field: audio).");
+      err.status = 400;
+      throw err;
+    }
+    const expectedSentence = req.body.expectedSentence || "";
+
+    const filePath = req.file.path;
+    const mimetype = req.file.mimetype;
+
+    const evaluation = await quizzesService.evaluateAudio(filePath, mimetype, expectedSentence);
+
+    // Xóa file tạm sau khi đã xử lý xong
+    const fs = require('fs');
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: evaluation
+    });
+  } catch (error) {
+    next(error);
+  }
+};

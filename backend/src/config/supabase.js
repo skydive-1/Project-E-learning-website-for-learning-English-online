@@ -11,9 +11,9 @@ if (!supabaseUrl) {
   console.warn('⚠️ Cảnh báo: SUPABASE_URL chưa được cấu hình trong file .env');
 }
 
-// 1. Client mặc định (Tương thích 100% với code của Liêm)
+// 1. Client mặc định
 const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseUrl || 'https://placeholder.supabase.co',
   fallbackKey || 'placeholder',
   {
     auth: {
@@ -24,23 +24,23 @@ const supabase = createClient(
 );
 
 // 2. Client Admin (Bỏ qua RLS, phục vụ tạo/xóa tài khoản từ Server)
-const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey 
+const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
   ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false
-      }
-    })
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  })
   : supabase; // Dự phòng về client mặc định nếu thiếu key
 
 // 3. Client Anon (Dùng Anon Key cho các tác vụ công khai của user)
 const supabaseClient = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false
-      }
-    })
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  })
   : supabase; // Dự phòng về client mặc định nếu thiếu key
 
 // Đính kèm các named exports làm thuộc tính của client chính

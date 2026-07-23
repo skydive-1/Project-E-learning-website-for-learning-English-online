@@ -25,6 +25,15 @@ class AuthService {
         throw error;
       }
 
+      // Kiểm tra username trùng lặp
+      const existingUsername = await db.query('SELECT user_id FROM users WHERE username = $1', [username]);
+      if (existingUsername.rows.length > 0) {
+        const error = new Error('Tên đăng nhập (username) đã tồn tại');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
       // Chặn đăng ký vai trò Admin hoặc các vai trò không hợp lệ qua API công khai
       let finalRoleId = parseInt(roleId, 10);
       if (finalRoleId !== 2 && finalRoleId !== 3) {
@@ -133,7 +142,7 @@ class AuthService {
               supabaseUser = migratedData.user;
               // Cập nhật supabase_uid vào PostgreSQL cục bộ để liên kết
               await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, matchedUser.user_id]);
-              
+
               user = matchedUser;
               user.supabase_uid = supabaseUser.id;
             } else {
@@ -418,24 +427,24 @@ class AuthService {
     try {
       let token = tokenData;
       let isAccessToken = false;
-      
+
       if (tokenData && typeof tokenData === 'object') {
         token = tokenData.token;
         isAccessToken = tokenData.isAccessToken;
       }
-      
+
       let url = `https://oauth2.googleapis.com/tokeninfo?id_token=${token}`;
       if (isAccessToken) {
         url = `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${token}`;
       }
-      
+
       const response = await fetch(url);
       if (!response.ok) {
         const error = new Error('Mã token Google không hợp lệ hoặc đã hết hạn');
         error.status = 400;
         throw error;
       }
-      
+
       const payload = await response.json();
       if (payload.error_description) {
         const error = new Error(payload.error_description);
@@ -456,7 +465,7 @@ class AuthService {
           'SELECT user_id, email, username, full_name, role_id FROM users WHERE email = $1',
           [email]
         );
-        
+
         if (checkResult.rows.length === 0) {
           let username = email.split('@')[0];
           const checkUsername = await db.query('SELECT user_id FROM users WHERE username = $1', [username]);
@@ -473,10 +482,10 @@ class AuthService {
           console.log(`[Google Auth] Auto-registered admin: ${email}`);
         } else {
           const user = checkResult.rows[0];
-          const updateQuery = supabaseUser 
+          const updateQuery = supabaseUser
             ? 'UPDATE users SET role_id = 1, supabase_uid = $2 WHERE email = $1'
             : 'UPDATE users SET role_id = 1 WHERE email = $1';
-          
+
           const params = supabaseUser ? [email, supabaseUser.id] : [email];
           await db.query(updateQuery, params);
           console.log(`[Google Auth] Auto-promoted existing user to admin: ${email}`);
@@ -496,7 +505,7 @@ class AuthService {
           await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, user.user_id]);
           user.supabase_uid = supabaseUser.id;
         }
-        
+
         const jwtPayload = {
           id: user.user_id,
           email: user.email,
@@ -555,7 +564,7 @@ class AuthService {
       }
 
       const { email, fullName, profilePictureUrl } = decoded;
-      
+
       const targetRoleId = parseInt(roleId, 10);
       if (targetRoleId !== 2 && targetRoleId !== 3) {
         const error = new Error('Vai trò người dùng chọn không hợp lệ');
