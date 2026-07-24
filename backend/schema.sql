@@ -121,8 +121,9 @@ CREATE TABLE IF NOT EXISTS questions (
   quiz_id INT NOT NULL,
   question_text TEXT NOT NULL,
   options JSONB NOT NULL,
-  correct_answer VARCHAR(50) NOT NULL, -- A, B, C, hoặc D
+  correct_answer TEXT NOT NULL, -- A, B, C, D hoặc câu phát âm / đáp án mẫu
   explanation TEXT,
+  question_type VARCHAR(50) DEFAULT 'multiple_choice',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_question_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE
 );

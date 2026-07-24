@@ -185,7 +185,7 @@ export const createQuiz = async (quizData) => {
 
 export const generateQuizAi = async (payload) => {
   try {
-    const response = await apiClient.post('/quizzes/generate-ai', payload);
+    const response = await apiClient.post('/quizzes/generate-ai', payload, { timeout: 90000 });
     return response.data;
   } catch (error) {
     console.error("⚠️ Lỗi sinh câu hỏi bằng AI:", error.message);

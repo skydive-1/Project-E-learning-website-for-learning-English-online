@@ -59,6 +59,14 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột nickname:', migErr.message);
     }
 
+    try {
+      await client.query("ALTER TABLE questions ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) DEFAULT 'multiple_choice';");
+      await client.query("ALTER TABLE questions ALTER COLUMN correct_answer TYPE TEXT;");
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột question_type tồn tại và correct_answer có kiểu TEXT trong bảng questions');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột questions:', migErr.message);
+    }
+
     // Tự động đồng bộ cấu trúc: Đảm bảo bảng user_token_limits tồn tại để tránh lỗi Token Limit
     try {
       await client.query(`

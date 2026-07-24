@@ -241,14 +241,19 @@ Trình bày thân thiện, tự nhiên bằng tiếng Việt.`;
             INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type)
             VALUES ($1, $2, $3::jsonb, $4, $5, $6)
           `;
-          const opts = Array.isArray(q.options) ? q.options : [];
+          const qText = q.question_text || q.questionText || q.question || '';
+          const qCorr = q.correct_answer || q.correctAnswer || q.answer || 'A';
+          const qExpl = q.explanation || '';
+          const qType = q.question_type || q.questionType || 'multiple_choice';
+          const opts = Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? [q.options] : []);
+
           await db.query(insertQuestionQuery, [
             quizId,
-            q.questionText,
+            qText,
             JSON.stringify(opts),
-            q.correctAnswer || '',
-            q.explanation || '',
-            q.questionType || 'multiple_choice'
+            qCorr,
+            qExpl,
+            qType
           ]);
         }
       }
