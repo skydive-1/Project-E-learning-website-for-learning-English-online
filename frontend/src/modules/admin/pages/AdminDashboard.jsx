@@ -15,7 +15,8 @@ import {
   FiArrowDown,
   FiBookOpen,
   FiAlertTriangle,
-  FiRefreshCw
+  FiRefreshCw,
+  FiShield
 } from 'react-icons/fi';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
@@ -164,20 +165,13 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleRoleChange = async (userId, currentRole) => {
-    // 1: Admin, 2: Instructor, 3: Student
-    // Thay đổi nhanh:
-    // Nếu là Học sinh (3) -> Nâng lên Giảng viên (2)
-    // Nếu là Giảng viên (2) -> Hạ xuống Học sinh (3)
-    const newRole = currentRole === 3 ? 2 : 3;
-    const actionText = currentRole === 3 ? 'nâng quyền lên Giảng viên' : 'hạ quyền xuống Học sinh';
-    
-    if (!window.confirm(`Bạn có chắc chắn muốn ${actionText} cho người dùng này?`)) {
+  const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn chuyển vai trò người dùng này thành "${targetRoleName}"?`)) {
       return;
     }
 
     try {
-      const response = await apiClient.put(`/admin/users/${userId}/role`, { roleId: newRole });
+      const response = await apiClient.put(`/admin/users/${userId}/role`, { roleId: targetRoleId });
       if (response.data && response.data.success) {
         alert('Cập nhật vai trò người dùng thành công!');
         fetchUsers();
@@ -438,6 +432,7 @@ const AdminDashboard = () => {
   // Lọc users hiển thị
   const filteredUsers = users.filter(user => {
     if (filterRole === 'all') return true;
+    if (filterRole === 'admin') return user.role_id === 1;
     if (filterRole === 'instructor') return user.role_id === 2;
     if (filterRole === 'student') return user.role_id === 3;
     return true;
@@ -492,6 +487,12 @@ const AdminDashboard = () => {
                     onClick={() => setFilterRole('all')}
                   >
                     Tất cả ({users.length})
+                  </button>
+                  <button 
+                    className={`filter-btn ${filterRole === 'admin' ? 'active' : ''}`}
+                    onClick={() => setFilterRole('admin')}
+                  >
+                    Admin ({users.filter(u => u.role_id === 1).length})
                   </button>
                   <button 
                     className={`filter-btn ${filterRole === 'instructor' ? 'active' : ''}`}
@@ -572,13 +573,38 @@ const AdminDashboard = () => {
                             <div className="action-buttons">
                               {((user.role_id !== 1 || isSuperAdmin) && user.user_id !== currentUser?.userId) ? (
                                 <>
-                                  <button 
-                                    className={`btn-action ${user.role_id === 3 ? 'btn-promote' : 'btn-demote'}`}
-                                    onClick={() => handleRoleChange(user.user_id, user.role_id)}
-                                    title={user.role_id === 3 ? 'Nâng lên Giảng viên' : 'Hạ xuống Học sinh'}
-                                  >
-                                    {user.role_id === 3 ? <FiArrowUp /> : <FiArrowDown />}
-                                  </button>
+                                  {/* Nâng lên Admin (chỉ hiển thị cho Super Admin khi user chưa phải Admin) */}
+                                  {isSuperAdmin && user.role_id !== 1 && (
+                                    <button 
+                                      className="btn-action btn-promote-admin"
+                                      onClick={() => handleRoleChange(user.user_id, 1, 'Admin')}
+                                      title="Nâng lên quyền Admin"
+                                    >
+                                      <FiShield />
+                                    </button>
+                                  )}
+
+                                  {/* Nâng lên Giảng viên (nếu đang là Học sinh) */}
+                                  {user.role_id === 3 && (
+                                    <button 
+                                      className="btn-action btn-promote"
+                                      onClick={() => handleRoleChange(user.user_id, 2, 'Giảng viên')}
+                                      title="Nâng thành Giảng viên"
+                                    >
+                                      <FiArrowUp />
+                                    </button>
+                                  )}
+
+                                  {/* Hạ xuống Học sinh (nếu đang là Giảng viên hoặc Admin) */}
+                                  {user.role_id !== 3 && (
+                                    <button 
+                                      className="btn-action btn-demote"
+                                      onClick={() => handleRoleChange(user.user_id, 3, 'Học sinh')}
+                                      title="Hạ xuống Học sinh"
+                                    >
+                                      <FiArrowDown />
+                                    </button>
+                                  )}
                                   <button 
                                     className="btn-action btn-reset"
                                     onClick={() => handleResetUserToken(user.user_id, user.username)}

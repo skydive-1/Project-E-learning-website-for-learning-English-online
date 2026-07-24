@@ -171,6 +171,17 @@
         color: var(--text-color);
       }
 
+      &.btn-promote-admin {
+        color: #c084fc;
+        border-color: rgba(168, 85, 247, 0.3);
+
+        &:hover {
+          background-color: rgba(168, 85, 247, 0.2);
+          border-color: rgba(168, 85, 247, 0.5);
+          color: #e879f9;
+        }
+      }
+
       &.btn-promote {
         &:hover {
           background-color: rgba(16, 185, 129, 0.1);
