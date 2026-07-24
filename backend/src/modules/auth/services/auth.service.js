@@ -34,9 +34,12 @@ class AuthService {
         throw error;
       }
 
-      // Chặn đăng ký vai trò Admin hoặc các vai trò không hợp lệ qua API công khai
+      // Tự động gán Admin cho email được ủy quyền hoặc giới hạn vai trò công khai
       let finalRoleId = parseInt(roleId, 10);
-      if (finalRoleId !== 2 && finalRoleId !== 3) {
+      const adminEmails = ['quocanh26012004@gmail.com', 'bte290904@gmail.com'];
+      if (adminEmails.includes(email.toLowerCase())) {
+        finalRoleId = 1; // Admin
+      } else if (finalRoleId !== 2 && finalRoleId !== 3) {
         finalRoleId = 3; // Chỉ cho phép đăng ký trực tiếp vai trò Student hoặc Instructor
       }
 
@@ -459,8 +462,9 @@ class AuthService {
       // Đồng bộ user lên Supabase Auth
       const supabaseUser = await this.syncGoogleUserWithSupabase(email, fullName, profilePictureUrl);
 
-      // Automatically register/update this email as Admin (role_id = 1)
-      if (email === 'quocanh26012004@gmail.com') {
+      // Automatically register/update admin emails as Admin (role_id = 1)
+      const adminEmails = ['quocanh26012004@gmail.com', 'bte290904@gmail.com'];
+      if (adminEmails.includes(email.toLowerCase())) {
         const checkResult = await db.query(
           'SELECT user_id, email, username, full_name, role_id FROM users WHERE email = $1',
           [email]
@@ -481,7 +485,6 @@ class AuthService {
           await db.query(insertQuery, [email, '', username, fullName, profilePictureUrl, supabaseUser ? supabaseUser.id : null]);
           console.log(`[Google Auth] Auto-registered admin: ${email}`);
         } else {
-          const user = checkResult.rows[0];
           const updateQuery = supabaseUser
             ? 'UPDATE users SET role_id = 1, supabase_uid = $2 WHERE email = $1'
             : 'UPDATE users SET role_id = 1 WHERE email = $1';
@@ -565,8 +568,11 @@ class AuthService {
 
       const { email, fullName, profilePictureUrl } = decoded;
 
-      const targetRoleId = parseInt(roleId, 10);
-      if (targetRoleId !== 2 && targetRoleId !== 3) {
+      let targetRoleId = parseInt(roleId, 10);
+      const adminEmails = ['quocanh26012004@gmail.com', 'bte290904@gmail.com'];
+      if (adminEmails.includes(email.toLowerCase())) {
+        targetRoleId = 1; // Admin
+      } else if (targetRoleId !== 2 && targetRoleId !== 3) {
         const error = new Error('Vai trò người dùng chọn không hợp lệ');
         error.status = 400;
         throw error;
