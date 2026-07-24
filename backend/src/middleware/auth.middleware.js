@@ -1,13 +1,14 @@
 /**
- * Auth Middleware - Xác thực JWT Token và Phân quyền
+ * Auth Middleware - Xác thực JWT Token và Phân quyền (Kiểm tra CSDL thực tế)
  */
 
 const jwt = require('jsonwebtoken');
+const db = require('../config/database');
 
 /**
- * Middleware xác thực người dùng đã đăng nhập (kiểm tra JWT)
+ * Middleware xác thực người dùng đã đăng nhập (kiểm tra JWT & CSDL thực tế)
  */
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -29,8 +30,32 @@ const authenticate = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // decoded sẽ chứa: { id, email, username, role }
-    req.user = decoded;
+    // Kiểm tra trực tiếp dữ liệu từ CSDL Postgres để đảm bảo tài khoản còn tồn tại và lấy role mới nhất
+    const userRes = await db.query(
+      'SELECT user_id, email, username, full_name, role_id FROM users WHERE user_id = $1 OR email = $2',
+      [decoded.id || 0, decoded.email || '']
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        error: 'UserDeleted',
+        message: 'Tài khoản này đã bị xóa hoặc không còn tồn tại trên hệ thống. Vui lòng đăng nhập lại.'
+      });
+    }
+
+    const dbUser = userRes.rows[0];
+
+    // Gán thông tin thực tế mới nhất từ CSDL vào req.user (đảm bảo lấy role_id mới nhất từ DB)
+    req.user = {
+      ...decoded,
+      id: dbUser.user_id,
+      email: dbUser.email,
+      username: dbUser.username,
+      fullName: dbUser.full_name,
+      roleId: dbUser.role_id
+    };
+
     next();
   } catch (error) {
     const status = error.status || 401;
@@ -59,7 +84,7 @@ const authorize = (roles = []) => {
     if (roles.length === 0) return next();
 
     // Chuyển role về số để so sánh chính xác
-    const userRole = parseInt(req.user.roleId);
+    const userRole = parseInt(req.user.roleId, 10);
 
     if (!roles.includes(userRole)) {
       return res.status(403).json({
@@ -94,7 +119,6 @@ const authenticateVideoToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // decoded chứa: { id, email, username, roleId } hoặc tương đương
     req.user = decoded;
     next();
   } catch (error) {

@@ -68,21 +68,29 @@ const deleteUser = async (userId) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Lấy thông tin supabase_uid để xóa tài khoản trên Supabase Auth
-    const userRes = await client.query('SELECT supabase_uid FROM users WHERE user_id = $1', [userId]);
+    // 1. Lấy thông tin email & supabase_uid để xóa tài khoản trên Supabase Auth
+    const userRes = await client.query('SELECT email, supabase_uid FROM users WHERE user_id = $1', [userId]);
     if (userRes.rows.length > 0) {
-      const supabaseUid = userRes.rows[0].supabase_uid;
+      const { email: targetEmail, supabase_uid: supabaseUid } = userRes.rows[0];
       if (supabaseUid && supabaseAdmin) {
         try {
           const { error: sbErr } = await supabaseAdmin.auth.admin.deleteUser(supabaseUid);
           if (sbErr) {
-            console.warn(`⚠️ Cảnh báo: Không thể xóa user ${userId} trên Supabase Auth:`, sbErr.message);
+            console.warn(`⚠️ Cảnh báo: Không thể xóa user ${userId} trên Supabase Auth SDK:`, sbErr.message);
           } else {
-            console.log(`✅ Đã xóa user ${userId} trên Supabase Auth`);
+            console.log(`✅ Đã xóa user ${userId} trên Supabase Auth SDK`);
           }
         } catch (sbException) {
-          console.warn(`⚠️ Ngoại lệ khi xóa user trên Supabase Auth:`, sbException.message);
+          console.warn(`⚠️ Ngoại lệ khi xóa user trên Supabase Auth SDK:`, sbException.message);
         }
+      }
+
+      // Xóa triệt để bản ghi trong bảng auth.users của Supabase Cloud nếu có
+      try {
+        await client.query('DELETE FROM auth.users WHERE email = $1', [targetEmail]);
+        console.log(`✅ Đã xóa bản ghi auth.users cho email ${targetEmail}`);
+      } catch (authSqlErr) {
+        // Bỏ qua nếu bảng auth.users không có quyền trực tiếp hoặc đang ở CSDL local
       }
     }
     
