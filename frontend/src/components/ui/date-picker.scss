@@ -1,0 +1,403 @@
+/* Date Picker & Popover SCSS (shadcn/ui style) */
+
+.popover-container {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.popover-trigger {
+  width: 100%;
+  cursor: pointer;
+}
+
+.popover-content {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1000;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  padding: 16px;
+  color: #f8fafc;
+  animation: popoverFadeIn 0.15s ease-out;
+  min-width: 310px;
+}
+
+.popover-content.align-end {
+  left: auto;
+  right: 0;
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* DayPicker Calendar Styling */
+.calendar-wrapper {
+  user-select: none;
+  font-family: inherit;
+
+  .rdp-root {
+    --rdp-cell-size: 38px;
+    --rdp-accent-color: #3b82f6;
+    --rdp-background-color: rgba(59, 130, 246, 0.2);
+    margin: 0;
+  }
+
+  .rdp-months {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .rdp-month {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Header / Month Caption & Navigation */
+  .rdp-month_caption, .rdp-caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+
+  .rdp-caption_label {
+    display: none !important;
+  }
+
+  .rdp-dropdowns {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .rdp-dropdown_root {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .rdp-dropdown,
+  select.rdp-dropdown_month,
+  select.rdp-dropdown_year,
+  .rdp-dropdown select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 22px 4px 10px;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 12px;
+    transition: all 0.12s ease;
+
+    &:hover {
+      border-color: #475569;
+      background-color: #334155;
+    }
+
+    &:focus {
+      outline: 2px solid #3b82f6;
+      border-color: #3b82f6;
+    }
+
+    option {
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+  }
+
+  .rdp-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .rdp-button_previous,
+  .rdp-button_next,
+  .rdp-nav_button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: #334155;
+      color: #ffffff;
+      border-color: #475569;
+    }
+
+    &:focus-visible {
+      outline: 2px solid #3b82f6;
+      outline-offset: 1px;
+    }
+
+    svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+  }
+
+  /* Grid & Weekday Headers */
+  .rdp-month_grid, .rdp-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .rdp-weekdays, .rdp-head_row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .rdp-weekday, .rdp-head_cell {
+    width: 38px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    padding: 4px 0;
+    text-transform: capitalize;
+  }
+
+  .rdp-weeks, .rdp-tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .rdp-week, .rdp-row {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  /* Day Button Cells */
+  .rdp-day, .rdp-cell {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .rdp-day_button, .rdp-button {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
+    margin: auto;
+
+    &:hover:not([disabled]) {
+      background: #334155;
+      color: #ffffff;
+    }
+
+    &:focus-visible {
+      outline: 2px solid #60a5fa;
+      outline-offset: 1px;
+      z-index: 2;
+    }
+  }
+
+  /* Outside & Disabled Days */
+  .rdp-outside .rdp-day_button,
+  .rdp-day_outside .rdp-day_button {
+    color: #475569;
+    opacity: 0.5;
+  }
+
+  .rdp-disabled .rdp-day_button,
+  .rdp-day_disabled .rdp-day_button {
+    color: #334155;
+    cursor: not-allowed;
+    opacity: 0.3;
+
+    &:hover {
+      background: transparent;
+      color: #334155;
+    }
+  }
+
+  /* Today */
+  .rdp-today .rdp-day_button,
+  .rdp-day_today .rdp-day_button {
+    font-weight: 700;
+    color: #60a5fa;
+
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: 3px;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background-color: #60a5fa;
+    }
+  }
+
+  /* Range Modifiers */
+  .rdp-range_start,
+  .rdp-day_range_start,
+  .range_start {
+    .rdp-day_button, .rdp-button {
+      background-color: #3b82f6 !important;
+      color: #ffffff !important;
+      font-weight: 700;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+    }
+  }
+
+  .rdp-range_end,
+  .rdp-day_range_end,
+  .range_end {
+    .rdp-day_button, .rdp-button {
+      background-color: #3b82f6 !important;
+      color: #ffffff !important;
+      font-weight: 700;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+    }
+  }
+
+  .rdp-range_middle,
+  .rdp-day_range_middle,
+  .range_middle {
+    background-color: rgba(59, 130, 246, 0.18) !important;
+    
+    .rdp-day_button, .rdp-button {
+      background-color: transparent;
+      color: #93c5fd;
+      border-radius: 0;
+      font-weight: 500;
+
+      &:hover {
+        background-color: rgba(59, 130, 246, 0.35);
+        color: #ffffff;
+      }
+    }
+  }
+
+  .rdp-selected:not(.rdp-range_start):not(.rdp-range_end):not(.rdp-range_middle) {
+    .rdp-day_button, .rdp-button {
+      background-color: #3b82f6 !important;
+      color: #ffffff !important;
+      font-weight: 600;
+      border-radius: 8px;
+    }
+  }
+}
+
+/* Preset Action Bar in Calendar Footer */
+.calendar-preset-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+
+  .preset-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+
+    &:hover {
+      background: #334155;
+      color: #ffffff;
+    }
+  }
+}
+
+/* Date Field Trigger Button / Box */
+.date-picker-trigger-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #334155);
+  background-color: var(--input-bg, #0f172a);
+  color: var(--text-color, #f8fafc);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: #475569;
+    background-color: #1e293b;
+  }
+
+  &.is-open {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+    background-color: #1e293b;
+  }
+
+  .date-value {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  .date-placeholder {
+    color: #64748b;
+  }
+
+  .calendar-icon {
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+  }
+}

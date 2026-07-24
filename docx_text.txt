@@ -1,124 +1,34 @@
-📝
- TÀI LIỆU PHÂN CHIA NHIỆM VỤ VÀ HƯỚNG DẪN KỸ THUẬT - SPRINT 7
-Dự án:
- Website Học Tiếng Anh Trực Tuyến Tích Hợp Trợ Lý AI 
-Thời gian thực hiện:
- Từ 20/07/2026 đến 24/07/2026
-Trạng thái hệ thống:
- Bảo mật video và ví Token đã chạy mượt ở FE/BE nhưng đang bị nghẽn ở lớp Database. Sprint này tập trung giải quyết triệt để "nợ database", đồng bộ hóa môi trường ảo hóa Docker và hiện thực hóa tính năng Quizzes sáng tạo. 
-🤝
- QUY CHUẨN ĐỒNG BỘ MỚI (DOCKER & DATABASE COMPATIBILITY)
-Để đảm bảo môi trường chạy thử của cả 3 thành viên không bị lỗi lệch cấu trúc bảng, Chương bắt buộc phải cập nhật file script di chuyển dữ liệu 
-migrate_supabase_to_docker.js
- ngay khi thay đổi cấu trúc DB. Mọi thay đổi schema trên Supabase trực tuyến phải được đồng bộ hóa tức thời về Docker container cục bộ của nhóm. 
-📱
- PHẦN 1: CHI TIẾT NHIỆM VỤ CỦA QUỐC ANH (FRONTEND & AI)
-📌
- Hiện trạng:
-Đã hoàn thành:
- Chặn F12/chuột phải, dừng video khi chuyển tab, thiết kế thành công ví Token AI thời gian thực. 
-Mục tiêu tuần này:
- Kết nối hoàn chỉnh tính năng Quizzes sáng tạo (Writing & Pronunciation) với API chấm điểm thực tế bằng AI. 
-🎯
- Các công việc cần làm và hướng dẫn chi tiết:
-[TASK-FE-QUIZ-01] Ráp nối UI Quizzes sáng tạo (Writing & Pronunciation) với API thật 
-Hướng dẫn thực hiện:
-Kích hoạt giao diện gõ đoạn văn tự luận (Writing) và thu âm đọc câu (Pronunciation) đã dựng từ tuần trước. 
-Khi học viên làm bài viết, thu thập chuỗi text; khi học viên làm bài phát âm, dùng Web Audio API xuất file ghi âm 
-.mp3
- hoặc 
-.wav
-. 
-Ráp nối, gọi API của Liêm để gửi dữ liệu bài làm lên hệ thống, sau đó hiển thị bảng đánh giá chi tiết (Điểm số, lỗi sai ngữ pháp, lỗi phát âm và câu sửa mẫu) do AI trả về trực quan trên giao diện. 
-[TASK-FE-UAT-01] Kiểm thử trải nghiệm người dùng (UAT) trên các thiết bị
-Hướng dẫn thực hiện:
- Phối hợp cùng Liêm kiểm tra lại toàn bộ luồng bảo mật video (chặn tải lậu, dừng video khi chuyển tab) trên các trình duyệt khác nhau (Chrome, Safari, Edge). Đảm bảo ví Token AI trừ mượt mà và hiển thị chính xác theo thời gian thực sau mỗi tin nhắn. 
-🔧
- PHẦN 2: CHI TIẾT NHIỆM VỤ CỦA LIÊM (BACKEND)
-📌
- Hiện trạng:
-Đã hoàn thành:
- Viết xong Signed URL bảo mật video, Middleware kiểm soát và đếm Token AI theo 3 Role. 
-Mục tiêu tuần này:
- Phối hợp cùng Chương đồng bộ database thật, viết API chấm điểm Quizzes sáng tạo bằng AI. 
-🛠
-️ Các công việc cần làm và hướng dẫn chi tiết:
-[TASK-BE-QUIZ-01] Viết API nhận diện âm thanh và chấm điểm tự luận bằng AI 
-Hướng dẫn thực hiện:
-Viết endpoint 
-POST /api/quizzes/submit-writing
- để tiếp nhận bài luận của học viên. Thiết kế Prompt thông minh gửi sang Gemini API để chấm điểm và phát hiện lỗi ngữ pháp. 
-Viết endpoint 
-POST /api/quizzes/submit-audio
- tiếp nhận file ghi âm. Sử dụng Gemini SDK để nhận diện giọng nói từ file audio, đối chiếu với câu mẫu ban đầu để chấm điểm phát âm và trả về nhận xét chi tiết. 
-[TASK-BE-DB-01] Thay thế bảng tạm Token sang bảng DB chính thức 
-Hướng dẫn thực hiện:
- Sau khi Chương tạo xong bảng 
-user_token_limits
- chính thức trên Supabase, Liêm thực hiện bóc tách toàn bộ mã nguồn đang sử dụng bảng tạm 
-user_token_usage
- cũ và chuyển sang truy vấn, cập nhật trực tiếp trên bảng chính thức này. 
-🗄
-️ PHẦN 3: CHI TIẾT NHIỆM VỤ CỦA CHƯƠNG (DATABASE) - 
-🚨
- NHIỆM VỤ KHẨN CẤP
-📌
- Hiện trạng:
-Chưa hoàn thành tuần 6:
- Chưa tạo bảng hạn mức Token chính thức và chưa cập nhật bảng Questions phục vụ Quizzes sáng tạo. 
-Mục tiêu tuần này:
- Giải quyết triệt để nợ kỹ thuật Database, đồng bộ hóa hệ thống dữ liệu thô về Docker. 
-🎯
- Các công việc cần làm và hướng dẫn chi tiết:
-[TASK-DB-AI-01] Khởi tạo bảng 
-user_token_limits
- và Trigger tự động reset 
-Hướng dẫn thực hiện:
-Chạy câu lệnh tạo bảng chính thức 
-user_token_limits
- trên Supabase bao gồm các trường: 
-id
- (PK), 
-user_id
- (FK), 
-role
- (VARCHAR), 
-tokens_used
- (INT), 
-max_limit
- (INT), và 
-last_reset_date
- (TIMESTAMP). 
-Thiết lập một Trigger hoặc kích hoạt dịch vụ Cron Job (pg_cron) trên Supabase để tự động đặt giá trị 
-tokens_used
- về lại 
-0
- vào lúc 00:00 mỗi ngày. 
-[TASK-DB-QUIZ-01] Tái cấu trúc bảng 
-questions
- trên Supabase 
-Hướng dẫn thực hiện:
-Thực thi mã SQL: 
-ALTER TABLE questions ADD COLUMN question_type VARCHAR(50) DEFAULT 'multiple_choice';
- để phân loại câu hỏi (Trắc nghiệm, Viết, Phát âm). 
-Thực thi mã SQL thay đổi kiểu dữ liệu cột câu trả lời: 
-ALTER TABLE questions ALTER COLUMN correct_answer TYPE TEXT;
- để lưu trữ thoải mái các đoạn prompt mẫu, bài viết mẫu của câu hỏi tự luận thay vì bị giới hạn 50 ký tự như cũ. 
-Tiến hành chèn thêm dữ liệu mẫu (Seed data) cho ít nhất 5 câu hỏi tự luận và phát âm vào database. 
-[TASK-DB-DOC-01] Đồng bộ hóa dữ liệu từ Supabase về Docker cục bộ 
-Hướng dẫn thực hiện:
- Chỉnh sửa lại tệp script 
-migrate_supabase_to_docker.js
-. Đảm bảo tệp này quét và kéo đầy đủ cấu trúc bảng mới tạo (
-user_token_limits
-) cũng như schema cột mới của 
-questions
- từ Supabase về container Docker cục bộ của nhóm. Chạy thử nghiệm đồng bộ để chắc chắn môi trường của 3 thành viên khớp nhau hoàn toàn. 
-📊
- TIÊU CHUẨN NGHIỆM THU CUỐI SPRINT 7 (HẠN CHÓT: 24/07/2026)
-Lớp Database sạch sẽ & Đồng bộ:
- Bảng hạn mức Token chính thức vận hành hoàn hảo với cơ chế reset tự động; database Docker cục bộ đồng bộ khớp 100% với Supabase trực tuyến. 
-AI Quizzes sáng tạo chạy thực tế:
- Học viên viết luận hoặc đọc phát âm được AI tiếp nhận, chấm điểm chính xác và trả về lỗi sai chi tiết hiển thị trực quan trên giao diện. 
-Hệ thống mượt mà, bảo mật:
- Toàn bộ luồng bảo mật video và kiểm soát token hoạt động ổn định trên môi trường kiểm thử (UAT). 
+BIWEEKLY PROGRESS REPORT
+Reporting Period: Sprint 7 (Weeks 7 & 8) 
+From: 20/07/2026 to 24/07/2026
+Student Name:	Nguyen Quoc Anh
+Student ID:	20110001	Major:	Software Engineering
+Class:	20DTH1A	Intake:	2022 - 2026
+Supervisor:	MSc. Nguyen Van A
+Thesis Title: (If changed, briefly explain why)	Online English Learning Website Integrated with AI Assistant
+	
+	
+Progress to Date: (Present the research work you have undertaken since your last progress report, describe the results obtained as well as the relevance of these undertakings for your project. Link your work and results to the feedback and steps you had agreed on in your last conversation. Also describe your “negative results”: if something went wrong, what could you learn from this? How did this change the direction of your project?)
+Research Activities Undertaken:	Researched and implemented the Web Audio API to handle real-time voice recording directly on the browser; designed user interfaces (UI/UX) for Creative Quizzes (Writing & Pronunciation) and established the rendering flow for detailed feedback provided by Gemini AI.
+Results Obtained:	Successfully built the frontend interfaces for Essay Writing and Pronunciation reading quizzes; integrated Web Audio API to export audio recordings (.wav/.mp3) and transmit data to backend APIs; connected UI components to visually display AI evaluation metrics (scores, grammar flaw analysis, pronunciation feedback, and model sentences); collaborated on UAT testing for video security (blocking F12/right-click, pausing videos upon tab switching) and real-time AI token wallet synchronization.
+Relevance to Project:	Ensures a seamless and highly interactive AI-assisted learning experience on the Frontend, boosting student engagement while safeguarding video assets and accurately managing student token limits.
+Feedback Incorporation:	Incorporated UI design feedback to refine the AI evaluation result panel for better readability; added interactive skeleton loading states while awaiting AI responses; optimized Web Audio API cross-browser compatibility, specifically for Safari.
+Learning from Negative Results:	Addressed high audio file sizes causing API transmission latency by pre-compressing audio buffers prior to uploading; smoothed out user microphone permission prompt flows on mobile web browsers.
+Significant Changes from the Research Proposal of the Thesis Plan (Describe shortly if there have been significant changes from the original project plan and explain why)
+Description of Changes:	No major changes from the original thesis proposal.
+(Check here if No Change: ☑)
+Potential next steps: (Describe which next steps you plan to do in your research work)
+Planned Activities:	Optimize frontend rendering performance across all modules; collaborate with team members to conduct comprehensive system UAT testing; prepare thesis documentation, slides, and demonstration materials for final defense.
+Expected Challenges and Solutions:	Potential API response latency from the AI assistant during peak usage hours -> Solution: Add responsive loading indicators on the UI and temporarily cache evaluation results.
+Tentative Timeline/Milestones:	Complete UAT testing prior to July 24, 2026; package the application and finalize the thesis documentation.
+Other Comments/Pertinent Information: (Include any personal challenges, resource needs, etc.)
+	Frontend tasks for Sprint 7 have been completed on schedule and are fully ready for UAT testing and final thesis defense.
+	
+	
+Ho Chi Minh City, July 23, 2026
+General Instructions
+Read through the entire form before filling it out.
+Ensure all sections are completed accurately.
+Contact your supervisor if you have any questions.
+NGUYEN TAT THANH UNIVERSITY NTT INSTITUTE  OF INTERNATIONAL EDUCATION  | SOCIALIST  REPUBLIC OF VIETNAM Independence – Freedom – Happiness 
+Student (Name & signature) | Supervisor (Name & signature)
