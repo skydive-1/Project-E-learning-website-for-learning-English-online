@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const instructorController = require('./controllers/instructor.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const { aiLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Áp dụng bảo mật cho toàn bộ các route trong module này
 router.use(authenticate);
@@ -18,7 +19,7 @@ router.get('/students', instructorController.getStudents);
 router.get('/performance', instructorController.getPerformance);
 
 // POST /api/instructor/generate-quiz - Sinh câu hỏi trắc nghiệm bằng AI (Gemini)
-router.post('/generate-quiz', instructorController.generateQuiz);
+router.post('/generate-quiz', aiLimiter, instructorController.generateQuiz);
 
 /**
  * @swagger

@@ -3,6 +3,7 @@ const router = express.Router();
 const quizzesController = require('./controllers/quizzes.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
+const { quizLimiter, aiLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Route: GET /api/quizzes/:quizId/leaderboard
 router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
@@ -11,19 +12,19 @@ router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
 router.get('/:courseId', quizzesController.getQuizzes);
 
 // Route: POST /api/quizzes/submit (Yêu cầu đăng nhập)
-router.post('/submit', authenticate, quizzesController.submitQuiz);
+router.post('/submit', authenticate, quizLimiter, quizzesController.submitQuiz);
 
 // Route: POST /api/quizzes/submit-writing
-router.post('/submit-writing', authenticate, quizzesController.submitWriting);
+router.post('/submit-writing', authenticate, aiLimiter, quizzesController.submitWriting);
 
 // Route: POST /api/quizzes/submit-audio
-router.post('/submit-audio', authenticate, upload.single('audio'), quizzesController.submitAudio);
+router.post('/submit-audio', authenticate, aiLimiter, upload.single('audio'), quizzesController.submitAudio);
 
 // Route: POST /api/quizzes - Tạo đề thi tự luyện mới (Chỉ dành cho Giảng viên / Admin)
-router.post('/', authenticate, authorize([1, 2]), quizzesController.createQuiz);
+router.post('/', authenticate, authorize([1, 2]), quizLimiter, quizzesController.createQuiz);
 
 // Route: POST /api/quizzes/generate-ai - Sinh câu hỏi bằng AI (Chỉ dành riêng cho Admin)
-router.post('/generate-ai', authenticate, authorize([1]), quizzesController.generateQuizAi);
+router.post('/generate-ai', authenticate, authorize([1]), aiLimiter, quizzesController.generateQuizAi);
 
 /**
  * @swagger

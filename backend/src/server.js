@@ -42,18 +42,26 @@ const loggerMiddleware = require('./middleware/logger.middleware');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Tin tưởng proxy để lấy IP thật của client qua headers (Render, Heroku, Nginx, Cloudflare...)
+app.set('trust proxy', 1);
+
 // ===== 4. GLOBAL MIDDLEWARE =====
+// Import rate limiters
+const { globalLimiter } = require('./middleware/rateLimit.middleware');
+
 app.use(cors({
   origin: (origin, callback) => {
     // Trong phát triển (development), phản hồi động origin của client để tiện test qua WSL / IP mạng nội bộ
     if (!origin || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
-      const allowed = process.env.FRONTEND_URL || 'http://localhost:3000';
-      if (origin === allowed) {
+      const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+        .split(',')
+        .map(url => url.trim());
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error('Blocked by CORS'));
+        callback(new Error('Blocked by CORS: Origin not allowed'));
       }
     }
   },
@@ -77,6 +85,9 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logging middleware
 app.use(loggerMiddleware);
+
+// Áp dụng Rate Limit chung cho tất cả các API endpoints
+app.use('/api', globalLimiter);
 
 // ===== 5. MOUNT MODULES (ROUTES) =====
 // Cấu trúc: /api/<module-name>
