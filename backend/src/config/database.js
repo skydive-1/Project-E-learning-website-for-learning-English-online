@@ -7,8 +7,11 @@ const { Pool } = require('pg');
 
 const DEFAULT_DB_URL = 'postgresql://postgres.tdiqliihqdlpcelacypc:Chuongdeptraivodichvutru@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres';
 
-const rawDbUrl = process.env.DATABASE_URL || (process.env.DB_HOST ? null : DEFAULT_DB_URL);
-const dbConnectionString = rawDbUrl ? rawDbUrl.replace(/southeast-2\.pooler\.southeast-2\.pooler/g, 'southeast-2.pooler') : null;
+let rawDbUrl = process.env.DATABASE_URL || (process.env.DB_HOST ? null : DEFAULT_DB_URL);
+if (rawDbUrl && rawDbUrl.includes('southeast-2.pooler')) {
+  rawDbUrl = rawDbUrl.replace(/(southeast-2\.pooler\.)+/g, 'southeast-2.pooler.');
+}
+const dbConnectionString = rawDbUrl;
 
 const isRemoteDb = Boolean(
   dbConnectionString || 
