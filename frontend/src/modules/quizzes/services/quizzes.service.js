@@ -14,14 +14,26 @@ const mapQuizToFrontend = (quiz) => {
     timeLimit: quiz.time_limit,
     courseId: quiz.course_id,
     lessonId: quiz.lesson_id,
-    questions: (quiz.questions || []).map(q => ({
-      id: String(q.question_id),
-      question: q.question_text,
-      options: q.options,
-      correctAnswer: q.correct_answer,
-      explanation: q.explanation,
-      questionType: q.question_type || 'multiple_choice'
-    }))
+    questions: (quiz.questions || []).map(q => {
+      let parsedOptions = [];
+      if (Array.isArray(q.options)) {
+        parsedOptions = q.options;
+      } else if (typeof q.options === 'string') {
+        try {
+          parsedOptions = JSON.parse(q.options);
+        } catch (e) {
+          parsedOptions = [];
+        }
+      }
+      return {
+        id: String(q.question_id),
+        question: q.question_text,
+        options: Array.isArray(parsedOptions) ? parsedOptions : [],
+        correctAnswer: q.correct_answer || '',
+        explanation: q.explanation || '',
+        questionType: q.question_type || 'multiple_choice'
+      };
+    })
   };
 };
 

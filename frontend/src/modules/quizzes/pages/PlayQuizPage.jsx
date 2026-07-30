@@ -182,16 +182,16 @@ const PlayQuizPage = () => {
     );
   }
 
-  if (!quiz) {
+  if (!quiz || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 p-6 text-center">
-        <h2 className="text-xl font-bold text-slate-800">Không tìm thấy bộ trắc nghiệm!</h2>
-        <button onClick={() => navigate('/quizzes')} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg">Quay lại</button>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-900 p-6 text-center">
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Bộ trắc nghiệm không tìm thấy hoặc chưa có câu hỏi!</h2>
+        <button onClick={() => navigate('/quizzes')} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold">Quay lại danh sách</button>
       </div>
     );
   }
 
-  const currentQuestion = quiz.questions[currentIdx];
+  const currentQuestion = quiz.questions[currentIdx] || {};
 
   const handleStartGame = (e) => {
     e.preventDefault();
@@ -517,7 +517,7 @@ const PlayQuizPage = () => {
             {/* Choices Grid (E-Learn Elegant Colors) - For Multiple Choice */}
             {(!currentQuestion.questionType || currentQuestion.questionType === 'multiple_choice') && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-slate-100 dark:border-slate-700">
-                {currentQuestion.options.map((opt, oIdx) => {
+                {(currentQuestion.options || []).map((opt, oIdx) => {
                   const optKey = String.fromCharCode(65 + oIdx);
                   const shapeInfo = shapes[optKey];
                   return (
