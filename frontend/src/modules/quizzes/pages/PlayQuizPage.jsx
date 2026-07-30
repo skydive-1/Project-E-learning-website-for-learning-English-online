@@ -472,195 +472,230 @@ const PlayQuizPage = () => {
             )}
         {gameState === 'playing' && (
           <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
-            {/* Top Stats Panel */}
-            <div className="flex justify-between items-center w-full pb-4 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-xs font-bold text-slate-400 dark:text-slate-505 uppercase tracking-widest">
-                Câu {currentIdx + 1} / {quiz.questions.length}
-              </span>
-              <div className="text-xs font-extrabold text-slate-505 dark:text-slate-350 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 px-3 py-1 rounded-lg">
-                Tổng điểm: <span className="text-smart-indigo dark:text-indigo-400 font-black">{score}</span>
-              </div>
-            </div>
+            {(() => {
+                const effectiveQuestionType = (currentQuestion.questionType === 'writing' || currentQuestion.questionType === 'pronunciation') 
+                  ? currentQuestion.questionType 
+                  : (!currentQuestion.options || currentQuestion.options.length === 0) 
+                    ? 'pronunciation' 
+                    : 'multiple_choice';
 
-            {/* Question Text */}
-            <div className="text-center py-6">
-              <span className="px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 inline-block">
-                {currentQuestion.questionType === 'writing' ? '📝 Viết luận' : currentQuestion.questionType === 'pronunciation' ? '🗣️ Phát âm' : '▲ Trắc nghiệm'}
-              </span>
-              <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 leading-snug">
-                {currentQuestion.question}
-              </h2>
-            </div>
-
-            {/* Elegant Circular Timer or AI badge */}
-            {!(currentQuestion.questionType === 'writing' || currentQuestion.questionType === 'pronunciation') ? (
-              <div className="flex justify-center items-center my-4">
-                <div 
-                  style={{
-                    borderColor: timeLeft <= 5 ? '#ef4444' : timeLeft <= 10 ? '#f59e0b' : '#6366f1'
-                  }}
-                  className="w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-black shadow-sm transition-all duration-300 bg-slate-50 dark:bg-slate-900 dark:border-slate-850"
-                >
-                  <span style={{ color: timeLeft <= 5 ? '#ef4444' : timeLeft <= 10 ? '#f59e0b' : '#6366f1' }}>
-                    {timeLeft}s
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-center items-center my-4">
-                <div className="px-4 py-2 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-150 dark:border-indigo-900/50 text-xs font-black text-smart-indigo dark:text-indigo-400 tracking-wider flex items-center gap-1.5 shadow-sm animate-pulse">
-                  <span>✨ Trợ lý AI đang sẵn sàng chấm điểm...</span>
-                </div>
-              </div>
-            )}
-
-            {/* Choices Grid (E-Learn Elegant Colors) - For Multiple Choice */}
-            {(!currentQuestion.questionType || currentQuestion.questionType === 'multiple_choice') && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-slate-100 dark:border-slate-700">
-                {(currentQuestion.options || []).map((opt, oIdx) => {
-                  const optKey = String.fromCharCode(65 + oIdx);
-                  const shapeInfo = shapes[optKey];
-                  return (
-                    <button
-                      key={oIdx}
-                      onClick={() => handleAnswerClick(optKey)}
-                      style={{ borderColor: shapeInfo.color }}
-                      className={`border-2 ${shapeInfo.hoverBg} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[68px] group`}
-                    >
-                      <span 
-                        style={{ backgroundColor: shapeInfo.color }}
-                        className="w-8 h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-sm group-hover:scale-105 transition-transform"
-                      >
-                        {shapeInfo.char}
+                return (
+                  <>
+                    {/* Top Stats Panel */}
+                    <div className="flex justify-between items-center w-full pb-4 border-b border-slate-100 dark:border-slate-700">
+                      <span className="text-xs font-bold text-slate-400 dark:text-slate-505 uppercase tracking-widest">
+                        Câu {currentIdx + 1} / {quiz.questions.length}
                       </span>
-                      <span className="text-slate-700 dark:text-slate-200 font-extrabold">{opt}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Writing Input Area */}
-            {currentQuestion.questionType === 'writing' && (
-              <div className="flex flex-col flex-1 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                    Nhập câu trả lời tự luận của bạn (tối đa 500 ký tự):
-                  </label>
-                  <textarea
-                    value={writingAnswer}
-                    onChange={(e) => setWritingAnswer(e.target.value.slice(0, 500))}
-                    disabled={aiLoading}
-                    placeholder="Viết câu trả lời hoặc đoạn văn ngắn của bạn bằng tiếng Anh..."
-                    rows={5}
-                    className="w-full p-4 border border-slate-200 dark:border-slate-750 dark:bg-slate-900 dark:text-slate-100 rounded-xl outline-none focus:border-smart-indigo transition-all font-semibold resize-none shadow-inner"
-                  />
-                  <div className="flex justify-between items-center text-xs font-bold text-slate-455">
-                    <span>Tránh lỗi chính tả và ngữ pháp để đạt điểm cao</span>
-                    <span className={writingAnswer.length >= 480 ? 'text-rose-500 font-extrabold animate-pulse' : ''}>
-                      {writingAnswer.length} / 500 ký tự
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-4 flex justify-end">
-                  <button
-                    onClick={handleWritingSubmit}
-                    disabled={aiLoading || !writingAnswer.trim()}
-                    className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-250 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
-                  >
-                    {aiLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>AI Đang Chấm Điểm...</span>
-                      </>
-                    ) : (
-                      <>
-                        <FiEdit3 className="text-sm" />
-                        <span>Nộp bài & Chấm điểm AI</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Pronunciation Recording Area */}
-            {currentQuestion.questionType === 'pronunciation' && (
-              <div className="flex flex-col flex-1 gap-6 pt-4 border-t border-slate-100 dark:border-slate-700 items-center justify-between">
-                <div className="text-center w-full max-w-lg bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 shadow-inner">
-                  <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-2">
-                    Mẫu câu luyện đọc phát âm:
-                  </span>
-                  <p className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-slate-100 italic">
-                    "{currentQuestion.correctAnswer}"
-                  </p>
-                </div>
-
-                <div className="flex flex-col items-center gap-4 py-4 w-full">
-                  {!isRecording ? (
-                    <button
-                      onClick={handleAudioStart}
-                      disabled={aiLoading}
-                      className="w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border-2 border-smart-indigo dark:border-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-smart-indigo dark:text-indigo-400 flex items-center justify-center text-2xl shadow-md transition-all active:scale-95 cursor-pointer hover:scale-105 duration-300"
-                      title="Bắt đầu ghi âm"
-                    >
-                      <FiMic />
-                    </button>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3">
-                      <button
-                        onClick={handleAudioStop}
-                        className="w-16 h-16 rounded-full bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-500 flex items-center justify-center text-2xl shadow-md transition-all active:scale-95 cursor-pointer hover:scale-105 duration-300 animate-pulse"
-                        title="Dừng ghi âm"
-                      >
-                        <FiSquare />
-                      </button>
-                      <span className="text-xs font-bold text-rose-500 animate-pulse tracking-wide">Đang ghi âm... nói câu mẫu trên</span>
+                      <div className="text-xs font-extrabold text-slate-505 dark:text-slate-350 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 px-3 py-1 rounded-lg">
+                        Tổng điểm: <span className="text-smart-indigo dark:text-indigo-400 font-black">{score}</span>
+                      </div>
                     </div>
-                  )}
 
-                  {audioUrl && !isRecording && (
-                    <div className="flex flex-col items-center gap-2 mt-2 w-full max-w-xs animate-fade">
-                      <span className="text-[10px] font-bold text-slate-455 uppercase tracking-wider">Nghe lại file ghi âm:</span>
-                      <audio src={audioUrl} controls className="w-full h-8 rounded-lg outline-none" />
+                    {/* Question Text */}
+                    <div className="text-center py-6">
+                      <span className="px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 inline-block">
+                        {effectiveQuestionType === 'writing' ? '📝 Viết luận' : effectiveQuestionType === 'pronunciation' ? '🗣️ Bài nói & Phát âm (AI Voice)' : '▲ Trắc nghiệm'}
+                      </span>
+                      <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 leading-snug">
+                        {currentQuestion.question}
+                      </h2>
                     </div>
-                  )}
-                </div>
 
-                <div className="w-full flex justify-end gap-3 mt-auto">
-                  {audioUrl && !isRecording && (
-                    <button
-                      onClick={() => {
-                        setAudioUrl(null);
-                        setAudioBlob(null);
-                      }}
-                      disabled={aiLoading}
-                      className="px-5 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer"
-                    >
-                      Ghi âm lại
-                    </button>
-                  )}
-                  <button
-                    onClick={handleAudioSubmit}
-                    disabled={aiLoading || !audioBlob || isRecording}
-                    className="px-6 py-3 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-250 dark:disabled:bg-slate-750 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
-                  >
-                    {aiLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>AI Đang Chấm Điểm...</span>
-                      </>
+                    {/* Elegant Circular Timer or AI badge */}
+                    {effectiveQuestionType === 'multiple_choice' ? (
+                      <div className="flex justify-center items-center my-4">
+                        <div 
+                          style={{
+                            borderColor: timeLeft <= 5 ? '#ef4444' : timeLeft <= 10 ? '#f59e0b' : '#6366f1'
+                          }}
+                          className="w-20 h-20 rounded-full border-4 flex items-center justify-center text-2xl font-black shadow-sm transition-all duration-300 bg-slate-50 dark:bg-slate-900 dark:border-slate-850"
+                        >
+                          <span style={{ color: timeLeft <= 5 ? '#ef4444' : timeLeft <= 10 ? '#f59e0b' : '#6366f1' }}>
+                            {timeLeft}s
+                          </span>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <FiCheck className="text-sm" />
-                        <span>Nộp bài & Chấm phát âm AI</span>
-                      </>
+                      <div className="flex justify-center items-center my-4">
+                        <div className="px-4 py-2 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-150 dark:border-indigo-900/50 text-xs font-black text-smart-indigo dark:text-indigo-400 tracking-wider flex items-center gap-1.5 shadow-sm animate-pulse">
+                          <span>✨ Trợ lý AI đang sẵn sàng thu âm & chấm điểm bài nói...</span>
+                        </div>
+                      </div>
                     )}
-                  </button>
-                </div>
-              </div>
-            )}
+
+                    {/* Choices Grid (For Multiple Choice) */}
+                    {effectiveQuestionType === 'multiple_choice' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-slate-100 dark:border-slate-700">
+                        {(currentQuestion.options || []).map((opt, oIdx) => {
+                          const optKey = String.fromCharCode(65 + oIdx);
+                          const shapeInfo = shapes[optKey];
+                          return (
+                            <button
+                              key={oIdx}
+                              onClick={() => handleAnswerClick(optKey)}
+                              style={{ borderColor: shapeInfo.color }}
+                              className={`border-2 ${shapeInfo.hoverBg} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[68px] group`}
+                            >
+                              <span 
+                                style={{ backgroundColor: shapeInfo.color }}
+                                className="w-8 h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-sm group-hover:scale-105 transition-transform"
+                              >
+                                {shapeInfo.char}
+                              </span>
+                              <span className="text-slate-700 dark:text-slate-200 font-extrabold">{opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Writing Input Area */}
+                    {effectiveQuestionType === 'writing' && (
+                      <div className="flex flex-col flex-1 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                            Nhập câu trả lời tự luận của bạn (tối đa 500 ký tự):
+                          </label>
+                          <textarea
+                            value={writingAnswer}
+                            onChange={(e) => setWritingAnswer(e.target.value.slice(0, 500))}
+                            disabled={aiLoading}
+                            placeholder="Viết câu trả lời hoặc đoạn văn ngắn của bạn bằng tiếng Anh..."
+                            rows={5}
+                            className="w-full p-4 border border-slate-200 dark:border-slate-750 dark:bg-slate-900 dark:text-slate-100 rounded-xl outline-none focus:border-smart-indigo transition-all font-semibold resize-none shadow-inner"
+                          />
+                          <div className="flex justify-between items-center text-xs font-bold text-slate-455">
+                            <span>Tránh lỗi chính tả và ngữ pháp để đạt điểm cao</span>
+                            <span className={writingAnswer.length >= 480 ? 'text-rose-500 font-extrabold animate-pulse' : ''}>
+                              {writingAnswer.length} / 500 ký tự
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 flex justify-end">
+                          <button
+                            onClick={handleWritingSubmit}
+                            disabled={aiLoading || !writingAnswer.trim()}
+                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-250 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
+                          >
+                            {aiLoading ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>AI Đang Chấm Điểm...</span>
+                              </>
+                            ) : (
+                              <>
+                                <FiEdit3 className="text-sm" />
+                                <span>Nộp bài & Chấm điểm AI</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pronunciation / Speaking Voice Recording Area */}
+                    {effectiveQuestionType === 'pronunciation' && (
+                      <div className="flex flex-col flex-1 gap-6 pt-4 border-t border-slate-100 dark:border-slate-700 items-center justify-between">
+                        <div className="text-center w-full max-w-lg bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 shadow-inner">
+                          <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-2">
+                            {currentQuestion.correctAnswer ? 'Mẫu câu luyện đọc phát âm:' : 'Chủ đề bài nói:'}
+                          </span>
+                          <p className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-slate-100 italic">
+                            "{currentQuestion.correctAnswer || currentQuestion.question}"
+                          </p>
+                        </div>
+
+                        {/* Microphone Status Indicator */}
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black tracking-wide border shadow-sm transition-all duration-300">
+                          {isRecording ? (
+                            <div className="flex items-center gap-2 text-rose-500 bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 px-4 py-1.5 rounded-full animate-pulse">
+                              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                              <span>🔴 MICRO ĐANG BẬT & THU ÂM GIỌNG NÓI...</span>
+                            </div>
+                          ) : audioUrl ? (
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 px-4 py-1.5 rounded-full">
+                              <FiCheck className="text-sm" />
+                              <span>✅ Đã ghi âm thành công (Có thể nghe lại hoặc nộp bài)</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-smart-indigo dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 px-4 py-1.5 rounded-full">
+                              <FiMic className="text-sm" />
+                              <span>🎤 Micro sẵn sàng: Nhấn nút Micro bên dưới để nói</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Big Interactive Microphone Button */}
+                        <div className="flex flex-col items-center gap-4 py-2 w-full">
+                          {!isRecording ? (
+                            <button
+                              onClick={handleAudioStart}
+                              disabled={aiLoading}
+                              className="w-20 h-20 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center text-3xl shadow-lg hover:shadow-indigo-500/50 transition-all active:scale-95 cursor-pointer hover:scale-105 duration-300 group"
+                              title="Nhấp để bật Micro và thu âm giọng nói"
+                            >
+                              <FiMic className="group-hover:scale-110 transition-transform" />
+                            </button>
+                          ) : (
+                            <div className="flex flex-col items-center gap-3">
+                              <button
+                                onClick={handleAudioStop}
+                                className="w-20 h-20 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center text-3xl shadow-lg hover:shadow-rose-500/50 transition-all active:scale-95 cursor-pointer hover:scale-105 duration-300 animate-bounce"
+                                title="Dừng thu âm giọng nói"
+                              >
+                                <FiSquare />
+                              </button>
+                              <span className="text-xs font-extrabold text-rose-500 animate-pulse tracking-wider">
+                                ĐANG THU ÂM... NHẮP NÚT VUÔNG ĐỂ HOÀN TẤT
+                              </span>
+                            </div>
+                          )}
+
+                          {audioUrl && !isRecording && (
+                            <div className="flex flex-col items-center gap-2 mt-2 w-full max-w-xs animate-fade">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">File ghi âm giọng nói của bạn:</span>
+                              <audio src={audioUrl} controls className="w-full h-9 rounded-lg outline-none shadow-sm" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="w-full flex justify-end gap-3 mt-auto">
+                          {audioUrl && !isRecording && (
+                            <button
+                              onClick={() => {
+                                setAudioUrl(null);
+                                setAudioBlob(null);
+                              }}
+                              disabled={aiLoading}
+                              className="px-5 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer"
+                            >
+                              Thu âm lại
+                            </button>
+                          )}
+                          <button
+                            onClick={handleAudioSubmit}
+                            disabled={aiLoading || !audioBlob || isRecording}
+                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-200 dark:disabled:bg-slate-750 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
+                          >
+                            {aiLoading ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>AI Đang Chấm Điểm...</span>
+                              </>
+                            ) : (
+                              <>
+                                <FiCheck className="text-sm" />
+                                <span>Nộp bài & Chấm phát âm AI</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
           </div>
         )}
 
