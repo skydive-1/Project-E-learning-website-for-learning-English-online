@@ -368,6 +368,7 @@ module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
+  clearHistory: (userId) => serviceInstance.clearHistory(userId),
   evaluateAudio: (filePath, mimetype, targetText, isQA) => serviceInstance.evaluateAudio(filePath, mimetype, targetText, isQA),
   getTokenBalance: (userId) => serviceInstance.getTokenBalance(userId),
   handleRagChat

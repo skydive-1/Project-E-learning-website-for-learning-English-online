@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus } from 'react-icons/fi';
+import { FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus, FiX } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { getFreeQuizzesList, createQuiz, generateQuizAi, getQuizByPin } from '../services/quizzes.service';
@@ -345,15 +345,24 @@ const QuizzesListPage = () => {
 
       {/* Create Standalone Quiz Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-slate-200/80 dark:border-slate-700/50 flex flex-col gap-6 text-slate-800 dark:text-slate-100">
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                ✨ Tạo đề thi tự luyện mới
-              </h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mt-1">
-                Biên soạn đề thi trắc nghiệm hoặc viết luận, phát âm tự do (không đính kèm bài giảng).
-              </p>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 sm:p-6 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-slate-200/80 dark:border-slate-700/50 flex flex-col gap-6 text-slate-800 dark:text-slate-100 relative">
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  ✨ Tạo đề thi tự luyện mới
+                </h2>
+                <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mt-1">
+                  Biên soạn đề thi trắc nghiệm hoặc viết luận, phát âm tự do (không đính kèm bài giảng).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-all cursor-pointer"
+              >
+                <FiX className="text-xl" />
+              </button>
             </div>
 
             <form onSubmit={handleCreateQuiz} className="space-y-6">
