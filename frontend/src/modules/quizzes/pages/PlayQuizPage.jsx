@@ -737,119 +737,132 @@ const PlayQuizPage = () => {
         {/* FEEDBACK OVERLAY CARD */}
         {gameState === 'feedback' && (
           <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center text-center space-y-6 animate-fade">
-            
-            {/* Nếu là câu hỏi trắc nghiệm truyền thống */}
-            {(!currentQuestion.questionType || currentQuestion.questionType === 'multiple_choice') && (
-              <>
-                {feedbackType === 'correct' ? (
-                  <div className="space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-500 flex items-center justify-center text-3xl text-emerald-500 mx-auto shadow-sm">
-                      <FiCheck />
+            {(() => {
+              const effectiveQuestionType = getEffectiveQuestionType(currentQuestion);
+              const activeAiFeedback = aiFeedback || {
+                score: 0,
+                feedback: "Hệ thống chưa ghi nhận được bài nói từ Micro của bạn. Bạn chưa mở Micro hoặc chưa phát âm bài trả lời.",
+                errors: ["Học viên chưa bấm Micro để ghi âm bài nói."],
+                suggestedText: currentQuestion.correctAnswer || currentQuestion.question || ''
+              };
+
+              return (
+                <>
+                  {/* Nếu là câu hỏi trắc nghiệm truyền thống */}
+                  {effectiveQuestionType === 'multiple_choice' && (
+                    <>
+                      {feedbackType === 'correct' ? (
+                        <div className="space-y-4">
+                          <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-500 flex items-center justify-center text-3xl text-emerald-500 mx-auto shadow-sm">
+                            <FiCheck />
+                          </div>
+                          <h2 className="text-2xl font-black text-emerald-600">Câu trả lời chính xác!</h2>
+                          <div className="inline-block px-4 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-800 dark:text-emerald-400 text-sm font-extrabold">
+                            +{earnedPoints} Điểm phản xạ
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-950/20 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 mx-auto shadow-sm">
+                            <FiX />
+                          </div>
+                          <h2 className="text-2xl font-black text-red-600">
+                            {feedbackType === 'timeout' ? 'Hết giờ mất rồi!' : 'Câu trả lời chưa đúng!'}
+                          </h2>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 font-bold">
+                            Đáp án chính xác là:{' '}
+                            <span className="bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-750 font-black text-slate-800 dark:text-slate-100 ml-1">
+                              {currentQuestion.options?.find(opt => typeof opt === 'string' && opt.trim().startsWith(currentQuestion.correctAnswer)) || currentQuestion.correctAnswer}
+                            </span>
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Explanation box */}
+                      {currentQuestion.explanation && (
+                        <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-5 text-left border border-slate-100 dark:border-slate-800 max-w-lg w-full text-xs leading-relaxed font-semibold text-slate-600 dark:text-slate-450 shadow-inner">
+                          <span className="font-extrabold text-sm block mb-1.5 text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                            💡 Giải thích ngữ pháp:
+                          </span>
+                          {currentQuestion.explanation}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Nếu là câu hỏi Tự luận (Writing) hoặc Bài nói/Phát âm (Pronunciation) được chấm bởi AI */}
+                  {(effectiveQuestionType === 'writing' || effectiveQuestionType === 'pronunciation') && (
+                    <div className="w-full flex flex-col items-center gap-6">
+                      <div className="flex flex-col items-center">
+                        <span className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase flex items-center gap-1.5">
+                          ✨ Đánh giá chi tiết từ Trợ lý AI
+                        </span>
+                        <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-4">
+                          {effectiveQuestionType === 'writing' ? 'Bài luận của bạn' : 'Bài nói qua Micro của bạn'}
+                        </h2>
+                      </div>
+
+                      {/* Score donut or progress bar for AI */}
+                      <div className="flex flex-col items-center my-2">
+                        <div 
+                          style={{
+                            borderColor: (activeAiFeedback.score || 0) >= 80 ? '#10b981' : (activeAiFeedback.score || 0) >= 50 ? '#f59e0b' : '#ef4444'
+                          }}
+                          className="w-24 h-24 rounded-full border-4 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 shadow-sm"
+                        >
+                          <span className="text-3xl font-black text-slate-800 dark:text-slate-100">{activeAiFeedback.score || 0}</span>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Điểm AI</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full text-left">
+                        {/* Nhận xét của AI */}
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-5 shadow-inner flex flex-col gap-2">
+                          <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            💬 Nhận xét tổng quan:
+                          </span>
+                          <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
+                            {activeAiFeedback.feedback || 'Chưa ghi nhận được câu trả lời qua Micro.'}
+                          </p>
+                        </div>
+
+                        {/* Lỗi được phát hiện */}
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-5 shadow-inner flex flex-col gap-2">
+                          <span className="text-xs font-black text-slate-505 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            ⚠️ Lỗi và lưu ý:
+                          </span>
+                          {activeAiFeedback.errors && activeAiFeedback.errors.length > 0 ? (
+                            <ul className="list-disc pl-4 space-y-1">
+                              {activeAiFeedback.errors.map((err, idx) => (
+                                <li key={idx} className="text-xs font-bold text-rose-500 leading-normal">
+                                  {err}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs font-bold text-emerald-500">
+                              🎉 Tuyệt vời! Trợ lý AI không phát hiện lỗi phát âm hay ngữ pháp nào đáng kể.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Câu sửa mẫu chuẩn */}
+                      {activeAiFeedback.suggestedText && (
+                        <div className="bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 w-full text-left">
+                          <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-1.5">
+                            💡 Câu mẫu gợi ý sửa đổi:
+                          </span>
+                          <p className="text-sm font-extrabold text-slate-850 dark:text-slate-150 leading-relaxed italic">
+                            "{activeAiFeedback.suggestedText}"
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    <h2 className="text-2xl font-black text-emerald-600">Câu trả lời chính xác!</h2>
-                    <div className="inline-block px-4 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-800 dark:text-emerald-400 text-sm font-extrabold">
-                      +{earnedPoints} Điểm phản xạ
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-950/20 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 mx-auto shadow-sm">
-                      <FiX />
-                    </div>
-                    <h2 className="text-2xl font-black text-red-600">
-                      {feedbackType === 'timeout' ? 'Hết giờ mất rồi!' : 'Câu trả lời chưa đúng!'}
-                    </h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 font-bold">
-                      Đáp án chính xác là:{' '}
-                      <span className="bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-750 font-black text-slate-800 dark:text-slate-100 ml-1">
-                        {currentQuestion.options?.find(opt => typeof opt === 'string' && opt.trim().startsWith(currentQuestion.correctAnswer)) || currentQuestion.correctAnswer}
-                      </span>
-                    </p>
-                  </div>
-                )}
-
-                {/* Explanation box */}
-                {currentQuestion.explanation && (
-                  <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-5 text-left border border-slate-100 dark:border-slate-800 max-w-lg w-full text-xs leading-relaxed font-semibold text-slate-600 dark:text-slate-450 shadow-inner">
-                    <span className="font-extrabold text-sm block mb-1.5 text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      💡 Giải thích ngữ pháp:
-                    </span>
-                    {currentQuestion.explanation}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Nếu là câu hỏi Tự luận (Writing) hoặc Phát âm (Pronunciation) được chấm bởi AI */}
-            {(currentQuestion.questionType === 'writing' || currentQuestion.questionType === 'pronunciation') && aiFeedback && (
-              <div className="w-full flex flex-col items-center gap-6">
-                <div className="flex flex-col items-center">
-                  <span className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase flex items-center gap-1.5">
-                    ✨ Đánh giá chi tiết từ Trợ lý AI
-                  </span>
-                  <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-4">
-                    {currentQuestion.questionType === 'writing' ? 'Bài luận của bạn' : 'Phát âm của bạn'}
-                  </h2>
-                </div>
-
-                {/* Score donut or progress bar for AI */}
-                <div className="flex flex-col items-center my-2">
-                  <div 
-                    style={{
-                      borderColor: (aiFeedback.score || 0) >= 80 ? '#10b981' : (aiFeedback.score || 0) >= 50 ? '#f59e0b' : '#ef4444'
-                    }}
-                    className="w-24 h-24 rounded-full border-4 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 shadow-sm"
-                  >
-                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100">{aiFeedback.score || 0}</span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Điểm AI</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full text-left">
-                  {/* Nhận xét của AI */}
-                  <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-5 shadow-inner flex flex-col gap-2">
-                    <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      💬 Nhận xét tổng quan:
-                    </span>
-                    <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
-                      {aiFeedback.feedback || 'Không có nhận xét chi tiết.'}
-                    </p>
-                  </div>
-
-                  {/* Lỗi được phát hiện */}
-                  <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl p-5 shadow-inner flex flex-col gap-2">
-                    <span className="text-xs font-black text-slate-505 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      ⚠️ Lỗi và lưu ý:
-                    </span>
-                    {aiFeedback.errors && aiFeedback.errors.length > 0 ? (
-                      <ul className="list-disc pl-4 space-y-1">
-                        {aiFeedback.errors.map((err, idx) => (
-                          <li key={idx} className="text-xs font-bold text-rose-500 leading-normal">
-                            {err}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-xs font-bold text-emerald-500">
-                        🎉 Tuyệt vời! Trợ lý AI không phát hiện lỗi phát âm hay ngữ pháp nào đáng kể.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Câu sửa mẫu chuẩn */}
-                {aiFeedback.suggestedText && (
-                  <div className="bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 w-full text-left">
-                    <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-1.5">
-                      💡 Câu mẫu gợi ý sửa đổi:
-                    </span>
-                    <p className="text-sm font-extrabold text-slate-850 dark:text-slate-150 leading-relaxed italic">
-                      "{aiFeedback.suggestedText}"
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </>
+              );
+            })()}
 
             <button
               onClick={handleNext}

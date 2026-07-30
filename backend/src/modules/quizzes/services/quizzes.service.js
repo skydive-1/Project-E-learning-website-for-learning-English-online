@@ -198,29 +198,69 @@ Trình bày thân thiện, dễ hiểu bằng tiếng Việt.
       const audioData = fs.readFileSync(filePath);
       const audioBase64 = audioData.toString("base64");
       
-      const expectedText = expectedSentence ? `\nCâu mẫu học viên cần đọc: "${expectedSentence}"\nHãy đối chiếu Transcript của bạn với câu mẫu trên để xem học viên đọc có đúng không.` : '';
+      const prompt = `Bạn là một chuyên gia chấm điểm bài nói và phát âm tiếng Anh.
+Hãy nghe file âm thanh thu âm của học viên và thực hiện phân tích:
+1. Nếu file âm thanh im lặng, rỗng, không có tiếng nói hoặc học viên chưa nói gì:
+   Trả về JSON:
+   {
+     "score": 0,
+     "feedback": "Hệ thống không ghi nhận được giọng nói từ Micro của bạn. Bạn chưa phát âm hoặc Micro chưa thu được tiếng.",
+     "errors": ["Học viên chưa phát âm hoặc chưa trả lời qua Micro."],
+     "suggestedText": "${expectedSentence || ''}"
+   }
+2. Ngược lại, nếu học viên có trả lời bằng giọng nói:
+   - Chấm điểm tổng quan từ 0 đến 100 dựa trên độ chính xác phát âm, ngữ điệu và trôi chảy.
+   - Nhận xét chi tiết bằng tiếng Việt trong trường "feedback".
+   - Liệt kê các lỗi phát âm / ngữ pháp (nếu có) trong mảng "errors".
+   - Đề xuất câu nói chuẩn trong "suggestedText".
 
-      const prompt = `Bạn là một chuyên gia chấm điểm phát âm tiếng Anh.
-Hãy nghe đoạn âm thanh thu âm của học viên và thực hiện:
-1. Ghi ra bản Transcript chính xác những gì học viên đã nói.${expectedText}
-2. Chấm điểm phát âm tổng quan theo thang 10.
-3. Chỉ ra những lỗi phát âm sai so với từ chuẩn, nhận xét về trọng âm, ngữ điệu và hướng dẫn cách sửa chi tiết.
-Trình bày thân thiện, tự nhiên bằng tiếng Việt.`;
+Định dạng trả về duy nhất là JSON theo cấu trúc:
+{
+  "score": number,
+  "feedback": string,
+  "errors": Array<string>,
+  "suggestedText": string
+}`;
 
-      const result = await geminiModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: audioBase64,
-            mimeType: mimetype || "audio/mp3"
+      const result = await geminiModel.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  data: audioBase64,
+                  mimeType: mimetype || "audio/webm"
+                }
+              }
+            ]
           }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
         }
-      ]);
+      });
 
-      return result.response.text();
+      const responseText = result.response.text();
+      try {
+        return JSON.parse(responseText);
+      } catch (e) {
+        return {
+          score: 50,
+          feedback: responseText,
+          errors: [],
+          suggestedText: expectedSentence || ''
+        };
+      }
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.evaluateAudio:", error);
-      throw new Error("Lỗi hệ thống khi AI chấm điểm phát âm.");
+      return {
+        score: 0,
+        feedback: "Chưa ghi nhận được âm thanh giọng nói từ Micro. Vui lòng bấm Micro và nói lại!",
+        errors: ["Chưa phát hiện giọng nói qua Micro."],
+        suggestedText: expectedSentence || ''
+      };
     }
   }
 
