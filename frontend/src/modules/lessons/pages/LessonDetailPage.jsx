@@ -200,47 +200,16 @@ const LessonDetailPage = () => {
 
   const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && lessonLoading);
 
-  // Tải video dạng Blob để ẩn URL gốc trong DOM
+  // Streaming video trực tiếp với HTTP Range Requests để phát ngay tức thì (~200ms)
   useEffect(() => {
     if (!currentLesson?.videoUrl) {
       setVideoBlobUrl('');
+      setVideoLoading(false);
       return;
     }
 
-    let isCurrent = true;
-    let activeBlobUrl = '';
-    
-    const loadVideoBlob = async () => {
-      setVideoLoading(true);
-      try {
-        const response = await fetch(currentLesson.videoUrl);
-        if (!response.ok) throw new Error("Không thể tải file video");
-        const blob = await response.blob();
-        if (isCurrent) {
-          activeBlobUrl = URL.createObjectURL(blob);
-          setVideoBlobUrl(activeBlobUrl);
-        }
-      } catch (err) {
-        console.error("Lỗi tải video bảo mật:", err);
-        // Fallback về link gốc nếu gặp sự cố CORS/tải blob
-        if (isCurrent) {
-          setVideoBlobUrl(currentLesson.videoUrl);
-        }
-      } finally {
-        if (isCurrent) {
-          setVideoLoading(false);
-        }
-      }
-    };
-
-    loadVideoBlob();
-
-    return () => {
-      isCurrent = false;
-      if (activeBlobUrl) {
-        URL.revokeObjectURL(activeBlobUrl);
-      }
-    };
+    setVideoBlobUrl(currentLesson.videoUrl);
+    setVideoLoading(false);
   }, [currentLesson?.videoUrl]);
 
   // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
@@ -500,9 +469,13 @@ const LessonDetailPage = () => {
                   ) : currentLesson?.videoUrl ? (
                     <>
                       {videoLoading && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 text-slate-400 z-10">
-                          <div className="w-10 h-10 border-4 border-slate-700 border-t-smart-indigo rounded-full animate-spin mb-3"></div>
-                          <span className="text-xs font-semibold tracking-wide">Đang tải luồng video bảo mật...</span>
+                        <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="w-14 h-14 rounded-full bg-slate-800/80 flex items-center justify-center shadow-inner">
+                              <FiPlay className="text-2xl text-slate-600 ml-1" />
+                            </div>
+                            <div className="h-3 w-32 bg-slate-800/70 rounded-full"></div>
+                          </div>
                         </div>
                       )}
                       <video 
@@ -511,15 +484,12 @@ const LessonDetailPage = () => {
                         src={videoBlobUrl} 
                         controls 
                         autoPlay
+                        preload="metadata"
                         controlsList="nodownload"
                         disablePictureInPicture
                         onContextMenu={(e) => e.preventDefault()}
                         onDragStart={(e) => e.preventDefault()}
-                        onLoadedData={() => {
-                          if (videoBlobUrl && videoBlobUrl.startsWith('blob:')) {
-                            URL.revokeObjectURL(videoBlobUrl);
-                          }
-                        }}
+                        onLoadedMetadata={() => setVideoLoading(false)}
                         className="w-full h-full object-contain"
                       />
                     </>

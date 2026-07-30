@@ -88,6 +88,16 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột quizzes:', migErr.message);
     }
 
+    try {
+      await client.query("CREATE INDEX IF NOT EXISTS idx_quizzes_course_id ON quizzes(course_id);");
+      await client.query("CREATE INDEX IF NOT EXISTS idx_questions_quiz_id ON questions(quiz_id);");
+      await client.query("CREATE INDEX IF NOT EXISTS idx_user_progress_user_id ON user_progress(user_id);");
+      await client.query("CREATE INDEX IF NOT EXISTS idx_ai_chat_student_id ON ai_chat(student_id);");
+      console.log('✅ Tự động đồng bộ: Đã tạo các chỉ mục Index tối ưu hiệu năng truy vấn Database');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo index database:', migErr.message);
+    }
+
     // Tự động đồng bộ cấu trúc: Đảm bảo bảng user_token_limits tồn tại để tránh lỗi Token Limit
     try {
       await client.query(`
