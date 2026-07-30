@@ -74,8 +74,9 @@ const PlayQuizPage = () => {
   const [audioUrl, setAudioUrl] = useState(null);
   const [audioBlob, setAudioBlob] = useState(null);
   const [aiFeedback, setAiFeedback] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const recorderRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     const fetchQuiz = async () => {
@@ -290,37 +291,61 @@ const PlayQuizPage = () => {
 
   const handleAudioStart = async () => {
     try {
-      // Yêu cầu quyền microphone nếu chưa có
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      const MicRecorder = (await import('mic-recorder-to-mp3')).default;
-      if (!recorderRef.current) {
-        recorderRef.current = new MicRecorder({ bitRate: 128 });
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        alert("Trình duyệt của bạn không hỗ trợ tính năng thu âm HTML5 MediaRecorder.");
+        return;
       }
       
-      await recorderRef.current.start();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      let options = {};
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        options = { mimeType: 'audio/webm' };
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        options = { mimeType: 'audio/mp4' };
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        const ext = mimeType.includes('mp4') ? 'm4a' : 'webm';
+        const file = new File([blob], `pronunciation_${currentQuestion?.id || 'audio'}.${ext}`, {
+          type: mimeType,
+          lastModified: Date.now()
+        });
+        setAudioBlob(file);
+        setAudioUrl(URL.createObjectURL(blob));
+        
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+        }
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
       setAudioUrl(null);
       setAudioBlob(null);
     } catch (err) {
       console.error("Lỗi khởi động ghi âm:", err);
-      alert("Không thể truy cập microphone. Vui lòng kiểm tra quyền thiết bị!");
+      alert("Không thể truy cập microphone. Vui lòng kiểm tra và cấp quyền Microphone cho trang web trong Cài đặt trình duyệt!");
     }
   };
 
-  const handleAudioStop = async () => {
-    if (!recorderRef.current || !isRecording) return;
-    try {
-      const [buffer, blob] = await recorderRef.current.stop().getMp3();
-      const file = new File([blob], `pronunciation_${currentQuestion.id}.mp3`, {
-        type: 'audio/mp3',
-        lastModified: Date.now()
-      });
+  const handleAudioStop = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
-      setAudioBlob(file);
-      setAudioUrl(URL.createObjectURL(file));
-    } catch (err) {
-      console.error("Lỗi dừng ghi âm:", err);
     }
   };
 
