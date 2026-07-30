@@ -210,10 +210,12 @@ export const getCourseDetails = async (courseId = 1) => {
             if (l.content_url.startsWith('http')) {
               resolvedUrl = l.content_url;
             } else {
+              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+              const backendHost = apiUrl.replace(/\/api\/?$/, '');
               if (l.content_type === 'video') {
-                resolvedUrl = `http://localhost:5000/api/lessons/video/stream/${l.lesson_id}?token=${token}`;
+                resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
               } else {
-                resolvedUrl = `http://localhost:5000${l.content_url}`;
+                resolvedUrl = `${backendHost}${l.content_url}`;
               }
             }
           }
@@ -408,10 +410,12 @@ export const getLessonById = async (lessonId) => {
       if (l.content_url.startsWith('http')) {
         resolvedUrl = l.content_url;
       } else {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const backendHost = apiUrl.replace(/\/api\/?$/, '');
         if (l.content_type === 'video') {
-          resolvedUrl = `http://localhost:5000/api/lessons/video/stream/${l.lesson_id}?token=${token}`;
+          resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
         } else {
-          resolvedUrl = `http://localhost:5000${l.content_url}`;
+          resolvedUrl = `${backendHost}${l.content_url}`;
         }
       }
     }

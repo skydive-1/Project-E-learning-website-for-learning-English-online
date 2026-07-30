@@ -23,7 +23,7 @@ const getRoleFromToken = () => {
   }
 };
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const getTodayCivilDate = () => {
   const d = new Date();
@@ -691,7 +691,7 @@ const CourseEditor = () => {
                               marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px'
                             }}>
                               {lesson.type === 'video' ? <FiVideo /> : <FiFileText />}
-                              <span>Link file: <a href={`http://localhost:5000${lesson.contentUrl}`} target="_blank" rel="noreferrer" style={{ color: '#059669', textDecoration: 'underline' }}>{lesson.fileName || 'Xem file bài giảng'}</a></span>
+                              <span>Link file: <a href={`${(import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '')}${lesson.contentUrl}`} target="_blank" rel="noreferrer" style={{ color: '#059669', textDecoration: 'underline' }}>{lesson.fileName || 'Xem file bài giảng'}</a></span>
                             </div>
                           )}
                         </div>

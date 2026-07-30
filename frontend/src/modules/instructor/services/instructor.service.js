@@ -1,25 +1,12 @@
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-const getAuthConfig = () => {
-  const token = localStorage.getItem('token');
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  };
-};
+import apiClient from '../../../config/api.config';
 
 export const instructorService = {
   uploadMedia: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await axios.post(`${API_URL}/courses/upload`, formData, {
-      ...getAuthConfig(),
+    const response = await apiClient.post('/courses/upload', formData, {
       headers: {
-        ...getAuthConfig().headers,
         'Content-Type': 'multipart/form-data'
       }
     });
@@ -27,7 +14,7 @@ export const instructorService = {
   },
 
   createCourse: async (courseData) => {
-    const response = await axios.post(`${API_URL}/courses`, courseData, getAuthConfig());
+    const response = await apiClient.post('/courses', courseData);
     return response.data;
   }
 };

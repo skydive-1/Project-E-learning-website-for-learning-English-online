@@ -1,8 +1,16 @@
 import axios from 'axios';
 
+const getBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
+  return 'http://localhost:5000/api';
+};
+
 // Khởi tạo instance Axios với baseURL của API backend
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: getBaseUrl(),
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
