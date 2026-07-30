@@ -89,10 +89,23 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Logging middleware
 app.use(loggerMiddleware);
 
+// ===== 5. HEALTH CHECK ENDPOINTS =====
+const healthHandler = (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'E-learning backend is running',
+    timestamp: new Date().toISOString()
+  });
+};
+
+app.get('/', healthHandler);
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+
 // Áp dụng Rate Limit chung cho tất cả các API endpoints
 app.use('/api', globalLimiter);
 
-// ===== 5. MOUNT MODULES (ROUTES) =====
+// ===== 6. MOUNT MODULES (ROUTES) =====
 // Cấu trúc: /api/<module-name>
 app.use('/api/auth', authRoutes);
 app.use('/api/courses', coursesRoutes);
@@ -106,19 +119,6 @@ app.use('/api/consultation', consultationRoutes);
 
 // Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-// ===== 6. HEALTH CHECK ENDPOINTS =====
-const healthHandler = (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'E-learning backend is running',
-    timestamp: new Date().toISOString()
-  });
-};
-
-app.get('/', healthHandler);
-app.get('/health', healthHandler);
-app.get('/api/health', healthHandler);
 
 // ===== 7. GLOBAL ERROR HANDLER =====
 // Phải là middleware cuối cùng
