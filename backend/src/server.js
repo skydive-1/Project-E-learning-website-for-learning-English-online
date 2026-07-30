@@ -51,19 +51,22 @@ const { globalLimiter } = require('./middleware/rateLimit.middleware');
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Trong phát triển (development), phản hồi động origin của client để tiện test qua WSL / IP mạng nội bộ
+    // Trong phát triển (development) hoặc không có origin (curl, mobile app), cho phép kết nối
     if (!origin || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
-        .split(',')
-        .map(url => url.trim());
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Blocked by CORS: Origin not allowed'));
-      }
+      return callback(null, true);
     }
+
+    const cleanOrigin = origin.replace(/\/+$/, '');
+    const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+      .split(',')
+      .map(url => url.trim().replace(/\/+$/, ''));
+
+    // Cho phép nếu có trong danh sách FRONTEND_URL hoặc là bất kỳ domain Vercel nào (*.vercel.app)
+    if (allowedOrigins.includes(cleanOrigin) || cleanOrigin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+
+    return callback(null, false);
   },
   credentials: true
 }));
