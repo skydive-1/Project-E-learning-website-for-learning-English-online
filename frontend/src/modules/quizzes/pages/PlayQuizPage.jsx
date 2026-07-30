@@ -27,6 +27,18 @@ import {
   submitAudioAnswer 
 } from '../services/quizzes.service';
 
+const getEffectiveQuestionType = (q) => {
+  if (!q) return 'multiple_choice';
+  if (q.questionType === 'writing' || q.questionType === 'pronunciation') {
+    return q.questionType;
+  }
+  // Nếu câu hỏi không có các lựa chọn A, B, C, D (options rỗng hoặc null), tự động chuyển sang chế độ Luyện nói / Phát âm bằng Micro
+  if (!q.options || q.options.length === 0) {
+    return 'pronunciation';
+  }
+  return 'multiple_choice';
+};
+
 const PlayQuizPage = () => {
   const { quizId } = useParams();
   const navigate = useNavigate();
@@ -132,7 +144,8 @@ const PlayQuizPage = () => {
     }
 
     const currentQuestion = quiz?.questions?.[currentIdx];
-    const isAiQuestion = currentQuestion && (currentQuestion.questionType === 'writing' || currentQuestion.questionType === 'pronunciation');
+    const effectiveType = getEffectiveQuestionType(currentQuestion);
+    const isAiQuestion = effectiveType === 'writing' || effectiveType === 'pronunciation';
 
     if (isAiQuestion) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -473,11 +486,7 @@ const PlayQuizPage = () => {
         {gameState === 'playing' && (
           <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
             {(() => {
-                const effectiveQuestionType = (currentQuestion.questionType === 'writing' || currentQuestion.questionType === 'pronunciation') 
-                  ? currentQuestion.questionType 
-                  : (!currentQuestion.options || currentQuestion.options.length === 0) 
-                    ? 'pronunciation' 
-                    : 'multiple_choice';
+                const effectiveQuestionType = getEffectiveQuestionType(currentQuestion);
 
                 return (
                   <>
