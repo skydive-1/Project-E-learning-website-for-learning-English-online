@@ -5,16 +5,20 @@
 
 const { Pool } = require('pg');
 
+const DEFAULT_DB_URL = 'postgresql://postgres.tdiqliihqdlpcelacypc:Chuongdeptraivodichvutru@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres';
+
+const dbConnectionString = process.env.DATABASE_URL || (process.env.DB_HOST ? null : DEFAULT_DB_URL);
+
 const isRemoteDb = Boolean(
-  process.env.DATABASE_URL || 
+  dbConnectionString || 
   (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1')
 );
 
 const sslConfig = (process.env.DB_SSL === 'false') ? false : { rejectUnauthorized: false };
 
-const poolConfig = process.env.DATABASE_URL
+const poolConfig = dbConnectionString
   ? {
-    connectionString: process.env.DATABASE_URL,
+    connectionString: dbConnectionString,
     ssl: sslConfig
   }
   : {
