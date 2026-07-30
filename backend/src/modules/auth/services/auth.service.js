@@ -518,7 +518,8 @@ class AuthService {
           roleId: user.role_id
         };
 
-        const token = jwt.sign(jwtPayload, process.env.JWT_SECRET, {
+        const secretKey = process.env.JWT_SECRET || 'your-super-secret-key-change-this';
+        const token = jwt.sign(jwtPayload, secretKey, {
           expiresIn: process.env.JWT_EXPIRE || '24h'
         });
 
@@ -541,7 +542,8 @@ class AuthService {
         profilePictureUrl
       };
 
-      const tempToken = jwt.sign(tempPayload, process.env.JWT_SECRET, {
+      const secretKey = process.env.JWT_SECRET || 'your-super-secret-key-change-this';
+      const tempToken = jwt.sign(tempPayload, secretKey, {
         expiresIn: '15m'
       });
 

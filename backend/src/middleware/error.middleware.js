@@ -36,10 +36,10 @@ const errorHandler = (err, req, res, next) => {
 
   // Database errors
   if (err.name === 'DatabaseError') {
-    return res.status(503).json({
+    return res.status(err.status || 500).json({
       success: false,
-      error: 'Database connection error',
-      message: 'Vui lòng thử lại sau'
+      error: 'DatabaseError',
+      message: message
     });
   }
 

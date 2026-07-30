@@ -5,17 +5,16 @@
  */
 
 const handleServiceError = (error, contextMessage) => {
-  // If it's already a formatted error (has name and status), just re-throw it
-  if (error.name && error.status && error.name !== 'Error') {
+  console.error(`❌ [Service Error] ${contextMessage}:`, error);
+
+  // If it already has a status code, preserve it
+  if (error.status) {
     throw error;
   }
 
-  console.error(`❌ [Service Error] ${contextMessage}:`, error);
-
-  // Default to DatabaseError if it's an unhandled error from the database/infrastructure
-  const serviceError = new Error(error.message || contextMessage || 'Có lỗi xảy ra trong quá trình xử lý hoặc kết nối cơ sở dữ liệu');
-  serviceError.name = 'DatabaseError';
-  serviceError.status = 503;
+  const serviceError = new Error(error.message || contextMessage || 'Có lỗi xảy ra trong quá trình xử lý');
+  serviceError.name = error.name && error.name !== 'Error' ? error.name : 'ServerError';
+  serviceError.status = 500;
   throw serviceError;
 };
 
