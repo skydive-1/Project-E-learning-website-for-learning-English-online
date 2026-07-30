@@ -444,6 +444,7 @@ class AuthService {
       const response = await fetch(url);
       if (!response.ok) {
         const error = new Error('Mã token Google không hợp lệ hoặc đã hết hạn');
+        error.name = 'ValidationError';
         error.status = 400;
         throw error;
       }
@@ -451,6 +452,7 @@ class AuthService {
       const payload = await response.json();
       if (payload.error_description) {
         const error = new Error(payload.error_description);
+        error.name = 'ValidationError';
         error.status = 400;
         throw error;
       }
