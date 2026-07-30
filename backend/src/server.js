@@ -107,14 +107,18 @@ app.use('/api/consultation', consultationRoutes);
 // Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// ===== 6. HEALTH CHECK ENDPOINT =====
-app.get('/api/health', (req, res) => {
+// ===== 6. HEALTH CHECK ENDPOINTS =====
+const healthHandler = (req, res) => {
   res.json({
     status: 'OK',
     message: 'E-learning backend is running',
     timestamp: new Date().toISOString()
   });
-});
+};
+
+app.get('/', healthHandler);
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 // ===== 7. GLOBAL ERROR HANDLER =====
 // Phải là middleware cuối cùng
