@@ -14,6 +14,8 @@ const mapQuizToFrontend = (quiz) => {
     timeLimit: quiz.time_limit,
     courseId: quiz.course_id,
     lessonId: quiz.lesson_id,
+    isPrivate: Boolean(quiz.is_private),
+    pinCode: quiz.pin_code || '',
     questions: (quiz.questions || []).map(q => {
       let parsedOptions = [];
       if (Array.isArray(q.options)) {
@@ -93,13 +95,34 @@ export const getFreeQuizzesList = async () => {
  */
 export const getFreeQuizById = async (quizId) => {
   try {
-    const response = await apiClient.get(`/quizzes/free`);
-    const quizzes = response.data?.data || [];
-    const target = quizzes.find(q => String(q.quiz_id) === String(quizId));
-    return target ? mapQuizToFrontend(target) : null;
+    const response = await apiClient.get(`/quizzes/detail/${quizId}`);
+    if (response.data?.data) {
+      return mapQuizToFrontend(response.data.data);
+    }
+  } catch (err) {
+    try {
+      const response = await apiClient.get(`/quizzes/free`);
+      const quizzes = response.data?.data || [];
+      const target = quizzes.find(q => String(q.quiz_id) === String(quizId));
+      return target ? mapQuizToFrontend(target) : null;
+    } catch (error) {
+      console.error(`⚠️ Lỗi tải chi tiết trắc nghiệm ${quizId}:`, error.message);
+      return null;
+    }
+  }
+};
+
+/**
+ * Tìm và lấy thông tin bài trắc nghiệm theo Mã PIN thực tế
+ */
+export const getQuizByPin = async (pinCode) => {
+  try {
+    const response = await apiClient.get(`/quizzes/join-by-pin/${pinCode}`);
+    const quiz = response.data?.data;
+    return quiz ? mapQuizToFrontend(quiz) : null;
   } catch (error) {
-    console.error(`⚠️ Lỗi tải chi tiết trắc nghiệm ${quizId}:`, error.message);
-    return null;
+    console.error(`⚠️ Lỗi tra cứu bài thi qua mã PIN ${pinCode}:`, error.message);
+    throw error;
   }
 };
 

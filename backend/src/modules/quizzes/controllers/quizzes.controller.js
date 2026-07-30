@@ -121,15 +121,106 @@ exports.submitWriting = async (req, res, next) => {
   }
 };
 
+exports.getQuizByPin = async (req, res, next) => {
+  try {
+    const { pinCode } = req.params;
+    if (!pinCode) {
+      const err = new Error("Thiếu mã PIN");
+      err.status = 400;
+      throw err;
+    }
+    const quiz = await quizzesService.getQuizByPin(pinCode);
+    if (!quiz) {
+      const err = new Error("Mã PIN không tồn tại hoặc đề thi không khả dụng!");
+      err.status = 404;
+      throw err;
+    }
+    
+    const sanitizedQuiz = {
+      quiz_id: quiz.quiz_id,
+      course_id: quiz.course_id,
+      title: quiz.title,
+      description: quiz.description,
+      difficulty: quiz.difficulty,
+      time_limit: quiz.time_limit,
+      is_private: quiz.is_private,
+      pin_code: quiz.pin_code,
+      questions: quiz.questions.map(q => ({
+        question_id: q.question_id,
+        question_text: q.question_text,
+        options: q.options,
+        correct_answer: q.correct_answer,
+        explanation: q.explanation,
+        question_type: q.question_type || 'multiple_choice'
+      }))
+    };
+
+    res.status(200).json({
+      success: true,
+      data: sanitizedQuiz
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getQuizById = async (req, res, next) => {
+  try {
+    const { quizId } = req.params;
+    if (!quizId) {
+      const err = new Error("Thiếu quizId");
+      err.status = 400;
+      throw err;
+    }
+    const quiz = await quizzesService.getQuizById(quizId);
+    if (!quiz) {
+      const err = new Error("Không tìm thấy bài thi!");
+      err.status = 404;
+      throw err;
+    }
+
+    const sanitizedQuiz = {
+      quiz_id: quiz.quiz_id,
+      course_id: quiz.course_id,
+      title: quiz.title,
+      description: quiz.description,
+      difficulty: quiz.difficulty,
+      time_limit: quiz.time_limit,
+      is_private: quiz.is_private,
+      pin_code: quiz.pin_code,
+      questions: quiz.questions.map(q => ({
+        question_id: q.question_id,
+        question_text: q.question_text,
+        options: q.options,
+        correct_answer: q.correct_answer,
+        explanation: q.explanation,
+        question_type: q.question_type || 'multiple_choice'
+      }))
+    };
+
+    res.status(200).json({
+      success: true,
+      data: sanitizedQuiz
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.createQuiz = async (req, res, next) => {
   try {
-    const { title, description, difficulty, timeLimit, questions } = req.body;
+    const { title, description, difficulty, timeLimit, questions, isPrivate, pinCode } = req.body;
     if (!title) {
       const err = new Error("Tiêu đề đề thi không được trống.");
       err.status = 400;
       throw err;
     }
-    const result = await quizzesService.createQuiz(title, description, difficulty, timeLimit, questions);
+    if (isPrivate && (!pinCode || String(pinCode).trim().length < 4)) {
+      const err = new Error("Đề thi riêng tư yêu cầu Mã PIN từ 4 đến 20 ký tự.");
+      err.status = 400;
+      throw err;
+    }
+    const result = await quizzesService.createQuiz(title, description, difficulty, timeLimit, questions, isPrivate, pinCode);
     res.status(201).json({
       success: true,
       message: "Tạo đề thi tự luyện mới thành công",

@@ -80,6 +80,14 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột questions:', migErr.message);
     }
 
+    try {
+      await client.query("ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT FALSE;");
+      await client.query("ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS pin_code VARCHAR(20) DEFAULT NULL;");
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột is_private và pin_code tồn tại trong bảng quizzes');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột quizzes:', migErr.message);
+    }
+
     // Tự động đồng bộ cấu trúc: Đảm bảo bảng user_token_limits tồn tại để tránh lỗi Token Limit
     try {
       await client.query(`

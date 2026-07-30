@@ -9,14 +9,14 @@ class QuizzesService {
 
       if (courseId === 'free') {
         quizzesQuery = `
-          SELECT quiz_id, course_id, title, description, difficulty, time_limit, created_at
+          SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
           FROM quizzes
-          WHERE course_id IS NULL
+          WHERE course_id IS NULL AND (is_private IS FALSE OR is_private IS NULL)
           ORDER BY quiz_id ASC
         `;
       } else {
         quizzesQuery = `
-          SELECT quiz_id, course_id, title, description, difficulty, time_limit, created_at
+          SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
           FROM quizzes
           WHERE course_id = $1
           ORDER BY quiz_id ASC
@@ -65,7 +65,7 @@ class QuizzesService {
   async getQuizById(quizId) {
     try {
       const quizQuery = `
-        SELECT quiz_id, course_id, title, description, difficulty, time_limit, created_at
+        SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
         FROM quizzes
         WHERE quiz_id = $1
       `;
@@ -88,6 +88,37 @@ class QuizzesService {
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.getQuizById:", error);
+      throw error;
+    }
+  }
+
+  async getQuizByPin(pinCode) {
+    try {
+      if (!pinCode) return null;
+      const quizQuery = `
+        SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+        FROM quizzes
+        WHERE UPPER(pin_code) = UPPER($1)
+      `;
+      const quizResult = await db.query(quizQuery, [pinCode.trim()]);
+      if (quizResult.rows.length === 0) return null;
+
+      const quiz = quizResult.rows[0];
+
+      const questionsQuery = `
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        FROM questions
+        WHERE quiz_id = $1
+        ORDER BY question_id ASC
+      `;
+      const questionsResult = await db.query(questionsQuery, [quiz.quiz_id]);
+
+      return {
+        ...quiz,
+        questions: questionsResult.rows
+      };
+    } catch (error) {
+      console.error("Lỗi xảy ra tại QuizzesService.getQuizByPin:", error);
       throw error;
     }
   }
@@ -264,15 +295,22 @@ Hãy nghe file âm thanh thu âm của học viên và thực hiện phân tích
     }
   }
 
-  async createQuiz(title, description, difficulty, timeLimit, questions) {
+  async createQuiz(title, description, difficulty, timeLimit, questions, isPrivate = false, pinCode = null) {
     try {
       await db.query('BEGIN');
       const insertQuizQuery = `
-        INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit)
-        VALUES (NULL, NULL, $1, $2, $3, $4)
+        INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code)
+        VALUES (NULL, NULL, $1, $2, $3, $4, $5, $6)
         RETURNING quiz_id
       `;
-      const quizResult = await db.query(insertQuizQuery, [title, description, difficulty || 'Medium', parseInt(timeLimit, 10) || 10]);
+      const quizResult = await db.query(insertQuizQuery, [
+        title,
+        description,
+        difficulty || 'Medium',
+        parseInt(timeLimit, 10) || 10,
+        Boolean(isPrivate),
+        pinCode ? String(pinCode).trim() : null
+      ]);
       const quizId = quizResult.rows[0].quiz_id;
 
       if (questions && Array.isArray(questions) && questions.length > 0) {

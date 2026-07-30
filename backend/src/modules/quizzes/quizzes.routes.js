@@ -5,6 +5,12 @@ const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
 const { quizLimiter, aiLimiter } = require('../../middleware/rateLimit.middleware');
 
+// Route: GET /api/quizzes/detail/:quizId
+router.get('/detail/:quizId', quizzesController.getQuizById);
+
+// Route: GET /api/quizzes/join-by-pin/:pinCode
+router.get('/join-by-pin/:pinCode', quizzesController.getQuizByPin);
+
 // Route: GET /api/quizzes/:quizId/leaderboard
 router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
 

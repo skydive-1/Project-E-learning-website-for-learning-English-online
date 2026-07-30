@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { getFreeQuizzesList, createQuiz, generateQuizAi } from '../services/quizzes.service';
+import { getFreeQuizzesList, createQuiz, generateQuizAi, getQuizByPin } from '../services/quizzes.service';
 import { useAuth } from '../../../context/AuthContext';
 
 // Component Skeleton Loading cho thẻ Quiz
@@ -45,6 +45,8 @@ const QuizzesListPage = () => {
   const [quizDesc, setQuizDesc] = useState('');
   const [quizDifficulty, setQuizDifficulty] = useState('Medium');
   const [quizTimeLimit, setQuizTimeLimit] = useState(15);
+  const [isPrivateQuiz, setIsPrivateQuiz] = useState(false);
+  const [quizPinCode, setQuizPinCode] = useState('');
   const [questionsList, setQuestionsList] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [numQuestionsToAdd, setNumQuestionsToAdd] = useState(1);
@@ -58,6 +60,11 @@ const QuizzesListPage = () => {
     writing: true,
     pronunciation: true
   });
+
+  const generateRandomPin = () => {
+    const pin = Math.floor(100000 + Math.random() * 900000).toString();
+    setQuizPinCode(pin);
+  };
 
   const handleAddQuestion = (type) => {
     const newQuestions = [];
@@ -97,7 +104,7 @@ const QuizzesListPage = () => {
     loadQuizzes();
   }, []);
 
-  const handleJoinByPin = (e) => {
+  const handleJoinByPin = async (e) => {
     e.preventDefault();
     if (!pinCode.trim()) return;
     if (pinCode.length < 4) {
@@ -107,19 +114,27 @@ const QuizzesListPage = () => {
     setPinError('');
     setJoining(true);
     
-    // Simulate game lobby join delay
-    setTimeout(() => {
+    try {
+      const targetQuiz = await getQuizByPin(pinCode.trim());
       setJoining(false);
-      // Pick a random quiz to play
-      const randomIdx = Math.floor(Math.random() * quizzesList.length);
-      const targetQuiz = quizzesList[randomIdx];
-      navigate(`/quizzes/play/${targetQuiz.id}`);
-    }, 1200);
+      if (targetQuiz && targetQuiz.id) {
+        navigate(`/quizzes/play/${targetQuiz.id}`);
+      } else {
+        setPinError('Mã PIN không tồn tại hoặc đề thi không khả dụng!');
+      }
+    } catch (err) {
+      setJoining(false);
+      console.error("Lỗi tra cứu PIN:", err);
+      setPinError(err.response?.data?.message || 'Mã PIN không hợp lệ hoặc không tìm thấy đề thi!');
+    }
   };
 
   const handleCreateQuiz = async (e) => {
     e.preventDefault();
     if (!quizTitle.trim()) return alert('Vui lòng nhập tiêu đề đề thi!');
+    if (isPrivateQuiz && (!quizPinCode.trim() || quizPinCode.trim().length < 4)) {
+      return alert('Đề thi riêng tư yêu cầu Mã PIN từ 4 đến 20 ký tự!');
+    }
     if (questionsList.length === 0) return alert('Vui lòng thêm ít nhất một câu hỏi!');
 
     try {
@@ -129,16 +144,22 @@ const QuizzesListPage = () => {
         description: quizDesc,
         difficulty: quizDifficulty,
         timeLimit: Number(quizTimeLimit),
+        isPrivate: isPrivateQuiz,
+        pinCode: isPrivateQuiz ? quizPinCode.trim() : null,
         questions: questionsList
       };
       await createQuiz(payload);
-      alert('Tạo đề thi tự luyện mới thành công!');
+      alert(isPrivateQuiz 
+        ? `Tạo đề thi riêng tư thành công! Mã PIN của đề thi là: ${quizPinCode.trim()}` 
+        : 'Tạo đề thi tự luyện công khai mới thành công!');
       setShowCreateModal(false);
       // Reset form states
       setQuizTitle('');
       setQuizDesc('');
       setQuizDifficulty('Medium');
       setQuizTimeLimit(15);
+      setIsPrivateQuiz(false);
+      setQuizPinCode('');
       setQuestionsList([]);
       // Reload list
       await loadQuizzes();
@@ -386,6 +407,56 @@ const QuizzesListPage = () => {
                   onChange={(e) => setQuizDesc(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl focus:border-smart-indigo outline-none transition-all text-sm font-semibold resize-none"
                 />
+              </div>
+
+              {/* Private Quiz / PIN Setting */}
+              <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/30 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <FiZap className="text-amber-500 fill-amber-500" />
+                    <div>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">Chế độ Đề thi Riêng tư (Cần mã PIN)</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold block">Đề thi sẽ ẩn khỏi danh sách công khai, người học phải nhập Mã PIN để tham gia.</span>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={isPrivateQuiz} 
+                      onChange={(e) => {
+                        setIsPrivateQuiz(e.target.checked);
+                        if (e.target.checked && !quizPinCode) {
+                          generateRandomPin();
+                        }
+                      }} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-slate-600 peer-checked:bg-smart-indigo"></div>
+                  </label>
+                </div>
+
+                {isPrivateQuiz && (
+                  <div className="pt-3 border-t border-amber-200/50 dark:border-amber-900/30 flex flex-col md:flex-row items-stretch md:items-end gap-3 animate-fade-in">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider">Mã PIN truy cập (4 - 20 ký tự) *</label>
+                      <input
+                        type="text"
+                        maxLength={20}
+                        placeholder="Ví dụ: 849201"
+                        value={quizPinCode}
+                        onChange={(e) => setQuizPinCode(e.target.value.replace(/\s/g, '').toUpperCase())}
+                        className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800/60 rounded-xl focus:border-amber-500 outline-none text-base font-black tracking-widest uppercase text-slate-800 dark:text-slate-100"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={generateRandomPin}
+                      className="py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      🎲 Sinh ngẫu nhiên PIN
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* AI Generate Questions Section - ONLY FOR ADMIN (role 1) */}
