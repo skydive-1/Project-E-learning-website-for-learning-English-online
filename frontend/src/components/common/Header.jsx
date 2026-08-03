@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX } from 'react-icons/fi';
+import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX, FiGlobe } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useLanguage } from '../../context/LanguageContext';
 import ScrambleText from './ScrambleText';
 import '../../modules/homepage/styles/homepage.scss'; // Link global/homepage styles
 
@@ -10,6 +11,7 @@ const Header = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { language, toggleLanguage, t } = useLanguage();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -73,22 +75,36 @@ const Header = () => {
         )}
 
         <nav id="main-nav" className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}>
-          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>Khóa học</Link>
-          <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>Lộ trình</Link>
-          <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>Trắc nghiệm</Link>
-          <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>Tính năng</a>
-          <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>Bảng giá</a>
+          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>{t('courses')}</Link>
+          <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>{t('roadmap')}</Link>
+          <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>{t('quizzes')}</Link>
+          <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
+          <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>{t('pricing')}</a>
 
           {/* Mobile-only auth links */}
           {!user && isMobileMenuOpen && (
             <div className="mobile-auth-links">
-              <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>Đăng nhập</Link>
-              <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>Đăng ký</Link>
+              <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>{t('login')}</Link>
+              <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>{t('register')}</Link>
             </div>
           )}
         </nav>
 
         <div className="auth-buttons">
+          {/* iOS Segmented Language Switcher Button */}
+          <div 
+            onClick={toggleLanguage}
+            className={`ios-lang-switch ${language === 'ENG' ? 'en' : 'vn'}`}
+            title={t('switchLangTip')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && toggleLanguage()}
+          >
+            <div className="ios-switch-thumb" />
+            <span className={`ios-switch-option ${language === 'VIE' ? 'active' : ''}`}>VN</span>
+            <span className={`ios-switch-option ${language === 'ENG' ? 'active' : ''}`}>EN</span>
+          </div>
+
           {/* Dark Mode Toggle Button */}
           <button 
             type="button"
@@ -113,53 +129,53 @@ const Header = () => {
                     {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
                   </div>
                 )}
-                <span className="user-header-name">{user?.username || 'Học viên'}</span>
+                <span className="user-header-name">{user?.username || t('student')}</span>
               </div>
               
               {isDropdownOpen && (
                 <div className="user-dropdown-menu">
                   <div className="dropdown-user-info">
-                    <p className="dropdown-username">{user?.username || 'Học viên'}</p>
+                    <p className="dropdown-username">{user?.username || t('student')}</p>
                     <p className="dropdown-email">{user?.email}</p>
                   </div>
                   <div className="dropdown-divider"></div>
                   
                   <Link to="/profile" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                     <FiUser className="dropdown-icon" />
-                    <span>Trang cá nhân</span>
+                    <span>{t('profile')}</span>
                   </Link>
 
                   {parseInt(user?.roleId || user?.role_id || user?.role) === 1 && (
                     <Link to="/admin/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                       <FiLayout className="dropdown-icon" />
-                      <span>Quản trị hệ thống</span>
+                      <span>{t('adminDashboard')}</span>
                     </Link>
                   )}
 
                   {parseInt(user?.roleId || user?.role_id || user?.role) === 2 && (
                     <Link to="/instructor/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                       <FiLayout className="dropdown-icon" />
-                      <span>Quản lý khóa học</span>
+                      <span>{t('instructorDashboard')}</span>
                     </Link>
                   )}
 
                   <Link to="/my-courses" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                     <FiBookOpen className="dropdown-icon" />
-                    <span>Bài học của tôi</span>
+                    <span>{t('myCourses')}</span>
                   </Link>
 
                   <div className="dropdown-divider"></div>
                   <button className="dropdown-item logout-btn" onClick={handleLogout}>
                     <FiLogOut className="dropdown-icon" />
-                    <span>Đăng xuất</span>
+                    <span>{t('logout')}</span>
                   </button>
                 </div>
               )}
             </div>
           ) : (
             <>
-              <Link to="/login" className="btn-login">Login</Link>
-              <Link to="/register" className="btn-register">Register</Link>
+              <Link to="/login" className="btn-login">{t('login')}</Link>
+              <Link to="/register" className="btn-register">{t('register')}</Link>
             </>
           )}
 

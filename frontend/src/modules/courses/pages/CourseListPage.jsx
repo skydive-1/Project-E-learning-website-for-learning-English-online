@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
+import { useLanguage } from '../../../context/LanguageContext';
 import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiLoader, FiX, FiCheckCircle } from 'react-icons/fi';
 import '../styles/courses.scss';
 
@@ -320,6 +321,7 @@ const CourseListPage = () => {
     }
   }, [courseIdsString]);
 
+  const { t } = useLanguage();
   const handleResetFilters = () => {
     setSearchTerm('');
     setSelectedSubjectId('all');
@@ -337,13 +339,13 @@ const CourseListPage = () => {
           <div className="container">
             <div className="hero-flex">
               <div className="hero-text scroll-animate">
-                <h1>Học Tiếng Anh Miễn Phí</h1>
-                <p>Hệ thống bài giảng chất lượng cao, tích hợp công nghệ RAG AI hỗ trợ giải đáp tức thì.</p>
+                <h1>{t('coursesTitle')}</h1>
+                <p>{t('coursesSubtitle')}</p>
                 <div className="search-bar-wrapper">
                   <FiSearch className="search-icon" />
                   <input 
                     type="text" 
-                    placeholder="Tìm tên khóa học, chủ đề hoặc trình độ..."
+                    placeholder={t('searchPlaceholder')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -352,13 +354,13 @@ const CourseListPage = () => {
                       <FiX />
                     </button>
                   )}
-                  <button className="btn-search">Tìm kiếm</button>
+                  <button className="btn-search">{t('searchPlaceholder').split('...')[0]}</button>
                 </div>
               </div>
               <div className="hero-stats scroll-animate">
-                <div className="stat-pill"><strong>100k+</strong> Học viên</div>
-                <div className="stat-pill"><strong>50+</strong> Khóa học</div>
-                <div className="stat-pill"><strong>24/7</strong> Hỗ trợ AI</div>
+                <div className="stat-pill"><strong>100k+</strong> {t('student')}</div>
+                <div className="stat-pill"><strong>50+</strong> {t('courses')}</div>
+                <div className="stat-pill"><strong>24/7</strong> AI Tutor</div>
               </div>
             </div>
           </div>

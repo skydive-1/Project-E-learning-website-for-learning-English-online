@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
+import { useLanguage } from '../../../context/LanguageContext';
 import { FiArrowRight, FiCheckCircle, FiClock, FiBookOpen } from 'react-icons/fi';
 import '../styles/academy.scss';
 
@@ -29,13 +30,13 @@ const roadmapPaths = [
   },
   {
     id: 'ielts',
-    title: 'IELTS General Mastery',
-    description: 'Lộ trình toàn diện 4 kỹ năng giúp bạn đạt band 6.5+ IELTS để định cư hoặc làm việc quốc tế.',
+    title: 'Lộ trình IELTS 6.5+',
+    description: 'Rèn luyện 4 kỹ năng Nghe - Nói - Đọc - Viết toàn diện. Chuẩn bị vững chắc cho kỳ thi quốc tế.',
     coursesCount: 12,
-    students: '5.6k+',
-    time: '8-12 tháng',
-    skills: ['Academic Writing', 'Critical Listening', 'Speaking Fluency', 'Advanced Reading'],
-    image: '/images/teacher_virtual.png',
+    students: '15.1k+',
+    time: '6-8 tháng',
+    skills: ['Academic Writing', 'Speaking Reflexes', 'Critical Reading', 'Advanced Listening'],
+    image: '/images/hero_illustration.png',
     isPro: true
   }
 ];
@@ -72,6 +73,8 @@ const RoadmapCard = ({ path }) => (
 );
 
 const RoadmapPage = () => {
+  const { t } = useLanguage();
+
   React.useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {

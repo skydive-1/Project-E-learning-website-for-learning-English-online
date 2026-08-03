@@ -3,6 +3,7 @@ import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'r
 import { useNavigate } from 'react-router-dom';
 import { askChatbot, askChatbotStream, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 
 // Hàm helper để sinh câu hỏi trắc nghiệm tương tác tùy theo bài học (lessonId)
@@ -122,6 +123,7 @@ const getLessonSpecificQuiz = (lessonId) => {
 
 const ChatBox = ({ lessonId = 0, onClose = null }) => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
@@ -426,10 +428,10 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
           </div>
           <div>
             <h3 className="font-semibold text-sm tracking-wide">
-              {Number(lessonId) === 0 ? "Trợ Lý Học Tiếng Anh AI" : "AI Assistant"}
+              {Number(lessonId) === 0 ? t('aiAssistantTitle') : "AI Assistant"}
             </h3>
             <span className="text-[10.5px] opacity-80">
-              {Number(lessonId) === 0 ? "Học tập & Phản xạ tự do" : "RAG-powered Tutor"}
+              {Number(lessonId) === 0 ? t('aiAssistantSub') : "RAG-powered Tutor"}
             </span>
           </div>
         </div>
@@ -437,7 +439,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
           <button 
             onClick={handleClearChat}
             className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-            title="Xóa lịch sử chat"
+            title={t('clearChatHistory')}
           >
             <FiTrash2 className="text-sm" />
           </button>
@@ -668,7 +670,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
           <div className="flex justify-between items-center mb-1 text-[11px] font-bold">
             <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400">
               <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-              <span>Hạn mức Token AI hôm nay</span>
+              <span>{t('tokenLimitLabel')}</span>
             </div>
             <span className="text-indigo-650 dark:text-indigo-400">
               {((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) || 0).toLocaleString()} / {(tokenBalance.token_max_limit || 6000).toLocaleString()} Tokens
@@ -741,7 +743,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Ask a question..."
+              placeholder={t('askInputPlaceholder')}
               className="flex-1 px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-smart-indigo focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-800 dark:text-slate-100"
               disabled={isLoading}
             />

@@ -44,9 +44,26 @@ class ErrorBoundary extends React.Component {
           <h3 style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: '700', color: '#991b1b' }}>
             {this.props.title || "Tính năng này tạm thời gặp sự cố"}
           </h3>
-          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#b91c1c', lineHeight: '1.5' }}>
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#b91c1c', lineHeight: '1.5' }}>
             {this.props.message || "Đã xảy ra lỗi trong quá trình hiển thị. Bạn có thể tải lại trang hoặc reset trạng thái để thử lại."}
           </p>
+          {this.state.error && (
+            <div style={{
+              margin: '0 auto 16px auto',
+              padding: '10px 14px',
+              backgroundColor: '#fff',
+              border: '1px solid #fca5a5',
+              borderRadius: '8px',
+              maxWidth: '600px',
+              textAlign: 'left',
+              overflowX: 'auto',
+              fontSize: '11px',
+              fontFamily: 'monospace',
+              color: '#7f1d1d'
+            }}>
+              <strong>Chi tiết lỗi:</strong> {this.state.error.toString()}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
             <button
               onClick={this.handleReset}

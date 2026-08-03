@@ -5,6 +5,7 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { getFreeQuizzesList, createQuiz, generateQuizAi, getQuizByPin } from '../services/quizzes.service';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 // Component Skeleton Loading cho thẻ Quiz
 const QuizCardSkeleton = () => {
@@ -30,6 +31,7 @@ const QuizCardSkeleton = () => {
 const QuizzesListPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const userRole = user ? parseInt(user.roleId || user.role_id || user.role, 10) : null;
   const isInstructorOrAdmin = userRole === 1 || userRole === 2;
 
@@ -233,10 +235,10 @@ const QuizzesListPage = () => {
             <span>Sân chơi tự luyện</span>
           </span>
           <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight leading-none mb-4">
-            Thử thách trắc nghiệm vui
+            {t('quizzesHeaderTitle')}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-405 leading-relaxed">
-            Học mà chơi, chơi mà học! Trắc nghiệm phản xạ nhanh giúp củng cố từ vựng, ngữ pháp tiếng Anh giao tiếp thông dụng.
+            {t('quizzesHeaderSubtitle')}
           </p>
         </div>
 

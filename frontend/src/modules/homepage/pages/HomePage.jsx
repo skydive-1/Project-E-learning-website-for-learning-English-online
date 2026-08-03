@@ -9,10 +9,12 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import apiClient from '../../../config/api.config';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -68,14 +70,6 @@ const HomePage = () => {
       });
       
       setFormSubmitted(true);
-      setSubmitting(false);
-
-      // Reset form sau 5 giây
-      setTimeout(() => {
-        setFormSubmitted(false);
-        setFullname('');
-        setEmail('');
-      }, 5000);
     } catch (err) {
       console.error('Lỗi khi gửi đăng ký tư vấn:', err);
       setSubmitting(false);
@@ -92,24 +86,27 @@ const HomePage = () => {
         <section id="hero" className="hero-section">
           <div className="container hero-container">
             <div className="hero-content scroll-animate">
-              <span className="badge-ai">VỚI SỨC MẠNH AI</span>
+              <span className="badge-ai">{t('heroBadge')}</span>
               <h1 className="hero-title">
-                Chinh phục tiếng Anh <br />
-                <span>cùng AI</span>
+                {t('heroTitlePrefix')} <br />
+                <span>{t('heroTitleSuffix')}</span>
               </h1>
               <p className="hero-subtitle">
-                Trải nghiệm học ngôn ngữ thế hệ mới. Trải nghiệm phương pháp học toàn diện tích hợp trợ lý ảo thông minh hỗ trợ 24/7 giúp bạn tự tin giao tiếp ngoại ngữ nhanh chóng, hiệu quả vượt trội.
+                {t('heroSubtitle')}
               </p>
               <div className="hero-actions">
-                <button className="btn-primary-orange" onClick={() => navigate('/register')}>
-                  Đăng ký học thử ngay!
+                <button className="btn-primary-orange" onClick={() => navigate('/courses')}>
+                  {t('btnStartLearning')}
+                </button>
+                <button className="btn-secondary-outline" onClick={() => navigate('/academy')} style={{ marginLeft: '12px' }}>
+                  {t('btnViewRoadmap')}
                 </button>
               </div>
               
               <div className="hero-trust">
                 <div className="trust-badge">
                   <FiAward className="trust-icon" />
-                  <span>Được tin dùng bởi 100% học viên</span>
+                  <span>{t('aiTutorSubtitle')}</span>
                 </div>
               </div>
             </div>

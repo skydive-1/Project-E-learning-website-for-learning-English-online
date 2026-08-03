@@ -16,6 +16,7 @@ import CourseEditor from './modules/instructor/pages/CourseEditor';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
@@ -37,8 +38,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <ThemeProvider>
-          <BrowserRouter>
-            <AuthProvider>
+          <LanguageProvider>
+            <BrowserRouter>
+              <AuthProvider>
               <Routes>
                 {/* Public Landing Route */}
                 <Route path="/" element={<HomePage />} />
@@ -136,7 +138,8 @@ function App() {
               <GlobalChatbot />
             </AuthProvider>
           </BrowserRouter>
-        </ThemeProvider>
+        </LanguageProvider>
+      </ThemeProvider>
       </ErrorBoundary>
     </QueryClientProvider>
   );
