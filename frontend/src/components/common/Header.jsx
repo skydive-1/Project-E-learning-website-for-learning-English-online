@@ -30,6 +30,20 @@ const Header = () => {
     };
   }, [isDropdownOpen, isMobileMenuOpen]);
 
+  // Lock body scroll when mobile menu is open to prevent background scrolling on small screens
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow || '';
+      };
+    }
+    // ensure cleanup
+    document.body.style.overflow = '';
+    return () => { document.body.style.overflow = ''; };
+  }, [isMobileMenuOpen]);
+
   const handleLogout = () => {
     logout();
     setIsDropdownOpen(false);
@@ -58,7 +72,7 @@ const Header = () => {
           />
         )}
 
-        <nav className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`}>
+        <nav id="main-nav" className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}>
           <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>Programs</Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>Academy</Link>
           <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>Quizzes</Link>
@@ -158,6 +172,8 @@ const Header = () => {
             }}
             className="mobile-menu-toggle-btn"
             title="Menu"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="main-nav"
           >
             {isMobileMenuOpen ? <FiX /> : <FiMenu />}
           </button>

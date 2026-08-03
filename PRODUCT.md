@@ -1,5 +1,10 @@
 # Product
 
+<!-- impeccable:product-schema 1 -->
+
+## Platform
+web
+
 ## Register
 
 product
@@ -30,3 +35,27 @@ Cung cấp một nền tảng học tiếng Anh trực tuyến toàn diện, tí
 - Hỗ trợ tốt cho người dùng ở nhiều độ tuổi (font chữ rõ ràng, icon dễ hiểu).
 - Tuân thủ các nguyên tắc cơ bản về độ tương phản để hỗ trợ học tập trong thời gian dài.
 - Tùy chọn giảm chuyển động cho những người nhạy cảm.
+
+## Evidence on Hand
+- Frontend: `frontend\package.json` (React 19, Vite, Tailwind). Dev scripts: `npm start` → `vite`, `npm run build`.
+- Backend: `backend\package.json` (Node/Express, @pinecone-database, @supabase, @google/generative-ai). Dev scripts: `npm run dev` → `nodemon src/server.js`, `npm start` → `node src/server.js`.
+- Product copy (purpose, users) present in this file; no DESIGN.md required for init.
+
+## Capabilities & Constraints
+- Confirmed capabilities: AI-assisted learning via a RAG Chatbot (backend shows Pinecone/Supabase/Google GA libs), web frontend using React/Vite/Tailwind.
+- Technical constraints: web-first deployment; server-side Node/Express; Postgres-compatible DB (pg) and Supabase integrations observed.
+- Undecided facts (left open): deployment target and hosting provider; analytics/telemetry standard; exact content sources for RAG indexing.
+
+## Operating Context
+- Development commands: frontend uses `npm start` (vite), backend uses `npm run dev` (nodemon) and `npm start` for production.
+- Primary artifacts: `frontend/` and `backend/` directories; developer workflow expects standard npm scripts.
+
+## Positioning
+Personalized AI-assisted English learning: combines course content and RAG-powered chat to make practice and remediation feel immediate and context-aware.
+
+## Product Principles
+1. Content-first: prioritize reading and lesson clarity over decorative UI.
+2. AI-as-coach: AI augments learning without obscuring human-curated curriculum.
+3. Low-friction access: minimize steps between intent and practice (fast session start, clear progress).
+
+

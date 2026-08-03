@@ -2,18 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design Tokens & Theme Variables (ui-ux-pro-max Glassmorphism + SaaS Emerald Palette) */
+/* Design Tokens & Theme Variables (Impeccable Overdrive: Smart Indigo + Friendly Orange) */
 :root {
-  --font-heading: 'Plus Jakarta Sans', 'Outfit', sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
 
-  /* Primary Emerald/Teal & Secondary Amber Palette */
-  --primary: #0d9488;
-  --primary-hover: #0f766e;
-  --primary-light: #ccfbf1;
-  --secondary: #2dd4bf;
-  --accent: #f59e0b;
-  --accent-hover: #d97706;
+  /* Smart Indigo (primary) + Friendly Orange (secondary) */
+  --primary: #1d4ed8; /* Smart Indigo */
+  --primary-hover: #1636b8;
+  --primary-light: #e8eefc;
+  --secondary: #ff7a30; /* Friendly Orange */
+  --accent: #ff7a30;
+  --accent-hover: #ff6320;
   --destructive: #ef4444;
 
   /* Surface & Background (Light Mode) */
