@@ -2,42 +2,78 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design Tokens & Theme Variables (ui-ux-pro-max Glassmorphism + SaaS Emerald Palette) */
 :root {
+  --font-heading: 'Plus Jakarta Sans', 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Primary Emerald/Teal & Secondary Amber Palette */
+  --primary: #0d9488;
+  --primary-hover: #0f766e;
+  --primary-light: #ccfbf1;
+  --secondary: #2dd4bf;
+  --accent: #f59e0b;
+  --accent-hover: #d97706;
+  --destructive: #ef4444;
+
+  /* Surface & Background (Light Mode) */
   --bg-color: #f8fafc;
   --text-color: #0f172a;
-  --card-bg: #ffffff;
-  --header-bg: rgba(255, 255, 255, 0.85);
-  --border-color: rgba(226, 232, 240, 0.8);
+  --text-muted: #64748b;
   --text-light: #475569;
+  --card-bg: rgba(255, 255, 255, 0.88);
+  --header-bg: rgba(255, 255, 255, 0.75);
+  --sidebar-bg: rgba(255, 255, 255, 0.95);
+  --border-color: rgba(226, 232, 240, 0.9);
+  --border-highlight: rgba(13, 148, 136, 0.25);
+
   --dropdown-bg: #ffffff;
   --dropdown-hover: #f1f5f9;
   --input-bg: #ffffff;
-  --sidebar-bg: #ffffff;
-  --light-blue-bg: #f3f7fe;
+  --light-blue-bg: #f0fdfa;
   --text-white: #ffffff;
+
+  /* Glassmorphism Tokens */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  --glass-blur: blur(12px);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 35px -10px rgba(13, 148, 136, 0.12);
 }
 
 html.dark {
-  --bg-color: #08090a;
-  --text-color: #f3f4f6;
-  --card-bg: #111214;
-  --header-bg: #08090a;
-  --border-color: #1f2023;
-  --text-light: #9ca3af;
-  --dropdown-bg: #111214;
-  --dropdown-hover: #1e2023;
-  --input-bg: #111214;
-  --sidebar-bg: #08090a;
-  --light-blue-bg: #111214;
-  --text-white: #f3f4f6;
+  /* Surface & Background (Dark Mode) */
+  --bg-color: #0b0f17;
+  --text-color: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-light: #cbd5e1;
+  --card-bg: rgba(15, 23, 42, 0.75);
+  --header-bg: rgba(11, 15, 23, 0.8);
+  --sidebar-bg: rgba(15, 23, 42, 0.9);
+  --border-color: rgba(30, 41, 59, 0.8);
+  --border-highlight: rgba(45, 212, 191, 0.3);
+
+  --dropdown-bg: #1e293b;
+  --dropdown-hover: #334155;
+  --input-bg: #0f172a;
+  --light-blue-bg: #132a2a;
+  --text-white: #f8fafc;
   color-scheme: dark;
+
+  /* Glassmorphism Tokens (Dark) */
+  --glass-bg: rgba(15, 23, 42, 0.75);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
 body {
   margin: 0;
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-color);
@@ -47,18 +83,68 @@ body {
   width: 100%;
 }
 
-/* Ngăn tràn trang chiều ngang trên toàn bộ thiết bị di động */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
 #root, main, .app-container {
   overflow-x: hidden;
   width: 100%;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
-/* Hide scrollbars visually while keeping scroll capability */
+/* Glassmorphism Utility Classes */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+  border-radius: 1rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--border-highlight);
+}
+
+.glass-header {
+  background: var(--header-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -67,24 +153,17 @@ code {
   scrollbar-width: none;
 }
 
-/* Smooth global transitions for light/dark mode */
-body, 
-header, 
-footer, 
-section, 
-div, 
-h1, h2, h3, h4, h5, h6, 
-p, 
-span, 
-a, 
-button, 
-input, 
-textarea, 
-select {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+/* Interactive Cursor Polish */
+button, a, input[type="button"], input[type="submit"] {
+  cursor: pointer;
 }
 
-/* Chặn hiển thị nút tải xuống video mặc định */
+/* Smooth Transitions for interactive components */
+button, input, select, textarea, .transition-all-custom {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Video player controls enhancement */
 video::-internal-media-controls-download-button {
   display: none !important;
 }
@@ -95,14 +174,7 @@ video::-webkit-media-controls-panel {
   width: calc(100% + 30px) !important;
 }
 
-/* Hide mobile-only auth links on desktop views (> 992px) */
-@media (min-width: 993px) {
-  .mobile-auth-links {
-    display: none !important;
-  }
-}
-
-/* Fix browser autofill background and text color issues in light/dark mode */
+/* Autofill Fixes */
 input:-webkit-autofill,
 input:-webkit-autofill:hover, 
 input:-webkit-autofill:focus, 
@@ -116,6 +188,26 @@ html.dark input:-webkit-autofill,
 html.dark input:-webkit-autofill:hover, 
 html.dark input:-webkit-autofill:focus, 
 html.dark input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px var(--input-bg, #111214) inset !important;
-  -webkit-text-fill-color: var(--text-color, #f3f4f6) !important;
-}
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg, #0f172a) inset !important;
+  -webkit-text-fill-color: var(--text-color, #f8fafc) !important;
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
