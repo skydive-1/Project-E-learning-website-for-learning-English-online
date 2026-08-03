@@ -384,14 +384,14 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
   // Các gợi ý câu hỏi nhanh (Thay đổi động theo chế độ bài học hoặc toàn cục)
   const quickPrompts = (lessonId === 0 || lessonId === '0' || !lessonId)
     ? [
-        { label: "🌐 Giới thiệu về E-Learn Academy", text: "Hãy giới thiệu chi tiết cho tôi về trang web học tiếng Anh E-Learn Academy này và các tính năng chính." },
-        { label: "📚 Các khóa học hiện có", text: "Trang web đang cung cấp những khóa học tiếng Anh nào? Tôi có thể tìm thấy khóa học cho người mới bắt đầu không?" },
-        { label: "🧭 Lộ trình học tiếng Anh", text: "Lộ trình học tiếng Anh giao tiếp chuẩn và hiệu quả trên trang web này được thiết kế như thế nào?" }
+        { label: "🌐 Giới thiệu ngắn về trang", text: "Cho tôi tóm tắt ngắn về trang E-Learn Academy và các chức năng chính." },
+        { label: "📚 Khóa học có sẵn", text: "Danh sách các khóa học hiện có; có khóa cho người mới bắt đầu không?" },
+        { label: "🧭 Lộ trình học", text: "Mô tả ngắn lộ trình học giao tiếp phù hợp cho người mới." }
       ]
     : [
-        { label: "Giải thích ngữ pháp bài này", text: "Giải thích ngữ pháp trọng tâm trong video bài học này" },
-        { label: "Cho ví dụ từ vựng", text: "Cho tôi 3 từ vựng mới trong bài học này kèm câu ví dụ cụ thể" },
-        { label: "Tạo một bài tập nhỏ", text: "Tạo cho tôi một bài tập trắc nghiệm nhỏ để kiểm tra kiến thức bài học này" }
+        { label: "Giải thích ngữ pháp", text: "Giải thích ngắn những điểm ngữ pháp chính trong bài này." },
+        { label: "Ví dụ từ vựng", text: "Cho 3 từ vựng quan trọng trong bài và ví dụ câu." },
+        { label: "Tạo bài tập", text: "Tạo 2 câu trắc nghiệm ngắn để ôn bài này." }
       ];
 
   // Trạng thái chưa đăng nhập: Hiển thị giao diện khóa sang trọng

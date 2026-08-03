@@ -118,8 +118,8 @@ const LoginPage = () => {
 
   return (
     <>
-      <h2 className="welcome-title">Welcome</h2>
-      <p className="welcome-subtitle">Please log in or create an account to continue.</p>
+      <h2 className="welcome-title">Chào mừng</h2>
+      <p className="welcome-subtitle">Vui lòng đăng nhập hoặc tạo tài khoản để tiếp tục.</p>
 
       {/* Navigation Tabs */}
       <div className="auth-tabs">

@@ -132,8 +132,8 @@ const RegisterPage = () => {
 
   return (
     <>
-      <h2 className="welcome-title">Welcome</h2>
-      <p className="welcome-subtitle">Please log in or create an account to continue.</p>
+      <h2 className="welcome-title">Chào mừng</h2>
+      <p className="welcome-subtitle">Vui lòng tạo tài khoản hoặc đăng nhập để tiếp tục.</p>
 
       {/* Navigation Tabs */}
       <div className="auth-tabs">

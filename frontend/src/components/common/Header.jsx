@@ -73,17 +73,17 @@ const Header = () => {
         )}
 
         <nav id="main-nav" className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}>
-          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>Programs</Link>
-          <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>Academy</Link>
-          <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>Quizzes</Link>
-          <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>Featured</a>
-          <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>Pricing</a>
+          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>Khóa học</Link>
+          <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>Lộ trình</Link>
+          <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>Trắc nghiệm</Link>
+          <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>Tính năng</a>
+          <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>Bảng giá</a>
 
           {/* Mobile-only auth links */}
           {!user && isMobileMenuOpen && (
             <div className="mobile-auth-links">
-              <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>Login</Link>
-              <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>Register</Link>
+              <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>Đăng nhập</Link>
+              <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>Đăng ký</Link>
             </div>
           )}
         </nav>
