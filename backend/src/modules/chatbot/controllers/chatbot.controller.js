@@ -18,6 +18,33 @@ exports.ask = async (req, res, next) => {
   }
 };
 
+exports.askStream = async (req, res, next) => {
+  try {
+    const { question, lessonId } = req.body;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    await chatbotService.askStream(question, lessonId, req.user?.id, (chunkText) => {
+      res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+    });
+
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+  } catch (error) {
+    if (!res.headersSent) {
+      next(error);
+    } else {
+      res.write(`data: ${JSON.stringify({ error: error.message || 'Stream error' })}\n\n`);
+      res.end();
+    }
+  }
+};
+
 exports.saveHistory = async (req, res, next) => {
   try {
     // Tiếp nhận các trường dữ liệu theo API Contract

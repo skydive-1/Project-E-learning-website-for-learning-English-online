@@ -128,6 +128,121 @@ CÂU HỎI CỦA HỌC VIÊN:
 };
 
 /**
+ * Xử lý RAG Chat dạng Stream (Trả về async generator / stream chunks từ Gemini)
+ */
+const handleRagChatStream = async (userId, lessonId, question, onChunk) => {
+  try {
+    if (!question) {
+      if (onChunk) onChunk("Vui lòng nhập câu hỏi.");
+      return "Vui lòng nhập câu hỏi.";
+    }
+
+    // Kiểm tra an toàn Guardrails
+    const checkSafety = question.toLowerCase();
+    const toxicKeywords = ['hack', 'bypass', 'bẻ khóa', 'gỡ bảo mật', 'quocanh26012004', 'super admin', 'superadmin', 'cướp quyền', 'lạm quyền', 'user_token_limits', 'tokenlimit', 'reset-token'];
+    if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
+      const safeReply = "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!";
+      if (onChunk) onChunk(safeReply);
+      return safeReply;
+    }
+
+    const isGlobalChat = !lessonId || Number(lessonId) === 0;
+    let contextText = "";
+
+    if (isGlobalChat) {
+      try {
+        const coursesResult = await db.query(`
+          SELECT course_name, description 
+          FROM courses 
+          ORDER BY course_id ASC
+        `);
+        const coursesList = coursesResult.rows;
+        if (coursesList.length > 0) {
+          contextText = "Dưới đây là danh sách các khóa học thực tế đang hoạt động trên hệ thống E-Learn Academy:\n" +
+            coursesList.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - Mô tả: ${c.description || "Không có mô tả"}`).join("\n");
+        } else {
+          contextText = "Hiện tại chưa có khóa học nào được đăng tải trên hệ thống.";
+        }
+      } catch (dbErr) {
+        console.error("Lỗi lấy danh sách khóa học cho chatbot:", dbErr);
+        contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
+      }
+    } else {
+      const embeddingResult = await embeddingModel.embedContent({
+        content: { parts: [{ text: question }] },
+        outputDimensionality: 768
+      });
+      const queryVector = embeddingResult.embedding?.values;
+
+      if (queryVector) {
+        const queryOptions = {
+          vector: queryVector,
+          topK: 2,
+          includeMetadata: true
+        };
+
+        const parsedLessonId = Number(lessonId);
+        if (!isNaN(parsedLessonId)) {
+          queryOptions.filter = { lesson_id: { $eq: parsedLessonId } };
+        }
+
+        const queryResponse = await pineconeIndex.query(queryOptions);
+        const matches = queryResponse.matches || [];
+        contextText = matches
+          .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
+          .filter(Boolean)
+          .join("\n");
+      }
+    }
+
+    const systemPrompt = isGlobalChat
+      ? `Bạn là Trợ lý ảo học tiếng Anh của E-Learn Academy. E-Learn Academy là một nền tảng học tiếng Anh trực tuyến thông minh với các tính năng chính: Học từ vựng, ngữ pháp, luyện nghe qua video bảo mật, luyện phát âm/nói (Speaking) chấm điểm bằng AI, và làm bài trắc nghiệm (Quiz).
+  
+HƯỚNG DẪN TRẢ LỜI:
+- Hãy trả lời một cách tự nhiên, thân thiện và trực tiếp (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
+- Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, hãy sử dụng NGỮ CẢNH HỆ THỐNG dưới đây để cung cấp thông tin chính xác về các khóa học thực tế đang hoạt động trên trang web. Hãy giới thiệu tự nhiên và hấp dẫn.
+- Nếu học viên hỏi các câu hỏi tiếng Anh chung (ví dụ: giải thích ngữ pháp, từ vựng, giao tiếp tự do, dịch thuật), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để giảng dạy và hỗ trợ họ một cách chuyên nghiệp. Khi cung cấp từ vựng/câu mẫu tiếng Anh, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
+- Tuyệt đối không nhắc đến các cụm từ kỹ thuật như "dựa vào ngữ cảnh cung cấp", "theo tài liệu".
+
+NGỮ CẢNH HỆ THỐNG:
+${contextText}
+
+CÂU HỎI CỦA HỌC VIÊN:
+"${question}"`
+      : `Bạn là một Trợ lý ảo học tiếng Anh thân thiện và nhiệt tình. Hãy đóng vai một giáo viên hướng dẫn tiếng Anh để trả lời câu hỏi của học viên một cách tự nhiên, sinh động và dễ hiểu.
+
+HƯỚNG DẪN TRẢ LỜI:
+- Trả lời một cách trực tiếp, tự nhiên và thân thiện (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
+- TUYỆT ĐỐI KHÔNG sử dụng các cụm từ máy móc như: "dựa vào ngữ cảnh", "theo tài liệu cung cấp", "không có tài liệu cụ thể nào", "trong ngữ cảnh này", v.v. Học viên không cần biết về hệ thống tài liệu phía sau.
+- Nếu NGỮ CẢNH dưới đây có chứa thông tin liên quan đến câu hỏi, hãy ưu tiên sử dụng nó để trả lời.
+- Nếu NGỮ CẢNH trống hoặc không liên quan trực tiếp (ví dụ học viên hỏi ngữ pháp chung, chào hỏi, hoặc yêu cầu từ vựng), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để trả lời học viên một cách chính xác nhất.
+- Khi cung cấp từ vựng, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
+
+NGỮ CẢNH BÀI HỌC (Nếu có):
+${contextText || "(Không có tài liệu bổ trợ cụ thể)"}
+
+CÂU HỎI CỦA HỌC VIÊN:
+"${question}"`;
+
+    const resultStream = await geminiModel.generateContentStream(systemPrompt);
+    let fullText = "";
+
+    for await (const chunk of resultStream.stream) {
+      const text = chunk.text();
+      fullText += text;
+      if (onChunk) {
+        onChunk(text);
+      }
+    }
+
+    return fullText;
+  } catch (error) {
+    console.error("Lỗi xảy ra tại handleRagChatStream:", error);
+    throw new Error("Hệ thống AI Assistant đang bận.");
+  }
+};
+
+/**
  * Đối tượng service tương thích với các API hiện tại
  */
 class ChatbotService {
@@ -142,6 +257,15 @@ class ChatbotService {
       chatbotError.name = "ChatbotError";
       chatbotError.status = 503;
       throw chatbotError;
+    }
+  }
+
+  async askStream(question, lessonId, userId, onChunk) {
+    try {
+      return await handleRagChatStream(userId, lessonId, question, onChunk);
+    } catch (error) {
+      console.error("Lỗi xảy ra tại ChatbotService.askStream:", error);
+      throw error;
     }
   }
 

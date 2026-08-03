@@ -100,6 +100,16 @@ Hãy trả lời một cách tự nhiên, dễ hiểu, định dạng markdown �
       console.error("[Gemini Client Error]:", error);
       throw error;
     }
+  },
+  async generateStreamResponse(prompt) {
+    console.log(`[Gemini Client] Gửi content stream prompt lên Gemini Model...`);
+    try {
+      const result = await geminiModel.generateContentStream(prompt);
+      return result.stream;
+    } catch (error) {
+      console.error("[Gemini Client Stream Error]:", error);
+      throw error;
+    }
   }
 };
 

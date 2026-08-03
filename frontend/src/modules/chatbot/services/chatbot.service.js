@@ -67,6 +67,103 @@ export const askChatbot = async (question, lessonId) => {
 };
 
 /**
+ * Gửi câu hỏi của học viên đến API RAG Chatbot của backend dạng SSE Stream.
+ * Nếu API stream thất bại hoặc offline, sẽ sử dụng bộ phản hồi fallback 
+ * và phát lại theo dạng typewriter từng câu từng từ để tạo trải nghiệm đồng nhất.
+ */
+export const askChatbotStream = async (question, lessonId, onChunk) => {
+  const token = localStorage.getItem('token');
+  const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const baseUrl = envUrl.replace(/\/+$/, '');
+
+  try {
+    const response = await fetch(`${baseUrl}/chatbot/ask-stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify({ question, lessonId })
+    });
+
+    if (!response.ok) {
+      if (response.status === 429 || response.status === 403) {
+        const errJson = await response.json().catch(() => ({}));
+        const limitMsg = errJson.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!";
+        throw new Error(limitMsg);
+      }
+      throw new Error(`HTTP Error ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let done = false;
+    let fullText = '';
+    let buffer = '';
+
+    while (!done) {
+      const { value, done: doneReading } = await reader.read();
+      done = doneReading;
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // giữ lại phần chưa hoàn thành
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) continue;
+          const dataStr = trimmed.replace(/^data:\s*/, '');
+          if (dataStr === '[DONE]') {
+            done = true;
+            break;
+          }
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.text) {
+              fullText += parsed.text;
+              if (onChunk) onChunk(fullText);
+            } else if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+          } catch (e) {
+            // ignore malformed json
+          }
+        }
+      }
+    }
+
+    if (fullText) {
+      return fullText;
+    }
+    throw new Error('Empty response from stream');
+  } catch (error) {
+    console.warn('⚠️ Gặp sự cố kết nối stream từ backend, sử dụng typewriter fallback:', error.message);
+
+    let targetText = "";
+    if (error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"))) {
+      targetText = error.message;
+    } else {
+      try {
+        const fullResponse = await askChatbot(question, lessonId);
+        targetText = fullResponse;
+      } catch (e) {
+        targetText = getFallbackResponse(question);
+      }
+    }
+
+    let currentText = '';
+    const words = targetText.split(/(\s+)/);
+    for (let i = 0; i < words.length; i++) {
+      currentText += words[i];
+      if (onChunk) onChunk(currentText);
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 20 + 15));
+    }
+
+    return currentText;
+  }
+};
+
+/**
  * Lấy lịch sử chat cũ từ backend
  */
 export const getChatHistory = async (userId, lessonId) => {

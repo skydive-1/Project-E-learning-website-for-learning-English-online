@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { askChatbot, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance } from '../services/chatbot.service';
+import { askChatbot, askChatbotStream, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 
@@ -163,19 +163,31 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
       text: "🎤 [Đoạn ghi âm]",
       timestamp: new Date()
     };
-    setMessages(prev => [...prev, userAudioMessage]);
+
+    const aiMessageId = `msg-${Date.now()}-ai`;
+    const aiSkeletonMessage = {
+      id: aiMessageId,
+      sender: "ai",
+      text: "",
+      isStreaming: true,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userAudioMessage, aiSkeletonMessage]);
     setIsLoading(true);
 
     try {
       const result = await askChatbotAudio(audioBlob, lessonId);
       
-      const aiReplyMessage = {
-        id: `msg-${Date.now()}-ai`,
-        sender: "ai",
-        text: result.reply,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, aiReplyMessage]);
+      let currentText = '';
+      const words = (result.reply || '').split(/(\s+)/);
+      for (let i = 0; i < words.length; i++) {
+        currentText += words[i];
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentText, isStreaming: true } : m));
+        await new Promise(r => setTimeout(r, Math.random() * 20 + 15));
+      }
+
+      setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: result.reply, isStreaming: false } : m));
       fetchBalance();
 
       if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
@@ -184,14 +196,12 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
         });
       }
     } catch (error) {
-      const errorMessage = {
-        id: `msg-${Date.now()}-err`,
-        sender: "ai",
+      setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+        ...m,
         text: "Không thể xử lý đoạn ghi âm. Hãy thử lại hoặc chuyển sang nhập văn bản.",
-        timestamp: new Date(),
+        isStreaming: false,
         isError: true
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      } : m));
     } finally {
       setIsLoading(false);
     }
@@ -282,24 +292,28 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
     const text = textToSend || inputText;
     if (!text.trim() || isLoading) return;
 
-    // Reset input
     if (!textToSend) setInputText("");
 
-    // Thêm câu hỏi của user vào danh sách ngay lập tức
     const userMessage = {
       id: `msg-${Date.now()}-user`,
       sender: "user",
       text: text,
       timestamp: new Date()
     };
-    setMessages(prev => [...prev, userMessage]);
-    
+
+    const aiMessageId = `msg-${Date.now()}-ai`;
+    const aiSkeletonMessage = {
+      id: aiMessageId,
+      sender: "ai",
+      text: "",
+      isStreaming: true,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage, aiSkeletonMessage]);
     setIsLoading(true);
 
     try {
-      let aiReply;
-      let quizData = null;
-
       const isQuizRequest = text.toLowerCase().includes("trắc nghiệm") || 
                             text.toLowerCase().includes("quizzes") || 
                             text.toLowerCase().includes("quizz") || 
@@ -307,38 +321,39 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
                             text.toLowerCase().includes("bài tập trắc nghiệm");
 
       if (isQuizRequest) {
-        aiReply = "Tôi đã tạo cho bạn 2 câu hỏi trắc nghiệm nhanh dưới đây để kiểm tra kiến thức về bài học này:";
-        quizData = getLessonSpecificQuiz(lessonId);
-      } else {
-        // 1. Gọi API hỏi AI từ backend/gemini
-        aiReply = await askChatbot(text, lessonId);
-      }
-      
-      const aiMessage = {
-        id: `msg-${Date.now()}-ai`,
-        sender: "ai",
-        text: aiReply,
-        timestamp: new Date(),
-        quizData: quizData
-      };
-      setMessages(prev => [...prev, aiMessage]);
-      fetchBalance();
+        const quizIntro = "Tôi đã tạo cho bạn 2 câu hỏi trắc nghiệm nhanh dưới đây để kiểm tra kiến thức về bài học này:";
+        const quizData = getLessonSpecificQuiz(lessonId);
 
-      // 2. Lưu hội thoại ngầm (Auto-Save) vào CSDL
-      if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
-        saveChatHistory(user.userId, lessonId, text, aiReply).catch(err => {
-          console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
+        let currentText = '';
+        const words = quizIntro.split(/(\s+)/);
+        for (let i = 0; i < words.length; i++) {
+          currentText += words[i];
+          setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentText, isStreaming: true } : m));
+          await new Promise(r => setTimeout(r, Math.random() * 20 + 15));
+        }
+
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: quizIntro, isStreaming: false, quizData } : m));
+      } else {
+        const finalAnswer = await askChatbotStream(text, lessonId, (accumulatedText) => {
+          setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: accumulatedText, isStreaming: true } : m));
         });
+
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: finalAnswer, isStreaming: false } : m));
+        fetchBalance();
+
+        if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
+          saveChatHistory(user.userId, lessonId, text, finalAnswer).catch(err => {
+            console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
+          });
+        }
       }
     } catch (error) {
-      const errorMessage = {
-        id: `msg-${Date.now()}-err`,
-        sender: "ai",
+      setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+        ...m,
         text: "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.",
-        timestamp: new Date(),
+        isStreaming: false,
         isError: true
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      } : m));
     } finally {
       setIsLoading(false);
     }
@@ -606,29 +621,24 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
                         );
                       })()}
                     </div>
+                  ) : msg.isStreaming && !msg.text ? (
+                    <div className="space-y-2 py-1 px-0.5 min-w-[180px] sm:min-w-[240px]">
+                      <div className="h-3.5 bg-slate-200 dark:bg-slate-600 rounded-md animate-pulse w-full"></div>
+                      <div className="h-3.5 bg-slate-200 dark:bg-slate-600 rounded-md animate-pulse w-[85%]"></div>
+                      <div className="h-3.5 bg-slate-200 dark:bg-slate-600 rounded-md animate-pulse w-[60%]"></div>
+                    </div>
                   ) : (
-                    <span className="whitespace-pre-wrap">{msg.text}</span>
+                    <>
+                      <span className="whitespace-pre-wrap">{msg.text}</span>
+                      {msg.isStreaming && (
+                        <span className="inline-block w-2 h-4 ml-1 bg-smart-indigo dark:bg-indigo-400 animate-pulse align-middle rounded-xs"></span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
             </div>
           ))
-        )}
-
-        {/* Typing Animation */}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="flex items-start max-w-[85%]">
-              <div className="w-7 h-7 rounded-full bg-smart-indigo/10 dark:bg-smart-indigo/20 text-smart-indigo dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10 dark:border-smart-indigo/20">
-                AI
-              </div>
-              <div className="px-4 py-3 rounded-2xl rounded-tl-none bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-slate-650 shadow-sm flex items-center space-x-1 h-[34px]">
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse" style={{ animationDelay: '300ms' }}></span>
-              </div>
-            </div>
-          </div>
         )}
         
         <div ref={messagesEndRef} />
