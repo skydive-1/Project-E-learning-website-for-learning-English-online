@@ -81,11 +81,41 @@ const Header = () => {
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
           <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>{t('pricing')}</a>
 
-          {/* Mobile-only auth links */}
+          {/* Mobile-only auth links or user menu */}
           {!user && isMobileMenuOpen && (
             <div className="mobile-auth-links">
               <Link to="/login" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>{t('login')}</Link>
               <Link to="/register" className="mobile-btn-register" onClick={() => setIsMobileMenuOpen(false)}>{t('register')}</Link>
+            </div>
+          )}
+
+          {/* When user is logged in, expose account links inside mobile nav for easy access */}
+          {user && isMobileMenuOpen && (
+            <div className="mobile-auth-links">
+              <Link to="/profile" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
+                {t('profile')}
+              </Link>
+
+              <Link to="/my-courses" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
+                {t('myCourses')}
+              </Link>
+
+              {/* Role-based quick links */}
+              {parseInt(user?.roleId || user?.role_id || user?.role) === 1 && (
+                <Link to="/admin/dashboard" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
+                  {t('adminDashboard')}
+                </Link>
+              )}
+
+              {parseInt(user?.roleId || user?.role_id || user?.role) === 2 && (
+                <Link to="/instructor/dashboard" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
+                  {t('instructorDashboard')}
+                </Link>
+              )}
+
+              <button className="mobile-btn-register" onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}>
+                {t('logout')}
+              </button>
             </div>
           )}
         </nav>
