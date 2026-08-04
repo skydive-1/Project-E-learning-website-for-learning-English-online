@@ -2355,4 +2355,47 @@ html.dark {
   }
 }
 
+/* Additional responsive fixes for header and hero to prevent truncation on tablet/phone */
+@media (max-width: 1024px) {
+  .main-header .header-container {
+    padding: 12px 18px !important;
+  }
+  .main-header .logo {
+    min-width: 160px !important;
+    font-size: 18px !important;
+  }
+  .main-header .auth-buttons {
+    min-width: auto !important;
+    gap: 8px !important;
+  }
+  .hero-section {
+    padding-top: 110px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .main-header .logo {
+    min-width: 56px !important;
+  }
+  .main-header .logo .logo-text {
+    display: none !important; /* show only icon on very small screens */
+  }
+  .main-header .logo .logo-icon {
+    font-size: 22px !important;
+  }
+  .main-header .auth-buttons {
+    min-width: auto !important;
+    gap: 6px !important;
+  }
+  .main-header .ios-lang-switch {
+    margin-right: 8px !important;
+    transform: scale(0.92);
+  }
+  .hero-section {
+    padding-top: 100px !important;
+  }
+  /* ensure header elements can shrink to avoid overflow */
+  .header-container, .nav-menu, .auth-buttons { min-width: 0 !important; }
+}
+
 
