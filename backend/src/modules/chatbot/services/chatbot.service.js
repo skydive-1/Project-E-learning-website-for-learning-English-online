@@ -28,9 +28,9 @@ const handleRagChat = async (userId, lessonId, question) => {
     const checkSafety = question.toLowerCase();
     const toxicKeywords = ['hack', 'bypass', 'bẻ khóa', 'gỡ bảo mật', 'quocanh26012004', 'super admin', 'superadmin', 'cướp quyền', 'lạm quyền', 'user_token_limits', 'tokenlimit', 'reset-token'];
     if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
-      return { 
-        success: true, 
-        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!" 
+      return {
+        success: true,
+        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!"
       };
     }
 
@@ -302,7 +302,7 @@ class ChatbotService {
   async getHistory(userId, lessonId) {
     try {
       const hasLesson = lessonId && lessonId !== 'null' && lessonId !== 'undefined' && Number(lessonId) !== 0;
-      
+
       // Tự động dọn dẹp các bản ghi cũ trước 00:00 giờ Việt Nam (UTC+7)
       try {
         await db.query(`
@@ -330,10 +330,10 @@ class ChatbotService {
             AND created_at >= (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AT TIME ZONE 'Asia/Ho_Chi_Minh'
           ORDER BY created_date ASC
         `;
-      
+
       const params = hasLesson ? [userId, lessonId] : [userId];
       const result = await db.query(queryText, params);
-      
+
       return result.rows.map(row => ({
         chat_id: row.ai_chat,
         sender: row.sender_type,
@@ -362,49 +362,23 @@ class ChatbotService {
       // Đọc file âm thanh
       const audioData = fs.readFileSync(filePath);
       const audioBase64 = audioData.toString("base64");
-      
-      let prompt = '';
-      if (targetText) {
-        prompt = `You are a professional English pronunciation coach.
-Analyze the user's spoken audio and compare it against the target text: "${targetText}".
-Evaluate the user's pronunciation, calculate an overall correctness score (0 to 100), and perform a word-by-word evaluation.
-Provide feedback and replies in friendly Vietnamese.
-Format the output EXACTLY in the following JSON schema:
-{
-  "success": true,
-  "score": 85,
-  "reply": "Nhận xét tổng quan bằng tiếng Việt...",
-  "words": [
-    {
-      "word": "word_from_target_text",
-      "correct": true,
-      "feedback": null
-    }
-  ]
-}`;
-      } else if (isQA) {
-        prompt = `You are an AI English tutor in a conversational practice session.
-Analyze the user's spoken audio response to the lesson.
-Perform speech-to-text to transcribe the audio, analyze grammar/vocabulary, analyze pronunciation/intonation, suggest a more natural version, and write a reply to continue the conversation.
-Provide feedback and replies in friendly Vietnamese.
-Format the output EXACTLY in the following JSON schema:
-{
-  "success": true,
-  "transcription": "Precise English transcription of what the user said in the audio",
-  "grammarFeedback": "Constructive grammar & vocabulary feedback in Vietnamese",
-  "pronunciationFeedback": "Fluency, stress, and pronunciation feedback in Vietnamese",
-  "suggestion": "A natural, native-like English alternative sentence",
-  "reply": "Your conversational response in Vietnamese to keep the discussion active"
-}`;
-      } else {
-        prompt = `You are an AI English tutor.
-Transcribe and respond to the student's audio.
-Format the output EXACTLY in the following JSON schema:
-{
-  "success": true,
-  "reply": "Your response in Vietnamese"
-}`;
-      }
+
+      const prompt = `You are a professional English language and pronunciation tutor.
+Analyze the user's spoken audio.
+${targetText ? `The user was trying to read the following target sentence: "${targetText}". Compare their pronunciation against it.` : ''}
+${isQA ? `The user was responding to a conversational English practice prompt. Evaluate their response for grammar, vocabulary, pronunciation, and flow.` : ''}
+
+Format the response as a JSON object containing EXACTLY these keys:
+1. "score": (number) An overall score from 0 to 100 based on their pronunciation, rhythm, grammar, and coherence.
+2. "pronunciation_accuracy": (string) An accuracy percentage of their pronunciation (e.g., "85%").
+3. "detailed_feedback": (string) Constructive, encouraging feedback in friendly Vietnamese pointing out any errors or areas of improvement.
+4. "improved_sentence": (string) A corrected, natural, native-like English alternative or transcription of what they said.
+${targetText ? `5. "words": (array) A word-by-word evaluation of the target sentence. An array of objects, where each object has:
+   - "word": (string) the word from the target text.
+   - "correct": (boolean) whether it was pronounced correctly.
+   - "feedback": (string or null) brief feedback on how to improve if pronounced incorrectly.` : ''}
+
+Ensure the response contains ONLY the valid JSON object, without any markdown formatting or backticks.`;
 
       const result = await geminiModel.generateContent({
         contents: [
@@ -426,8 +400,43 @@ Format the output EXACTLY in the following JSON schema:
         }
       });
 
-      const responseText = result.response.text();
-      return JSON.parse(responseText);
+      let responseText = result.response.text();
+      // Clean up markdown block if present
+      if (responseText.includes("```")) {
+        responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+      }
+
+      const parsed = JSON.parse(responseText);
+
+      // Fallback for words array if targetText is present but words is missing
+      if (targetText && (!parsed.words || !Array.isArray(parsed.words))) {
+        parsed.words = targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/).filter(Boolean).map(w => ({
+          word: w,
+          correct: parsed.score >= 50,
+          feedback: parsed.score >= 50 ? null : "Cần phát âm rõ ràng hơn."
+        }));
+      }
+
+      // Map to frontend compatibility keys
+      return {
+        success: true,
+        // Required keys
+        score: parsed.score !== undefined ? Number(parsed.score) : 0,
+        pronunciation_accuracy: parsed.pronunciation_accuracy || "0%",
+        detailed_feedback: parsed.detailed_feedback || "",
+        improved_sentence: parsed.improved_sentence || "",
+
+        // Mapped keys for frontend compatibility
+        feedback: parsed.detailed_feedback || "",
+        reply: parsed.detailed_feedback || "",
+        suggestedText: parsed.improved_sentence || "",
+        suggestion: parsed.improved_sentence || "",
+        errors: parsed.score < 70 ? [parsed.detailed_feedback] : [],
+        transcription: parsed.improved_sentence || "",
+        grammarFeedback: parsed.detailed_feedback || "",
+        pronunciationFeedback: parsed.detailed_feedback || "",
+        words: parsed.words || []
+      };
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.evaluateAudio:", error);
       throw new Error("Lỗi hệ thống khi AI xử lý nhận diện và đánh giá âm thanh: " + error.message);
@@ -440,7 +449,7 @@ Format the output EXACTLY in the following JSON schema:
       if (userRes.rows.length === 0) {
         throw new Error('Người dùng không tồn tại');
       }
-      
+
       const roleId = userRes.rows[0].role_id;
       let limit = 6000; // Học viên
       if (roleId === 1) limit = 999999999; // Admin
@@ -453,14 +462,14 @@ Format the output EXACTLY in the following JSON schema:
         'SELECT max_tokens, used_tokens, remaining_tokens, reset_date FROM user_token_limits WHERE user_id = $1',
         [userId]
       );
-      
+
       let tokens_used = 0;
       let tokens_remaining = limit;
 
       if (usageRes.rows.length > 0) {
         const record = usageRes.rows[0];
         const recordResetDate = record.reset_date ? new Date(record.reset_date).toISOString().split('T')[0] : '';
-        
+
         if (recordResetDate !== today) {
           // Ngày mới: tự động reset hiển thị về 0/đầy
           tokens_used = 0;
@@ -490,6 +499,7 @@ const serviceInstance = new ChatbotService();
 
 module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
+  askStream: (question, lessonId, userId, onChunk) => serviceInstance.askStream(question, lessonId, userId, onChunk),
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   clearHistory: (userId) => serviceInstance.clearHistory(userId),

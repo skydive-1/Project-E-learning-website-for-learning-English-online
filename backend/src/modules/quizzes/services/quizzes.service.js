@@ -229,29 +229,17 @@ Trình bày thân thiện, dễ hiểu bằng tiếng Việt.
       const audioData = fs.readFileSync(filePath);
       const audioBase64 = audioData.toString("base64");
       
-      const prompt = `Bạn là một chuyên gia chấm điểm bài nói và phát âm tiếng Anh.
-Hãy nghe file âm thanh thu âm của học viên và thực hiện phân tích:
-1. Nếu file âm thanh im lặng, rỗng, không có tiếng nói hoặc học viên chưa nói gì:
-   Trả về JSON:
-   {
-     "score": 0,
-     "feedback": "Hệ thống không ghi nhận được giọng nói từ Micro của bạn. Bạn chưa phát âm hoặc Micro chưa thu được tiếng.",
-     "errors": ["Học viên chưa phát âm hoặc chưa trả lời qua Micro."],
-     "suggestedText": "${expectedSentence || ''}"
-   }
-2. Ngược lại, nếu học viên có trả lời bằng giọng nói:
-   - Chấm điểm tổng quan từ 0 đến 100 dựa trên độ chính xác phát âm, ngữ điệu và trôi chảy.
-   - Nhận xét chi tiết bằng tiếng Việt trong trường "feedback".
-   - Liệt kê các lỗi phát âm / ngữ pháp (nếu có) trong mảng "errors".
-   - Đề xuất câu nói chuẩn trong "suggestedText".
+      const prompt = `You are a professional English language and pronunciation tutor.
+Analyze the user's spoken audio. Compare their pronunciation against the expected sentence: "${expectedSentence || ''}".
+Evaluate the user's pronunciation, grammar, and fluency.
 
-Định dạng trả về duy nhất là JSON theo cấu trúc:
-{
-  "score": number,
-  "feedback": string,
-  "errors": Array<string>,
-  "suggestedText": string
-}`;
+Format the response as a JSON object containing EXACTLY these keys:
+1. "score": (number) An overall score from 0 to 100 based on their pronunciation, rhythm, and intonation. If the audio is silent or contains no speech, score should be 0.
+2. "pronunciation_accuracy": (string) An accuracy percentage of their pronunciation (e.g., "85%"). If silent, it should be "0%".
+3. "detailed_feedback": (string) Constructive, encouraging feedback in friendly Vietnamese pointing out any errors or areas of improvement.
+4. "improved_sentence": (string) A corrected, natural, native-like English alternative or transcription of what they said.
+
+Ensure the response contains ONLY the valid JSON object, without any markdown formatting or backticks.`;
 
       const result = await geminiModel.generateContent({
         contents: [
@@ -273,24 +261,38 @@ Hãy nghe file âm thanh thu âm của học viên và thực hiện phân tích
         }
       });
 
-      const responseText = result.response.text();
-      try {
-        return JSON.parse(responseText);
-      } catch (e) {
-        return {
-          score: 50,
-          feedback: responseText,
-          errors: [],
-          suggestedText: expectedSentence || ''
-        };
+      let responseText = result.response.text();
+      // Clean up markdown block if present
+      if (responseText.includes("```")) {
+        responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
       }
+
+      const parsed = JSON.parse(responseText);
+
+      // Map to frontend compatibility keys
+      return {
+        // Required keys
+        score: parsed.score !== undefined ? Number(parsed.score) : 0,
+        pronunciation_accuracy: parsed.pronunciation_accuracy || "0%",
+        detailed_feedback: parsed.detailed_feedback || "",
+        improved_sentence: parsed.improved_sentence || "",
+        
+        // Mapped keys for frontend compatibility
+        feedback: parsed.detailed_feedback || "",
+        suggestedText: parsed.improved_sentence || "",
+        errors: parsed.score < 70 ? [parsed.detailed_feedback] : []
+      };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.evaluateAudio:", error);
       return {
         score: 0,
+        pronunciation_accuracy: "0%",
+        detailed_feedback: "Chưa ghi nhận được âm thanh giọng nói từ Micro. Vui lòng bấm Micro và nói lại!",
+        improved_sentence: expectedSentence || '',
+        
         feedback: "Chưa ghi nhận được âm thanh giọng nói từ Micro. Vui lòng bấm Micro và nói lại!",
-        errors: ["Chưa phát hiện giọng nói qua Micro."],
-        suggestedText: expectedSentence || ''
+        suggestedText: expectedSentence || '',
+        errors: ["Chưa phát hiện giọng nói qua Micro."]
       };
     }
   }

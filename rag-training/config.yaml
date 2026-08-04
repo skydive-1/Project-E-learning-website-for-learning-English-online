@@ -5,4 +5,4 @@ rag:
   data_folder: "./data"
 
 models:
-  embedding: "models/embedding-gecko-001"
+  embedding: "models/gemini-embedding-001"

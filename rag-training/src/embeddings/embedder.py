@@ -33,7 +33,7 @@ class CustomGeminiEmbeddings(Embeddings):
         return self._embed(text)
 
 class GeminiEmbedder:
-    def __init__(self, api_key, model_name="models/embedding-gecko-001"):
+    def __init__(self, api_key, model_name="models/gemini-embedding-001"):
         self.api_key = api_key
         # Tự động nâng cấp model gecko cũ sang model gemini-embedding-001 hiện đại của Gemini
         if "gecko" in model_name:

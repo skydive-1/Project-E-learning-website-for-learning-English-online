@@ -22,7 +22,7 @@ class RAGConfig:
         self.chunk_size = yaml_config.get("rag", {}).get("chunk_size", 1000)
         self.chunk_overlap = yaml_config.get("rag", {}).get("chunk_overlap", 100)
         self.data_folder = yaml_config.get("rag", {}).get("data_folder", "./data")
-        self.embedding_model = yaml_config.get("models", {}).get("embedding", "models/embedding-gecko-001")
+        self.embedding_model = yaml_config.get("models", {}).get("embedding", "models/gemini-embedding-001")
         
     def validate(self):
         if not self.gemini_api_key:
