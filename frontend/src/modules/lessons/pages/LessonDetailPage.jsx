@@ -609,7 +609,7 @@ const LessonDetailPage = () => {
                       <iframe 
                         key={currentLesson?.id || 'pdf'}
                         src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-                        className="w-full h-full border-none bg-white select-none pointer-events-auto"
+                        className={`w-full h-full border-none bg-white select-none pointer-events-auto transition-all duration-100 ${isScreenRecordingDetected ? 'opacity-0 invisible pointer-events-none' : 'opacity-100'}`}
                         title={currentLesson.title}
                         onContextMenu={(e) => e.preventDefault()}
                       />
@@ -625,7 +625,7 @@ const LessonDetailPage = () => {
                             <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
                           </div>
 
-                          <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-xl z-[99998] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
+                          <div className="absolute inset-0 bg-slate-950/98 backdrop-blur-2xl z-[99998] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
                             <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
                               ⚠️
                             </div>
@@ -672,7 +672,7 @@ const LessonDetailPage = () => {
                         onContextMenu={(e) => e.preventDefault()}
                         onDragStart={(e) => e.preventDefault()}
                         onLoadedMetadata={() => setVideoLoading(false)}
-                        className="w-full h-full object-contain"
+                        className={`w-full h-full object-contain transition-all duration-100 ${isScreenRecordingDetected ? 'opacity-0 invisible pointer-events-none' : 'opacity-100'}`}
                       />
                     </>
                   ) : (
