@@ -125,7 +125,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   const [showTextMap, setShowTextMap] = useState({});
 
   // Hook ghi âm chung
-  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
+  const { isRecording, recordingTime, startRecording, stopRecording, analyserRef } = useAudioRecorder();
 
   // Đọc âm thanh mẫu (TTS)
   const handlePlayTTS = (text, e) => {
@@ -611,21 +611,29 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                       <span className="text-[11.5px] text-slate-500 font-semibold">AI đang phân tích câu trả lời...</span>
                     </div>
                   ) : isCurrentRecording ? (
-                    <div className="flex-1 flex items-center justify-between bg-red-50 dark:bg-red-950/15 p-2 rounded-xl border border-red-100 dark:border-red-900/50">
-                      <div className="flex items-center space-x-2">
+                    <div className="flex-1 flex flex-col sm:flex-row items-center justify-between bg-red-50 dark:bg-red-950/15 p-2 rounded-xl border border-red-100 dark:border-red-900/50 gap-3">
+                      <div className="flex items-center space-x-2 w-full sm:w-auto">
                         <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping"></span>
                         <span className="text-xs font-bold text-red-600 dark:text-red-400">
                           Đang trả lời... {recordingTime}s
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => handleStopQARecord(item.id, e)}
-                        className="px-3.5 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm flex items-center space-x-1"
-                      >
-                        <FiSquare className="text-[11px]" />
-                        <span>Dừng & Nộp câu trả lời</span>
-                      </button>
+
+                      {/* Visualizer */}
+                      <div className="flex-1 w-full max-w-full">
+                        <AudioVisualizer analyserRef={analyserRef} color="#4F46E5" />
+                      </div>
+
+                      <div className="w-full sm:w-auto flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => handleStopQARecord(item.id, e)}
+                          className="px-3.5 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm flex items-center space-x-1"
+                        >
+                          <FiSquare className="text-[11px]" />
+                          <span>Dừng & Nộp câu trả lời</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <button
