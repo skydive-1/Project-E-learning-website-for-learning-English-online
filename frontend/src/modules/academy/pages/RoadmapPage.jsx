@@ -96,25 +96,25 @@ const roadmapPaths = [
   }
 ];
 
-const RoadmapCard = ({ path, onSelectDetail }) => (
+const RoadmapCard = ({ path, onSelectDetail, t }) => (
   <div className="roadmap-path-card scroll-animate">
     <div className="path-image">
-      <img src={path.image} alt={path.title} />
+      <img src={path.image} alt={t(path.title)} />
     </div>
     <div className="path-content">
-      <h2 className="path-title">{path.title}</h2>
-      <p className="path-desc">{path.description}</p>
+      <h2 className="path-title">{t(path.title)}</h2>
+      <p className="path-desc">{t(path.description)}</p>
       
       <div className="path-stats">
-        <span><FiBookOpen /> {path.coursesCount} khóa học</span>
-        <span><FiClock /> {path.time}</span>
+        <span><FiBookOpen /> {path.coursesCount} {t('courses')}</span>
+        <span><FiClock /> {t(path.time)}</span>
       </div>
 
       <div className="path-skills">
-        <h3>Bạn sẽ học được:</h3>
+        <h3>{t('Bạn sẽ học được:')}</h3>
         <ul>
           {path.skills.map((skill, idx) => (
-            <li key={idx}><FiCheckCircle /> {skill}</li>
+            <li key={idx}><FiCheckCircle /> {t(skill)}</li>
           ))}
         </ul>
       </div>
@@ -124,7 +124,7 @@ const RoadmapCard = ({ path, onSelectDetail }) => (
         onClick={() => onSelectDetail(path)}
         className="btn-view-path"
       >
-        Xem chi tiết lộ trình <FiArrowRight />
+        {t('Xem chi tiết lộ trình')} <FiArrowRight />
       </button>
     </div>
   </div>
@@ -164,22 +164,22 @@ const RoadmapPage = () => {
         <section className="academy-hero-section">
           <div className="container">
             <div className="hero-content scroll-animate">
-              <h1>Lộ trình học <span>thông minh</span></h1>
-              <p>Học theo lộ trình bài bản giúp bạn tiết kiệm 50% thời gian học tập mà vẫn đạt hiệu quả tối ưu.</p>
+              <h1>{t('Lộ trình học thông minh')}</h1>
+              <p>{t('Học theo lộ trình bài bản giúp bạn tiết kiệm 50% thời gian học tập mà vẫn đạt hiệu quả tối ưu.')}</p>
               <div className="hero-info-cards">
                 <div className="info-item">
-                  <strong>Khởi đầu</strong>
-                  <span>Xác định trình độ</span>
+                  <strong>{t('Khởi đầu')}</strong>
+                  <span>{t('Xác định trình độ')}</span>
                 </div>
                 <div className="info-arrow"><FiArrowRight /></div>
                 <div className="info-item">
-                  <strong>Tăng tốc</strong>
-                  <span>Học theo lộ trình</span>
+                  <strong>{t('Tăng tốc')}</strong>
+                  <span>{t('Học theo lộ trình')}</span>
                 </div>
                 <div className="info-arrow"><FiArrowRight /></div>
                 <div className="info-item">
-                  <strong>Về đích</strong>
-                  <span>Làm chủ kỹ năng</span>
+                  <strong>{t('Về đích')}</strong>
+                  <span>{t('Làm chủ kỹ năng')}</span>
                 </div>
               </div>
             </div>
@@ -189,8 +189,8 @@ const RoadmapPage = () => {
         <section className="roadmap-paths-section">
           <div className="container">
             <div className="section-title">
-              <h2>Các lộ trình dành cho bạn</h2>
-              <p>Dựa trên mục tiêu sự nghiệp và trình độ hiện tại, hãy chọn cho mình một lộ trình phù hợp nhất.</p>
+              <h2>{t('Các lộ trình dành cho bạn')}</h2>
+              <p>{t('Dựa trên mục tiêu sự nghiệp và trình độ hiện tại, hãy chọn cho mình một lộ trình phù hợp nhất.')}</p>
             </div>
 
             <div className="roadmap-grid">
@@ -199,6 +199,7 @@ const RoadmapPage = () => {
                   key={path.id} 
                   path={path} 
                   onSelectDetail={(targetPath) => setSelectedPath(targetPath)} 
+                  t={t}
                 />
               ))}
             </div>
@@ -210,11 +211,11 @@ const RoadmapPage = () => {
           <div className="container">
             <div className="benefits-card scroll-animate">
               <div className="benefit-text">
-                <h2>Tại sao nên học theo lộ trình?</h2>
+                <h2>{t('Tại sao nên học theo lộ trình?')}</h2>
                 <ul>
-                  <li><FiCheckCircle /> <strong>Không lạc hướng:</strong> Luôn biết mình cần học gì tiếp theo.</li>
-                  <li><FiCheckCircle /> <strong>Tiết kiệm thời gian:</strong> Tập trung vào những kiến thức thực sự quan trọng.</li>
-                  <li><FiCheckCircle /> <strong>Kết quả bền vững:</strong> Xây dựng kiến thức từ gốc đến ngọn.</li>
+                  <li><FiCheckCircle /> <strong>{t('Không lạc hướng:')}</strong> {t('Luôn biết mình cần học gì tiếp theo.')}</li>
+                  <li><FiCheckCircle /> <strong>{t('Tiết kiệm thời gian:')}</strong> {t('Tập trung vào những kiến thức thực sự quan trọng.')}</li>
+                  <li><FiCheckCircle /> <strong>{t('Kết quả bền vững:')}</strong> {t('Xây dựng kiến thức từ gốc đến ngọn.')}</li>
                 </ul>
               </div>
               <div className="benefit-image">
@@ -246,35 +247,35 @@ const RoadmapPage = () => {
               </span>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h3 className="text-xl sm:text-2xl font-bold">{selectedPath.title}</h3>
+                  <h3 className="text-xl sm:text-2xl font-bold">{t(selectedPath.title)}</h3>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  {selectedPath.coursesCount} khóa học tương ứng • Thời gian: {selectedPath.time}
+                  {selectedPath.coursesCount} {t('courses')} • {t(selectedPath.time)}
                 </p>
               </div>
             </div>
 
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6 font-medium">
-              {selectedPath.description}
+              {t(selectedPath.description)}
             </p>
 
             {/* Timeline các Giai đoạn */}
             <div className="space-y-4 mb-8">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <FiLayers className="text-sm" /> Chi tiết các giai đoạn học tập:
+                <FiLayers className="text-sm" /> {t('Chi tiết các giai đoạn học tập:')}
               </h4>
 
               <div className="space-y-3">
                 {selectedPath.phases.map((phase, idx) => (
                   <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60 rounded-2xl space-y-1">
                     <span className="text-[11px] font-bold text-smart-indigo dark:text-indigo-400 uppercase tracking-wider">
-                      {phase.step}
+                      {t(phase.step)}
                     </span>
                     <h5 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                      {phase.name}
+                      {t(phase.name)}
                     </h5>
                     <p className="text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
-                      {phase.desc}
+                      {t(phase.desc)}
                     </p>
                   </div>
                 ))}
@@ -292,7 +293,7 @@ const RoadmapPage = () => {
                 }}
                 className="w-full py-3.5 px-5 bg-smart-indigo hover:bg-smart-indigo-hover text-white text-sm font-bold rounded-2xl shadow-md flex items-center justify-center space-x-2 transition-all cursor-pointer"
               >
-                <span>Khám phá các khóa học ngay</span>
+                <span>{t('Khám phá các khóa học ngay')}</span>
                 <FiArrowRight className="text-base" />
               </button>
             </div>

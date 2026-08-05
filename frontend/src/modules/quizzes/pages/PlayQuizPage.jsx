@@ -19,6 +19,7 @@ import {
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { 
   getFreeQuizById, 
   submitQuizAttempt, 
@@ -60,6 +61,7 @@ const PlayQuizPage = () => {
   const { quizId } = useParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -606,13 +608,13 @@ const PlayQuizPage = () => {
                       <div className="flex flex-col flex-1 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
                         <div className="flex flex-col gap-2">
                           <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                            Nhập câu trả lời tự luận của bạn (tối đa 500 ký tự):
+                            {t('Nhập câu trả lời tự luận của bạn (tối đa 500 ký tự):')}
                           </label>
                           <textarea
                             value={writingAnswer}
                             onChange={(e) => setWritingAnswer(e.target.value.slice(0, 500))}
                             disabled={aiLoading}
-                            placeholder="Viết câu trả lời hoặc đoạn văn ngắn của bạn bằng tiếng Anh..."
+                            placeholder={t('Viết câu trả lời hoặc đoạn văn ngắn của bạn bằng tiếng Anh...')}
                             rows={5}
                             className="w-full p-4 border border-slate-200 dark:border-slate-750 dark:bg-slate-900 dark:text-slate-100 rounded-xl outline-none focus:border-smart-indigo transition-all font-semibold resize-none shadow-inner"
                           />
@@ -633,12 +635,12 @@ const PlayQuizPage = () => {
                             {aiLoading ? (
                               <>
                                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                <span>AI Đang Chấm Điểm...</span>
+                                <span>{t('AI Đang Chấm Điểm...')}</span>
                               </>
                             ) : (
                               <>
                                 <FiEdit3 className="text-sm" />
-                                <span>Nộp bài & Chấm điểm AI</span>
+                                <span>{t('Nộp bài & Chấm điểm AI')}</span>
                               </>
                             )}
                           </button>
@@ -651,7 +653,7 @@ const PlayQuizPage = () => {
                       <div className="flex flex-col flex-1 gap-6 pt-4 border-t border-slate-100 dark:border-slate-700 items-center justify-between">
                         <div className="text-center w-full max-w-lg bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 shadow-inner">
                           <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-2">
-                            {currentQuestion.correctAnswer ? 'Mẫu câu luyện đọc phát âm:' : 'Chủ đề bài nói:'}
+                            {currentQuestion.correctAnswer ? t('Mẫu câu luyện đọc phát âm:') : 'Chủ đề bài nói:'}
                           </span>
                           <p className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-slate-100 italic">
                             "{currentQuestion.correctAnswer || currentQuestion.question}"
@@ -728,17 +730,17 @@ const PlayQuizPage = () => {
                           <button
                             onClick={handleAudioSubmit}
                             disabled={aiLoading || !audioBlob || isRecording}
-                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-200 dark:disabled:bg-slate-750 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
+                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-200 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
                           >
                             {aiLoading ? (
                               <>
                                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                <span>AI Đang Chấm Điểm...</span>
+                                <span>{t('AI Đang Chấm Điểm...')}</span>
                               </>
                             ) : (
                               <>
                                 <FiCheck className="text-sm" />
-                                <span>Nộp bài & Chấm phát âm AI</span>
+                                <span>{t('Nộp bài & Chấm phát âm AI')}</span>
                               </>
                             )}
                           </button>

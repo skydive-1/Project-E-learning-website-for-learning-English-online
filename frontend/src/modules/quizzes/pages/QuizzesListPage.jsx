@@ -285,7 +285,7 @@ const QuizzesListPage = () => {
         <div className="text-center max-w-2xl mx-auto mb-12 animate-fade">
           <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-bold text-smart-indigo tracking-wider uppercase mb-4 dark:bg-indigo-950/20 dark:border-indigo-900/50 dark:text-indigo-400">
             <FiCompass className="text-sm" />
-            <span>Sân chơi tự luyện</span>
+            <span>{t('Sân chơi tự luyện')}</span>
           </span>
           <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight leading-none mb-4">
             {t('quizzesHeaderTitle')}
@@ -298,16 +298,16 @@ const QuizzesListPage = () => {
         {/* Game PIN Join Box (E-Learn style) */}
         <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200/80 dark:border-slate-700 text-center mb-16 animate-fade">
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight mb-1 flex items-center justify-center gap-2">
-            <FiZap className="text-yellow-500 fill-yellow-500" /> Vào chơi nhanh bằng PIN
+            <FiZap className="text-yellow-500 fill-yellow-500" /> {t('Vào chơi nhanh bằng PIN')}
           </h2>
           <p className="text-xs text-slate-400 dark:text-slate-500 mb-5 font-semibold">
-            Nhập mã PIN bất kỳ để kết nối ngẫu nhiên và tham gia phòng chờ.
+            {t('Nhập mã PIN bất kỳ để kết nối ngẫu nhiên và tham gia phòng chờ.')}
           </p>
 
           <form onSubmit={handleJoinByPin} className="flex gap-3">
             <input
               type="text"
-              placeholder="Nhập mã PIN..."
+              placeholder={t('Nhập mã PIN...')}
               maxLength={6}
               value={pinCode}
               onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
@@ -319,7 +319,7 @@ const QuizzesListPage = () => {
               disabled={joining}
               className="py-2.5 px-6 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-98 transition-all cursor-pointer shadow-md disabled:bg-slate-400"
             >
-              {joining ? 'Đang vào...' : 'Tham gia'}
+              {joining ? '...' : t('Tham gia')}
             </button>
           </form>
           {pinError && <div className="text-red-500 text-[11px] font-bold mt-2 text-left">{pinError}</div>}
@@ -328,7 +328,7 @@ const QuizzesListPage = () => {
         {/* Quizzes List Header */}
         <div className="flex justify-between items-center w-full max-w-4xl mb-8">
           <div className="flex items-center flex-1">
-            <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Danh sách đề thi hiện có</h2>
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t('Danh sách đề thi hiện có')}</h2>
             <div className="flex-1 h-[1px] bg-slate-200 dark:bg-slate-800 ml-4 mr-4"></div>
           </div>
           {isInstructorOrAdmin && (
@@ -341,7 +341,7 @@ const QuizzesListPage = () => {
                 }}
                 className="flex items-center space-x-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
               >
-                <FiKey /> <span>Quản lý Đề thi & Mã PIN</span>
+                <FiKey /> <span>{t('Quản lý Đề thi & Mã PIN')}</span>
               </button>
 
               <button
@@ -349,7 +349,7 @@ const QuizzesListPage = () => {
                 onClick={() => setShowCreateModal(true)}
                 className="flex items-center space-x-1.5 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
               >
-                <FiPlus /> <span>Tạo đề thi mới</span>
+                <FiPlus /> <span>{t('Tạo đề thi mới')}</span>
               </button>
             </div>
           )}
@@ -807,10 +807,10 @@ const QuizzesListPage = () => {
                 </div>
                 <div>
                   <h3 className="text-xl font-extrabold text-slate-800 dark:text-slate-100">
-                    Quản lý Đề thi & Mã PIN Riêng tư
+                    {t('Quản lý Đề thi & Mã PIN Riêng tư')}
                   </h3>
                   <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                    Dành riêng cho Giảng viên & Admin • Tra cứu mã PIN, xem câu hỏi hoặc xóa bài thi
+                    {t('Dành riêng cho Giảng viên & Admin • Tra cứu mã PIN, xem câu hỏi hoặc xóa bài thi')}
                   </p>
                 </div>
               </div>
@@ -830,7 +830,7 @@ const QuizzesListPage = () => {
                 <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
                 <input
                   type="text"
-                  placeholder="Tìm kiếm đề thi theo tên hoặc nhập Mã PIN (VD: 123456)..."
+                  placeholder={t('Tìm kiếm đề thi theo tên hoặc nhập Mã PIN (VD: 123456)...')}
                   value={manageSearch}
                   onChange={(e) => setManageSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-semibold outline-none focus:border-smart-indigo transition-all"
@@ -844,21 +844,21 @@ const QuizzesListPage = () => {
                   onClick={() => setManageFilter('all')}
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${manageFilter === 'all' ? 'bg-white dark:bg-slate-800 text-smart-indigo shadow-sm' : 'text-slate-500'}`}
                 >
-                  Tất cả ({managedQuizzes.length})
+                  {t('Tất cả')} ({managedQuizzes.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setManageFilter('private')}
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${manageFilter === 'private' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500'}`}
                 >
-                  🔒 Riêng tư ({managedQuizzes.filter(q => q.is_private).length})
+                  {t('🔒 Riêng tư')} ({managedQuizzes.filter(q => q.is_private).length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setManageFilter('public')}
                   className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${manageFilter === 'public' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
                 >
-                  🌐 Công khai ({managedQuizzes.filter(q => !q.is_private).length})
+                  {t('🌐 Công khai')} ({managedQuizzes.filter(q => !q.is_private).length})
                 </button>
               </div>
             </div>
@@ -893,11 +893,11 @@ const QuizzesListPage = () => {
                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                           {q.is_private ? (
                             <span className="px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                              <FiLock /> 🔒 Đề thi Riêng tư
+                              <FiLock /> {t('🔒 Riêng tư')}
                             </span>
                           ) : (
                             <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                              <FiGlobe /> 🌐 Đề thi Công khai
+                              <FiGlobe /> {t('🌐 Công khai')}
                             </span>
                           )}
 
@@ -920,7 +920,7 @@ const QuizzesListPage = () => {
                           <div className="mt-3 p-3.5 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3">
                             <div className="flex items-center space-x-2">
                               <span className="text-xs font-extrabold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
-                                MÃ PIN THAM GIA:
+                                {t('MÃ PIN THAM GIA:')}
                               </span>
                               <span className="px-3 py-1 bg-amber-500 text-slate-950 rounded-lg font-black text-sm tracking-widest font-mono shadow-sm">
                                 {q.pin_code}
@@ -935,12 +935,12 @@ const QuizzesListPage = () => {
                               {copiedPinId === q.quiz_id ? (
                                 <>
                                   <FiCheck className="text-emerald-400 text-sm" />
-                                  <span>Đã sao chép!</span>
+                                  <span>{t('Đã sao chép!')}</span>
                                 </>
                               ) : (
                                 <>
                                   <FiCopy className="text-xs" />
-                                  <span>Sao chép PIN</span>
+                                  <span>{t('Sao chép PIN')}</span>
                                 </>
                               )}
                             </button>
@@ -959,7 +959,7 @@ const QuizzesListPage = () => {
                           className="px-4 py-2 bg-smart-indigo hover:bg-indigo-650 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-sm cursor-pointer"
                         >
                           <FiPlay className="text-xs" />
-                          <span>Thi thử ngay</span>
+                          <span>{t('Thi thử ngay')}</span>
                         </button>
 
                         <button
@@ -968,7 +968,7 @@ const QuizzesListPage = () => {
                           className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                         >
                           <FiTrash2 className="text-xs" />
-                          <span>Xóa đề thi</span>
+                          <span>{t('Xóa đề thi')}</span>
                         </button>
                       </div>
                     </div>
@@ -983,7 +983,7 @@ const QuizzesListPage = () => {
                 onClick={() => setShowManageModal(false)}
                 className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
               >
-                Đóng cửa sổ
+                {t('Đóng cửa sổ')}
               </button>
             </div>
           </div>
