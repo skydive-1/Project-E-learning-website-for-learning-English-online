@@ -561,16 +561,53 @@ const LessonDetailPage = () => {
             ) : (
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 
-                {/* Premium Video Container with Layer 1 & Layer 2 Security Protections */}
+                {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
                 <div 
                   ref={containerRef}
                   className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
                   onContextMenu={(e) => e.preventDefault()}
                   onDragStart={(e) => e.preventDefault()}
                 >
+                  {/* View-Once Facebook/Instagram-style Blackout Security Shield */}
+                  {isScreenRecordingDetected && (
+                    <div className="absolute inset-0 bg-slate-950 backdrop-blur-3xl z-[99999] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade select-none">
+                      {/* Copyright Policy Watermark Badge */}
+                      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-none z-[100000] font-mono text-[11px] sm:text-xs font-bold text-amber-300 bg-slate-900 border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                        <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
+                      </div>
+
+                      <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
+                        ⚠️
+                      </div>
+                      
+                      <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-wide uppercase text-red-400">
+                        PHÁT HIỆN THAO TÁC CHỤP MÀN HÌNH TÀI LIỆU
+                      </h3>
+                      
+                      <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
+                        Hệ thống đã tự động kích hoạt lá chắn bôi đen màn hình (View-Once Security Shield). Toàn bộ nội dung tài liệu / video đã được bảo vệ để ngăn chặn sao chép trái phép.
+                      </p>
+
+                      <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
+                        Học viên: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setIsScreenRecordingDetected(false);
+                          if (videoRef.current) videoRef.current.play();
+                        }}
+                        className="mt-3 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer border border-red-500/50"
+                      >
+                        Tôi đã tắt công cụ chụp màn hình — Nhấn để mở lại bài học
+                      </button>
+                    </div>
+                  )}
+
                   {currentLesson?.type === 'pdf' ? (
                     <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
-                      {/* PDF Security Watermark Badge (Gắn dính Gmail & ID vào tài liệu PDF khi chụp màn hình) */}
+                      {/* PDF Security Watermark Badge */}
                       <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
                         <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
@@ -585,27 +622,6 @@ const LessonDetailPage = () => {
                         </span>
                       </div>
 
-                      {/* Security Warning Overlay when Screen Capture is Detected on PDF */}
-                      {isScreenRecordingDetected && (
-                        <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-xl z-[99998] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
-                          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
-                            ⚠️
-                          </div>
-                          <h3 className="text-lg sm:text-xl font-bold text-white tracking-wide">
-                            CẢNH BÁO BẢO MẬT TÀI LIỆU
-                          </h3>
-                          <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                            {recordingDetectedMessage || 'Phát hiện hành vi chụp/quay màn hình tài liệu PDF. Hệ thống đã tự động ghi nhận nhật ký bảo mật.'}
-                          </p>
-                          <button
-                            onClick={() => setIsScreenRecordingDetected(false)}
-                            className="mt-2 px-6 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
-                          >
-                            Tôi đã hiểu — Tiếp tục đọc tài liệu
-                          </button>
-                        </div>
-                      )}
-
                       <iframe 
                         key={currentLesson?.id || 'pdf'}
                         src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
@@ -616,38 +632,6 @@ const LessonDetailPage = () => {
                     </div>
                   ) : currentLesson?.videoUrl ? (
                     <>
-                      {/* Security Warning Overlay & Copyright Policy Badge when Screen Recording/Capture is Detected */}
-                      {isScreenRecordingDetected && (
-                        <>
-                          {/* Copyright Policy Watermark Badge on Top Right/Bottom (Fullscreen Compatible) */}
-                          <div className="absolute top-6 right-6 pointer-events-none z-[99999] select-none font-mono text-xs sm:text-sm font-bold text-amber-300 bg-slate-950/85 border border-amber-500/50 px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2 animate-pulse">
-                            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                            <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
-                          </div>
-
-                          <div className="absolute inset-0 bg-slate-950/98 backdrop-blur-2xl z-[99998] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
-                            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
-                              ⚠️
-                            </div>
-                            <h3 className="text-lg sm:text-xl font-bold text-white tracking-wide">
-                              CẢNH BÁO BẢO MẬT BÀI HỌC
-                            </h3>
-                            <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                              {recordingDetectedMessage || 'Phát hiện ứng dụng quay/chụp màn hình đang hoạt động (OBS, Snipping Tool, Extension). Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.'}
-                            </p>
-                            <button
-                              onClick={() => {
-                                setIsScreenRecordingDetected(false);
-                                if (videoRef.current) videoRef.current.play();
-                              }}
-                              className="mt-2 px-6 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
-                            >
-                              Tôi đã tắt ứng dụng quay — Tiếp tục học
-                            </button>
-                          </div>
-                        </>
-                      )}
-
                       {videoLoading && (
                         <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
                           <div className="flex flex-col items-center gap-3">
