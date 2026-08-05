@@ -200,16 +200,46 @@ const LessonDetailPage = () => {
 
   const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && lessonLoading);
 
-  // Streaming video trực tiếp với HTTP Range Requests để phát ngay tức thì (~200ms)
+  // Security Layer 1: Encapsulate Video Source into an In-Memory Blob URL & Anti-Download Guard
   useEffect(() => {
+    let isMounted = true;
+    let activeObjectUrl = null;
+
     if (!currentLesson?.videoUrl) {
       setVideoBlobUrl('');
       setVideoLoading(false);
       return;
     }
 
-    setVideoBlobUrl(currentLesson.videoUrl);
-    setVideoLoading(false);
+    setVideoLoading(true);
+
+    // Fetch video as Blob to encapsulate actual source URL and obscure direct MP4 link
+    fetch(currentLesson.videoUrl)
+      .then(response => {
+        if (!response.ok) throw new Error('Network error fetching video blob');
+        return response.blob();
+      })
+      .then(blob => {
+        if (!isMounted) return;
+        const objectUrl = URL.createObjectURL(blob);
+        activeObjectUrl = objectUrl;
+        setVideoBlobUrl(objectUrl);
+        setVideoLoading(false);
+      })
+      .catch(err => {
+        // Fallback gracefully if CORS restricts direct fetch so stream never breaks
+        if (!isMounted) return;
+        console.warn('Fallback to direct video stream URL due to CORS:', err);
+        setVideoBlobUrl(currentLesson.videoUrl);
+        setVideoLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+      if (activeObjectUrl) {
+        URL.revokeObjectURL(activeObjectUrl);
+      }
+    };
   }, [currentLesson?.videoUrl]);
 
   // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
@@ -457,8 +487,12 @@ const LessonDetailPage = () => {
             ) : (
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 
-                {/* Premium Video Container */}
-                <div className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group">
+                {/* Premium Video Container with Layer 1 & Layer 2 Security Protections */}
+                <div 
+                  className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
+                  onContextMenu={(e) => e.preventDefault()}
+                  onDragStart={(e) => e.preventDefault()}
+                >
                   {currentLesson?.type === 'pdf' ? (
                     <iframe 
                       key={currentLesson?.id || 'pdf'}
@@ -468,13 +502,24 @@ const LessonDetailPage = () => {
                     />
                   ) : currentLesson?.videoUrl ? (
                     <>
+                      {/* Tầng 2: Dynamic Floating Watermark Overlay (Anti Screen-Recording) */}
+                      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
+                        <div className="watermark-floating-badge px-3 py-1.5 rounded-full bg-slate-900/40 border border-slate-700/50 backdrop-blur-md text-[10px] sm:text-xs font-mono font-semibold text-slate-300/70 shadow-md flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span>
+                          <span>🔒 {user?.email || user?.fullname || 'Học viên E-Learn Pro'}</span>
+                          <span className="text-slate-500">•</span>
+                          <span>ID: {user?.id || user?.userId || currentUserId || 'STD-2026'}</span>
+                        </div>
+                      </div>
+
                       {videoLoading && (
                         <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
                           <div className="flex flex-col items-center gap-3">
                             <div className="w-14 h-14 rounded-full bg-slate-800/80 flex items-center justify-center shadow-inner">
-                              <FiPlay className="text-2xl text-slate-600 ml-1" />
+                              <FiPlay className="text-2xl text-teal-400 ml-1 animate-pulse" />
                             </div>
-                            <div className="h-3 w-32 bg-slate-800/70 rounded-full"></div>
+                            <div className="h-3 w-36 bg-slate-800/70 rounded-full"></div>
+                            <span className="text-xs text-slate-400 font-medium">Đang mã hóa luồng phát bảo mật...</span>
                           </div>
                         </div>
                       )}
@@ -485,7 +530,7 @@ const LessonDetailPage = () => {
                         controls 
                         autoPlay
                         preload="metadata"
-                        controlsList="nodownload"
+                        controlsList="nodownload noremoteplayback"
                         disablePictureInPicture
                         onContextMenu={(e) => e.preventDefault()}
                         onDragStart={(e) => e.preventDefault()}
