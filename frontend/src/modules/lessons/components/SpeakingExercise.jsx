@@ -599,11 +599,6 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                         "{result.suggestion}"
                       </p>
                     </div>
-
-                    {/* Summary response */}
-                    <p className="text-xs font-semibold leading-relaxed text-slate-550 dark:text-slate-400 pl-1">
-                      {result.reply}
-                    </p>
                   </div>
                 )}
 
