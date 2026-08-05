@@ -579,8 +579,8 @@ const LessonDetailPage = () => {
                   onContextMenu={(e) => e.preventDefault()}
                   onDragStart={(e) => e.preventDefault()}
                 >
-                  {/* View-Once Facebook/Instagram-style Blackout Security Shield */}
-                  {isScreenRecordingDetected && (
+                  {/* View-Once Facebook/Instagram-style Permanent Blackout Security Shield */}
+                  {isScreenRecordingDetected ? (
                     <div className="absolute inset-0 bg-slate-950 backdrop-blur-3xl z-[99999] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade select-none">
                       {/* Copyright Policy Watermark Badge */}
                       <div className="absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-none z-[100000] font-mono text-[11px] sm:text-xs font-bold text-amber-300 bg-slate-900 border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
@@ -593,30 +593,27 @@ const LessonDetailPage = () => {
                       </div>
                       
                       <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-wide uppercase text-red-400">
-                        PHÁT HIỆN THAO TÁC CHỤP MÀN HÌNH TÀI LIỆU
+                        CẢNH BÁO VI PHẠM BẢO MẬT TÀI LIỆU
                       </h3>
                       
                       <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                        Hệ thống đã tự động kích hoạt lá chắn bôi đen màn hình (View-Once Security Shield). Toàn bộ nội dung tài liệu / video đã được bảo vệ để ngăn chặn sao chép trái phép.
+                        Hệ thống đã tự động bôi đen và hủy nạp tài liệu khỏi bộ nhớ do phát hiện thao tác chụp / quay màn hình. Để bảo vệ bản quyền, toàn bộ nội dung đã bị vô hiệu hóa trong phiên này.
                       </p>
 
                       <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
-                        Học viên: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
+                        Nhật ký vi phạm: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
                       </div>
 
                       <button
                         onClick={() => {
-                          setIsScreenRecordingDetected(false);
-                          if (videoRef.current) videoRef.current.play();
+                          window.location.reload();
                         }}
                         className="mt-3 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer border border-red-500/50"
                       >
-                        Tôi đã tắt công cụ chụp màn hình — Nhấn để mở lại bài học
+                        Tải lại trang bài học để xác thực phiên an toàn
                       </button>
                     </div>
-                  )}
-
-                  {currentLesson?.type === 'pdf' ? (
+                  ) : currentLesson?.type === 'pdf' ? (
                     <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
                       {/* PDF Security Watermark Badge */}
                       <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
@@ -636,7 +633,7 @@ const LessonDetailPage = () => {
                       <iframe 
                         key={currentLesson?.id || 'pdf'}
                         src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-                        className={`w-full h-full border-none bg-white select-none pointer-events-auto transition-all duration-100 ${isScreenRecordingDetected ? 'opacity-0 invisible pointer-events-none' : 'opacity-100'}`}
+                        className="w-full h-full border-none bg-white select-none pointer-events-auto"
                         title={currentLesson.title}
                         onContextMenu={(e) => e.preventDefault()}
                       />
@@ -667,7 +664,7 @@ const LessonDetailPage = () => {
                         onContextMenu={(e) => e.preventDefault()}
                         onDragStart={(e) => e.preventDefault()}
                         onLoadedMetadata={() => setVideoLoading(false)}
-                        className={`w-full h-full object-contain transition-all duration-100 ${isScreenRecordingDetected ? 'opacity-0 invisible pointer-events-none' : 'opacity-100'}`}
+                        className="w-full h-full object-contain"
                       />
                     </>
                   ) : (
