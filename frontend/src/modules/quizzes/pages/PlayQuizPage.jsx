@@ -29,13 +29,30 @@ import {
 
 const getEffectiveQuestionType = (q) => {
   if (!q) return 'multiple_choice';
-  if (q.questionType === 'writing' || q.questionType === 'pronunciation') {
-    return q.questionType;
+  
+  const type = (q.questionType || q.question_type || '').toLowerCase();
+  if (type === 'writing' || type === 'tu_luan' || type === 'essay') {
+    return 'writing';
   }
-  // Nếu câu hỏi không có các lựa chọn A, B, C, D (options rỗng hoặc null), tự động chuyển sang chế độ Luyện nói / Phát âm bằng Micro
-  if (!q.options || q.options.length === 0) {
+  if (type === 'pronunciation' || type === 'speaking' || type === 'audio') {
     return 'pronunciation';
   }
+
+  // Nếu câu hỏi không có các lựa chọn trắc nghiệm A, B, C, D (options rỗng hoặc null):
+  if (!q.options || q.options.length === 0) {
+    const text = (q.question || q.question_text || '').toLowerCase();
+    
+    // Tự động phân loại dựa trên nội dung/yêu cầu phát âm của câu hỏi
+    const isSpeakingKeywords = text.includes('speak') || text.includes('pronounce') || text.includes('phát âm') || text.includes('nói') || text.includes('đọc mẫu') || text.includes('read aloud');
+    
+    if (isSpeakingKeywords) {
+      return 'pronunciation';
+    }
+    
+    // Mặc định tất cả các câu hỏi tự luận mở (Describe, Write, Essay, Trả lời...) là dạng Viết gõ bàn phím (Writing)!
+    return 'writing';
+  }
+  
   return 'multiple_choice';
 };
 
@@ -822,7 +839,7 @@ const PlayQuizPage = () => {
                             💬 Nhận xét tổng quan:
                           </span>
                           <p className="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-300">
-                            {activeAiFeedback.feedback || 'Chưa ghi nhận được câu trả lời qua Micro.'}
+                            {activeAiFeedback.feedback || activeAiFeedback.detailed_feedback || (effectiveQuestionType === 'writing' ? 'Bài làm tự luận của bạn đã được ghi nhận.' : 'Chưa ghi nhận được câu trả lời qua Micro.')}
                           </p>
                         </div>
 

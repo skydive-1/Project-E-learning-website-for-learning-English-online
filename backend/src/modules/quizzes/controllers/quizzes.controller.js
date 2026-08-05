@@ -103,14 +103,14 @@ exports.getLeaderboard = async (req, res, next) => {
 
 exports.submitWriting = async (req, res, next) => {
   try {
-    const { writing } = req.body;
-    if (!writing) {
-      const err = new Error("Vui lòng gửi nội dung bài luận (field: writing)");
+    const writingText = req.body.writing || req.body.text;
+    if (!writingText) {
+      const err = new Error("Vui lòng gửi nội dung bài luận (field: writing hoặc text)");
       err.status = 400;
       throw err;
     }
     
-    const evaluation = await quizzesService.evaluateWriting(writing);
+    const evaluation = await quizzesService.evaluateWriting(writingText);
     
     res.status(200).json({
       success: true,
