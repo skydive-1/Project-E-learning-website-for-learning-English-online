@@ -45,7 +45,7 @@ const roadmapPaths = [
     time: '4-6 tháng',
     skills: ['Chiến thuật Part 1-7', 'Nghe hiểu công sở', 'Đọc hiểu báo chí & Email', 'Quản lý thời gian thi'],
     image: '/images/meeting_group.png',
-    isPro: true,
+    isPro: false,
     subjectFilter: '2', // TOEIC Prep
     phases: [
       {
@@ -74,7 +74,7 @@ const roadmapPaths = [
     time: '6-8 tháng',
     skills: ['Academic Writing Task 1 & 2', 'Speaking Reflexes (Part 1-3)', 'Critical Reading & Skimming', 'Advanced Listening'],
     image: '/images/hero_illustration.png',
-    isPro: true,
+    isPro: false,
     subjectFilter: '1', // IELTS Masterclass
     phases: [
       {
@@ -100,7 +100,6 @@ const RoadmapCard = ({ path, onSelectDetail }) => (
   <div className="roadmap-path-card scroll-animate">
     <div className="path-image">
       <img src={path.image} alt={path.title} />
-      {path.isPro && <span className="pro-badge">PRO</span>}
     </div>
     <div className="path-content">
       <h2 className="path-title">{path.title}</h2>
@@ -123,7 +122,7 @@ const RoadmapCard = ({ path, onSelectDetail }) => (
       <button 
         type="button" 
         onClick={() => onSelectDetail(path)}
-        className={`btn-view-path ${path.isPro ? 'btn-pro' : ''}`}
+        className="btn-view-path"
       >
         Xem chi tiết lộ trình <FiArrowRight />
       </button>
@@ -248,11 +247,6 @@ const RoadmapPage = () => {
               <div>
                 <div className="flex items-center space-x-2">
                   <h3 className="text-xl sm:text-2xl font-bold">{selectedPath.title}</h3>
-                  {selectedPath.isPro && (
-                    <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-amber-500 text-white rounded-full uppercase">
-                      PRO
-                    </span>
-                  )}
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   {selectedPath.coursesCount} khóa học tương ứng • Thời gian: {selectedPath.time}
@@ -288,7 +282,7 @@ const RoadmapPage = () => {
             </div>
 
             {/* Modal Actions */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-slate-100 dark:border-slate-700">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => {
@@ -296,18 +290,10 @@ const RoadmapPage = () => {
                   setSelectedPath(null);
                   handleExploreCourses(p);
                 }}
-                className="flex-1 py-3 px-5 bg-smart-indigo hover:bg-smart-indigo-hover text-white text-sm font-bold rounded-2xl shadow-md flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                className="w-full py-3.5 px-5 bg-smart-indigo hover:bg-smart-indigo-hover text-white text-sm font-bold rounded-2xl shadow-md flex items-center justify-center space-x-2 transition-all cursor-pointer"
               >
                 <span>Khám phá các khóa học ngay</span>
                 <FiArrowRight className="text-base" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedPath(null)}
-                className="py-3 px-5 bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-bold rounded-2xl transition-colors cursor-pointer"
-              >
-                Đóng cửa sổ
               </button>
             </div>
           </div>
