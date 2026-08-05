@@ -38,9 +38,56 @@ const LessonDetailPage = () => {
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
-  // States for Video Blob URL
+  // States for Video Blob URL & Screen Recording Protection
   const [videoBlobUrl, setVideoBlobUrl] = useState('');
   const [videoLoading, setVideoLoading] = useState(false);
+  const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
+  const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
+
+  // Hệ thống Tự động Phát hiện Ứng dụng Quay & Chụp Màn hình (OBS, Snipping Tool, Extension)
+  useEffect(() => {
+    const handleScreenCaptureKeys = (e) => {
+      // Phát hiện phím PrintScreen hoặc Win+Shift+S / Ctrl+Shift+S
+      if (
+        e.key === 'PrintScreen' || 
+        e.keyCode === 44 || 
+        (e.metaKey && e.shiftKey && (e.key === 's' || e.key === 'S')) ||
+        (e.ctrlKey && e.shiftKey && (e.key === 's' || e.key === 'S'))
+      ) {
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+        setIsScreenRecordingDetected(true);
+        setRecordingDetectedMessage('Phát hiện phím tắt chụp / quay màn hình! Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.');
+        
+        // Xóa Clipboard nếu nhấn PrintScreen
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText('');
+        }
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('keydown', handleScreenCaptureKeys);
+    return () => {
+      window.removeEventListener('keydown', handleScreenCaptureKeys);
+    };
+  }, []);
+
+  // Chặn & phát hiện Extension / Trình duyệt kích hoạt getDisplayMedia (Screen Capture API)
+  useEffect(() => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+      const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
+      navigator.mediaDevices.getDisplayMedia = function (...args) {
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+        setIsScreenRecordingDetected(true);
+        setRecordingDetectedMessage('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
+        return originalGetDisplayMedia.apply(this, args);
+      };
+    }
+  }, []);
 
   // Bảo mật video (chặn DevTools, chuột phải theo vai trò và cấu hình admin)
   useEffect(() => {
@@ -502,15 +549,29 @@ const LessonDetailPage = () => {
                     />
                   ) : currentLesson?.videoUrl ? (
                     <>
-                      {/* Tầng 2: Dynamic Floating Watermark Overlay (Anti Screen-Recording) */}
-                      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-                        <div className="watermark-floating-badge px-3 py-1.5 rounded-full bg-slate-900/40 border border-slate-700/50 backdrop-blur-md text-[10px] sm:text-xs font-mono font-semibold text-slate-300/70 shadow-md flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span>
-                          <span>🔒 {user?.email || user?.fullname || 'Học viên E-Learn Pro'}</span>
-                          <span className="text-slate-500">•</span>
-                          <span>ID: {user?.id || user?.userId || currentUserId || 'STD-2026'}</span>
+                      {/* Security Warning Overlay when Screen Recording/Capture is Detected */}
+                      {isScreenRecordingDetected && (
+                        <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-xl z-30 flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
+                          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
+                            ⚠️
+                          </div>
+                          <h3 className="text-lg sm:text-xl font-bold text-white tracking-wide">
+                            CẢNH BÁO BẢO MẬT BÀI HỌC
+                          </h3>
+                          <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
+                            {recordingDetectedMessage || 'Phát hiện ứng dụng quay/chụp màn hình đang hoạt động (OBS, Snipping Tool, Extension). Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.'}
+                          </p>
+                          <button
+                            onClick={() => {
+                              setIsScreenRecordingDetected(false);
+                              if (videoRef.current) videoRef.current.play();
+                            }}
+                            className="mt-2 px-6 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            Tôi đã tắt ứng dụng quay — Tiếp tục học
+                          </button>
                         </div>
-                      </div>
+                      )}
 
                       {videoLoading && (
                         <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
@@ -523,6 +584,11 @@ const LessonDetailPage = () => {
                           </div>
                         </div>
                       )}
+                      {/* Micro Corner Silent Watermark (UX-Friendly Security) */}
+                      <div className="absolute bottom-10 right-4 pointer-events-none z-20 opacity-20 select-none font-mono text-[9px] text-slate-400">
+                        {user?.email || 'STUDENT-2026'}
+                      </div>
+
                       <video 
                         ref={videoRef}
                         key={currentLesson?.id || 'video'}
