@@ -630,10 +630,20 @@ const LessonDetailPage = () => {
                         </span>
                       </div>
 
+                      {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
+                      <div 
+                        className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
+                        onContextMenu={(e) => e.preventDefault()}
+                        onMouseDown={(e) => {
+                          // Giữ focus trên window chính
+                          window.focus();
+                        }}
+                      />
+
                       <iframe 
                         key={currentLesson?.id || 'pdf'}
                         src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-                        className="w-full h-full border-none bg-white select-none pointer-events-auto"
+                        className="w-full h-full border-none bg-white select-none pointer-events-none"
                         title={currentLesson.title}
                         onContextMenu={(e) => e.preventDefault()}
                       />

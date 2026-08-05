@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Anti-Print Security Guard (Chặn In & Lưu trang PDF) */
+@media print {
+  html, body, #root {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+}
+
 /* Design Tokens & Theme Variables (Impeccable Overdrive: Smart Indigo + Friendly Orange) */
 :root {
   --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
