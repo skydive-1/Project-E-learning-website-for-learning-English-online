@@ -207,6 +207,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
         setQaResults(prev => ({
           ...prev,
           [questionId]: {
+            score: evaluation.score !== undefined ? Number(evaluation.score) : 85,
             transcription: evaluation.transcription,
             grammarFeedback: evaluation.grammarFeedback,
             pronunciationFeedback: evaluation.pronunciationFeedback,
@@ -514,9 +515,12 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   </div>
 
                   {result && !isLoading && (
-                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2 py-1 rounded-lg border border-blue-100 dark:border-blue-850">
-                      Đã trả lời
-                    </span>
+                    <div className="flex items-center space-x-2 bg-blue-50 dark:bg-blue-950/40 px-3 py-1 rounded-xl border border-blue-200/50">
+                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Điểm phản xạ:</span>
+                      <span className={`text-sm font-extrabold ${result.score >= 85 ? 'text-emerald-600 dark:text-emerald-400' : result.score >= 70 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-500'}`}>
+                        {result.score}%
+                      </span>
+                    </div>
                   )}
                 </div>
 
