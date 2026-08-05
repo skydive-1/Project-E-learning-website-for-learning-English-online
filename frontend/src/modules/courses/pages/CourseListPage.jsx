@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
@@ -77,6 +77,7 @@ const mockCoursesData = [
     students: 32000,
     price: 'Miễn phí',
     image: '/images/meeting_group.png',
+    badge: 'Đề xuất',
     level: 'Intermediate',
     duration: '20 giờ',
     subjectId: 2,
