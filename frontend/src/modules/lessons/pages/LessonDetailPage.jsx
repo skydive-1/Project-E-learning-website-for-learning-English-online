@@ -76,7 +76,7 @@ const LessonDetailPage = () => {
           videoRef.current.pause();
         }
         setIsScreenRecordingDetected(true);
-        setRecordingDetectedMessage('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.');
+        setRecordingDetectedMessage('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Nội dung bài học đã được bôi đen bảo mật.');
         
         // Xóa Clipboard ngay lập tức để vô hiệu hóa hình ảnh vừa chụp
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -87,7 +87,17 @@ const LessonDetailPage = () => {
       }
     };
 
+    // Phát hiện khi Snipping Tool hoặc phần mềm chụp màn hình cướp Focus khỏi trình duyệt
+    const handleWindowBlur = () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+      setIsScreenRecordingDetected(true);
+      setRecordingDetectedMessage('Phát hiện ứng dụng chụp / quay màn hình đang hoạt động (Snipping Tool / OBS)! Nội dung đã được bôi đen bảo vệ.');
+    };
+
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
+    window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('keyup', (e) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -98,6 +108,7 @@ const LessonDetailPage = () => {
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, []);
 
