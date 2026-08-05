@@ -26,6 +26,7 @@ const LessonDetailPage = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const videoRef = useRef(null);
+  const containerRef = useRef(null);
 
   const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
@@ -43,34 +44,60 @@ const LessonDetailPage = () => {
   const [videoLoading, setVideoLoading] = useState(false);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
   const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
+  const [isFullscreenMode, setIsFullscreenMode] = useState(false);
 
-  // Hệ thống Tự động Phát hiện Ứng dụng Quay & Chụp Màn hình (OBS, Snipping Tool, Extension)
+  // Lắng nghe sự thay đổi Fullscreen để giữ dấu bản quyền hiển thị đè lên Video ngay cả trong Chế độ Toàn Màn Hình
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+      setIsFullscreenMode(isFS);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Hệ thống Tự động Phát hiện Ứng dụng Quay & Chụp Màn hình (OBS, Snipping Tool, PrintScreen, Ctrl+P)
   useEffect(() => {
     const handleScreenCaptureKeys = (e) => {
-      // Phát hiện phím PrintScreen hoặc Win+Shift+S / Ctrl+Shift+S
-      if (
-        e.key === 'PrintScreen' || 
-        e.keyCode === 44 || 
-        (e.metaKey && e.shiftKey && (e.key === 's' || e.key === 'S')) ||
-        (e.ctrlKey && e.shiftKey && (e.key === 's' || e.key === 'S'))
-      ) {
+      const isPrtScn = e.key === 'PrintScreen' || e.keyCode === 44;
+      const isSnippingTool = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+      const isPrintPage = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80);
+      const isSavePage = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+
+      if (isPrtScn || isSnippingTool || isPrintPage || isSavePage) {
         if (videoRef.current) {
           videoRef.current.pause();
         }
         setIsScreenRecordingDetected(true);
-        setRecordingDetectedMessage('Phát hiện phím tắt chụp / quay màn hình! Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.');
+        setRecordingDetectedMessage('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.');
         
-        // Xóa Clipboard nếu nhấn PrintScreen
+        // Xóa Clipboard ngay lập tức để vô hiệu hóa hình ảnh vừa chụp
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText('');
         }
         e.preventDefault();
+        return false;
       }
     };
 
-    window.addEventListener('keydown', handleScreenCaptureKeys);
+    window.addEventListener('keydown', handleScreenCaptureKeys, true);
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'PrintScreen' || e.keyCode === 44) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText('');
+        }
+      }
+    }, true);
+
     return () => {
-      window.removeEventListener('keydown', handleScreenCaptureKeys);
+      window.removeEventListener('keydown', handleScreenCaptureKeys, true);
     };
   }, []);
 
@@ -536,41 +563,53 @@ const LessonDetailPage = () => {
                 
                 {/* Premium Video Container with Layer 1 & Layer 2 Security Protections */}
                 <div 
+                  ref={containerRef}
                   className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
                   onContextMenu={(e) => e.preventDefault()}
                   onDragStart={(e) => e.preventDefault()}
                 >
                   {currentLesson?.type === 'pdf' ? (
-                    <iframe 
-                      key={currentLesson?.id || 'pdf'}
-                      src={currentLesson.pdfUrl} 
-                      className="w-full h-full border-none bg-white"
-                      title={currentLesson.title}
-                    />
+                    <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
+                      <iframe 
+                        key={currentLesson?.id || 'pdf'}
+                        src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
+                        className="w-full h-full border-none bg-white select-none pointer-events-auto"
+                        title={currentLesson.title}
+                        onContextMenu={(e) => e.preventDefault()}
+                      />
+                    </div>
                   ) : currentLesson?.videoUrl ? (
                     <>
-                      {/* Security Warning Overlay when Screen Recording/Capture is Detected */}
+                      {/* Security Warning Overlay & Copyright Policy Badge when Screen Recording/Capture is Detected */}
                       {isScreenRecordingDetected && (
-                        <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-xl z-30 flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
-                          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
-                            ⚠️
+                        <>
+                          {/* Copyright Policy Watermark Badge on Top Right/Bottom (Fullscreen Compatible) */}
+                          <div className="absolute top-6 right-6 pointer-events-none z-[99999] select-none font-mono text-xs sm:text-sm font-bold text-amber-300 bg-slate-950/85 border border-amber-500/50 px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2 animate-pulse">
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                            <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
                           </div>
-                          <h3 className="text-lg sm:text-xl font-bold text-white tracking-wide">
-                            CẢNH BÁO BẢO MẬT BÀI HỌC
-                          </h3>
-                          <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                            {recordingDetectedMessage || 'Phát hiện ứng dụng quay/chụp màn hình đang hoạt động (OBS, Snipping Tool, Extension). Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.'}
-                          </p>
-                          <button
-                            onClick={() => {
-                              setIsScreenRecordingDetected(false);
-                              if (videoRef.current) videoRef.current.play();
-                            }}
-                            className="mt-2 px-6 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
-                          >
-                            Tôi đã tắt ứng dụng quay — Tiếp tục học
-                          </button>
-                        </div>
+
+                          <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-xl z-[99998] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
+                            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
+                              ⚠️
+                            </div>
+                            <h3 className="text-lg sm:text-xl font-bold text-white tracking-wide">
+                              CẢNH BÁO BẢO MẬT BÀI HỌC
+                            </h3>
+                            <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
+                              {recordingDetectedMessage || 'Phát hiện ứng dụng quay/chụp màn hình đang hoạt động (OBS, Snipping Tool, Extension). Trình phát video đã tự động tạm dừng để bảo vệ bản quyền.'}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setIsScreenRecordingDetected(false);
+                                if (videoRef.current) videoRef.current.play();
+                              }}
+                              className="mt-2 px-6 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                            >
+                              Tôi đã tắt ứng dụng quay — Tiếp tục học
+                            </button>
+                          </div>
+                        </>
                       )}
 
                       {videoLoading && (
@@ -584,10 +623,6 @@ const LessonDetailPage = () => {
                           </div>
                         </div>
                       )}
-                      {/* Micro Corner Silent Watermark (UX-Friendly Security) */}
-                      <div className="absolute bottom-10 right-4 pointer-events-none z-20 opacity-20 select-none font-mono text-[9px] text-slate-400">
-                        {user?.email || 'STUDENT-2026'}
-                      </div>
 
                       <video 
                         ref={videoRef}
