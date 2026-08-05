@@ -569,7 +569,43 @@ const LessonDetailPage = () => {
                   onDragStart={(e) => e.preventDefault()}
                 >
                   {currentLesson?.type === 'pdf' ? (
-                    <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
+                    <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
+                      {/* PDF Security Watermark Badge (Gắn dính Gmail & ID vào tài liệu PDF khi chụp màn hình) */}
+                      <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                        <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                        <span className="text-slate-400">•</span>
+                        <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
+                      </div>
+
+                      {/* PDF Diagonal Subtle Background Watermark */}
+                      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
+                        <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
+                          {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
+                        </span>
+                      </div>
+
+                      {/* Security Warning Overlay when Screen Capture is Detected on PDF */}
+                      {isScreenRecordingDetected && (
+                        <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-xl z-[99998] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade">
+                          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
+                            ⚠️
+                          </div>
+                          <h3 className="text-lg sm:text-xl font-bold text-white tracking-wide">
+                            CẢNH BÁO BẢO MẬT TÀI LIỆU
+                          </h3>
+                          <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
+                            {recordingDetectedMessage || 'Phát hiện hành vi chụp/quay màn hình tài liệu PDF. Hệ thống đã tự động ghi nhận nhật ký bảo mật.'}
+                          </p>
+                          <button
+                            onClick={() => setIsScreenRecordingDetected(false)}
+                            className="mt-2 px-6 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            Tôi đã hiểu — Tiếp tục đọc tài liệu
+                          </button>
+                        </div>
+                      )}
+
                       <iframe 
                         key={currentLesson?.id || 'pdf'}
                         src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
