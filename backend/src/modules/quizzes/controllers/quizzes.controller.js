@@ -322,3 +322,33 @@ Return a JSON array of objects with the following schema:
     next(error);
   }
 };
+
+exports.getAllQuizzesForManagement = async (req, res, next) => {
+  try {
+    const data = await quizzesService.getAllQuizzesForManagement();
+    res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteQuiz = async (req, res, next) => {
+  try {
+    const { quizId } = req.params;
+    if (!quizId) {
+      const err = new Error("Thiếu quizId");
+      err.status = 400;
+      throw err;
+    }
+    await quizzesService.deleteQuiz(quizId);
+    res.status(200).json({
+      success: true,
+      message: "Đã xóa đề thi thành công!"
+    });
+  } catch (error) {
+    next(error);
+  }
+};

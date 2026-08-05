@@ -382,6 +382,62 @@ Ensure the response contains ONLY the valid JSON object, without any markdown fo
       throw error;
     }
   }
+
+  async getAllQuizzesForManagement() {
+    try {
+      const quizzesQuery = `
+        SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+        FROM quizzes
+        ORDER BY created_at DESC, quiz_id DESC
+      `;
+      const quizzesResult = await db.query(quizzesQuery);
+      const quizzes = quizzesResult.rows;
+
+      if (quizzes.length === 0) return [];
+
+      const quizIds = quizzes.map(q => q.quiz_id);
+      const questionsQuery = `
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
+        FROM questions
+        WHERE quiz_id = ANY($1)
+        ORDER BY question_id ASC
+      `;
+      const questionsResult = await db.query(questionsQuery, [quizIds]);
+      
+      const questionsMap = {};
+      questionsResult.rows.forEach(q => {
+        if (!questionsMap[q.quiz_id]) questionsMap[q.quiz_id] = [];
+        questionsMap[q.quiz_id].push(q);
+      });
+
+      return quizzes.map(q => ({
+        quiz_id: q.quiz_id,
+        course_id: q.course_id,
+        title: q.title,
+        description: q.description,
+        difficulty: q.difficulty,
+        time_limit: q.time_limit,
+        is_private: Boolean(q.is_private),
+        pin_code: q.pin_code || '',
+        created_at: q.created_at,
+        questions_count: (questionsMap[q.quiz_id] || []).length,
+        questions: questionsMap[q.quiz_id] || []
+      }));
+    } catch (error) {
+      console.error("Lỗi QuizzesService.getAllQuizzesForManagement:", error);
+      throw error;
+    }
+  }
+
+  async deleteQuiz(quizId) {
+    try {
+      await db.query('DELETE FROM quizzes WHERE quiz_id = $1', [parseInt(quizId, 10)]);
+      return true;
+    } catch (error) {
+      console.error("Lỗi QuizzesService.deleteQuiz:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new QuizzesService();

@@ -228,3 +228,29 @@ export const generateQuizAi = async (payload) => {
   }
 };
 
+/**
+ * Lấy danh sách tất cả các đề thi (Bao gồm cả Đề thi Riêng tư & Mã PIN) dành cho Giảng viên / Admin
+ */
+export const getAllQuizzesForManagement = async () => {
+  try {
+    const response = await apiClient.get('/quizzes/manage/all');
+    return response.data?.data || [];
+  } catch (error) {
+    console.error("⚠️ Lỗi tải danh sách quản lý đề thi:", error.message);
+    return [];
+  }
+};
+
+/**
+ * Xóa đề thi trắc nghiệm theo quizId
+ */
+export const deleteQuizById = async (quizId) => {
+  try {
+    const response = await apiClient.delete(`/quizzes/manage/${quizId}`);
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi xóa đề thi:", error.message);
+    throw error;
+  }
+};
+

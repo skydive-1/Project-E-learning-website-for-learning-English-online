@@ -26,6 +26,12 @@ router.post('/submit-writing', authenticate, aiLimiter, quizzesController.submit
 // Route: POST /api/quizzes/submit-audio
 router.post('/submit-audio', authenticate, aiLimiter, upload.single('audio'), quizzesController.submitAudio);
 
+// Route: GET /api/quizzes/manage/all - Quản lý tất cả đề thi & PIN Code (Chỉ dành cho Giảng viên / Admin)
+router.get('/manage/all', authenticate, authorize([1, 2]), quizzesController.getAllQuizzesForManagement);
+
+// Route: DELETE /api/quizzes/manage/:quizId - Xóa đề thi (Chỉ dành cho Giảng viên / Admin)
+router.delete('/manage/:quizId', authenticate, authorize([1, 2]), quizzesController.deleteQuiz);
+
 // Route: POST /api/quizzes - Tạo đề thi tự luyện mới (Chỉ dành cho Giảng viên / Admin)
 router.post('/', authenticate, authorize([1, 2]), quizLimiter, quizzesController.createQuiz);
 
