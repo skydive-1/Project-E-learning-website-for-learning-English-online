@@ -63,7 +63,38 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // Hệ thống Tự động Phát hiện Ứng dụng Quay & Chụp Màn hình (OBS, Snipping Tool, PrintScreen, Ctrl+P)
+  // ⚡ ĐỘNG CƠ CHE MÀN HÌNH TỨC THÌ 0 MILLISECOND (Zero-Latency Synchronous Blackout Engine)
+  const triggerZeroLatencyBlackout = (reason) => {
+    // 1. Can thiệp trực tiếp đồng bộ 0ms vào DOM để ẩn ngay tức khắc media wrapper trước khi OS chụp buffer
+    const mediaEl = document.getElementById('lesson-media-wrapper');
+    if (mediaEl) {
+      mediaEl.style.display = 'none';
+      mediaEl.style.visibility = 'hidden';
+      mediaEl.style.opacity = '0';
+    }
+
+    // 2. Hiển thị Lá chắn bôi đen View-Once đồng bộ 0ms
+    const shieldEl = document.getElementById('instant-blackout-shield-overlay');
+    if (shieldEl) {
+      shieldEl.style.display = 'flex';
+      shieldEl.style.visibility = 'visible';
+      shieldEl.style.opacity = '1';
+    }
+
+    // 3. Tạm dừng video và xóa bộ nhớ đệm Clipboard ngay trong microsecond đầu tiên
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText('');
+    }
+
+    // 4. Cập nhật state React
+    setIsScreenRecordingDetected(true);
+    setRecordingDetectedMessage(reason || 'Phát hiện hành vi chụp / quay màn hình! Nội dung bài học đã được bôi đen bảo vệ tức thì.');
+  };
+
+  // Hệ thống Tự động Bắt Sự Kiện 0ms Chống Chụp / Quay Màn hình
   useEffect(() => {
     const handleScreenCaptureKeys = (e) => {
       const isPrtScn = e.key === 'PrintScreen' || e.keyCode === 44;
@@ -72,43 +103,39 @@ const LessonDetailPage = () => {
       const isSavePage = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
 
       if (isPrtScn || isSnippingTool || isPrintPage || isSavePage) {
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
-        setIsScreenRecordingDetected(true);
-        setRecordingDetectedMessage('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Nội dung bài học đã được bôi đen bảo mật.');
-        
-        // Xóa Clipboard ngay lập tức để vô hiệu hóa hình ảnh vừa chụp
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText('');
-        }
+        triggerZeroLatencyBlackout('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Nội dung bài học đã được bôi đen bảo mật.');
         e.preventDefault();
+        e.stopPropagation();
         return false;
       }
     };
 
-    // Phát hiện khi Snipping Tool hoặc phần mềm chụp màn hình cướp Focus khỏi trình duyệt
+    // Phát hiện khi Snipping Tool / OBS hoặc phần mềm cướp Focus khỏi trình duyệt
     const handleWindowBlur = () => {
-      if (videoRef.current) {
-        videoRef.current.pause();
-      }
-      setIsScreenRecordingDetected(true);
-      setRecordingDetectedMessage('Phát hiện ứng dụng chụp / quay màn hình đang hoạt động (Snipping Tool / OBS)! Nội dung đã được bôi đen bảo vệ.');
+      triggerZeroLatencyBlackout('Phát hiện ứng dụng chụp / quay màn hình đang hoạt động (Snipping Tool / OBS)! Nội dung đã được bôi đen bảo vệ.');
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        triggerZeroLatencyBlackout('Phát hiện trình duyệt bị ẩn hoặc chuyển sang phần mềm quay phim ngầm!');
+      }
+    };
+
+    // Đăng ký sự kiện cấp cao nhất ở Capture Phase ({ capture: true, passive: false })
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
-    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('blur', handleWindowBlur, true);
+    document.addEventListener('visibilitychange', handleVisibilityChange, true);
+
     window.addEventListener('keyup', (e) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText('');
-        }
+        triggerZeroLatencyBlackout('Phát hiện phím PrintScreen!');
       }
     }, true);
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
-      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('blur', handleWindowBlur, true);
+      document.removeEventListener('visibilitychange', handleVisibilityChange, true);
     };
   }, []);
 
@@ -580,109 +607,120 @@ const LessonDetailPage = () => {
                   onDragStart={(e) => e.preventDefault()}
                 >
                   {/* View-Once Facebook/Instagram-style Permanent Blackout Security Shield */}
-                  {isScreenRecordingDetected ? (
-                    <div className="absolute inset-0 bg-slate-950 backdrop-blur-3xl z-[99999] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-fade select-none">
-                      {/* Copyright Policy Watermark Badge */}
-                      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-none z-[100000] font-mono text-[11px] sm:text-xs font-bold text-amber-300 bg-slate-900 border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                        <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
-                      </div>
-
-                      <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
-                        ⚠️
-                      </div>
-                      
-                      <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-wide uppercase text-red-400">
-                        CẢNH BÁO VI PHẠM BẢO MẬT TÀI LIỆU
-                      </h3>
-                      
-                      <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                        Hệ thống đã tự động bôi đen và hủy nạp tài liệu khỏi bộ nhớ do phát hiện thao tác chụp / quay màn hình. Để bảo vệ bản quyền, toàn bộ nội dung đã bị vô hiệu hóa trong phiên này.
-                      </p>
-
-                      <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
-                        Nhật ký vi phạm: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          window.location.reload();
-                        }}
-                        className="mt-3 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer border border-red-500/50"
-                      >
-                        Tải lại trang bài học để xác thực phiên an toàn
-                      </button>
+                  <div 
+                    id="instant-blackout-shield-overlay"
+                    style={{ display: isScreenRecordingDetected ? 'flex' : 'none' }}
+                    className="absolute inset-0 bg-slate-950 backdrop-blur-3xl z-[99999] flex-col items-center justify-center p-6 text-center space-y-4 animate-fade select-none"
+                  >
+                    {/* Copyright Policy Watermark Badge */}
+                    <div className="absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-none z-[100000] font-mono text-[11px] sm:text-xs font-bold text-amber-300 bg-slate-900 border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                      <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
                     </div>
-                  ) : currentLesson?.type === 'pdf' ? (
-                    <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
-                      {/* PDF Security Watermark Badge */}
-                      <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                        <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
-                        <span className="text-slate-400">•</span>
-                        <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
-                      </div>
 
-                      {/* PDF Diagonal Subtle Background Watermark */}
-                      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
-                        <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
-                          {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
-                        </span>
-                      </div>
-
-                      {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
-                      <div 
-                        className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
-                        onContextMenu={(e) => e.preventDefault()}
-                        onMouseDown={(e) => {
-                          // Giữ focus trên window chính
-                          window.focus();
-                        }}
-                      />
-
-                      <iframe 
-                        key={currentLesson?.id || 'pdf'}
-                        src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-                        className="w-full h-full border-none bg-white select-none pointer-events-none"
-                        title={currentLesson.title}
-                        onContextMenu={(e) => e.preventDefault()}
-                      />
+                    <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
+                      ⚠️
                     </div>
-                  ) : currentLesson?.videoUrl ? (
-                    <>
-                      {videoLoading && (
-                        <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
-                          <div className="flex flex-col items-center gap-3">
-                            <div className="w-14 h-14 rounded-full bg-slate-800/80 flex items-center justify-center shadow-inner">
-                              <FiPlay className="text-2xl text-teal-400 ml-1 animate-pulse" />
-                            </div>
-                            <div className="h-3 w-36 bg-slate-800/70 rounded-full"></div>
-                            <span className="text-xs text-slate-400 font-medium">Đang mã hóa luồng phát bảo mật...</span>
-                          </div>
+                    
+                    <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-wide uppercase text-red-400">
+                      CẢNH BÁO VI PHẠM BẢO MẬT TÀI LIỆU
+                    </h3>
+                    
+                    <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
+                      {recordingDetectedMessage || 'Hệ thống đã tự động bôi đen và hủy nạp tài liệu khỏi bộ nhớ do phát hiện thao tác chụp / quay màn hình. Để bảo vệ bản quyền, toàn bộ nội dung đã bị vô hiệu hóa trong phiên này.'}
+                    </p>
+
+                    <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
+                      Nhật ký vi phạm: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        window.location.reload();
+                      }}
+                      className="mt-3 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer border border-red-500/50"
+                    >
+                      Tải lại trang bài học để xác thực phiên an toàn
+                    </button>
+                  </div>
+
+                  {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
+                  <div 
+                    id="lesson-media-wrapper"
+                    style={{ display: isScreenRecordingDetected ? 'none' : 'block' }}
+                    className="w-full h-full relative"
+                  >
+                    {currentLesson?.type === 'pdf' ? (
+                      <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
+                        {/* PDF Security Watermark Badge */}
+                        <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                          <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                          <span className="text-slate-400">•</span>
+                          <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
                         </div>
-                      )}
 
-                      <video 
-                        ref={videoRef}
-                        key={currentLesson?.id || 'video'}
-                        src={videoBlobUrl} 
-                        controls 
-                        autoPlay
-                        preload="metadata"
-                        controlsList="nodownload noremoteplayback"
-                        disablePictureInPicture
-                        onContextMenu={(e) => e.preventDefault()}
-                        onDragStart={(e) => e.preventDefault()}
-                        onLoadedMetadata={() => setVideoLoading(false)}
-                        className="w-full h-full object-contain"
-                      />
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
-                      <FiPlay className="text-5xl animate-pulse mb-3" />
-                      <span>Video bài giảng không khả dụng.</span>
-                    </div>
-                  )}
+                        {/* PDF Diagonal Subtle Background Watermark */}
+                        <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
+                          <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
+                            {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
+                          </span>
+                        </div>
+
+                        {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
+                        <div 
+                          className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
+                          onContextMenu={(e) => e.preventDefault()}
+                          onMouseDown={(e) => {
+                            // Giữ focus trên window chính
+                            window.focus();
+                          }}
+                        />
+
+                        <iframe 
+                          key={currentLesson?.id || 'pdf'}
+                          src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
+                          className="w-full h-full border-none bg-white select-none pointer-events-none"
+                          title={currentLesson.title}
+                          onContextMenu={(e) => e.preventDefault()}
+                        />
+                      </div>
+                    ) : currentLesson?.videoUrl ? (
+                      <>
+                        {videoLoading && (
+                          <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="w-14 h-14 rounded-full bg-slate-800/80 flex items-center justify-center shadow-inner">
+                                <FiPlay className="text-2xl text-teal-400 ml-1 animate-pulse" />
+                              </div>
+                              <div className="h-3 w-36 bg-slate-800/70 rounded-full"></div>
+                              <span className="text-xs text-slate-400 font-medium">Đang mã hóa luồng phát bảo mật...</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <video 
+                          ref={videoRef}
+                          key={currentLesson?.id || 'video'}
+                          src={videoBlobUrl} 
+                          controls 
+                          autoPlay
+                          preload="metadata"
+                          controlsList="nodownload noremoteplayback"
+                          disablePictureInPicture
+                          onContextMenu={(e) => e.preventDefault()}
+                          onDragStart={(e) => e.preventDefault()}
+                          onLoadedMetadata={() => setVideoLoading(false)}
+                          className="w-full h-full object-contain"
+                        />
+                      </>
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
+                        <FiPlay className="text-5xl animate-pulse mb-3" />
+                        <span>Bài học không khả dụng.</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Lesson Details & Interactive Content */}
