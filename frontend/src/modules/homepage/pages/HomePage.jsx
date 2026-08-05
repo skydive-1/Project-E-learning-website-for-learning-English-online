@@ -139,37 +139,37 @@ const HomePage = () => {
         <section id="features" className="features-intro-section">
           <div className="container features-intro-container">
             <div className="features-intro-content scroll-animate">
-              <h2>Nói nhiều hơn — Học nhanh hơn</h2>
+              <h2>{t('Nói nhiều hơn — Học nhanh hơn')}</h2>
               <p className="features-desc">
-                Trải nghiệm môi trường thực hành tương tác chuyên sâu với trợ lý ảo giao tiếp thông minh. Bạn có cơ hội phản xạ liên tục 24/7, xóa tan nỗi sợ nói sai, tự tin làm chủ ngôn ngữ trong thời gian ngắn nhất.
+                {t('Trải nghiệm môi trường thực hành tương tác chuyên sâu với trợ lý ảo giao tiếp thông minh. Bạn có cơ hội phản xạ liên tục 24/7, xóa tan nỗi sợ nói sai, tự tin làm chủ ngôn ngữ trong thời gian ngắn nhất.')}
               </p>
               
               <ul className="features-check-list">
                 <li>
                   <span className="check-icon"><FiCheck /></span>
                   <div>
-                    <strong>Phản xạ tiếng Anh tự nhiên</strong>
-                    <p>Nâng cao khả năng nghe hiểu và phản hồi tự nhiên không cần dịch nhẩm.</p>
+                    <strong>{t('Phản xạ tiếng Anh tự nhiên')}</strong>
+                    <p>{t('Nâng cao khả năng nghe hiểu và phản hồi tự nhiên không cần dịch nhẩm.')}</p>
                   </div>
                 </li>
                 <li>
                   <span className="check-icon"><FiCheck /></span>
                   <div>
-                    <strong>Luyện nói trực tiếp, sửa lỗi tức thì</strong>
-                    <p>Trợ lý AI giúp chỉnh âm chuẩn IPA và hướng dẫn cách diễn đạt hay hơn.</p>
+                    <strong>{t('Luyện nói trực tiếp, sửa lỗi tức thì')}</strong>
+                    <p>{t('Trợ lý AI giúp chỉnh âm chuẩn IPA và hướng dẫn cách diễn đạt hay hơn.')}</p>
                   </div>
                 </li>
                 <li>
                   <span className="check-icon"><FiCheck /></span>
                   <div>
-                    <strong>Tiết kiệm thời gian & chi phí tối đa</strong>
-                    <p>Học tại nhà linh động, chi phí chỉ bằng 1/10 so với học trung tâm truyền thống.</p>
+                    <strong>{t('Tiết kiệm thời gian & chi phí tối đa')}</strong>
+                    <p>{t('Học tại nhà linh động, chi phí chỉ bằng 1/10 so với học trung tâm truyền thống.')}</p>
                   </div>
                 </li>
               </ul>
 
               <button className="btn-explore" onClick={() => navigate(user ? '/courses' : '/register')}>
-                Khám phá khóa học ngay
+                {t('Khám phá khóa học ngay')}
               </button>
             </div>
 
@@ -183,7 +183,6 @@ const HomePage = () => {
                       e.target.src = 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=600';
                     }}
                   />
-
                 </div>
                 <div className="img-card sub-card">
                   <img 
@@ -203,8 +202,8 @@ const HomePage = () => {
         <section className="why-choose-section">
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Vì sao chọn E-Learn Academy?</h2>
-              <p>Học tập đột phá với sự hỗ trợ của công nghệ hàng đầu và lộ trình thông minh.</p>
+              <h2>{t('Vì sao chọn E-Learn Academy?')}</h2>
+              <p>{t('Học tập đột phá với sự hỗ trợ của công nghệ hàng đầu và lộ trình thông minh.')}</p>
             </div>
 
             <div className="why-grid">
@@ -212,48 +211,48 @@ const HomePage = () => {
                 <div className="why-icon-wrapper blue-icon">
                   <FiHeadphones />
                 </div>
-                <h4>Hỗ Trợ 24/7</h4>
-                <p>Hệ thống chatbot AI luôn sẵn sàng hỗ trợ giải đáp mọi thắc mắc của bạn bất cứ thời điểm nào trong ngày.</p>
+                <h4>{t('Hỗ Trợ 24/7')}</h4>
+                <p>{t('Hệ thống chatbot AI luôn sẵn sàng hỗ trợ giải đáp mọi thắc mắc của bạn bất cứ thời điểm nào trong ngày.')}</p>
               </div>
 
               <div className="why-card scroll-animate">
                 <div className="why-icon-wrapper orange-icon">
                   <FiDollarSign />
                 </div>
-                <h4>Học Phí Hợp Lý</h4>
-                <p>Mức đầu tư vô cùng tiết kiệm, mở ra cơ hội tiếp cận tri thức ngôn ngữ chất lượng cao cho mọi người.</p>
+                <h4>{t('Học Phí Hợp Lý')}</h4>
+                <p>{t('Mức đầu tư vô cùng tiết kiệm, mở ra cơ hội tiếp cận tri thức ngôn ngữ chất lượng cao cho mọi người.')}</p>
               </div>
 
               <div className="why-card scroll-animate">
                 <div className="why-icon-wrapper purple-icon">
                   <FiClock />
                 </div>
-                <h4>Lịch Học Linh Hoạt</h4>
-                <p>Tự do thiết kế thời gian học phù hợp với nhịp sống và công việc cá nhân của bạn mà không lo bị lỡ bài.</p>
+                <h4>{t('Lịch Học Linh Hoạt')}</h4>
+                <p>{t('Tự do thiết kế thời gian học phù hợp với nhịp sống và công việc cá nhân của bạn mà không lo bị lỡ bài.')}</p>
               </div>
 
               <div className="why-card scroll-animate">
                 <div className="why-icon-wrapper red-icon">
                   <FiTrendingUp />
                 </div>
-                <h4>Phản Hồi Tiến Bộ</h4>
-                <p>Hệ thống phân tích và báo cáo định kỳ chi tiết giúp bạn theo dõi sát sao lộ trình tiến bộ của bản thân.</p>
+                <h4>{t('Phản Hồi Tiến Bộ')}</h4>
+                <p>{t('Hệ thống phân tích và báo cáo định kỳ chi tiết giúp bạn theo dõi sát sao lộ trình tiến bộ của bản thân.')}</p>
               </div>
 
               <div className="why-card scroll-animate">
                 <div className="why-icon-wrapper teal-icon">
                   <FiUsers />
                 </div>
-                <h4>Cộng Đồng Năng Động</h4>
-                <p>Giao lưu, kết nối và thực hành tiếng Anh cùng hàng ngàn học viên năng động trên khắp cả nước.</p>
+                <h4>{t('Cộng Đồng Năng Động')}</h4>
+                <p>{t('Giao lưu, kết nối và thực hành tiếng Anh cùng hàng ngàn học viên năng động trên khắp cả nước.')}</p>
               </div>
 
               <div className="why-card scroll-animate">
                 <div className="why-icon-wrapper gold-icon">
                   <FiShield />
                 </div>
-                <h4>Cam Kết Đầu Ra</h4>
-                <p>Chương trình chuẩn đầu ra, cam kết hỗ trợ học lại miễn phí nếu học viên chưa đạt kết quả mục tiêu.</p>
+                <h4>{t('Cam Kết Đầu Ra')}</h4>
+                <p>{t('Chương trình chuẩn đầu ra, cam kết hỗ trợ học lại miễn phí nếu học viên chưa đạt kết quả mục tiêu.')}</p>
               </div>
             </div>
           </div>
@@ -263,8 +262,8 @@ const HomePage = () => {
         <section id="roadmap-sec" className="roadmap-simple-section">
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Lộ trình học tập rõ ràng</h2>
-              <p>3 bước đơn giản giúp bạn bắt đầu hành trình chinh phục tiếng Anh hiệu quả</p>
+              <h2>{t('Lộ trình học tập rõ ràng')}</h2>
+              <p>{t('3 bước đơn giản giúp bạn bắt đầu hành trình chinh phục tiếng Anh hiệu quả')}</p>
             </div>
 
             <div className="roadmap-steps-grid">
@@ -273,8 +272,8 @@ const HomePage = () => {
                 <div className="step-icon">
                   <FiFileText />
                 </div>
-                <h4>Kiểm tra đầu vào</h4>
-                <p>Thực hiện bài test nhanh miễn phí để xác định chính xác trình độ tiếng Anh hiện tại.</p>
+                <h4>{t('Kiểm tra đầu vào')}</h4>
+                <p>{t('Thực hiện bài test nhanh miễn phí để xác định chính xác trình độ tiếng Anh hiện tại.')}</p>
               </div>
 
               <div className="step-item scroll-animate">
@@ -282,8 +281,8 @@ const HomePage = () => {
                 <div className="step-icon">
                   <FiSliders />
                 </div>
-                <h4>Lộ trình cá nhân hóa</h4>
-                <p>Thuật toán AI tự động thiết kế giáo trình riêng dựa trên điểm mạnh và điểm yếu của bạn.</p>
+                <h4>{t('Lộ trình cá nhân hóa')}</h4>
+                <p>{t('Thuật toán AI tự động thiết kế giáo trình riêng dựa trên điểm mạnh và điểm yếu của bạn.')}</p>
               </div>
 
               <div className="step-item scroll-animate">
@@ -291,8 +290,8 @@ const HomePage = () => {
                 <div className="step-icon">
                   <FiPlayCircle />
                 </div>
-                <h4>Thực hành tương tác</h4>
-                <p>Tham gia các bài học video sống động kết hợp luyện tập nói phản xạ trực tiếp với AI.</p>
+                <h4>{t('Thực hành tương tác')}</h4>
+                <p>{t('Tham gia các bài học video sống động kết hợp luyện tập nói phản xạ trực tiếp với AI.')}</p>
               </div>
             </div>
           </div>
@@ -302,8 +301,8 @@ const HomePage = () => {
         <section id="courses-sec" className="courses-section">
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Khóa học Video</h2>
-              <p>Học mọi lúc mọi nơi với kho video bài giảng chất lượng cao được biên soạn kỹ lưỡng</p>
+              <h2>{t('Khóa học Video')}</h2>
+              <p>{t('Học mọi lúc mọi nơi với kho video bài giảng chất lượng cao được biên soạn kỹ lưỡng')}</p>
             </div>
 
             <div className="courses-grid">
@@ -316,15 +315,15 @@ const HomePage = () => {
                       e.target.src = 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=600';
                     }}
                   />
-                  <span className="course-duration">15 giờ học</span>
+                  <span className="course-duration">15 {t('giờ học')}</span>
                 </div>
                 <div className="course-info">
                   <span className="course-tag grammar">GIAO TIẾP</span>
-                  <h4>Tiếng Anh Giao Tiếp Online</h4>
-                  <p>Luyện phản xạ nghe nói cơ bản, phát âm chuẩn tự nhiên trong các tình huống thực tế đời sống.</p>
+                  <h4>{t('Tiếng Anh Giao Tiếp Online')}</h4>
+                  <p>{t('Luyện phản xạ nghe nói cơ bản, phát âm chuẩn tự nhiên trong các tình huống thực tế đời sống.')}</p>
                   <div className="course-footer">
-                    <span className="lessons-count">48 bài học</span>
-                    <span className="students-count">1.2k học viên</span>
+                    <span className="lessons-count">48 {t('lessonsCount')}</span>
+                    <span className="students-count">1.2k {t('student')}</span>
                   </div>
                 </div>
               </div>
@@ -338,15 +337,15 @@ const HomePage = () => {
                       e.target.src = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=600';
                     }}
                   />
-                  <span className="course-duration">30 giờ học</span>
+                  <span className="course-duration">30 {t('giờ học')}</span>
                 </div>
                 <div className="course-info">
                   <span className="course-tag academic">ACADEMIC</span>
-                  <h4>Luyện Thi IELTS v6.5 - Toàn Diện</h4>
-                  <p>Bí quyết làm bài thi hiệu quả cho cả 4 kỹ năng Nghe, Nói, Đọc, Viết chuẩn cấu trúc đề mới nhất.</p>
+                  <h4>{t('Luyện Thi IELTS v6.5 - Toàn Diện')}</h4>
+                  <p>{t('Bí quyết làm bài thi hiệu quả cho cả 4 kỹ năng Nghe, Nói, Đọc, Viết chuẩn cấu trúc đề mới nhất.')}</p>
                   <div className="course-footer">
-                    <span className="lessons-count">82 bài học</span>
-                    <span className="students-count">950 học viên</span>
+                    <span className="lessons-count">82 {t('lessonsCount')}</span>
+                    <span className="students-count">950 {t('student')}</span>
                   </div>
                 </div>
               </div>
@@ -360,15 +359,15 @@ const HomePage = () => {
                       e.target.src = 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=600';
                     }}
                   />
-                  <span className="course-duration">20 giờ học</span>
+                  <span className="course-duration">20 {t('giờ học')}</span>
                 </div>
                 <div className="course-info">
                   <span className="course-tag business">BUSINESS</span>
-                  <h4>Tiếng Anh Thương Mại & Công Sở</h4>
-                  <p>Viết email, thuyết trình và đàm phán bằng tiếng Anh chuyên nghiệp tự tin nơi công sở.</p>
+                  <h4>{t('Tiếng Anh Thương Mại & Công Sở')}</h4>
+                  <p>{t('Viết email, thuyết trình và đàm phán bằng tiếng Anh chuyên nghiệp tự tin nơi công sở.')}</p>
                   <div className="course-footer">
-                    <span className="lessons-count">56 bài học</span>
-                    <span className="students-count">780 học viên</span>
+                    <span className="lessons-count">56 {t('lessonsCount')}</span>
+                    <span className="students-count">780 {t('student')}</span>
                   </div>
                 </div>
               </div>
@@ -380,8 +379,8 @@ const HomePage = () => {
         <section id="fun-quizzes-sec" className="courses-section" style={{ backgroundColor: '#f8fafc', paddingTop: '64px', paddingBottom: '64px', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Luyện trắc nghiệm vui giải trí</h2>
-              <p>Thử thách phản xạ tiếng Anh nhanh với các đề trắc nghiệm chủ đề Tiếng lóng, Idioms, Từ vựng đời sống</p>
+              <h2>{t('Luyện trắc nghiệm vui giải trí')}</h2>
+              <p>{t('Thử thách phản xạ tiếng Anh nhanh với các đề trắc nghiệm chủ đề Tiếng lóng, Idioms, Từ vựng đời sống')}</p>
             </div>
 
             <div className="courses-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginTop: '32px' }}>
@@ -390,7 +389,7 @@ const HomePage = () => {
                   <div>
                     <span className="course-tag grammar" style={{ backgroundColor: '#e0e7ff', color: '#4338ca', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '750' }}>IDIOMS</span>
                     <h4 style={{ marginTop: '12px', fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>English Slangs & Idioms Quiz</h4>
-                    <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>Thử thách hiểu biết của bạn về tiếng lóng và các thành ngữ tiếng Anh giao tiếp thông dụng hàng ngày của người bản xứ.</p>
+                    <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>{t('Thử thách hiểu biết của bạn về tiếng lóng và các thành ngữ tiếng Anh giao tiếp thông dụng hàng ngày của người bản xứ.')}</p>
                   </div>
                   <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>5 câu hỏi • 5 phút</span>
@@ -400,7 +399,7 @@ const HomePage = () => {
                       onMouseOver={(e) => e.target.style.backgroundColor = '#1e40af'}
                       onMouseOut={(e) => e.target.style.backgroundColor = '#1d4ed8'}
                     >
-                      Bắt đầu thi
+                      {t('Bắt đầu thi')}
                     </button>
                   </div>
                 </div>
@@ -421,7 +420,7 @@ const HomePage = () => {
                       onMouseOver={(e) => e.target.style.backgroundColor = '#1e40af'}
                       onMouseOut={(e) => e.target.style.backgroundColor = '#1d4ed8'}
                     >
-                      Bắt đầu thi
+                      {t('Bắt đầu thi')}
                     </button>
                   </div>
                 </div>
@@ -434,8 +433,8 @@ const HomePage = () => {
         <section className="ai-tools-section">
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Công cụ học tập AI</h2>
-              <p>Tối ưu hóa thời gian học tập nhờ các tính năng trợ lý công nghệ AI tiên tiến</p>
+              <h2>{t('Công cụ học tập AI')}</h2>
+              <p>{t('Tối ưu hóa thời gian học tập nhờ các tính năng trợ lý công nghệ AI tiên tiến')}</p>
             </div>
 
             <div className="tools-grid">
@@ -443,24 +442,24 @@ const HomePage = () => {
                 <div className="tool-icon-wrapper">
                   <FiMic />
                 </div>
-                <h4>Luyện phát âm AI</h4>
-                <p>Nói trực tiếp qua micro, công nghệ AI tự động chấm điểm và chỉ ra lỗi phát âm IPA chuẩn xác.</p>
+                <h4>{t('Luyện phát âm AI')}</h4>
+                <p>{t('Nói trực tiếp qua micro, công nghệ AI tự động chấm điểm và chỉ ra lỗi phát âm IPA chuẩn xác.')}</p>
               </div>
 
               <div className="tool-card scroll-animate">
                 <div className="tool-icon-wrapper orange-icon">
                   <FiEdit3 />
                 </div>
-                <h4>Chấm điểm bài viết tự động</h4>
-                <p>Gửi bài luận của bạn, AI sẽ phát hiện lỗi ngữ pháp, từ vựng và gợi ý viết lại trôi chảy hơn.</p>
+                <h4>{t('Chấm điểm bài viết tự động')}</h4>
+                <p>{t('Gửi bài luận của bạn, AI sẽ phát hiện lỗi ngữ pháp, từ vựng và gợi ý viết lại trôi chảy hơn.')}</p>
               </div>
 
               <div className="tool-card scroll-animate">
                 <div className="tool-icon-wrapper purple-icon">
                   <FiMessageSquare />
                 </div>
-                <h4>Trò chuyện cùng AI 24/7</h4>
-                <p>Trải nghiệm người bạn bản xứ AI luôn sẵn sàng trò chuyện, trả lời ngữ pháp bất cứ khi nào bạn hỏi.</p>
+                <h4>{t('Trò chuyện cùng AI 24/7')}</h4>
+                <p>{t('Trải nghiệm người bạn bản xứ AI luôn sẵn sàng trò chuyện, trả lời ngữ pháp bất cứ khi nào bạn hỏi.')}</p>
               </div>
             </div>
           </div>
@@ -470,64 +469,64 @@ const HomePage = () => {
         <section className="detailed-roadmap-section">
           <div className="container">
             <div className="section-title scroll-animate">
-              <h2>Lộ trình học bài bản</h2>
-              <p>Hành trình cá nhân hóa giúp bạn làm chủ tiếng Anh từ con số 0</p>
+              <h2>{t('Lộ trình học bài bản')}</h2>
+              <p>{t('Hành trình cá nhân hóa giúp bạn làm chủ tiếng Anh từ con số 0')}</p>
             </div>
 
             <div className="roadmap-grid-modern">
               <div className="roadmap-card-new scroll-animate">
                 <div className="card-header">
-                  <span className="stage-label">GIAI ĐOẠN 1</span>
+                  <span className="stage-label">{t('GIAI ĐOẠN 1')}</span>
                   <div className="stage-icon-box blue"><FiFileText /></div>
                 </div>
-                <h3>Khởi động</h3>
+                <h3>{t('Khởi động')}</h3>
                 <span className="level-tag">Beginner (A1)</span>
                 <ul className="stage-features">
-                  <li><FiCheck /> Chuẩn hóa phát âm IPA</li>
-                  <li><FiCheck /> Ngữ pháp nền tảng</li>
-                  <li><FiCheck /> Giao tiếp cơ bản</li>
+                  <li><FiCheck /> {t('Chuẩn hóa phát âm IPA')}</li>
+                  <li><FiCheck /> {t('Ngữ pháp nền tảng')}</li>
+                  <li><FiCheck /> {t('Giao tiếp cơ bản')}</li>
                 </ul>
               </div>
 
               <div className="roadmap-card-new scroll-animate">
                 <div className="card-header">
-                  <span className="stage-label">GIAI ĐOẠN 2</span>
+                  <span className="stage-label">{t('GIAI ĐOẠN 2')}</span>
                   <div className="stage-icon-box orange"><FiMic /></div>
                 </div>
-                <h3>Sức bền</h3>
+                <h3>{t('Sức bền')}</h3>
                 <span className="level-tag">Intermediate (A2-B1)</span>
                 <ul className="stage-features">
-                  <li><FiCheck /> Phản xạ nghe nói</li>
-                  <li><FiCheck /> Từ vựng đa chủ đề</li>
-                  <li><FiCheck /> Tư duy tiếng Anh</li>
+                  <li><FiCheck /> {t('Phản xạ nghe nói')}</li>
+                  <li><FiCheck /> {t('Từ vựng đa chủ đề')}</li>
+                  <li><FiCheck /> {t('Tư duy tiếng Anh')}</li>
                 </ul>
               </div>
 
               <div className="roadmap-card-new scroll-animate">
                 <div className="card-header">
-                  <span className="stage-label">GIAI ĐOẠN 3</span>
+                  <span className="stage-label">{t('GIAI ĐOẠN 3')}</span>
                   <div className="stage-icon-box purple"><FiTrendingUp /></div>
                 </div>
-                <h3>Bứt phá</h3>
+                <h3>{t('Bứt phá')}</h3>
                 <span className="level-tag">Advanced (B2-C1)</span>
                 <ul className="stage-features">
-                  <li><FiCheck /> Thuyết trình chuyên sâu</li>
-                  <li><FiCheck /> Viết luận sắc bén</li>
-                  <li><FiCheck /> Tranh biện tiếng Anh</li>
+                  <li><FiCheck /> {t('Thuyết trình chuyên sâu')}</li>
+                  <li><FiCheck /> {t('Viết luận sắc bén')}</li>
+                  <li><FiCheck /> {t('Tranh biện tiếng Anh')}</li>
                 </ul>
               </div>
 
               <div className="roadmap-card-new scroll-animate">
                 <div className="card-header">
-                  <span className="stage-label">GIAI ĐOẠN 4</span>
+                  <span className="stage-label">{t('GIAI ĐOẠN 4')}</span>
                   <div className="stage-icon-box teal"><FiAward /></div>
                 </div>
-                <h3>Về đích</h3>
+                <h3>{t('Về đích')}</h3>
                 <span className="level-tag">Master (C2)</span>
                 <ul className="stage-features">
-                  <li><FiCheck /> Làm chủ ngôn ngữ</li>
-                  <li><FiCheck /> Nghiên cứu khoa học</li>
-                  <li><FiCheck /> Môi trường toàn cầu</li>
+                  <li><FiCheck /> {t('Làm chủ ngôn ngữ')}</li>
+                  <li><FiCheck /> {t('Nghiên cứu khoa học')}</li>
+                  <li><FiCheck /> {t('Môi trường toàn cầu')}</li>
                 </ul>
               </div>
             </div>
@@ -541,8 +540,8 @@ const HomePage = () => {
           <div className="container parallax-fg-layer">
             <div className="consultation-card scroll-animate">
               <div className="form-header">
-                <h3>Đăng ký tư vấn miễn phí</h3>
-                <p>Nhận ngay lộ trình cá nhân hóa và học thử miễn phí cùng AI</p>
+                <h3>{t('Đăng ký tư vấn miễn phí')}</h3>
+                <p>{t('Nhận ngay lộ trình cá nhân hóa và học thử miễn phí cùng AI')}</p>
               </div>
               
               <form onSubmit={handleConsultationSubmit} className="consultation-form">
@@ -550,7 +549,7 @@ const HomePage = () => {
                   <FiUser className="input-icon" />
                   <input 
                     type="text" 
-                    placeholder="Họ và tên" 
+                    placeholder={t('Họ và tên')} 
                     value={fullname}
                     onChange={(e) => setFullname(e.target.value)}
                   />
@@ -560,7 +559,7 @@ const HomePage = () => {
                   <FiMail className="input-icon" />
                   <input 
                     type="email" 
-                    placeholder="Địa chỉ Gmail của bạn" 
+                    placeholder={t('Địa chỉ Gmail của bạn')} 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={submitting}
@@ -568,7 +567,7 @@ const HomePage = () => {
                 </div>
                 
                 <button type="submit" className="btn-submit-orange" disabled={submitting}>
-                  {submitting ? 'Đang gửi...' : 'Đăng ký ngay'}
+                  {submitting ? t('Đang gửi...') : t('Đăng ký ngay')}
                 </button>
               </form>
               
@@ -580,8 +579,8 @@ const HomePage = () => {
                     <div className="success-icon-wrapper">
                       <FiCheck />
                     </div>
-                    <h4>Đăng ký thành công!</h4>
-                    <p>Hệ thống đã tự động gửi <strong>Lộ trình học cá nhân hóa</strong> vào Gmail của bạn. Vui lòng kiểm tra hộp thư!</p>
+                    <h4>{t('Đăng ký thành công!')}</h4>
+                    <p>{t('Hệ thống đã tự động gửi')} <strong>{t('Lộ trình học cá nhân hóa')}</strong> {t('vào Gmail của bạn. Vui lòng kiểm tra hộp thư!')}</p>
                   </div>
                 </div>
               )}
