@@ -3,10 +3,12 @@ import { useLocation } from 'react-router-dom';
 import { FiBookOpen, FiX } from 'react-icons/fi';
 import ChatBox from '../../modules/chatbot/components/ChatBox';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import './GlobalChatbot.css';
 
 const GlobalChatbot = () => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
@@ -49,7 +51,7 @@ const GlobalChatbot = () => {
           }}>
             <FiX size={10} />
           </div>
-          <p className="bubble-text">Hi! Cần trợ giúp học tiếng Anh? Chat với mình nhé! 👋</p>
+          <p className="bubble-text">{t('Hi! Cần trợ giúp học tiếng Anh? Chat với mình nhé! 👋')}</p>
         </div>
       )}
 
@@ -57,7 +59,7 @@ const GlobalChatbot = () => {
       <button 
         className={`chatbot-floating-trigger ${isOpen ? 'active-open' : ''}`}
         onClick={handleToggle}
-        title="Trò chuyện với trợ lý học tiếng Anh AI"
+        title={t('Trò chuyện với trợ lý học tiếng Anh AI')}
       >
         <span className="chatbot-trigger-icon-wrapper">
           {isOpen ? <FiX className="trigger-icon" /> : <FiBookOpen className="trigger-icon" />}

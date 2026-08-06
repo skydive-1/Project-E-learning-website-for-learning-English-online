@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus, FiX } from 'react-icons/fi';
+import { 
+  FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus, FiX, 
+  FiKey, FiLock, FiCopy, FiCheck, FiTrash2, FiShield, FiEye, FiGlobe, FiSearch 
+} from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { getFreeQuizzesList, createQuiz, generateQuizAi, getQuizByPin } from '../services/quizzes.service';
+import { 
+  getFreeQuizzesList, 
+  createQuiz, 
+  generateQuizAi, 
+  getQuizByPin,
+  getAllQuizzesForManagement,
+  deleteQuizById
+} from '../services/quizzes.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 
@@ -53,6 +63,15 @@ const QuizzesListPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [numQuestionsToAdd, setNumQuestionsToAdd] = useState(1);
 
+  // States cho modal quản lý đề thi (Dành cho Giảng viên / Admin)
+  const [showManageModal, setShowManageModal] = useState(false);
+  const [managedQuizzes, setManagedQuizzes] = useState([]);
+  const [loadingManaged, setLoadingManaged] = useState(false);
+  const [manageSearch, setManageSearch] = useState('');
+  const [manageFilter, setManageFilter] = useState('all'); // 'all' | 'public' | 'private'
+  const [copiedPinId, setCopiedPinId] = useState(null);
+  const [inspectQuiz, setInspectQuiz] = useState(null);
+
   // States sinh câu hỏi bằng AI (Dành riêng cho Admin)
   const [aiTopic, setAiTopic] = useState('');
   const [aiCount, setAiCount] = useState(5);
@@ -62,6 +81,40 @@ const QuizzesListPage = () => {
     writing: true,
     pronunciation: true
   });
+
+  const loadManagedQuizzes = async () => {
+    try {
+      setLoadingManaged(true);
+      const data = await getAllQuizzesForManagement();
+      setManagedQuizzes(data);
+    } catch (err) {
+      console.error("Lỗi tải danh sách quản lý đề thi:", err);
+    } finally {
+      setLoadingManaged(false);
+    }
+  };
+
+  const handleCopyPin = (quizId, pin) => {
+    if (!pin) return;
+    navigator.clipboard.writeText(pin);
+    setCopiedPinId(quizId);
+    setTimeout(() => setCopiedPinId(null), 2000);
+  };
+
+  const handleDeleteManagedQuiz = async (quizId, title) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa đề thi "${title}" không? Hành động này không thể hoàn tác.`)) {
+      return;
+    }
+    try {
+      await deleteQuizById(quizId);
+      alert('Đã xóa đề thi thành công!');
+      loadManagedQuizzes();
+      loadQuizzes();
+    } catch (err) {
+      console.error("Lỗi khi xóa đề thi:", err);
+      alert(err.response?.data?.message || 'Không thể xóa đề thi!');
+    }
+  };
 
   const generateRandomPin = () => {
     const pin = Math.floor(100000 + Math.random() * 900000).toString();
@@ -232,7 +285,7 @@ const QuizzesListPage = () => {
         <div className="text-center max-w-2xl mx-auto mb-12 animate-fade">
           <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-xs font-bold text-smart-indigo tracking-wider uppercase mb-4 dark:bg-indigo-950/20 dark:border-indigo-900/50 dark:text-indigo-400">
             <FiCompass className="text-sm" />
-            <span>Sân chơi tự luyện</span>
+            <span>{t('Sân chơi tự luyện')}</span>
           </span>
           <h1 className="text-3xl md:text-4xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight leading-none mb-4">
             {t('quizzesHeaderTitle')}
@@ -245,16 +298,16 @@ const QuizzesListPage = () => {
         {/* Game PIN Join Box (E-Learn style) */}
         <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200/80 dark:border-slate-700 text-center mb-16 animate-fade">
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 tracking-tight mb-1 flex items-center justify-center gap-2">
-            <FiZap className="text-yellow-500 fill-yellow-500" /> Vào chơi nhanh bằng PIN
+            <FiZap className="text-yellow-500 fill-yellow-500" /> {t('Vào chơi nhanh bằng PIN')}
           </h2>
           <p className="text-xs text-slate-400 dark:text-slate-500 mb-5 font-semibold">
-            Nhập mã PIN bất kỳ để kết nối ngẫu nhiên và tham gia phòng chờ.
+            {t('Nhập mã PIN bất kỳ để kết nối ngẫu nhiên và tham gia phòng chờ.')}
           </p>
 
           <form onSubmit={handleJoinByPin} className="flex gap-3">
             <input
               type="text"
-              placeholder="Nhập mã PIN..."
+              placeholder={t('Nhập mã PIN...')}
               maxLength={6}
               value={pinCode}
               onChange={(e) => setPinCode(e.target.value.replace(/\D/g, ''))}
@@ -266,7 +319,7 @@ const QuizzesListPage = () => {
               disabled={joining}
               className="py-2.5 px-6 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-98 transition-all cursor-pointer shadow-md disabled:bg-slate-400"
             >
-              {joining ? 'Đang vào...' : 'Tham gia'}
+              {joining ? '...' : t('Tham gia')}
             </button>
           </form>
           {pinError && <div className="text-red-500 text-[11px] font-bold mt-2 text-left">{pinError}</div>}
@@ -275,16 +328,30 @@ const QuizzesListPage = () => {
         {/* Quizzes List Header */}
         <div className="flex justify-between items-center w-full max-w-4xl mb-8">
           <div className="flex items-center flex-1">
-            <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Danh sách đề thi hiện có</h2>
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t('Danh sách đề thi hiện có')}</h2>
             <div className="flex-1 h-[1px] bg-slate-200 dark:bg-slate-800 ml-4 mr-4"></div>
           </div>
           {isInstructorOrAdmin && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center space-x-1.5 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer shrink-0"
-            >
-              <FiPlus /> <span>Tạo đề thi mới</span>
-            </button>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManageModal(true);
+                  loadManagedQuizzes();
+                }}
+                className="flex items-center space-x-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
+              >
+                <FiKey /> <span>{t('Quản lý Đề thi & Mã PIN')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center space-x-1.5 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
+              >
+                <FiPlus /> <span>{t('Tạo đề thi mới')}</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -724,6 +791,201 @@ const QuizzesListPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Quản lý Đề thi & Mã PIN cho Giảng viên / Admin */}
+      {showManageModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 sm:p-6 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/40">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-amber-500/10 text-amber-500 rounded-2xl">
+                  <FiKey className="text-2xl" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-extrabold text-slate-800 dark:text-slate-100">
+                    {t('Quản lý Đề thi & Mã PIN Riêng tư')}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                    {t('Dành riêng cho Giảng viên & Admin • Tra cứu mã PIN, xem câu hỏi hoặc xóa bài thi')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManageModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <FiX className="text-xl" />
+              </button>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-700/60 flex flex-col sm:flex-row gap-4 justify-between items-center bg-white dark:bg-slate-800">
+              {/* Search input */}
+              <div className="relative flex-1 w-full">
+                <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
+                <input
+                  type="text"
+                  placeholder={t('Tìm kiếm đề thi theo tên hoặc nhập Mã PIN (VD: 123456)...')}
+                  value={manageSearch}
+                  onChange={(e) => setManageSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl text-xs font-semibold outline-none focus:border-smart-indigo transition-all"
+                />
+              </div>
+
+              {/* Tabs filter */}
+              <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setManageFilter('all')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${manageFilter === 'all' ? 'bg-white dark:bg-slate-800 text-smart-indigo shadow-sm' : 'text-slate-500'}`}
+                >
+                  {t('Tất cả')} ({managedQuizzes.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManageFilter('private')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${manageFilter === 'private' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500'}`}
+                >
+                  {t('🔒 Riêng tư')} ({managedQuizzes.filter(q => q.is_private).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManageFilter('public')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${manageFilter === 'public' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500'}`}
+                >
+                  {t('🌐 Công khai')} ({managedQuizzes.filter(q => !q.is_private).length})
+                </button>
+              </div>
+            </div>
+
+            {/* List Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 max-h-[60vh]">
+              {loadingManaged ? (
+                <div className="text-center py-12 text-slate-400 font-semibold text-xs">
+                  Đang tải danh sách đề thi...
+                </div>
+              ) : managedQuizzes.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 font-semibold text-xs">
+                  Chưa có đề thi nào được khởi tạo trong hệ thống.
+                </div>
+              ) : (
+                managedQuizzes
+                  .filter(q => {
+                    const matchSearch = !manageSearch.trim() || 
+                      q.title.toLowerCase().includes(manageSearch.toLowerCase()) || 
+                      (q.pin_code && q.pin_code.includes(manageSearch.trim()));
+                    const matchFilter = manageFilter === 'all' || 
+                      (manageFilter === 'private' && q.is_private) || 
+                      (manageFilter === 'public' && !q.is_private);
+                    return matchSearch && matchFilter;
+                  })
+                  .map(q => (
+                    <div 
+                      key={q.quiz_id}
+                      className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm hover:border-amber-500/50 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                          {q.is_private ? (
+                            <span className="px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                              <FiLock /> {t('🔒 Riêng tư')}
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                              <FiGlobe /> {t('🌐 Công khai')}
+                            </span>
+                          )}
+
+                          <span className="text-xs text-slate-400 dark:text-slate-400 font-semibold">
+                            {q.questions_count || q.questions?.length || 0} câu hỏi • {q.time_limit} phút
+                          </span>
+                        </div>
+
+                        <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-100">
+                          {q.title}
+                        </h4>
+                        {q.description && (
+                          <p className="text-xs text-slate-500 dark:text-slate-350 leading-relaxed line-clamp-2">
+                            {q.description}
+                          </p>
+                        )}
+
+                        {/* Gold Box display for PIN code */}
+                        {q.is_private && (
+                          <div className="mt-3 p-3.5 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs font-extrabold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+                                {t('MÃ PIN THAM GIA:')}
+                              </span>
+                              <span className="px-3 py-1 bg-amber-500 text-slate-950 rounded-lg font-black text-sm tracking-widest font-mono shadow-sm">
+                                {q.pin_code}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPin(q.quiz_id, q.pin_code)}
+                              className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 border border-amber-500/30 rounded-lg text-xs font-extrabold transition-colors flex items-center space-x-1 cursor-pointer"
+                            >
+                              {copiedPinId === q.quiz_id ? (
+                                <>
+                                  <FiCheck className="text-emerald-400 text-sm" />
+                                  <span>{t('Đã sao chép!')}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FiCopy className="text-xs" />
+                                  <span>{t('Sao chép PIN')}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Management Action buttons */}
+                      <div className="flex sm:flex-col gap-2 w-full sm:w-auto justify-end border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowManageModal(false);
+                            navigate(`/quizzes/play/${q.quiz_id}`);
+                          }}
+                          className="px-4 py-2 bg-smart-indigo hover:bg-indigo-650 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-sm cursor-pointer"
+                        >
+                          <FiPlay className="text-xs" />
+                          <span>{t('Thi thử ngay')}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteManagedQuiz(q.quiz_id, q.title)}
+                          className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
+                        >
+                          <FiTrash2 className="text-xs" />
+                          <span>{t('Xóa đề thi')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowManageModal(false)}
+                className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+              >
+                {t('Đóng cửa sổ')}
+              </button>
+            </div>
           </div>
         </div>
       )}

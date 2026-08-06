@@ -151,6 +151,29 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
     }
   };
 
+  // Helper gõ chữ từng từ từng câu với Skeleton Loading chuẩn cho TOÀN BỘ ROLE (Student, Instructor, Admin)
+  const streamTextWordByWord = async (aiMessageId, fullText, extraProps = {}) => {
+    if (!fullText) {
+      setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: false, ...extraProps } : m));
+      return;
+    }
+
+    // Hiển thị Skeleton Loading trong 350ms để tạo cảm giác AI đang đọc/suy nghĩ
+    setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: true, ...extraProps } : m));
+    await new Promise(r => setTimeout(r, 350));
+
+    let currentAccumulated = '';
+    const words = fullText.split(/(\s+)/);
+    for (let i = 0; i < words.length; i++) {
+      currentAccumulated += words[i];
+      setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentAccumulated, isStreaming: true, ...extraProps } : m));
+      // Tốc độ nhịp gõ 15ms - 28ms tự nhiên chuẩn phản xạ
+      await new Promise(r => setTimeout(r, Math.random() * 13 + 15));
+    }
+
+    setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: fullText, isStreaming: false, ...extraProps } : m));
+  };
+
   const handleStopAudioRecording = async () => {
     if (recordingTimeoutRef.current) {
       clearTimeout(recordingTimeoutRef.current);
@@ -180,16 +203,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
 
     try {
       const result = await askChatbotAudio(audioBlob, lessonId);
-      
-      let currentText = '';
-      const words = (result.reply || '').split(/(\s+)/);
-      for (let i = 0; i < words.length; i++) {
-        currentText += words[i];
-        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentText, isStreaming: true } : m));
-        await new Promise(r => setTimeout(r, Math.random() * 20 + 15));
-      }
-
-      setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: result.reply, isStreaming: false } : m));
+      await streamTextWordByWord(aiMessageId, result.reply);
       fetchBalance();
 
       if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
@@ -260,14 +274,18 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
             const welcomeText = (lessonId === 0 || lessonId === '0' || !lessonId)
               ? "Hello! Tôi là Trợ lý học tiếng Anh AI của bạn. Tôi có thể hỗ trợ giải thích ngữ pháp, từ vựng, luyện viết hoặc chat tiếng Anh cùng bạn để nâng cao phản xạ. Hôm nay bạn muốn học gì nào?"
               : "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?";
+            
+            const welcomeMsgId = "msg-welcome";
             setMessages([
               {
-                id: "msg-welcome",
+                id: welcomeMsgId,
                 sender: "ai",
-                text: welcomeText,
+                text: "",
+                isStreaming: true,
                 timestamp: new Date()
               }
             ]);
+            streamTextWordByWord(welcomeMsgId, welcomeText);
           }
         }
       } catch (err) {
@@ -325,22 +343,13 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
       if (isQuizRequest) {
         const quizIntro = "Tôi đã tạo cho bạn 2 câu hỏi trắc nghiệm nhanh dưới đây để kiểm tra kiến thức về bài học này:";
         const quizData = getLessonSpecificQuiz(lessonId);
-
-        let currentText = '';
-        const words = quizIntro.split(/(\s+)/);
-        for (let i = 0; i < words.length; i++) {
-          currentText += words[i];
-          setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentText, isStreaming: true } : m));
-          await new Promise(r => setTimeout(r, Math.random() * 20 + 15));
-        }
-
-        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: quizIntro, isStreaming: false, quizData } : m));
+        await streamTextWordByWord(aiMessageId, quizIntro, { quizData });
       } else {
         const finalAnswer = await askChatbotStream(text, lessonId, (accumulatedText) => {
           setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: accumulatedText, isStreaming: true } : m));
         });
 
-        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: finalAnswer, isStreaming: false } : m));
+        await streamTextWordByWord(aiMessageId, finalAnswer);
         fetchBalance();
 
         if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
@@ -624,10 +633,16 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
                       })()}
                     </div>
                   ) : msg.isStreaming && !msg.text ? (
-                    <div className="space-y-2 py-1 px-0.5 min-w-[180px] sm:min-w-[240px]">
-                      <div className="h-3.5 bg-slate-200 dark:bg-slate-600 rounded-md animate-pulse w-full"></div>
-                      <div className="h-3.5 bg-slate-200 dark:bg-slate-600 rounded-md animate-pulse w-[85%]"></div>
-                      <div className="h-3.5 bg-slate-200 dark:bg-slate-600 rounded-md animate-pulse w-[60%]"></div>
+                    <div className="flex items-center space-x-2 py-1 px-1 min-w-[140px]">
+                      <span className="text-xs text-slate-400 dark:text-slate-300 font-semibold animate-pulse flex items-center gap-1.5">
+                        <FiCpu className="text-smart-indigo dark:text-indigo-400 text-sm animate-spin" />
+                        <span>AI đang soạn câu trả lời...</span>
+                      </span>
+                      <span className="flex space-x-1 items-center ml-1.5">
+                        <span className="w-1.5 h-1.5 bg-smart-indigo dark:bg-indigo-400 rounded-full animate-ping"></span>
+                        <span className="w-1.5 h-1.5 bg-smart-indigo dark:bg-indigo-400 rounded-full animate-ping" style={{ animationDelay: '0.2s' }}></span>
+                        <span className="w-1.5 h-1.5 bg-smart-indigo dark:bg-indigo-400 rounded-full animate-ping" style={{ animationDelay: '0.4s' }}></span>
+                      </span>
                     </div>
                   ) : (
                     <>
