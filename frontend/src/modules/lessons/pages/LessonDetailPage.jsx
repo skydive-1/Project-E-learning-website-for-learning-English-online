@@ -688,13 +688,11 @@ const LessonDetailPage = () => {
                     ) : currentLesson?.videoUrl ? (
                       <>
                         {videoLoading && (
-                          <div className="absolute inset-0 bg-slate-900 animate-pulse flex items-center justify-center z-10 rounded-2xl overflow-hidden">
-                            <div className="flex flex-col items-center gap-3">
-                              <div className="w-14 h-14 rounded-full bg-slate-800/80 flex items-center justify-center shadow-inner">
-                                <FiPlay className="text-2xl text-teal-400 ml-1 animate-pulse" />
-                              </div>
-                              <div className="h-3 w-36 bg-slate-800/70 rounded-full"></div>
-                              <span className="text-xs text-slate-400 font-medium">Đang mã hóa luồng phát bảo mật...</span>
+                          <div className="absolute inset-0 bg-slate-900 flex items-center justify-center z-10 rounded-2xl overflow-hidden">
+                            <div className="flex items-center gap-2">
+                              <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                              <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                              <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                             </div>
                           </div>
                         )}
