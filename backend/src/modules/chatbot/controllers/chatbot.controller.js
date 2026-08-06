@@ -110,17 +110,19 @@ exports.processAudio = async (req, res, next) => {
       throw err;
     }
 
-    const filePath = req.file.path;
+    const audioSource = req.file.buffer || req.file.path;
     const mimetype = req.file.mimetype;
     const targetText = req.body.targetText || null;
     const isQA = req.body.isQA === 'true';
 
-    const evaluation = await chatbotService.evaluateAudio(filePath, mimetype, targetText, isQA);
+    const evaluation = await chatbotService.evaluateAudio(audioSource, mimetype, targetText, isQA);
 
-    // Xóa file tạm sau khi đã đánh giá xong bằng AI
-    const fs = require('fs');
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Xóa file tạm sau khi đã đánh giá xong bằng AI nếu là disk storage
+    if (req.file.path) {
+      const fs = require('fs');
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
     }
 
     res.status(200).json({

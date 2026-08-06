@@ -223,11 +223,18 @@ Trình bày thân thiện, dễ hiểu bằng tiếng Việt.
     }
   }
 
-  async evaluateAudio(filePath, mimetype, expectedSentence) {
+  async evaluateAudio(filePathOrBuffer, mimetype, expectedSentence) {
     try {
-      const fs = require('fs');
-      const audioData = fs.readFileSync(filePath);
-      const audioBase64 = audioData.toString("base64");
+      let audioBase64;
+      if (Buffer.isBuffer(filePathOrBuffer)) {
+        audioBase64 = filePathOrBuffer.toString("base64");
+      } else if (typeof filePathOrBuffer === 'string') {
+        const fs = require('fs');
+        const audioData = fs.readFileSync(filePathOrBuffer);
+        audioBase64 = audioData.toString("base64");
+      } else {
+        throw new Error("Dữ liệu âm thanh không hợp lệ.");
+      }
       
       const prompt = `You are a professional English language and pronunciation tutor.
 Analyze the user's spoken audio. Compare their pronunciation against the expected sentence: "${expectedSentence || ''}".

@@ -24,7 +24,7 @@ router.post('/submit', authenticate, quizLimiter, quizzesController.submitQuiz);
 router.post('/submit-writing', authenticate, aiLimiter, quizzesController.submitWriting);
 
 // Route: POST /api/quizzes/submit-audio
-router.post('/submit-audio', authenticate, aiLimiter, upload.single('audio'), quizzesController.submitAudio);
+router.post('/submit-audio', authenticate, aiLimiter, upload.memory.single('audio'), quizzesController.submitAudio);
 
 // Route: POST /api/quizzes - Tạo đề thi tự luyện mới (Chỉ dành cho Giảng viên / Admin)
 router.post('/', authenticate, authorize([1, 2]), quizLimiter, quizzesController.createQuiz);

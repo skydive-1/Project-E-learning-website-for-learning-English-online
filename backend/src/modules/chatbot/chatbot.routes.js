@@ -28,7 +28,7 @@ router.get('/history/:userId/:lessonId', chatbotController.getHistory);
 router.delete('/history', authenticate, chatbotController.clearHistory);
 
 // API xử lý phát âm (Audio)
-router.post('/audio', authenticate, aiLimiter, upload.single('audio'), chatbotController.processAudio);
+router.post('/audio', authenticate, aiLimiter, upload.memory.single('audio'), chatbotController.processAudio);
 
 /**
  * @swagger

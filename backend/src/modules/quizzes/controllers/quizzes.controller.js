@@ -240,15 +240,17 @@ exports.submitAudio = async (req, res, next) => {
     }
     const expectedSentence = req.body.expectedSentence || "";
 
-    const filePath = req.file.path;
+    const audioSource = req.file.buffer || req.file.path;
     const mimetype = req.file.mimetype;
 
-    const evaluation = await quizzesService.evaluateAudio(filePath, mimetype, expectedSentence);
+    const evaluation = await quizzesService.evaluateAudio(audioSource, mimetype, expectedSentence);
 
-    // Xóa file tạm sau khi đã xử lý xong
-    const fs = require('fs');
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Xóa file tạm sau khi đã xử lý xong nếu là disk storage
+    if (req.file.path) {
+      const fs = require('fs');
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
     }
 
     res.status(200).json({
