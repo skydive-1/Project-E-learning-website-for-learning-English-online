@@ -987,14 +987,14 @@ const AdminDashboard = () => {
 
                   <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Gemini Tokens tiệu thụ</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">AI Credit tiêu thụ</span>
                       <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
                         <FiCpu className="text-lg" />
                       </div>
                     </div>
                     <div className="mt-3">
                       <span className="text-2xl font-black text-slate-800 dark:text-slate-100">1,425,800</span>
-                      <span className="text-xs font-bold text-emerald-500 ml-2">Tokens</span>
+                      <span className="text-xs font-bold text-emerald-500 ml-2">Credits</span>
                     </div>
                     <span className="text-[11px] text-slate-400 block mt-1">Sử dụng trên toàn hệ thống</span>
                   </div>
@@ -1078,7 +1078,7 @@ const AdminDashboard = () => {
                         🤖 AI API Usage & RAG Infrastructure
                       </span>
                       <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                        Phân bổ Token AI tiêu thụ theo tính năng
+                        Phân bổ AI Credit tiêu thụ theo tính năng
                       </h3>
                     </div>
 
@@ -1111,7 +1111,7 @@ const AdminDashboard = () => {
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                         <span className="text-xl font-black text-slate-800 dark:text-slate-100">1.42M</span>
-                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Tokens</span>
+                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Credits</span>
                       </div>
                     </div>
 
