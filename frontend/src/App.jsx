@@ -13,6 +13,7 @@ import MyCoursesPage from './modules/courses/pages/MyCoursesPage';
 import RoadmapPage from './modules/academy/pages/RoadmapPage';
 import InstructorDashboard from './modules/instructor/pages/InstructorDashboard';
 import CourseEditor from './modules/instructor/pages/CourseEditor';
+import AdminDashboard from './modules/admin/pages/AdminDashboard';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
