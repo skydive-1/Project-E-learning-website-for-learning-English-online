@@ -23,6 +23,7 @@ import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
 import PlayQuizPage from './modules/quizzes/pages/PlayQuizPage';
 import AdminDashboard from './modules/admin/pages/AdminDashboard';
 import GlobalChatbot from './components/common/GlobalChatbot';
+import AnalyticsDashboardPage from './modules/analytics/pages/AnalyticsDashboardPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,6 +74,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <MyCoursesPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/analytics"
+                  element={
+                    <ProtectedRoute>
+                      <AnalyticsDashboardPage />
                     </ProtectedRoute>
                   }
                 />

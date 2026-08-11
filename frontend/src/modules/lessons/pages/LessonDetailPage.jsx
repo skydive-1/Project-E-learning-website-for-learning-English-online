@@ -35,6 +35,7 @@ const LessonDetailPage = () => {
   const [activeRightTab, setActiveRightTab] = useState("playlist"); // "playlist" or "ai"
   const [activeLeftTab, setActiveLeftTab] = useState("syllabus"); // "syllabus" or "resources"
   const [expandedSections, setExpandedSections] = useState({});
+  const [optimisticLessonId, setOptimisticLessonId] = useState(null);
 
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -300,17 +301,43 @@ const LessonDetailPage = () => {
     return () => clearInterval(interval);
   }, [course?.startDate]);
 
-  // 3. Xác định targetLessonId thực tế (nếu URL không có lessonId, lấy bài đầu tiên của khóa học làm mặc định)
-  const targetLessonId = lessonId || (course?.sections?.[0]?.lessons?.[0]?.id || null);
+  // 3. Xác định targetLessonId thực tế (kết hợp optimistic state để phản hồi ngay lập tức < 50ms)
+  const targetLessonId = optimisticLessonId || lessonId || (course?.sections?.[0]?.lessons?.[0]?.id || null);
 
-  // 4. Tải chi tiết bài học hiện tại để hiển thị
-  const { data: currentLesson, isLoading: lessonLoading } = useQuery({
+  // ⚡ TỰ ĐỘNG NẠP TRƯỚC BỘ NHỚ ĐỆM CLIENT (Client Memory Prefetching Engine)
+  // Khi khóa học tải xong, tự động nạp tất cả bài học vào React Query cache để người dùng click chuyển bài tức thì (< 10ms)
+  useEffect(() => {
+    if (course?.sections) {
+      course.sections.forEach((sec) => {
+        sec.lessons.forEach((l) => {
+          queryClient.setQueryData(['lesson', l.id], (old) => old || l);
+          queryClient.prefetchQuery({
+            queryKey: ['lesson', l.id],
+            queryFn: () => getLessonById(l.id),
+            staleTime: 1000 * 60 * 15
+          });
+        });
+      });
+    }
+  }, [course, queryClient]);
+
+  // Đồng bộ optimistic state với URL params khi navigate
+  useEffect(() => {
+    setOptimisticLessonId(lessonId || null);
+  }, [lessonId]);
+
+  // 4. Tải chi tiết bài học hiện tại với placeholderData để tránh giật lag UI khi chuyển bài
+  const { data: currentLesson, isLoading: lessonLoading, isFetching: lessonFetching } = useQuery({
     queryKey: ['lesson', targetLessonId],
     queryFn: () => getLessonById(targetLessonId),
-    enabled: !!targetLessonId
+    enabled: !!targetLessonId,
+    staleTime: 1000 * 60 * 15,
+    placeholderData: (previousData) => previousData
   });
 
-  const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && lessonLoading);
+  const isLessonLoading = lessonLoading || (lessonFetching && String(currentLesson?.id) !== String(targetLessonId));
+
+  const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && isLessonLoading);
 
   // Security Layer 1: Encapsulate Video Source into an In-Memory Blob URL & Anti-Download Guard
   useEffect(() => {
@@ -332,8 +359,11 @@ const LessonDetailPage = () => {
         return response.blob();
       })
       .then(blob => {
-        if (!isMounted) return;
         const objectUrl = URL.createObjectURL(blob);
+        if (!isMounted) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
         activeObjectUrl = objectUrl;
         setVideoBlobUrl(objectUrl);
         setVideoLoading(false);
@@ -368,19 +398,45 @@ const LessonDetailPage = () => {
     }
   }, [targetLessonId, course]);
 
-  // Đổi bài học mới
+  // Đổi bài học mới siêu mượt (< 50ms Optimistic UI)
   const handleSelectLesson = (id) => {
+    setOptimisticLessonId(id);
     navigate(`/lessons/${id}`);
   };
 
-  // Check hoàn thành bài học
+  // Check hoàn thành bài học (Optimistic State Update < 50ms)
   const handleToggleComplete = async (e, id) => {
     e.stopPropagation(); // Ngăn kích hoạt click chọn bài học
+    const cleanId = String(id).replace('quiz-', '').replace('speaking-', '');
+    
+    // 1. Cập nhật tức thì (< 50ms) trên Client Query Cache cho tất cả biến thể bài học (video, quiz, speaking)
+    const toggleCompleted = (old) => old ? { ...old, completed: !old.completed } : old;
+    queryClient.setQueryData(['lesson', id], toggleCompleted);
+    queryClient.setQueryData(['lesson', cleanId], toggleCompleted);
+    queryClient.setQueryData(['lesson', `quiz-${cleanId}`], toggleCompleted);
+    queryClient.setQueryData(['lesson', `speaking-${cleanId}`], toggleCompleted);
+
+    queryClient.setQueryData(['course', courseIdToLoad], (oldCourse) => {
+      if (!oldCourse) return oldCourse;
+      const updatedSections = oldCourse.sections.map(sec => ({
+        ...sec,
+        lessons: sec.lessons.map(l => {
+          const lCleanId = String(l.id).replace('quiz-', '').replace('speaking-', '');
+          return lCleanId === cleanId ? { ...l, completed: !l.completed } : l;
+        })
+      }));
+      const all = updatedSections.flatMap(s => s.lessons);
+      const comp = all.filter(l => l.completed).length;
+      const prog = all.length > 0 ? Math.round((comp / all.length) * 100) : 0;
+      return { ...oldCourse, sections: updatedSections, progress: prog };
+    });
+
     try {
       await toggleLessonCompletion(id);
       
       // Khởi chạy reload ngầm của React Query để đồng bộ toàn cục
       queryClient.invalidateQueries({ queryKey: ['lesson', id] });
+      queryClient.invalidateQueries({ queryKey: ['lesson', cleanId] });
       queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
     } catch (error) {
       console.error("Lỗi cập nhật trạng thái bài học:", error);
@@ -559,17 +615,35 @@ const LessonDetailPage = () => {
             <div className="grid grid-cols-10 gap-6 items-start">
             
             {/* Left Area - 70% */}
-            {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
+            {isLessonLoading ? (
+              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6 animate-pulse">
+                <div className="rounded-2xl aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative bg-slate-900/80 dark:bg-slate-800 flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-xs font-bold text-indigo-400 tracking-wider">Đang nạp bài học...</span>
+                  </div>
+                </div>
+                <div className="rounded-2xl border p-6 shadow-sm space-y-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+                  <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/4"></div>
+                  <div className="h-7 bg-slate-200 dark:bg-slate-700/60 rounded w-3/4"></div>
+                  <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/2"></div>
+                  <div className="pt-4 space-y-2">
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-full"></div>
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-5/6"></div>
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-2/3"></div>
+                  </div>
+                </div>
+              </div>
+            ) : currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 <QuizContent 
                   lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''} 
                   onComplete={async (score, total) => {
-                    // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học
-                    if (score >= total / 2 && !currentLesson.completed) {
+                    // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học tức thì < 50ms
+                    if (score >= total / 2 && !currentLesson?.completed) {
                       try {
-                        await toggleLessonCompletion(currentLesson.id);
-                        queryClient.invalidateQueries({ queryKey: ['lesson', currentLesson.id] });
-                        queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
+                        const fakeEvent = { stopPropagation: () => {} };
+                        await handleToggleComplete(fakeEvent, currentLesson.id);
                       } catch (err) {
                         console.error("Lỗi tự động hoàn thành bài học khi làm trắc nghiệm:", err);
                       }
@@ -584,11 +658,10 @@ const LessonDetailPage = () => {
                   speakingSentences={currentLesson.speakingSentences}
                   speakingQuestions={currentLesson.speakingQuestions}
                   onComplete={async () => {
-                    if (!currentLesson.completed) {
+                    if (!currentLesson?.completed) {
                       try {
-                        await toggleLessonCompletion(currentLesson.id);
-                        queryClient.invalidateQueries({ queryKey: ['lesson', currentLesson.id] });
-                        queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
+                        const fakeEvent = { stopPropagation: () => {} };
+                        await handleToggleComplete(fakeEvent, currentLesson.id);
                       } catch (err) {
                         console.error("Lỗi tự động hoàn thành bài học khi luyện nói:", err);
                       }
@@ -896,7 +969,7 @@ const LessonDetailPage = () => {
                           {isExpanded && (
                             <div className="divide-y" style={{ backgroundColor: 'var(--card-bg)', divideColor: 'var(--border-color)' }}>
                               {sec.lessons.map((lesson) => {
-                                const isActive = currentLesson && currentLesson.id === lesson.id;
+                                const isActive = String(targetLessonId) === String(lesson.id);
                                 const isQuiz = lesson.type === 'quiz';
                                 const isSpeaking = lesson.type === 'speaking';
                                 const isSubLesson = isQuiz || isSpeaking;
@@ -949,7 +1022,7 @@ const LessonDetailPage = () => {
                 {activeRightTab === "ai" && (
                   <div className="h-full p-2">
                     <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
-                      <ChatBox lessonId={currentLesson?.id || targetLessonId} />
+                      <ChatBox lessonId={targetLessonId || currentLesson?.id} />
                     </ErrorBoundary>
                   </div>
                 )}

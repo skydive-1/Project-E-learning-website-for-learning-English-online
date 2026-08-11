@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX, FiGlobe } from 'react-icons/fi';
+import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX, FiGlobe, FiActivity } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -78,6 +78,7 @@ const Header = () => {
           <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>{t('courses')}</Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>{t('roadmap')}</Link>
           <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>{t('quizzes')}</Link>
+          <Link to="/analytics" onClick={() => setIsMobileMenuOpen(false)}>Analytics</Link>
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
           <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>{t('pricing')}</a>
 
@@ -192,6 +193,11 @@ const Header = () => {
                   <Link to="/my-courses" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                     <FiBookOpen className="dropdown-icon" />
                     <span>{t('myCourses')}</span>
+                  </Link>
+
+                  <Link to="/analytics" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
+                    <FiActivity className="dropdown-icon" />
+                    <span>Phân tích học tập</span>
                   </Link>
 
                   <div className="dropdown-divider"></div>
