@@ -78,7 +78,6 @@ const Header = () => {
           <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>{t('courses')}</Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>{t('roadmap')}</Link>
           <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>{t('quizzes')}</Link>
-          <Link to="/analytics" onClick={() => setIsMobileMenuOpen(false)}>Analytics</Link>
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
           <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>{t('pricing')}</a>
 
