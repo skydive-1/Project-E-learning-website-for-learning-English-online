@@ -9,11 +9,13 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { updateProfileApi, changePasswordApi } from '../../auth/services/auth.service';
 import { useAuth } from '../../../context/AuthContext';
+import { useGamification } from '../../../context/GamificationContext';
 import '../styles/profile.scss';
 
 const ProfilePage = () => {
   const navigate = useNavigate();
   const { user: authUser, refreshProfile } = useAuth();
+  const { badges, triggerBadgeUnlock } = useGamification();
   
   // Gán biến user bằng authUser từ context để giữ nguyên các tham chiếu hiển thị trong JSX bên dưới
   const user = authUser;
@@ -415,6 +417,64 @@ const ProfilePage = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* GAMIFICATION BADGES SHOWCASE GRID */}
+                    <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div>
+                          <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-color, #0f172a)', margin: 0 }}>
+                            🏆 Huy hiệu & Thành tích (Gamification Badges)
+                          </h3>
+                          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+                            Bộ sưu tập huy hiệu độc quyền khi đạt cột mốc học tập
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                        {(badges || []).map((badge) => (
+                          <div 
+                            key={badge.id}
+                            onClick={() => triggerBadgeUnlock(badge)}
+                            style={{
+                              background: badge.unlocked ? 'var(--card-bg, #ffffff)' : '#f8fafc',
+                              border: badge.unlocked ? '2px solid #f59e0b' : '1px dashed #cbd5e1',
+                              borderRadius: '16px',
+                              padding: '16px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              textAlign: 'center',
+                              gap: '8px',
+                              cursor: 'pointer',
+                              opacity: badge.unlocked ? 1 : 0.65,
+                              transition: 'all 0.2s hover:scale-102 shadow-sm'
+                            }}
+                            title={badge.unlocked ? 'Nhấp để mở xem huy hiệu thành tích!' : 'Huy hiệu chưa mở khóa'}
+                          >
+                            <div style={{ fontSize: '36px', filter: badge.unlocked ? 'drop-shadow(0 4px 6px rgba(245, 158, 11, 0.3))' : 'grayscale(100%)' }}>
+                              {badge.icon}
+                            </div>
+                            <span style={{ fontSize: '13px', fontWeight: '800', color: badge.unlocked ? '#0f172a' : '#64748b' }}>
+                              {badge.title}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>
+                              {badge.description}
+                            </span>
+                            {badge.unlocked ? (
+                              <span style={{ fontSize: '10px', fontWeight: '800', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '12px' }}>
+                                ✨ Đã đạt được ({badge.unlockedAt})
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px' }}>
+                                🔒 Chưa mở khóa
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                   </div>
                 )}
 

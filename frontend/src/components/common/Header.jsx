@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import ScrambleText from './ScrambleText';
+import FlameStreakWidget from '../../modules/gamification/components/FlameStreakWidget';
 import '../../modules/homepage/styles/homepage.scss'; // Link global/homepage styles
 
 const Header = () => {
@@ -134,6 +135,9 @@ const Header = () => {
             <span className={`ios-switch-option ${language === 'VIE' ? 'active' : ''}`}>VN</span>
             <span className={`ios-switch-option ${language === 'ENG' ? 'active' : ''}`}>EN</span>
           </div>
+
+          {/* Flame Streak Gamification Widget */}
+          <FlameStreakWidget />
 
           {/* Dark Mode Toggle Button */}
           <button 

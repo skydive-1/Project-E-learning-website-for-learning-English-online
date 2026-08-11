@@ -6,8 +6,10 @@ import {
   getCourseQuizByLessonId,
   submitQuizAttempt
 } from '../../quizzes/services/quizzes.service';
+import { useGamification } from '../../../context/GamificationContext';
 
 const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
+  const { triggerBadgeUnlock } = useGamification() || {};
   const [questions, setQuestions] = useState([]);
   const [quizTitle, setQuizTitle] = useState("Bài tập Trắc nghiệm");
   const [timeLimit, setTimeLimit] = useState(10); // minutes
@@ -87,7 +89,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isSubmitted, questions]);
+  }, [isSubmitted, questions.length]);
 
   const handleSelectOption = (questionId, optionKey) => {
     if (isSubmitted) return; // Khóa đáp án khi đã nộp
@@ -113,6 +115,10 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     setScore(correctCount);
     setIsSubmitted(true);
     setShowConfirmModal(false);
+
+    if (correctCount > 0 && correctCount === questions.length && triggerBadgeUnlock) {
+      triggerBadgeUnlock('badge-quiz-100');
+    }
 
     if (actualQuizId) {
       try {
