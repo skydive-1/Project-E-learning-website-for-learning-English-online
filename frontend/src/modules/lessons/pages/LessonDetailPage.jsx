@@ -149,18 +149,7 @@ const LessonDetailPage = () => {
       }
     };
 
-    // 3. Tự động che đen màn hình Video khi cửa sổ mất Focus (Ví dụ thao tác ứng dụng OBS ở màn hình khác)
-    const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('Netflix DRM Secure Video Path: Cửa sổ mất Focus. Khung hình Video tự động chuyển sang màu đen (#000000) để chống quay ngầm OBS.');
-    };
-
-    const handleWindowFocus = () => {
-      restoreDrmVideo();
-    };
-
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focus', handleWindowFocus);
 
     window.addEventListener('keyup', (e) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
@@ -170,8 +159,6 @@ const LessonDetailPage = () => {
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
