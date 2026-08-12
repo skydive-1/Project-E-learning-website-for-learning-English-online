@@ -3,6 +3,7 @@
  */
 
 const coursesService = require('../services/courses.service');
+const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 
 exports.getAllCourses = async (req, res, next) => {
   try {
@@ -42,14 +43,24 @@ exports.uploadFile = async (req, res, next) => {
     const destNormalized = req.file.destination.replace(/\\/g, '/');
     const uploadIdx = destNormalized.indexOf('/uploads');
     const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
-    const fileUrl = `/uploads${subFolder}/${req.file.filename}`;
+    let fileUrl = `/uploads${subFolder}/${req.file.filename}`;
+
+    // TỰ ĐỘNG KHÓA MÃ HÓA DRM CENC NẾU LÀ FILE VIDEO
+    if (req.file.mimetype.startsWith('video/') || req.file.filename.endsWith('.mp4')) {
+      const lessonId = req.body?.lessonId || Date.now();
+      const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
+      if (drmResult.success && drmResult.mpdUrl) {
+        fileUrl = drmResult.mpdUrl;
+      }
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Tải file lên thành công',
+      message: 'Tải file lên và đóng gói mã hóa DRM thành công',
       fileUrl,
       originalName: req.file.originalname,
-      mimetype: req.file.mimetype
+      mimetype: req.file.mimetype,
+      isDrmProtected: true
     });
   } catch (error) {
     next(error);
@@ -81,11 +92,21 @@ exports.uploadMedia = async (req, res) => {
     const destNormalized = req.file.destination.replace(/\\/g, '/');
     const uploadIdx = destNormalized.indexOf('/uploads');
     const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
-    const fileUrl = `/uploads${subFolder}/${req.file.filename}`;
+    let fileUrl = `/uploads${subFolder}/${req.file.filename}`;
     
+    // TỰ ĐỘNG KHÓA MÃ HÓA DRM CENC NẾU LÀ FILE VIDEO
+    if (req.file.mimetype.startsWith('video/') || req.file.filename.endsWith('.mp4')) {
+      const lessonId = req.body?.lessonId || Date.now();
+      const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
+      if (drmResult.success && drmResult.mpdUrl) {
+        fileUrl = drmResult.mpdUrl;
+      }
+    }
+
     res.status(200).json({
       success: true,
-      url: fileUrl
+      url: fileUrl,
+      isDrmProtected: true
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
