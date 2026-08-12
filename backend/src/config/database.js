@@ -146,6 +146,22 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_comments & comment_upvotes:', migErr.message);
     }
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng instructor_policy_agreements tồn tại
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS instructor_policy_agreements (
+          agreement_id SERIAL PRIMARY KEY,
+          instructor_id INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+          ip_address VARCHAR(45) NOT NULL,
+          signature TEXT NOT NULL,
+          accepted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng instructor_policy_agreements tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng instructor_policy_agreements:', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {

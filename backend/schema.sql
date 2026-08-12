@@ -186,3 +186,11 @@ CREATE TABLE IF NOT EXISTS comment_upvotes (
 CREATE INDEX IF NOT EXISTS idx_lesson_comments_lesson_id ON lesson_comments(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_lesson_comments_parent_id ON lesson_comments(parent_id);
 
+-- 15. Tạo bảng Thỏa thuận Bản quyền Giảng viên (instructor_policy_agreements)
+CREATE TABLE IF NOT EXISTS instructor_policy_agreements (
+  agreement_id SERIAL PRIMARY KEY,
+  instructor_id INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+  ip_address VARCHAR(45) NOT NULL,
+  signature TEXT NOT NULL,
+  accepted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
