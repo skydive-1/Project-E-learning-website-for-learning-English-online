@@ -417,19 +417,8 @@ const LessonDetailPage = () => {
 
     if (!currentLesson?.videoUrl || !videoRef.current) return;
 
-    // CHỈ kích hoạt Shaka Player khi là luồng MPEG-DASH (.mpd) hoặc có cờ DRM protected
-    const isDashStream = currentLesson.videoUrl.endsWith('.mpd') || 
-                         currentLesson.videoUrl.includes('/dash/') || 
-                         Boolean(currentLesson.isDrmProtected);
-
-    if (!isDashStream) {
-      // Với video MP4 thông thường, hủy Shaka Player cũ nếu có để trả lại thẻ <video> cho HTML5 Native Player
-      if (shakaPlayerRef.current) {
-        shakaPlayerRef.current.destroy().catch(() => {});
-        shakaPlayerRef.current = null;
-      }
-      return;
-    }
+    // Kích hoạt Shaka DRM EME Player cho tất cả các bài học dạng Video để bật cơ chế Encrypted Surface chống Extension quay màn hình
+    const isDashStream = true;
 
     if (shaka.Player && shaka.Player.isBrowserSupported()) {
       const player = new shaka.Player(videoRef.current);
@@ -833,7 +822,6 @@ const LessonDetailPage = () => {
                         <video 
                           ref={videoRef}
                           key={currentLesson?.id || 'video'}
-                          src={(currentLesson?.videoUrl?.endsWith('.mpd') || currentLesson?.videoUrl?.includes('/dash/') || currentLesson?.isDrmProtected) ? undefined : videoBlobUrl} 
                           controls 
                           autoPlay
                           preload="metadata"
