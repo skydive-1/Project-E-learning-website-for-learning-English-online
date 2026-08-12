@@ -117,6 +117,35 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng user_token_limits:', migErr.message);
     }
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo các bảng lesson_comments và comment_upvotes tồn tại
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lesson_comments (
+          comment_id SERIAL PRIMARY KEY,
+          lesson_id INT NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          parent_id INT REFERENCES lesson_comments(comment_id) ON DELETE CASCADE,
+          content TEXT NOT NULL,
+          is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS comment_upvotes (
+          comment_id INT NOT NULL REFERENCES lesson_comments(comment_id) ON DELETE CASCADE,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          PRIMARY KEY (comment_id, user_id),
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_comments_lesson_id ON lesson_comments(lesson_id);`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_comments_parent_id ON lesson_comments(parent_id);`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo các bảng lesson_comments và comment_upvotes tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_comments & comment_upvotes:', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {
