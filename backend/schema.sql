@@ -162,3 +162,27 @@ CREATE TABLE IF NOT EXISTS user_token_limits (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 13. Tạo bảng Lesson Comments (Bình luận bài học)
+CREATE TABLE IF NOT EXISTS lesson_comments (
+  comment_id SERIAL PRIMARY KEY,
+  lesson_id INT NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  parent_id INT REFERENCES lesson_comments(comment_id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 14. Tạo bảng Comment Upvotes (Thả tim/Upvote câu trả lời)
+CREATE TABLE IF NOT EXISTS comment_upvotes (
+  comment_id INT NOT NULL REFERENCES lesson_comments(comment_id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  PRIMARY KEY (comment_id, user_id),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_lesson_comments_lesson_id ON lesson_comments(lesson_id);
+CREATE INDEX IF NOT EXISTS idx_lesson_comments_parent_id ON lesson_comments(parent_id);
+
