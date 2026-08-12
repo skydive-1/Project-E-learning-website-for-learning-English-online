@@ -64,35 +64,33 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CHE MÀN HÌNH TỨC THÌ 0 MILLISECOND (Zero-Latency Synchronous Blackout Engine)
+  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Netflix-style DRM Secure Video Path Blackout Engine)
   const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Can thiệp trực tiếp đồng bộ 0ms vào DOM để ẩn ngay tức khắc media wrapper trước khi OS chụp buffer
-    const mediaEl = document.getElementById('lesson-media-wrapper');
-    if (mediaEl) {
-      mediaEl.style.display = 'none';
-      mediaEl.style.visibility = 'hidden';
-      mediaEl.style.opacity = '0';
+    // 1. Can thiệp trực tiếp 0ms hiển thị Màn hình Đen xì (#000000) đè lên khung hình Video giống hệt Netflix DRM
+    const videoDrmShield = document.getElementById('netflix-drm-blackout-shield');
+    if (videoDrmShield) {
+      videoDrmShield.style.display = 'flex';
+      videoDrmShield.style.opacity = '1';
     }
 
-    // 2. Hiển thị Lá chắn bôi đen View-Once đồng bộ 0ms
-    const shieldEl = document.getElementById('instant-blackout-shield-overlay');
-    if (shieldEl) {
-      shieldEl.style.display = 'flex';
-      shieldEl.style.visibility = 'visible';
-      shieldEl.style.opacity = '1';
-    }
-
-    // 3. Tạm dừng video và xóa bộ nhớ đệm Clipboard ngay trong microsecond đầu tiên
-    if (videoRef.current) {
-      videoRef.current.pause();
-    }
+    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('');
     }
 
-    // 4. Cập nhật state React
+    // 3. Cập nhật state React (Âm thanh bài giảng vẫn tiếp tục phát giống Netflix DRM!)
     setIsScreenRecordingDetected(true);
-    setRecordingDetectedMessage(reason || 'Phát hiện hành vi chụp / quay màn hình! Nội dung bài học đã được bôi đen bảo vệ tức thì.');
+    setRecordingDetectedMessage(reason || 'Netflix DRM Protection: Phân vùng video đã tự động chuyển sang pixel màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình.');
+  };
+
+  const restoreDrmVideo = () => {
+    const videoDrmShield = document.getElementById('netflix-drm-blackout-shield');
+    if (videoDrmShield) {
+      videoDrmShield.style.display = 'none';
+      videoDrmShield.style.opacity = '0';
+    }
+    setIsScreenRecordingDetected(false);
+    setRecordingDetectedMessage('');
   };
 
   // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool)
@@ -137,21 +135,33 @@ const LessonDetailPage = () => {
       const isSavePage = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
 
       if (isNvidiaInstantReplay) {
-        triggerZeroLatencyBlackout('Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z / Alt+F9)! Nội dung bài học đã được bôi đen bảo vệ tức thì.');
+        triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z). Khung hình video chuyển màu đen (#000000).');
         e.preventDefault();
         e.stopPropagation();
         return false;
       }
 
       if (isPrtScn || isSnippingTool || isPrintPage || isSavePage) {
-        triggerZeroLatencyBlackout('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Nội dung bài học đã được bôi đen bảo mật.');
+        triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P). Màn hình video chuyển màu đen.');
         e.preventDefault();
         e.stopPropagation();
         return false;
       }
     };
 
+    // 3. Tự động che đen màn hình Video khi cửa sổ mất Focus (Ví dụ thao tác ứng dụng OBS ở màn hình khác)
+    const handleWindowBlur = () => {
+      triggerZeroLatencyBlackout('Netflix DRM Secure Video Path: Cửa sổ mất Focus. Khung hình Video tự động chuyển sang màu đen (#000000) để chống quay ngầm OBS.');
+    };
+
+    const handleWindowFocus = () => {
+      restoreDrmVideo();
+    };
+
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+
     window.addEventListener('keyup', (e) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         triggerZeroLatencyBlackout('Phát hiện phím PrintScreen!');
@@ -160,6 +170,8 @@ const LessonDetailPage = () => {
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
@@ -701,42 +713,34 @@ const LessonDetailPage = () => {
                   onContextMenu={(e) => e.preventDefault()}
                   onDragStart={(e) => e.preventDefault()}
                 >
-                  {/* View-Once Facebook/Instagram-style Permanent Blackout Security Shield */}
+                  {/* Netflix DRM Secure Video Path Blackout Surface Layer (#000000 Pitch Black Box) */}
                   <div 
-                    id="instant-blackout-shield-overlay"
+                    id="netflix-drm-blackout-shield"
                     style={{ display: isScreenRecordingDetected ? 'flex' : 'none' }}
-                    className="absolute inset-0 bg-slate-950 backdrop-blur-3xl z-[99999] flex-col items-center justify-center p-6 text-center space-y-4 animate-fade select-none"
+                    className="absolute inset-0 bg-black z-[9999] flex-col items-center justify-center p-6 text-center select-none cursor-pointer border border-slate-900"
+                    onClick={restoreDrmVideo}
                   >
-                    {/* Copyright Policy Watermark Badge */}
-                    <div className="absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-none z-[100000] font-mono text-[11px] sm:text-xs font-bold text-amber-300 bg-slate-900 border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                      <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
-                    </div>
+                    <div className="flex flex-col items-center space-y-3 pointer-events-none">
+                      <div className="w-14 h-14 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center text-2xl text-red-500 shadow-2xl animate-pulse">
+                        🔒
+                      </div>
+                      
+                      <span className="text-xs font-mono font-extrabold tracking-widest text-red-500 uppercase">
+                        NETFLIX DRM SECURE VIDEO PATH • BLACKOUT ACTIVE
+                      </span>
+                      
+                      <p className="text-xs font-sans text-slate-300 max-w-md leading-relaxed">
+                        {recordingDetectedMessage || 'Do chính sách bảo mật DRM, phân vùng video đã tự động chuyển sang pixel màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình hoặc chuyển cửa sổ.'}
+                      </p>
 
-                    <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
-                      ⚠️
+                      <div className="pt-2 flex items-center gap-2 text-[11px] text-teal-400 font-mono">
+                        <span>Âm thanh bài giảng vẫn tiếp tục phát bình thường</span>
+                        <span>•</span>
+                        <span className="text-slate-400 underline pointer-events-auto cursor-pointer hover:text-white" onClick={restoreDrmVideo}>
+                          Nhấp vào đây để khôi phục hình ảnh
+                        </span>
+                      </div>
                     </div>
-                    
-                    <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-wide uppercase text-red-400">
-                      CẢNH BÁO VI PHẠM BẢO MẬT TÀI LIỆU
-                    </h3>
-                    
-                    <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                      {recordingDetectedMessage || 'Hệ thống đã tự động bôi đen và hủy nạp tài liệu khỏi bộ nhớ do phát hiện thao tác chụp / quay màn hình. Để bảo vệ bản quyền, toàn bộ nội dung đã bị vô hiệu hóa trong phiên này.'}
-                    </p>
-
-                    <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
-                      Nhật ký vi phạm: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        window.location.reload();
-                      }}
-                      className="mt-3 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer border border-red-500/50"
-                    >
-                      Tải lại trang bài học để xác thực phiên an toàn
-                    </button>
                   </div>
 
                   {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
