@@ -142,20 +142,28 @@ const LessonDetailPage = () => {
       }
     };
 
-    // Chống quay ngầm OBS khi mất Focus (OBS Focus Guard):
-    // Khi người dùng nhấp chuột sang cửa sổ OBS (hoặc màn hình 2), video lập tức TẠM DỪNG và phủ màu đen xì.
+    // OBS Focus Guard Tối ưu Trải nghiệm (Seamless UX):
+    // Khi người dùng chuyển cửa sổ làm việc khác, màn hình tạm thời phủ đen để bảo vệ.
+    // Khi nhấp quay lại trang bài học, giao diện lập tức khôi phục mượt mà 0ms mà KHÔNG BẮT nhấp thủ công.
+    // Việc chặn OBS khi video đang phát được giao lại trọn vẹn cho tầng W3C EME ClearKey DRM xử lý ngầm.
     const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('DRM OBS Focus Guard: Cửa sổ bài học mất Focus. Video tạm dừng và phủ màu đen xì (#000000) để chặn quay phim ngầm.');
+      triggerZeroLatencyBlackout('DRM Focus Guard: Cửa sổ bài học mất Focus. Đã bật chế độ bảo vệ video.');
+    };
+
+    const handleWindowFocus = () => {
+      restoreDrmVideo();
     };
 
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
     window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
       window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
