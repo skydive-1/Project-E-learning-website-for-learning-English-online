@@ -36,6 +36,18 @@ const queryClient = new QueryClient({
   }
 });
 
+const AuthTokenRedirectHandler = () => {
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    const hash = window.location.hash;
+    const search = window.location.search;
+    if ((hash.includes('access_token=') || hash.includes('type=recovery') || search.includes('type=recovery')) && window.location.pathname !== '/reset-password') {
+      navigate(`/reset-password${hash || search}`, { replace: true });
+    }
+  }, [navigate]);
+  return null;
+};
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -43,6 +55,7 @@ function App() {
         <ThemeProvider>
           <LanguageProvider>
             <BrowserRouter>
+              <AuthTokenRedirectHandler />
               <AuthProvider>
                 <GamificationProvider>
                   <Routes>
