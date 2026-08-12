@@ -8,6 +8,7 @@ import {
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { DateRangePicker, SingleDatePicker } from '../../../components/ui';
+import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPolicyModal';
 import '../styles/instructor.scss';
 
 const getRoleFromToken = () => {
@@ -40,6 +41,10 @@ const CourseEditor = () => {
   const { courseId } = useParams();
   const fileInputRef = useRef({});
   const isEditMode = !!courseId;
+
+  // [TASK-FE-POL-01] State quản lý Modal Policy Bản quyền Giảng viên
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState(null);
 
   // Auth check
   useEffect(() => {
@@ -192,7 +197,7 @@ const CourseEditor = () => {
     setSections(newSections);
   };
 
-  // Upload File
+  // Upload File với Modal Cam kết Bản quyền [TASK-FE-POL-01]
   const triggerFileSelect = (sIdx, lIdx) => {
     const refKey = `${sIdx}-${lIdx}`;
     if (fileInputRef.current[refKey]) {
@@ -200,9 +205,18 @@ const CourseEditor = () => {
     }
   };
 
-  const handleFileChange = async (sIdx, lIdx, e) => {
+  const handleFileChange = (sIdx, lIdx, e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Mở Modal Cam kết Bản quyền trước khi thực hiện Upload [TASK-FE-POL-01]
+    setPendingUpload({ sIdx, lIdx, file });
+    setPolicyModalOpen(true);
+  };
+
+  const executeFileUpload = async () => {
+    if (!pendingUpload) return;
+    const { sIdx, lIdx, file } = pendingUpload;
 
     // Set uploading state
     handleLessonChange(sIdx, lIdx, 'uploading', true);
@@ -230,12 +244,15 @@ const CourseEditor = () => {
         newSections[sIdx].lessons[lIdx].type = detectedType;
         newSections[sIdx].lessons[lIdx].uploading = false;
         newSections[sIdx].lessons[lIdx].fileName = file.name;
+        newSections[sIdx].lessons[lIdx].hasAcceptedPolicy = true;
         setSections(newSections);
       }
     } catch (err) {
       console.error('Lỗi khi tải file lên:', err);
       setErrorMsg(err.response?.data?.message || 'Lỗi khi tải file lên máy chủ.');
       handleLessonChange(sIdx, lIdx, 'uploading', false);
+    } finally {
+      setPendingUpload(null);
     }
   };
 
@@ -717,6 +734,18 @@ const CourseEditor = () => {
 
       <Footer />
       
+      {/* [TASK-FE-POL-01] Modal Cam kết Điều khoản & Bản quyền Giảng viên */}
+      <InstructorCopyrightPolicyModal
+        isOpen={policyModalOpen}
+        onClose={() => {
+          setPolicyModalOpen(false);
+          setPendingUpload(null);
+        }}
+        onAccept={executeFileUpload}
+        fileName={pendingUpload?.file?.name || ''}
+        fileType={pendingUpload?.file?.type || 'video'}
+      />
+
       {/* Mini loading overlay for full publishing */}
       {loading && (
         <div style={{
