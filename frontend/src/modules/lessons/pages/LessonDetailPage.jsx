@@ -769,35 +769,13 @@ const LessonDetailPage = () => {
                   onContextMenu={(e) => e.preventDefault()}
                   onDragStart={(e) => e.preventDefault()}
                 >
-                  {/* Netflix DRM Secure Video Path Blackout Surface Layer (#000000 Pitch Black Box) */}
+                  {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box) */}
                   <div 
                     id="netflix-drm-blackout-shield"
-                    style={{ display: isScreenRecordingDetected ? 'flex' : 'none' }}
-                    className="absolute inset-0 bg-black z-[9999] flex-col items-center justify-center p-6 text-center select-none cursor-pointer border border-slate-900"
+                    style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
+                    className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer"
                     onClick={restoreDrmVideo}
-                  >
-                    <div className="flex flex-col items-center space-y-3 pointer-events-none">
-                      <div className="w-14 h-14 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center text-2xl text-red-500 shadow-2xl animate-pulse">
-                        🔒
-                      </div>
-                      
-                      <span className="text-xs font-mono font-extrabold tracking-widest text-red-500 uppercase">
-                        NETFLIX DRM SECURE VIDEO PATH • BLACKOUT ACTIVE
-                      </span>
-                      
-                      <p className="text-xs font-sans text-slate-300 max-w-md leading-relaxed">
-                        {recordingDetectedMessage || 'Do chính sách bảo mật DRM, phân vùng video đã tự động chuyển sang pixel màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình hoặc chuyển cửa sổ.'}
-                      </p>
-
-                      <div className="pt-2 flex items-center gap-2 text-[11px] text-teal-400 font-mono">
-                        <span>Âm thanh bài giảng vẫn tiếp tục phát bình thường</span>
-                        <span>•</span>
-                        <span className="text-slate-400 underline pointer-events-auto cursor-pointer hover:text-white" onClick={restoreDrmVideo}>
-                          Nhấp vào đây để khôi phục hình ảnh
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                  />
 
                   {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
                   <div 
