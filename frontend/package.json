@@ -20,6 +20,7 @@
     "react-router-dom": "^7.16.0",
     "recharts": "^3.10.1",
     "sass": "^1.100.0",
+    "shaka-player": "^5.2.4",
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {

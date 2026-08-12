@@ -13,6 +13,7 @@ import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
+import shaka from 'shaka-player';
 import { 
   getCourseDetails, 
   getLessonById, 
@@ -27,6 +28,7 @@ const LessonDetailPage = () => {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
+  const shakaPlayerRef = useRef(null);
 
   const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
@@ -64,65 +66,43 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Netflix-style DRM Secure Video Path Blackout Engine)
+  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Declarative React State DRM Engine)
   const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Can thiệp trực tiếp 0ms hiển thị Màn hình Đen xì (#000000) đè lên khung hình Video giống hệt Netflix DRM
-    const videoDrmShield = document.getElementById('netflix-drm-blackout-shield');
-    if (videoDrmShield) {
-      videoDrmShield.style.display = 'flex';
-      videoDrmShield.style.opacity = '1';
-    }
-
-    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
+    // 1. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('');
     }
 
-    // 3. Cập nhật state React (Âm thanh bài giảng vẫn tiếp tục phát giống Netflix DRM!)
+    // 2. Đồng bộ 100% qua React State (Âm thanh phát bình thường, Video phủ đen xì #000000)
     setIsScreenRecordingDetected(true);
     setRecordingDetectedMessage(reason || 'Netflix DRM Protection: Phân vùng video đã tự động chuyển sang pixel màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình.');
   };
 
   const restoreDrmVideo = () => {
-    const videoDrmShield = document.getElementById('netflix-drm-blackout-shield');
-    if (videoDrmShield) {
-      videoDrmShield.style.display = 'none';
-      videoDrmShield.style.opacity = '0';
-    }
     setIsScreenRecordingDetected(false);
     setRecordingDetectedMessage('');
   };
 
   // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool)
   useEffect(() => {
-    // 1. Quét thiết bị Media để phát hiện OBS Virtual Camera / OBS Studio
-    const detectObsStudioDevices = async () => {
-      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const obsDevice = devices.find(d => 
-            (d.label && d.label.toLowerCase().includes('obs')) || 
-            (d.label && d.label.toLowerCase().includes('virtual camera'))
-          );
-          if (obsDevice) {
-            console.info('[DRM Security] Hệ thống phát hiện OBS Studio / Virtual Camera trong danh sách thiết bị.');
-          }
-        } catch (err) {
-          // Bỏ qua nếu chưa cấp quyền media devices
-        }
-      }
-    };
-    detectObsStudioDevices();
+    let isAltPressed = false;
 
-    // 2. Bắt các phím tắt quay/chụp màn hình (đã lọc bỏ phím ALT đơn lẻ và ALT+TAB)
+    // Bắt các phím tắt quay/chụp màn hình ở cả pha keydown & keyup với capture phase cao nhất
     const handleScreenCaptureKeys = (e) => {
-      // Cho phép bấm ALT đơn lẻ hoặc ALT+TAB chuyển ứng dụng làm việc mượt mà
-      if (e.key === 'Alt' || (e.altKey && e.key === 'Tab')) {
+      // Cập nhật trạng thái phím Alt
+      if (e.key === 'Alt') {
+        isAltPressed = e.type === 'keydown';
+        return; // Cho phép bấm phím Alt đơn lẻ mượt mà
+      }
+
+      // Cho phép phím Alt+Tab chuyển cửa sổ làm việc
+      if ((e.altKey || isAltPressed) && e.key === 'Tab') {
         return;
       }
 
       // Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10)
-      const isNvidiaInstantReplay = e.altKey && (
+      const isAltActive = e.altKey || isAltPressed;
+      const isNvidiaInstantReplay = isAltActive && (
         e.key === 'z' || e.key === 'Z' || e.keyCode === 90 ||
         e.key === 'F9' || e.keyCode === 120 ||
         e.key === 'F10' || e.keyCode === 121
@@ -149,16 +129,28 @@ const LessonDetailPage = () => {
       }
     };
 
-    window.addEventListener('keydown', handleScreenCaptureKeys, true);
+    // Chống quay ngầm OBS khi mất Focus (OBS Focus Guard):
+    // Khi người dùng click sang ứng dụng OBS (hoặc ứng dụng khác trên màn hình 2),
+    // phân vùng video tự động chuyển đen xì (#000000) để ngăn OBS quay ngầm background.
+    // Khi người dùng nhấp quay lại bài học, khung hình video tự động khôi phục mượt mà.
+    const handleWindowBlur = () => {
+      triggerZeroLatencyBlackout('DRM OBS Focus Guard: Cửa sổ bài học mất Focus. Khung hình Video tự động chuyển màu đen (#000000) để chống quay ngầm OBS.');
+    };
 
-    window.addEventListener('keyup', (e) => {
-      if (e.key === 'PrintScreen' || e.keyCode === 44) {
-        triggerZeroLatencyBlackout('Phát hiện phím PrintScreen!');
-      }
-    }, true);
+    const handleWindowFocus = () => {
+      restoreDrmVideo();
+    };
+
+    window.addEventListener('keydown', handleScreenCaptureKeys, true);
+    window.addEventListener('keyup', handleScreenCaptureKeys, true);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
+      window.removeEventListener('keyup', handleScreenCaptureKeys, true);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
@@ -404,6 +396,70 @@ const LessonDetailPage = () => {
       }
     };
   }, [currentLesson?.videoUrl]);
+
+  // Security Layer 2: W3C EME ClearKey DRM & Shaka Player Integration (Chỉ kích hoạt cho luồng MPEG-DASH / DRM)
+  useEffect(() => {
+    let isMounted = true;
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+    if (!currentLesson?.videoUrl || !videoRef.current) return;
+
+    // CHỈ kích hoạt Shaka Player khi là luồng MPEG-DASH (.mpd) hoặc có cờ DRM protected
+    const isDashStream = currentLesson.videoUrl.endsWith('.mpd') || 
+                         currentLesson.videoUrl.includes('/dash/') || 
+                         Boolean(currentLesson.isDrmProtected);
+
+    if (!isDashStream) {
+      // Với video MP4 thông thường, hủy Shaka Player cũ nếu có để trả lại thẻ <video> cho HTML5 Native Player
+      if (shakaPlayerRef.current) {
+        shakaPlayerRef.current.destroy().catch(() => {});
+        shakaPlayerRef.current = null;
+      }
+      return;
+    }
+
+    if (shaka.Player && shaka.Player.isBrowserSupported()) {
+      const player = new shaka.Player(videoRef.current);
+      shakaPlayerRef.current = player;
+
+      // Cấu hình DRM W3C ClearKey License Server
+      const currentLessonId = currentLesson?.id || lessonId || 1;
+      const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
+
+      player.configure({
+        drm: {
+          servers: {
+            'org.w3.clearkey': licenseUrl
+          }
+        }
+      });
+
+      // Đính kèm Auth Header vào Request cấp License
+      const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+      if (token) {
+        player.getNetworkingEngine().registerRequestFilter((type, request) => {
+          if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+            request.headers['Authorization'] = `Bearer ${token}`;
+          }
+        });
+      }
+
+      // Nạp luồng MPEG-DASH qua Shaka DRM Player
+      player.load(currentLesson.videoUrl).catch(err => {
+        if (isMounted) {
+          console.warn('[Shaka Player DRM Warning]: Khung phát MPEG-DASH gặp sự cố:', err);
+        }
+      });
+
+      return () => {
+        isMounted = false;
+        if (shakaPlayerRef.current) {
+          shakaPlayerRef.current.destroy().catch(() => {});
+          shakaPlayerRef.current = null;
+        }
+      };
+    }
+  }, [currentLesson?.videoUrl, lessonId]);
 
   // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
   useEffect(() => {
@@ -786,7 +842,7 @@ const LessonDetailPage = () => {
                         <video 
                           ref={videoRef}
                           key={currentLesson?.id || 'video'}
-                          src={videoBlobUrl} 
+                          src={(currentLesson?.videoUrl?.endsWith('.mpd') || currentLesson?.videoUrl?.includes('/dash/') || currentLesson?.isDrmProtected) ? undefined : videoBlobUrl} 
                           controls 
                           autoPlay
                           preload="metadata"
