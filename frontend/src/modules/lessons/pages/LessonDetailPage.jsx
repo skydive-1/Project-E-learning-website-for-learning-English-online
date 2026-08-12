@@ -95,13 +95,53 @@ const LessonDetailPage = () => {
     setRecordingDetectedMessage(reason || 'Phát hiện hành vi chụp / quay màn hình! Nội dung bài học đã được bôi đen bảo vệ tức thì.');
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện 0ms Chống Chụp / Quay Màn hình
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool)
   useEffect(() => {
+    // 1. Quét thiết bị Media để phát hiện OBS Virtual Camera / OBS Studio
+    const detectObsStudioDevices = async () => {
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const obsDevice = devices.find(d => 
+            (d.label && d.label.toLowerCase().includes('obs')) || 
+            (d.label && d.label.toLowerCase().includes('virtual camera'))
+          );
+          if (obsDevice) {
+            console.info('[DRM Security] Hệ thống phát hiện OBS Studio / Virtual Camera trong danh sách thiết bị.');
+          }
+        } catch (err) {
+          // Bỏ qua nếu chưa cấp quyền media devices
+        }
+      }
+    };
+    detectObsStudioDevices();
+
+    // 2. Bắt các phím tắt quay/chụp màn hình (đã lọc bỏ phím ALT đơn lẻ và ALT+TAB)
     const handleScreenCaptureKeys = (e) => {
+      // Cho phép bấm ALT đơn lẻ hoặc ALT+TAB chuyển ứng dụng làm việc mượt mà
+      if (e.key === 'Alt' || (e.altKey && e.key === 'Tab')) {
+        return;
+      }
+
+      // Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10)
+      const isNvidiaInstantReplay = e.altKey && (
+        e.key === 'z' || e.key === 'Z' || e.keyCode === 90 ||
+        e.key === 'F9' || e.keyCode === 120 ||
+        e.key === 'F10' || e.keyCode === 121
+      );
+
+      // Phát hiện PrintScreen & Snipping Tool (Win/Ctrl + Shift + S) & In / Lưu trang (Ctrl+P / Ctrl+S)
       const isPrtScn = e.key === 'PrintScreen' || e.keyCode === 44;
       const isSnippingTool = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
       const isPrintPage = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80);
-      const isSavePage = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+      const isSavePage = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+
+      if (isNvidiaInstantReplay) {
+        triggerZeroLatencyBlackout('Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z / Alt+F9)! Nội dung bài học đã được bôi đen bảo vệ tức thì.');
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
 
       if (isPrtScn || isSnippingTool || isPrintPage || isSavePage) {
         triggerZeroLatencyBlackout('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Nội dung bài học đã được bôi đen bảo mật.');
@@ -111,22 +151,7 @@ const LessonDetailPage = () => {
       }
     };
 
-    // Phát hiện khi Snipping Tool / OBS hoặc phần mềm cướp Focus khỏi trình duyệt
-    const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('Phát hiện ứng dụng chụp / quay màn hình đang hoạt động (Snipping Tool / OBS)! Nội dung đã được bôi đen bảo vệ.');
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        triggerZeroLatencyBlackout('Phát hiện trình duyệt bị ẩn hoặc chuyển sang phần mềm quay phim ngầm!');
-      }
-    };
-
-    // Đăng ký sự kiện cấp cao nhất ở Capture Phase ({ capture: true, passive: false })
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
-    window.addEventListener('blur', handleWindowBlur, true);
-    document.addEventListener('visibilitychange', handleVisibilityChange, true);
-
     window.addEventListener('keyup', (e) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         triggerZeroLatencyBlackout('Phát hiện phím PrintScreen!');
@@ -135,12 +160,10 @@ const LessonDetailPage = () => {
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
-      window.removeEventListener('blur', handleWindowBlur, true);
-      document.removeEventListener('visibilitychange', handleVisibilityChange, true);
     };
   }, []);
 
-  // Chặn & phát hiện Extension / Trình duyệt kích hoạt getDisplayMedia (Screen Capture API)
+  // Chặn & phát hiện Extension / Trình duyệt kích hoạt getDisplayMedia (Screen Capture API cho OBS / Extensions)
   useEffect(() => {
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
       const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
@@ -148,8 +171,7 @@ const LessonDetailPage = () => {
         if (videoRef.current) {
           videoRef.current.pause();
         }
-        setIsScreenRecordingDetected(true);
-        setRecordingDetectedMessage('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
+        triggerZeroLatencyBlackout('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
         return originalGetDisplayMedia.apply(this, args);
       };
     }
