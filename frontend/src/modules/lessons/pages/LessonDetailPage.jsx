@@ -68,19 +68,31 @@ const LessonDetailPage = () => {
 
   // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Declarative React State DRM Engine)
   const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
+    // 1. Tạm dừng video ngay lập tức để ngăn OBS quay tiếp luồng âm thanh/hình ảnh ngầm
+    if (videoRef.current && typeof videoRef.current.pause === 'function') {
+      try {
+        videoRef.current.pause();
+      } catch (err) {}
+    }
+
+    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('');
     }
 
-    // 2. Đồng bộ 100% qua React State (Âm thanh phát bình thường, Video phủ đen xì #000000)
+    // 3. Phủ màu đen xì (#000000) đè lên video
     setIsScreenRecordingDetected(true);
-    setRecordingDetectedMessage(reason || 'Netflix DRM Protection: Phân vùng video đã tự động chuyển sang pixel màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình.');
+    setRecordingDetectedMessage(reason || 'DRM Protection: Phân vùng video đã tự động chuyển sang màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình hoặc mất Focus.');
   };
 
   const restoreDrmVideo = () => {
     setIsScreenRecordingDetected(false);
     setRecordingDetectedMessage('');
+    if (videoRef.current && typeof videoRef.current.play === 'function') {
+      try {
+        videoRef.current.play();
+      } catch (err) {}
+    }
   };
 
   // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool)
@@ -95,8 +107,9 @@ const LessonDetailPage = () => {
         return; // Cho phép bấm phím Alt đơn lẻ mượt mà
       }
 
-      // Cho phép phím Alt+Tab chuyển cửa sổ làm việc
-      if ((e.altKey || isAltPressed) && e.key === 'Tab') {
+      // Nếu bấm ALT + TAB để chuyển ứng dụng làm việc, bật chế độ tạm dừng đen xì
+      if (e.altKey && (e.key === 'Tab' || e.keyCode === 9)) {
+        triggerZeroLatencyBlackout('DRM Focus Guard: Phát hiện chuyển cửa sổ ứng dụng (Alt+Tab). Video tạm dừng.');
         return;
       }
 
@@ -130,27 +143,19 @@ const LessonDetailPage = () => {
     };
 
     // Chống quay ngầm OBS khi mất Focus (OBS Focus Guard):
-    // Khi người dùng click sang ứng dụng OBS (hoặc ứng dụng khác trên màn hình 2),
-    // phân vùng video tự động chuyển đen xì (#000000) để ngăn OBS quay ngầm background.
-    // Khi người dùng nhấp quay lại bài học, khung hình video tự động khôi phục mượt mà.
+    // Khi người dùng nhấp chuột sang cửa sổ OBS (hoặc màn hình 2), video lập tức TẠM DỪNG và phủ màu đen xì.
     const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('DRM OBS Focus Guard: Cửa sổ bài học mất Focus. Khung hình Video tự động chuyển màu đen (#000000) để chống quay ngầm OBS.');
-    };
-
-    const handleWindowFocus = () => {
-      restoreDrmVideo();
+      triggerZeroLatencyBlackout('DRM OBS Focus Guard: Cửa sổ bài học mất Focus. Video tạm dừng và phủ màu đen xì (#000000) để chặn quay phim ngầm.');
     };
 
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
     window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
       window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
