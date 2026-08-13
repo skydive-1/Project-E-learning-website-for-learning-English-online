@@ -4,9 +4,10 @@ import apiClient from '../../../config/api.config';
  * Lấy dữ liệu Daily Streak hiện tại của người dùng
  * API Backend: GET /api/gamification/streak
  */
-export const getUserStreakInfo = async () => {
+export const getUserStreakInfo = async (userId) => {
   try {
-    const response = await apiClient.get('/gamification/streak');
+    const url = userId ? `/gamification/streak?user_id=${userId}` : '/gamification/streak';
+    const response = await apiClient.get(url);
     const realData = response.data?.data || response.data;
     if (realData && (realData.streak !== undefined || realData.currentStreak !== undefined)) {
       const streakVal = realData.streak ?? realData.currentStreak ?? 0;
