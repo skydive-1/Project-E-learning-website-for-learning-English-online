@@ -216,7 +216,9 @@ const AnalyticsDashboardPage = () => {
               </div>
               <div className="flex items-center text-[11px] font-bold text-slate-500 dark:text-slate-400 gap-1 pt-1">
                 <FiBookOpen className="text-xs text-emerald-500" />
-                <span>Đạt 75% lộ trình đăng ký</span>
+                <span>
+                  {summary?.kpi?.completedLessonsCount > 0 ? `${summary.kpi.completedLessonsCount} bài đã hoàn thành` : 'Chưa có bài học nào hoàn thành'}
+                </span>
               </div>
             </div>
 
@@ -239,7 +241,16 @@ const AnalyticsDashboardPage = () => {
               </div>
               <div className="flex items-center text-[11px] font-bold text-amber-600 dark:text-amber-400 gap-1 pt-1">
                 <FiTarget className="text-xs" />
-                <span>Xếp loại: Học viên Xuất sắc</span>
+                <span>
+                  {(() => {
+                    const s = summary?.kpi?.avgQuizScorePercent ?? 0;
+                    if (s >= 90) return 'Xếp loại: Học viên Xuất sắc 🏆';
+                    if (s >= 75) return 'Xếp loại: Học viên Giỏi 🥇';
+                    if (s >= 60) return 'Xếp loại: Học viên Khá 🥈';
+                    if (s > 0)   return 'Xếp loại: Học viên Trung bình';
+                    return 'Chưa có dữ liệu Quiz';
+                  })()}
+                </span>
               </div>
             </div>
 
@@ -452,9 +463,16 @@ const AnalyticsDashboardPage = () => {
                     </PieChart>
                   </ResponsiveContainer>
                   
-                  {/* Center Text Indicator */}
+                  {/* Center Text Indicator — tỷ lệ hoàn thành thực tế */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100">75%</span>
+                    <span className="text-2xl font-black text-slate-800 dark:text-slate-100">
+                      {(() => {
+                        const cc = summary?.courseCompletion || [];
+                        const total = cc.reduce((s, i) => s + (i.value || 0), 0);
+                        const done = cc.find(i => i.name === 'Đã hoàn thành')?.value || 0;
+                        return total > 0 ? `${Math.round((done / total) * 100)}%` : '0%';
+                      })()}
+                    </span>
                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Tiến độ</span>
                   </div>
                 </div>
