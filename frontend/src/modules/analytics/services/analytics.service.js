@@ -9,8 +9,17 @@ export const getUserHeatmapData = async (timeRange = 'year') => {
     const response = await apiClient.get('/analytics/user-heatmap', {
       params: { range: timeRange }
     });
-    if (response.data && response.data.heatmap) {
-      return response.data.heatmap;
+    const rows = response.data?.data || response.data?.heatmap || response.data;
+    if (Array.isArray(rows)) {
+      return rows.map(r => {
+        const minutes = parseFloat(r.total_minutes || r.count || 0);
+        const dStr = r.study_date ? new Date(r.study_date).toISOString().split('T')[0] : r.date;
+        return {
+          date: dStr,
+          count: minutes,
+          intensity: minutes === 0 ? 0 : minutes < 20 ? 1 : minutes < 45 ? 2 : minutes < 75 ? 3 : 4
+        };
+      });
     }
   } catch (error) {
     console.warn("Sử dụng dữ liệu Heatmap mô phỏng cao cấp (Backend offline):", error.message);
