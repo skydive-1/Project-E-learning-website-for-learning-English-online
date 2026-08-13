@@ -136,8 +136,8 @@ const Header = () => {
             <span className={`ios-switch-option ${language === 'ENG' ? 'active' : ''}`}>EN</span>
           </div>
 
-          {/* Flame Streak Gamification Widget */}
-          <FlameStreakWidget />
+          {/* Flame Streak Gamification Widget (Chỉ hiển thị khi đã đăng nhập) */}
+          {user && <FlameStreakWidget />}
 
           {/* Dark Mode Toggle Button */}
           <button 
