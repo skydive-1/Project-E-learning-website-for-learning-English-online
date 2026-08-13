@@ -7,8 +7,24 @@ import apiClient from '../../../config/api.config';
 export const getUserStreakInfo = async () => {
   try {
     const response = await apiClient.get('/gamification/streak');
-    if (response.data && response.data.streak) {
-      return response.data.streak;
+    const realData = response.data?.data || response.data;
+    if (realData && (realData.streak !== undefined || realData.currentStreak !== undefined)) {
+      const streakVal = realData.streak ?? realData.currentStreak ?? 0;
+      return {
+        currentStreak: streakVal,
+        longestStreak: realData.longestStreak || streakVal,
+        lastActiveDate: realData.last_activity_date || new Date().toISOString().split('T')[0],
+        weeklyStatus: realData.weeklyStatus || [
+          { day: 'T2', active: streakVal > 0, label: 'Thứ 2' },
+          { day: 'T3', active: streakVal > 1, label: 'Thứ 3' },
+          { day: 'T4', active: streakVal > 2, label: 'Thứ 4' },
+          { day: 'T5', active: streakVal > 3, label: 'Thứ 5' },
+          { day: 'T6', active: streakVal > 4, label: 'Thứ 6' },
+          { day: 'T7', active: streakVal > 5, label: 'Thứ 7' },
+          { day: 'CN', active: streakVal > 6, label: 'Chủ nhật' }
+        ],
+        freezeStreakCount: realData.freezeStreakCount || 0
+      };
     }
   } catch (err) {
     console.warn("Sử dụng dữ liệu Streak mô phỏng (Backend offline):", err.message);
