@@ -644,10 +644,10 @@ const InstructorDashboard = () => {
                             </div>
                           </td>
                           <td>
-                            <span style={{ fontWeight: '600', color: '#475569' }}>{course.subject_name}</span>
+                            <span style={{ fontWeight: '600', color: 'var(--text-light, #475569)' }}>{course.subject_name}</span>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px', color: '#64748b' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px', color: 'var(--text-muted, #64748b)' }}>
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiLayers /> {course.sections_count} chương</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiBook /> {course.lessons_count} bài học</span>
                             </div>
@@ -750,11 +750,11 @@ const InstructorDashboard = () => {
                           </td>
                           <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px' }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#475569' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-light, #475569)' }}>
                                 <FiMail style={{ flexShrink: 0 }} /> {student.email}
                               </span>
                               {student.phone && (
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted, #64748b)' }}>
                                   <FiPhone style={{ flexShrink: 0 }} /> {student.phone}
                                 </span>
                               )}
@@ -766,7 +766,7 @@ const InstructorDashboard = () => {
                             </span>
                           </td>
                           <td>
-                            <span style={{ fontWeight: '600', color: '#1e3a8a', display: 'block', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={student.courseName}>
+                            <span style={{ fontWeight: '600', color: 'var(--primary, #3b82f6)', display: 'block', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={student.courseName}>
                               {student.courseName}
                             </span>
                           </td>
@@ -781,7 +781,7 @@ const InstructorDashboard = () => {
                             </div>
                           </td>
                           <td>
-                            <span style={{ color: '#64748b', fontSize: '13px' }}>
+                            <span style={{ color: 'var(--text-muted, #64748b)', fontSize: '13px' }}>
                               {new Date(student.joinDate).toLocaleDateString('vi-VN')}
                             </span>
                           </td>
@@ -841,11 +841,11 @@ const InstructorDashboard = () => {
                   <div className="chart-card">
                     <div className="chart-header">
                       <h3>Thống kê lượt đăng ký học theo tháng</h3>
-                      <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Biểu đồ lượt tham gia học bài mới</span>
+                      <span style={{ fontSize: '13px', color: 'var(--text-muted, #64748b)', fontWeight: '500' }}>Biểu đồ lượt tham gia học bài mới</span>
                     </div>
                     
                     {performanceData.monthlyData.length === 0 ? (
-                      <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '14px', fontWeight: '500' }}>
+                      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '14px', fontWeight: '500' }}>
                         Chưa có dữ liệu theo tháng. Lượt đăng ký học của học sinh sẽ được vẽ tại đây.
                       </div>
                     ) : (
@@ -878,7 +878,7 @@ const InstructorDashboard = () => {
                   </div>
 
                   {/* Individual Course Performance Breakdown */}
-                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', marginBottom: '16px' }}>
+                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-color, #0f172a)', marginBottom: '16px' }}>
                     Hiệu suất chi tiết từng khóa học
                   </h2>
                   <div className="course-list-table-wrapper">
@@ -896,7 +896,7 @@ const InstructorDashboard = () => {
                         {performanceData.courses.map(c => (
                           <tr key={c.courseId}>
                             <td>
-                              <span style={{ fontWeight: '700', color: '#0f172a' }}>{c.courseName}</span>
+                              <span style={{ fontWeight: '700', color: 'var(--text-color, #0f172a)' }}>{c.courseName}</span>
                             </td>
                             <td>
                               <span style={{ fontWeight: '600' }}>{c.sectionsCount} chương</span>
@@ -905,7 +905,7 @@ const InstructorDashboard = () => {
                               <span style={{ fontWeight: '600' }}>{c.lessonsCount} bài</span>
                             </td>
                             <td>
-                              <span style={{ fontWeight: '600', color: '#1e3a8a' }}>{c.studentCount} học viên</span>
+                              <span style={{ fontWeight: '600', color: 'var(--primary, #3b82f6)' }}>{c.studentCount} học viên</span>
                             </td>
                             <td>
                               <span style={{ fontWeight: '700', color: '#059669' }}>
@@ -922,12 +922,12 @@ const InstructorDashboard = () => {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px', marginTop: '24px' }}>
                     
                     {/* Chart 1: Lesson Completion Rate Breakdown */}
-                    <div className="chart-card" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
+                    <div className="chart-card" style={{ padding: '20px' }}>
                       <div className="chart-header" style={{ marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-color, #0f172a)' }}>
                           📊 Tỷ lệ học viên hoàn thành từng bài giảng (Video/PDF)
                         </h3>
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>Tỷ lệ học viên xem hết bài học trên tổng số học viên đăng ký</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)' }}>Tỷ lệ học viên xem hết bài học trên tổng số học viên đăng ký</span>
                       </div>
                       <div style={{ height: '240px', width: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -941,7 +941,7 @@ const InstructorDashboard = () => {
                             <XAxis dataKey="lessonTitle" stroke="#94a3b8" fontSize={10} tickLine={false} />
                             <YAxis stroke="#94a3b8" fontSize={11} domain={[0, 100]} tickLine={false} />
                             <RechartsTooltip 
-                              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#fff', fontSize: '12px' }}
+                              contentStyle={{ backgroundColor: 'var(--dropdown-bg, #0f172a)', borderColor: 'var(--border-color, #334155)', borderRadius: '10px', color: 'var(--text-color, #fff)', fontSize: '12px' }}
                             />
                             <Bar dataKey="rate" name="Tỷ lệ hoàn thành (%)" radius={[6, 6, 0, 0]}>
                               {[94, 88, 76, 82, 65].map((val, index) => (
@@ -954,12 +954,12 @@ const InstructorDashboard = () => {
                     </div>
 
                     {/* Chart 2: Class Quiz Score Distribution Spectrum */}
-                    <div className="chart-card" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
+                    <div className="chart-card" style={{ padding: '20px' }}>
                       <div className="chart-header" style={{ marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-color, #0f172a)' }}>
                           🎯 Phổ điểm bài tập Quiz của cả lớp
                         </h3>
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>Phân bổ dải điểm số trắc nghiệm của học viên</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)' }}>Phân bổ dải điểm số trắc nghiệm của học viên</span>
                       </div>
                       <div style={{ height: '240px', width: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -1003,10 +1003,10 @@ const InstructorDashboard = () => {
               {/* Header Title & Subtitle + Top Right Buttons */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px', marginBottom: '28px' }}>
                 <div>
-                  <h1 style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>
+                  <h1 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-color, #0f172a)', margin: '0 0 6px 0' }}>
                     Quizzes của tôi
                   </h1>
-                  <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+                  <p style={{ color: 'var(--text-muted, #64748b)', fontSize: '14px', margin: 0 }}>
                     Quản lý, tìm kiếm và thiết lập lộ trình luyện tập trắc nghiệm của bạn.
                   </p>
                 </div>
