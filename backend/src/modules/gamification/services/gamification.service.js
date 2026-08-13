@@ -1,5 +1,5 @@
-const db = require('../../config/database');
-const { handleServiceError } = require('../../utils/service-errors');
+const db = require('../../../config/database');
+const { handleServiceError } = require('../../../utils/service-errors');
 
 /**
  * Tính streak học liên tiếp (Daily Streak)
