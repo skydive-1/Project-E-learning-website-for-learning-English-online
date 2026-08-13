@@ -17,7 +17,12 @@ const calculateStreak = async (userId) => {
     `;
 
     const result = await db.query(query, [parseInt(userId, 10)]);
-    const days = result.rows.map(r => r.day.toISOString().slice(0, 10));
+    const days = result.rows.map(r => {
+      if (!r.day) return null;
+      if (typeof r.day === 'string') return r.day.slice(0, 10);
+      if (r.day instanceof Date) return r.day.toISOString().slice(0, 10);
+      return String(r.day).slice(0, 10);
+    }).filter(Boolean);
     const daySet = new Set(days);
 
     // Start from today and count backwards
