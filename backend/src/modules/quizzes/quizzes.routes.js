@@ -3,7 +3,6 @@ const router = express.Router();
 const quizzesController = require('./controllers/quizzes.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
-const { quizLimiter, aiLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Route: GET /api/quizzes/detail/:quizId
 router.get('/detail/:quizId', quizzesController.getQuizById);
@@ -18,13 +17,13 @@ router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
 router.get('/:courseId', quizzesController.getQuizzes);
 
 // Route: POST /api/quizzes/submit (Yêu cầu đăng nhập)
-router.post('/submit', authenticate, quizLimiter, quizzesController.submitQuiz);
+router.post('/submit', authenticate, quizzesController.submitQuiz);
 
 // Route: POST /api/quizzes/submit-writing
-router.post('/submit-writing', authenticate, aiLimiter, quizzesController.submitWriting);
+router.post('/submit-writing', authenticate, quizzesController.submitWriting);
 
 // Route: POST /api/quizzes/submit-audio
-router.post('/submit-audio', authenticate, aiLimiter, upload.memory.single('audio'), quizzesController.submitAudio);
+router.post('/submit-audio', authenticate, upload.memory.single('audio'), quizzesController.submitAudio);
 
 // Route: GET /api/quizzes/manage/all - Quản lý tất cả đề thi & PIN Code (Chỉ dành cho Giảng viên / Admin)
 router.get('/manage/all', authenticate, authorize([1, 2]), quizzesController.getAllQuizzesForManagement);
@@ -33,10 +32,10 @@ router.get('/manage/all', authenticate, authorize([1, 2]), quizzesController.get
 router.delete('/manage/:quizId', authenticate, authorize([1, 2]), quizzesController.deleteQuiz);
 
 // Route: POST /api/quizzes - Tạo đề thi tự luyện mới (Chỉ dành cho Giảng viên / Admin)
-router.post('/', authenticate, authorize([1, 2]), quizLimiter, quizzesController.createQuiz);
+router.post('/', authenticate, authorize([1, 2]), quizzesController.createQuiz);
 
 // Route: POST /api/quizzes/generate-ai - Sinh câu hỏi bằng AI (Chỉ dành riêng cho Admin)
-router.post('/generate-ai', authenticate, authorize([1]), aiLimiter, quizzesController.generateQuizAi);
+router.post('/generate-ai', authenticate, authorize([1]), quizzesController.generateQuizAi);
 
 /**
  * @swagger

@@ -5,7 +5,6 @@ const { authenticate } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validation.middleware');
 const upload = require('../../middleware/upload.middleware');
 const { checkTokenLimit } = require('../../middleware/tokenLimit.middleware');
-const { aiLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Schema Validation
 const askSchema = {
@@ -16,8 +15,8 @@ const askSchema = {
 };
 
 // Route: POST /api/chatbot/ask (Yêu cầu đăng nhập để tránh lạm dụng hạn mức dịch vụ AI)
-router.post('/ask', authenticate, aiLimiter, checkTokenLimit, validate(askSchema), chatbotController.ask);
-router.post('/ask-stream', authenticate, aiLimiter, checkTokenLimit, validate(askSchema), chatbotController.askStream);
+router.post('/ask', authenticate, checkTokenLimit, validate(askSchema), chatbotController.ask);
+router.post('/ask-stream', authenticate, checkTokenLimit, validate(askSchema), chatbotController.askStream);
 
 // API Kiểm tra ví Token AI còn lại
 router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBalance);
@@ -28,7 +27,7 @@ router.get('/history/:userId/:lessonId', chatbotController.getHistory);
 router.delete('/history', authenticate, chatbotController.clearHistory);
 
 // API xử lý phát âm (Audio)
-router.post('/audio', authenticate, aiLimiter, upload.memory.single('audio'), chatbotController.processAudio);
+router.post('/audio', authenticate, upload.memory.single('audio'), chatbotController.processAudio);
 
 /**
  * @swagger

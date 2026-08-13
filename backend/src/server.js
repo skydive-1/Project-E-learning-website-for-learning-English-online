@@ -45,12 +45,7 @@ const loggerMiddleware = require('./middleware/logger.middleware');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Tin tưởng proxy để lấy IP thật của client qua headers (Render, Heroku, Nginx, Cloudflare...)
-app.set('trust proxy', 1);
-
 // ===== 4. GLOBAL MIDDLEWARE =====
-// Import rate limiters
-const { globalLimiter } = require('./middleware/rateLimit.middleware');
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -104,9 +99,6 @@ const healthHandler = (req, res) => {
 app.get('/', healthHandler);
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
-
-// Áp dụng Rate Limit chung cho tất cả các API endpoints
-app.use('/api', globalLimiter);
 
 // ===== 6. MOUNT MODULES (ROUTES) =====
 // Cấu trúc: /api/<module-name>
