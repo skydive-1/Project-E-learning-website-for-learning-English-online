@@ -33,19 +33,19 @@ export const getUserStreakInfo = async (userId) => {
 
   // Fallback Streak Data
   return {
-    currentStreak: 14,
-    longestStreak: 21,
-    lastActiveDate: new Date().toISOString().split('T')[0],
+    currentStreak: 0,
+    longestStreak: 0,
+    lastActiveDate: null,
     weeklyStatus: [
-      { day: 'T2', active: true, label: 'Thứ 2' },
-      { day: 'T3', active: true, label: 'Thứ 3' },
-      { day: 'T4', active: true, label: 'Thứ 4' },
-      { day: 'T5', active: true, label: 'Thứ 5' },
-      { day: 'T6', active: true, label: 'Thứ 6' },
-      { day: 'T7', active: true, label: 'Thứ 7' },
-      { day: 'CN', active: true, label: 'Chủ nhật' }
+      { day: 'T2', active: false, label: 'Thứ 2' },
+      { day: 'T3', active: false, label: 'Thứ 3' },
+      { day: 'T4', active: false, label: 'Thứ 4' },
+      { day: 'T5', active: false, label: 'Thứ 5' },
+      { day: 'T6', active: false, label: 'Thứ 6' },
+      { day: 'T7', active: false, label: 'Thứ 7' },
+      { day: 'CN', active: false, label: 'Chủ nhật' }
     ],
-    freezeStreakCount: 1 // Bảo bối đóng băng chuỗi
+    freezeStreakCount: 0
   };
 };
 

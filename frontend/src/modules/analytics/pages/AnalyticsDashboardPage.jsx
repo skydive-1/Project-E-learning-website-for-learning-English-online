@@ -187,13 +187,13 @@ const AnalyticsDashboardPage = () => {
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                  {summary?.kpi?.totalStudyHours || '42.5'}
+                  {summary?.kpi?.totalStudyHours ?? '0'}
                 </span>
                 <span className="text-sm font-extrabold text-slate-500 dark:text-slate-400">Giờ</span>
               </div>
               <div className="flex items-center text-[11px] font-bold text-emerald-600 dark:text-emerald-450 gap-1 pt-1">
                 <FiTrendingUp className="text-xs" />
-                <span>+{summary?.kpi?.weeklyGrowthPercent || '18.4'}% so với tháng trước</span>
+                <span>+{summary?.kpi?.weeklyGrowthPercent ?? 0}% so với tháng trước</span>
               </div>
             </div>
 
@@ -210,7 +210,7 @@ const AnalyticsDashboardPage = () => {
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                  {summary?.kpi?.completedLessonsCount || 28}
+                  {summary?.kpi?.completedLessonsCount ?? 0}
                 </span>
                 <span className="text-xs font-bold text-slate-400 dark:text-slate-500">bài đã tích xanh</span>
               </div>
@@ -233,7 +233,7 @@ const AnalyticsDashboardPage = () => {
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                  {summary?.kpi?.avgQuizScorePercent || 88.5}%
+                  {summary?.kpi?.avgQuizScorePercent ?? 0}%
                 </span>
                 <span className="text-xs font-bold text-slate-400 dark:text-slate-500">chính xác</span>
               </div>
@@ -256,7 +256,7 @@ const AnalyticsDashboardPage = () => {
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                  {summary?.kpi?.currentStreakDays || 14}
+                  {summary?.kpi?.currentStreakDays ?? 0}
                 </span>
                 <span className="text-sm font-extrabold text-rose-500">Ngày liên tục 🔥</span>
               </div>

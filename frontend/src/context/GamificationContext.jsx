@@ -1,37 +1,40 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { getUserStreakInfo, getUserBadges, SYSTEM_BADGES } from '../modules/gamification/services/gamification.service';
+import { useAuth } from './AuthContext';
 
 const GamificationContext = createContext();
 
 export const GamificationProvider = ({ children }) => {
+  const { user } = useAuth();
   const [streak, setStreak] = useState({
-    currentStreak: 14,
-    longestStreak: 21,
+    currentStreak: 0,
+    longestStreak: 0,
     weeklyStatus: [
-      { day: 'T2', active: true, label: 'Thứ 2' },
-      { day: 'T3', active: true, label: 'Thứ 3' },
-      { day: 'T4', active: true, label: 'Thứ 4' },
-      { day: 'T5', active: true, label: 'Thứ 5' },
-      { day: 'T6', active: true, label: 'Thứ 6' },
-      { day: 'T7', active: true, label: 'Thứ 7' },
-      { day: 'CN', active: true, label: 'Chủ nhật' }
+      { day: 'T2', active: false, label: 'Thứ 2' },
+      { day: 'T3', active: false, label: 'Thứ 3' },
+      { day: 'T4', active: false, label: 'Thứ 4' },
+      { day: 'T5', active: false, label: 'Thứ 5' },
+      { day: 'T6', active: false, label: 'Thứ 6' },
+      { day: 'T7', active: false, label: 'Thứ 7' },
+      { day: 'CN', active: false, label: 'Chủ nhật' }
     ]
   });
 
   const [badges, setBadges] = useState(SYSTEM_BADGES);
   const [activeBadgePopup, setActiveBadgePopup] = useState(null);
 
-  // Nạp thông tin Streak và Badges khi ứng dụng khởi chạy
+  // Nạp thông tin Streak và Badges khi người dùng thay đổi hoặc ứng dụng khởi chạy
   useEffect(() => {
     const loadGamificationData = async () => {
-      const sData = await getUserStreakInfo();
-      const bData = await getUserBadges();
-      setStreak(sData);
-      setBadges(bData);
+      const uid = user?.user_id || user?.id;
+      const sData = await getUserStreakInfo(uid);
+      const bData = await getUserBadges(uid);
+      if (sData) setStreak(sData);
+      if (bData) setBadges(bData);
     };
     loadGamificationData();
-  }, []);
+  }, [user]);
 
   // Kích hoạt pháo hoa mừng và hiển thị Pop-up Huy hiệu
   const triggerBadgeUnlock = (badgeOrId) => {

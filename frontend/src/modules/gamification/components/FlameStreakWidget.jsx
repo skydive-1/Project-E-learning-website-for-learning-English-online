@@ -33,7 +33,7 @@ const FlameStreakWidget = () => {
       >
         <span className="text-base animate-bounce inline-block" style={{ animationDuration: '2s' }}>🔥</span>
         <span className="font-black bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent">
-          {streak?.currentStreak || 14} Ngày
+          {streak?.currentStreak ?? 0} Ngày
         </span>
       </button>
 
@@ -65,7 +65,7 @@ const FlameStreakWidget = () => {
                 Chuỗi hiện tại
               </span>
               <span className="text-2xl font-black text-amber-600 dark:text-amber-400">
-                {streak?.currentStreak || 14} <span className="text-xs font-bold">Ngày 🔥</span>
+                {streak?.currentStreak ?? 0} <span className="text-xs font-bold">Ngày 🔥</span>
               </span>
             </div>
 
@@ -74,7 +74,7 @@ const FlameStreakWidget = () => {
                 Kỷ lục chuỗi
               </span>
               <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                {streak?.longestStreak || 21} <span className="text-xs font-bold">Ngày 🏆</span>
+                {streak?.longestStreak ?? 0} <span className="text-xs font-bold">Ngày 🏆</span>
               </span>
             </div>
           </div>
@@ -86,18 +86,20 @@ const FlameStreakWidget = () => {
                 <FiCalendar className="text-amber-500" />
                 <span>Nhật ký tuần này:</span>
               </span>
-              <span className="text-emerald-500 font-extrabold">7/7 Hoàn thành</span>
+              <span className="text-emerald-500 font-extrabold">
+                {(streak?.weeklyStatus || []).filter(d => d.active).length}/7 Ngày hoạt động
+              </span>
             </div>
 
             <div className="grid grid-cols-7 gap-1.5">
               {(streak?.weeklyStatus || [
-                { day: 'T2', active: true },
-                { day: 'T3', active: true },
-                { day: 'T4', active: true },
-                { day: 'T5', active: true },
-                { day: 'T6', active: true },
-                { day: 'T7', active: true },
-                { day: 'CN', active: true }
+                { day: 'T2', active: false },
+                { day: 'T3', active: false },
+                { day: 'T4', active: false },
+                { day: 'T5', active: false },
+                { day: 'T6', active: false },
+                { day: 'T7', active: false },
+                { day: 'CN', active: false }
               ]).map((item, idx) => (
                 <div key={idx} className="flex flex-col items-center gap-1">
                   <div
