@@ -49,16 +49,18 @@ const AnalyticsDashboardPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [heatmapData, setHeatmapData] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  const fetchAnalyticsData = async () => {
+  const fetchAnalyticsData = async (isAutoRefresh = false) => {
     try {
-      setLoading(true);
+      if (!isAutoRefresh) setLoading(true);
       const [hmData, sumData] = await Promise.all([
         getUserHeatmapData(timeRange),
         getUserAnalyticsSummary()
       ]);
       setHeatmapData(hmData);
       setSummary(sumData);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error("Lỗi nạp dữ liệu phân tích học tập:", err);
     } finally {
@@ -66,8 +68,18 @@ const AnalyticsDashboardPage = () => {
     }
   };
 
+  // Fetch khi mount hoặc đổi timeRange
   useEffect(() => {
     fetchAnalyticsData();
+  }, [timeRange]);
+
+  // Auto-refresh mỗi 5 phút — tránh loading flicker khi tự động làm mới
+  useEffect(() => {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      fetchAnalyticsData(true); // isAutoRefresh = true → không bật loading overlay
+    }, FIVE_MINUTES);
+    return () => clearInterval(intervalId); // cleanup khi unmount
   }, [timeRange]);
 
   const handleRefresh = async () => {
@@ -161,14 +173,21 @@ const AnalyticsDashboardPage = () => {
                 ))}
               </div>
 
-              <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-smart-indigo transition-all shadow-sm active:scale-95 cursor-pointer"
-                title="Làm mới dữ liệu"
-              >
-                <FiRefreshCw className={`text-sm ${refreshing ? 'animate-spin text-smart-indigo' : ''}`} />
-              </button>
+              <div className="flex flex-col items-end gap-0.5">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-smart-indigo transition-all shadow-sm active:scale-95 cursor-pointer"
+                  title="Làm mới dữ liệu"
+                >
+                  <FiRefreshCw className={`text-sm ${refreshing ? 'animate-spin text-smart-indigo' : ''}`} />
+                </button>
+                {lastUpdated && (
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                    🕐 {lastUpdated.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -191,9 +210,15 @@ const AnalyticsDashboardPage = () => {
                 </span>
                 <span className="text-sm font-extrabold text-slate-500 dark:text-slate-400">Giờ</span>
               </div>
-              <div className="flex items-center text-[11px] font-bold text-emerald-600 dark:text-emerald-450 gap-1 pt-1">
-                <FiTrendingUp className="text-xs" />
-                <span>+{summary?.kpi?.weeklyGrowthPercent ?? 0}% so với tháng trước</span>
+              <div className={`flex items-center text-[11px] font-bold gap-1 pt-1 ${
+                (summary?.kpi?.weeklyGrowthPercent ?? 0) >= 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-rose-500 dark:text-rose-400'
+              }`}>
+                <FiTrendingUp className={`text-xs ${ (summary?.kpi?.weeklyGrowthPercent ?? 0) < 0 ? 'rotate-180' : '' }`} />
+                <span>
+                  {(summary?.kpi?.weeklyGrowthPercent ?? 0) >= 0 ? '+' : ''}{summary?.kpi?.weeklyGrowthPercent ?? 0}% so với tuần trước
+                </span>
               </div>
             </div>
 

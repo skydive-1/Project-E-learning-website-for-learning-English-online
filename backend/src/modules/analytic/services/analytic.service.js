@@ -248,6 +248,34 @@ const getUserAnalyticsSummary = async (userId) => {
             { skill: 'Viết tự luận (Writing)',    A: Math.min(100, Math.max(0, radarBase - 8)),  fullMark: 100 }
         ];
 
+        // ── 9. Weekly Growth Percent — so sánh phút học tuần này vs tuần trước ──
+        const growthRes = await db.query(`
+            SELECT
+                COALESCE(SUM(
+                    CASE WHEN start_at >= DATE_TRUNC('week', CURRENT_DATE)
+                    THEN EXTRACT(EPOCH FROM (end_at - start_at)) / 60 ELSE 0 END
+                ), 0) AS this_week_minutes,
+                COALESCE(SUM(
+                    CASE WHEN start_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'
+                         AND start_at <  DATE_TRUNC('week', CURRENT_DATE)
+                    THEN EXTRACT(EPOCH FROM (end_at - start_at)) / 60 ELSE 0 END
+                ), 0) AS last_week_minutes
+            FROM learning_ss
+            WHERE user_id = $1
+              AND end_at IS NOT NULL
+              AND start_at >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '1 week'
+        `, [uid]);
+
+        const thisWeek = parseFloat(growthRes.rows[0]?.this_week_minutes || 0);
+        const lastWeek = parseFloat(growthRes.rows[0]?.last_week_minutes || 0);
+        let weeklyGrowthPercent = 0;
+        if (lastWeek > 0) {
+            // Tăng/giảm so với tuần trước (có thể âm nếu học ít hơn)
+            weeklyGrowthPercent = parseFloat(((thisWeek - lastWeek) / lastWeek * 100).toFixed(1));
+        } else if (thisWeek > 0) {
+            weeklyGrowthPercent = 100; // Tuần trước chưa học, tuần này có → +100%
+        }
+
         return {
             kpi: {
                 totalStudyMinutes: parseFloat(totalMinutes.toFixed(1)),
@@ -256,7 +284,7 @@ const getUserAnalyticsSummary = async (userId) => {
                 totalQuizzesTaken,
                 avgQuizScorePercent,
                 currentStreakDays,
-                weeklyGrowthPercent: 0
+                weeklyGrowthPercent
             },
             weeklyActivity,
             quizTrends,
