@@ -56,7 +56,7 @@ async function run() {
     const users = await client.query('SELECT user_id, username FROM users ORDER BY user_id LIMIT 10');
     console.log('\nAll users:', users.rows);
 
-  } catch(e) {
+  } catch (e) {
     console.error('ERROR:', e.message);
   } finally {
     client.release();

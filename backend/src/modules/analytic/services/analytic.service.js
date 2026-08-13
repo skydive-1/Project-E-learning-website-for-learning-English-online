@@ -7,41 +7,49 @@ const { handleServiceError } = require('../../../utils/service-errors');
  */
 const getUserHeatmap = async (userId, year) => {
     try {
+        const uid = parseInt(userId, 10);
         const finalYear = year ? parseInt(year, 10) : new Date().getFullYear();
         const yearStart = `${finalYear}-01-01`;
+        const yearEnd   = `${finalYear}-12-31`;
 
+        // ── Cách đơn giản & chính xác: SUM phút học theo ngày bắt đầu session ──
+        // Không dùng LEAST/GREATEST (gây bug 1440 phút khi timezone khác nhau)
+        // Chỉ tính session có end_at hợp lệ và duration > 0
         const query = `
-            WITH days AS (
-                SELECT generate_series(
-                    date_trunc('year', $2::date),
-                    date_trunc('year', $2::date) + interval '1 year' - interval '1 day',
-                    interval '1 day'
-                )::date AS day
+            WITH calendar AS (
+                SELECT generate_series($2::date, $3::date, interval '1 day')::date AS study_date
+            ),
+            daily_minutes AS (
+                SELECT
+                    start_at::date AS day,
+                    ROUND(SUM(
+                        GREATEST(0,
+                            EXTRACT(EPOCH FROM (end_at - start_at)) / 60
+                        )
+                    )::numeric, 2) AS total_minutes
+                FROM learning_ss
+                WHERE user_id = $1
+                  AND end_at IS NOT NULL
+                  AND end_at > start_at
+                  AND start_at >= $2::timestamp
+                  AND start_at <= ($3::date + interval '1 day')::timestamp
+                GROUP BY start_at::date
             )
             SELECT
-                d.day AS study_date,
-                COALESCE(ROUND(SUM(
-                    EXTRACT(EPOCH FROM (
-                        LEAST(ls.end_at, (d.day + INTERVAL '1 day')::timestamp)
-                        - GREATEST(ls.start_at, d.day::timestamp)
-                    )) / 60
-                )::numeric, 2), 0) AS total_minutes
-            FROM days d
-            LEFT JOIN learning_ss ls
-                ON ls.user_id = $1
-                AND ls.end_at IS NOT NULL
-                AND ls.start_at < (d.day + INTERVAL '1 day')::timestamp
-                AND ls.end_at >= d.day::timestamp
-            GROUP BY d.day
-            ORDER BY d.day;
+                c.study_date,
+                COALESCE(dm.total_minutes, 0) AS total_minutes
+            FROM calendar c
+            LEFT JOIN daily_minutes dm ON dm.day = c.study_date
+            ORDER BY c.study_date;
         `;
 
-        const result = await db.query(query, [parseInt(userId, 10), yearStart]);
+        const result = await db.query(query, [uid, yearStart, yearEnd]);
         return result.rows;
     } catch (error) {
         handleServiceError(error, 'Lỗi khi lấy dữ liệu heatmap của người dùng');
     }
 };
+
 
 /**
  * Tính streak từ learning_ss
