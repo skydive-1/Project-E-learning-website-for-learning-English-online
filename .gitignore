@@ -430,3 +430,4 @@ FodyWeavers.xsd
 /.agents/skills
 .agents/AGENTS.md
 .codex/hooks.json
+generate_sprint9_report.py

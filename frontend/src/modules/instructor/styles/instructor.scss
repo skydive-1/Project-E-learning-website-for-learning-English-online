@@ -583,10 +583,10 @@ $border-light: var(--border-color, #e2e8f0);
 
   // Charts & Performance Tab styling
   .chart-card {
-    background: #fff;
+    background: var(--card-bg, #fff);
     padding: 24px;
     border-radius: 20px;
-    border: 1px solid $border-light;
+    border: 1px solid var(--border-color, $border-light);
     margin-bottom: 32px;
     
     .chart-header {
@@ -594,7 +594,8 @@ $border-light: var(--border-color, #e2e8f0);
       justify-content: space-between;
       align-items: center;
       margin-bottom: 24px;
-      h3 { font-size: 16px; font-weight: 800; color: $text-dark; }
+      h3 { font-size: 16px; font-weight: 800; color: var(--text-color, $text-dark); }
+      span { color: var(--text-muted, $text-muted); }
     }
     
     .chart-container {

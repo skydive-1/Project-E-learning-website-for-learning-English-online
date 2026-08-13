@@ -636,21 +636,76 @@ class AuthService {
 
   async forgotPassword(email) {
     try {
-      if (!supabaseClient) {
-        throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
-      }
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-      const redirectTo = `${frontendUrl}/reset-password`;
+      const cleanEmail = (email || '').trim().toLowerCase();
 
-      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo
+      // 1. Kiểm tra tài khoản có tồn tại trong CSDL PostgreSQL hay không
+      const userRes = await db.query(
+        'SELECT user_id, email, username, full_name, supabase_uid FROM users WHERE LOWER(email) = $1',
+        [cleanEmail]
+      );
+
+      if (userRes.rows.length === 0) {
+        // Trả về true giả lập để tránh dò quét email hệ thống (Security Best Practice)
+        return true;
+      }
+
+      const user = userRes.rows[0];
+
+      // 2. Tạo JWT Reset Token có thời hạn 1 giờ
+      const resetToken = jwt.sign(
+        { id: user.user_id, email: user.email, supabaseUid: user.supabase_uid, type: 'reset_password' },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      // 3. Tạo link reset mật khẩu trực tiếp trỏ về Frontend
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const resetLink = `${frontendUrl}/reset-password?access_token=${resetToken}`;
+
+      // 4. Gửi Email thật qua Nodemailer Gmail SMTP
+      const { sendEmail } = require('../../../utils/email.util');
+      const emailHtml = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 32px; border-radius: 16px; border: 1px solid #1e293b;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #38bdf8; font-size: 24px; font-weight: bold; margin: 0;">E-LEARN ACADEMY</h1>
+            <p style="color: #94a3b8; font-size: 14px; margin-top: 4px;">Hệ thống Học tiếng Anh Thông minh tích hợp AI</p>
+          </div>
+          <div style="background-color: #1e293b; padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+            <h2 style="color: #f1f5f9; font-size: 18px; margin-top: 0;">Khôi phục Mật khẩu Tài khoản</h2>
+            <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+              Xin chào <strong>${user.full_name || user.username}</strong>,<br/><br/>
+              Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <code>${user.email}</code>. Nhấp vào nút bên dưới để tiến hành thiết lập mật khẩu mới:
+            </p>
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${resetLink}" style="background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);">
+                ĐẶT LẠI MẬT KHẨU NGAY
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
+              Hoặc bạn có thể sao chép liên kết sau dán vào trình duyệt:<br/>
+              <a href="${resetLink}" style="color: #38bdf8; word-break: break-all;">${resetLink}</a>
+            </p>
+          </div>
+          <div style="text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #1e293b; padding-top: 16px;">
+            <p>Liên kết này có hiệu lực trong 60 phút. Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email.</p>
+            <p>© 2026 E-Learn Academy. All rights reserved.</p>
+          </div>
+        </div>
+      `;
+
+      await sendEmail({
+        to: user.email,
+        subject: '[E-Learn Academy] Khôi phục Mật khẩu Tài khoản của bạn',
+        html: emailHtml
       });
 
-      if (error) {
-        const err = new Error(error.message);
-        err.status = 400;
-        throw err;
+      // Thử gọi thêm Supabase reset nếu có
+      if (supabaseClient) {
+        try {
+          await supabaseClient.auth.resetPasswordForEmail(cleanEmail, { redirectTo: `${frontendUrl}/reset-password` });
+        } catch (e) {}
       }
+
       return true;
     } catch (error) {
       handleServiceError(error, 'Lỗi gửi yêu cầu khôi phục mật khẩu trong AuthService');
@@ -659,31 +714,51 @@ class AuthService {
 
   async resetPassword({ accessToken, newPassword }) {
     try {
-      if (!supabaseClient) {
-        throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
-      }
-      if (!supabaseAdmin) {
-        throw new Error('Supabase Admin Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      if (!accessToken) {
+        const error = new Error('Mã xác thực không hợp lệ');
+        error.status = 400;
+        throw error;
       }
 
-      // 1. Xác thực access token và lấy thông tin user từ Supabase
-      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
+      // 1. Giải mã JWT resetToken
+      let decoded;
+      try {
+        decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
+      } catch (err) {
+        // Fallback thử với Supabase client nếu là token Supabase
+        if (supabaseClient && supabaseAdmin) {
+          const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
+          if (!userError && user) {
+            decoded = { id: user.id, email: user.email, supabaseUid: user.id };
+          }
+        }
+      }
 
-      if (userError || !user) {
+      if (!decoded) {
         const error = new Error('Token khôi phục không hợp lệ hoặc đã hết hạn');
         error.status = 400;
         throw error;
       }
 
-      // 2. Cập nhật mật khẩu mới bằng Admin SDK (bỏ qua session phức tạp)
-      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
-        password: newPassword
-      });
+      // 2. Mã hóa mật khẩu mới bằng bcryptjs
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-      if (updateError) {
-        const error = new Error(updateError.message);
-        error.status = 400;
-        throw error;
+      // 3. Cập nhật mật khẩu mới vào PostgreSQL
+      await db.query(
+        'UPDATE users SET password_hash = $1 WHERE user_id = $2 OR LOWER(email) = $3',
+        [hashedPassword, decoded.id || 0, (decoded.email || '').toLowerCase()]
+      );
+
+      // 4. Đồng bộ mật khẩu mới sang Supabase Auth nếu có supabaseAdmin
+      if (supabaseAdmin && decoded.supabaseUid) {
+        try {
+          await supabaseAdmin.auth.admin.updateUserById(decoded.supabaseUid, {
+            password: newPassword
+          });
+        } catch (sErr) {
+          console.warn('[Supabase Sync Warning]: Không thể sync pass sang Supabase Auth:', sErr.message);
+        }
       }
 
       return true;

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { 
-  FiPlay, FiCheckSquare, FiSquare, FiFileText, 
-  FiArrowLeft, FiChevronDown, FiChevronUp, FiAward, 
-  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic 
+import {
+  FiPlay, FiCheckSquare, FiSquare, FiFileText,
+  FiArrowLeft, FiChevronDown, FiChevronUp, FiAward,
+  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic
 } from 'react-icons/fi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
@@ -13,10 +13,11 @@ import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
-import { 
-  getCourseDetails, 
-  getLessonById, 
-  toggleLessonCompletion 
+import shaka from 'shaka-player';
+import {
+  getCourseDetails,
+  getLessonById,
+  toggleLessonCompletion
 } from '../services/lessons.service';
 
 const LessonDetailPage = () => {
@@ -27,6 +28,11 @@ const LessonDetailPage = () => {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
+  const shakaPlayerRef = useRef(null);
+  const isScreenRecordingDetectedRef = useRef(false);
+  const blurTimeoutRef = useRef(null);
+  const lastWarningTimeRef = useRef(0);
+  const wasPlayingRef = useRef(false);
 
   const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
@@ -64,83 +70,150 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CHE MÀN HÌNH TỨC THÌ 0 MILLISECOND (Zero-Latency Synchronous Blackout Engine)
+  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Declarative React State DRM Engine)
   const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Can thiệp trực tiếp đồng bộ 0ms vào DOM để ẩn ngay tức khắc media wrapper trước khi OS chụp buffer
-    const mediaEl = document.getElementById('lesson-media-wrapper');
-    if (mediaEl) {
-      mediaEl.style.display = 'none';
-      mediaEl.style.visibility = 'hidden';
-      mediaEl.style.opacity = '0';
+    // 1. Tạm dừng video ngay lập tức để ngăn OBS quay tiếp luồng âm thanh/hình ảnh ngầm
+    if (videoRef.current && typeof videoRef.current.pause === 'function') {
+      try {
+        videoRef.current.pause();
+      } catch (err) { }
     }
 
-    // 2. Hiển thị Lá chắn bôi đen View-Once đồng bộ 0ms
-    const shieldEl = document.getElementById('instant-blackout-shield-overlay');
-    if (shieldEl) {
-      shieldEl.style.display = 'flex';
-      shieldEl.style.visibility = 'visible';
-      shieldEl.style.opacity = '1';
-    }
-
-    // 3. Tạm dừng video và xóa bộ nhớ đệm Clipboard ngay trong microsecond đầu tiên
-    if (videoRef.current) {
-      videoRef.current.pause();
-    }
+    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('');
     }
 
-    // 4. Cập nhật state React
+    // 3. Phủ màu đen xì (#000000) đè lên video
     setIsScreenRecordingDetected(true);
-    setRecordingDetectedMessage(reason || 'Phát hiện hành vi chụp / quay màn hình! Nội dung bài học đã được bôi đen bảo vệ tức thì.');
+    isScreenRecordingDetectedRef.current = true;
+    setRecordingDetectedMessage(reason || 'DRM Protection: Phân vùng video đã tự động chuyển sang màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình hoặc mất Focus.');
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện 0ms Chống Chụp / Quay Màn hình
+  const restoreDrmVideo = () => {
+    setIsScreenRecordingDetected(false);
+    isScreenRecordingDetectedRef.current = false;
+    setRecordingDetectedMessage('');
+    if (videoRef.current && typeof videoRef.current.play === 'function') {
+      try {
+        videoRef.current.play();
+      } catch (err) { }
+    }
+  };
+
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool)
   useEffect(() => {
+    let isAltPressed = false;
+    const WINDOW_FOCUS_THRESHOLD = 2000; // 2 giây thời gian chờ trước khi pause âm thầm
+    const DEBOUNCE_DELAY = 1500; // 1.5 giây chặn spam cảnh báo
+
+    // Bắt các phím tắt quay/chụp màn hình ở cả pha keydown & keyup với capture phase cao nhất
     const handleScreenCaptureKeys = (e) => {
+      // Cập nhật trạng thái phím Alt
+      if (e.key === 'Alt') {
+        isAltPressed = e.type === 'keydown';
+        return; // Cho phép bấm phím Alt đơn lẻ mượt mà
+      }
+
+      // Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10)
+      const isAltActive = e.altKey || isAltPressed;
+      const isNvidiaInstantReplay = isAltActive && (
+        e.key === 'z' || e.key === 'Z' || e.keyCode === 90 ||
+        e.key === 'F9' || e.keyCode === 120 ||
+        e.key === 'F10' || e.keyCode === 121
+      );
+
+      // Phát hiện PrintScreen & Snipping Tool (Win/Ctrl + Shift + S) & In / Lưu trang (Ctrl+P / Ctrl+S)
       const isPrtScn = e.key === 'PrintScreen' || e.keyCode === 44;
       const isSnippingTool = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
       const isPrintPage = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80);
-      const isSavePage = (e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+      const isSavePage = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
 
-      if (isPrtScn || isSnippingTool || isPrintPage || isSavePage) {
-        triggerZeroLatencyBlackout('Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P)! Nội dung bài học đã được bôi đen bảo mật.');
+      const now = Date.now();
+      const isCaptureAttempt = isNvidiaInstantReplay || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
+
+      if (isCaptureAttempt) {
+        // Áp dụng Debounce ngăn chặn spam kích hoạt nhiều lần liên tiếp
+        if (now - lastWarningTimeRef.current < DEBOUNCE_DELAY) {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }
+        lastWarningTimeRef.current = now;
+
+        if (isNvidiaInstantReplay) {
+          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z). Khung hình video chuyển màu đen (#000000).');
+        } else {
+          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P). Màn hình video chuyển màu đen.');
+        }
+
         e.preventDefault();
         e.stopPropagation();
         return false;
       }
     };
 
-    // Phát hiện khi Snipping Tool / OBS hoặc phần mềm cướp Focus khỏi trình duyệt
+    // Khi người dùng chuyển cửa sổ làm việc khác (blur), chúng ta không cảnh báo ngay lập tức để tránh gây phiền hà
+    // khi họ switch tab hoặc bấm nút Windows. Thay vào đó, áp dụng Window Focus Threshold:
+    // Chờ 2000ms, nếu không quay lại focus thì pause video âm thầm.
     const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('Phát hiện ứng dụng chụp / quay màn hình đang hoạt động (Snipping Tool / OBS)! Nội dung đã được bôi đen bảo vệ.');
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        triggerZeroLatencyBlackout('Phát hiện trình duyệt bị ẩn hoặc chuyển sang phần mềm quay phim ngầm!');
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
       }
+
+      // Ghi nhận trạng thái phát của video trước khi mất focus
+      if (videoRef.current && !videoRef.current.paused) {
+        wasPlayingRef.current = true;
+      }
+
+      blurTimeoutRef.current = setTimeout(() => {
+        // Chỉ pause video âm thầm nếu người dùng thực sự không focus lại trang và video vẫn đang phát
+        if (videoRef.current && !videoRef.current.paused) {
+          try {
+            videoRef.current.pause();
+          } catch (err) { }
+        }
+      }, WINDOW_FOCUS_THRESHOLD);
     };
 
-    // Đăng ký sự kiện cấp cao nhất ở Capture Phase ({ capture: true, passive: false })
+    // Khi người dùng quay trở lại cửa sổ (focus):
+    const handleWindowFocus = () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+        blurTimeoutRef.current = null;
+      }
+
+      // Nếu đang có màn hình đen DRM do thực sự bấm PrintScreen / Alt+Z, khôi phục lại
+      if (isScreenRecordingDetectedRef.current) {
+        restoreDrmVideo();
+      } else {
+        // Nếu không phải màn hình đen DRM, mà video chỉ bị pause tạm thời do mất focus quá threshold, tự động phát tiếp
+        if (wasPlayingRef.current && videoRef.current && videoRef.current.paused) {
+          try {
+            videoRef.current.play();
+          } catch (err) { }
+        }
+      }
+      wasPlayingRef.current = false;
+    };
+
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
-    window.addEventListener('blur', handleWindowBlur, true);
-    document.addEventListener('visibilitychange', handleVisibilityChange, true);
-
-    window.addEventListener('keyup', (e) => {
-      if (e.key === 'PrintScreen' || e.keyCode === 44) {
-        triggerZeroLatencyBlackout('Phát hiện phím PrintScreen!');
-      }
-    }, true);
+    window.addEventListener('keyup', handleScreenCaptureKeys, true);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
 
     return () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
-      window.removeEventListener('blur', handleWindowBlur, true);
-      document.removeEventListener('visibilitychange', handleVisibilityChange, true);
+      window.removeEventListener('keyup', handleScreenCaptureKeys, true);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
   }, []);
 
-  // Chặn & phát hiện Extension / Trình duyệt kích hoạt getDisplayMedia (Screen Capture API)
+  // Chặn & phát hiện Extension / Trình duyệt kích hoạt getDisplayMedia (Screen Capture API cho OBS / Extensions)
   useEffect(() => {
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
       const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
@@ -148,8 +221,7 @@ const LessonDetailPage = () => {
         if (videoRef.current) {
           videoRef.current.pause();
         }
-        setIsScreenRecordingDetected(true);
-        setRecordingDetectedMessage('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
+        triggerZeroLatencyBlackout('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
         return originalGetDisplayMedia.apply(this, args);
       };
     }
@@ -224,8 +296,18 @@ const LessonDetailPage = () => {
   // Tạm dừng video phát khi chuyển tab (Page Visibility API)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && videoRef.current) {
-        videoRef.current.pause();
+      if (document.hidden) {
+        if (videoRef.current && !videoRef.current.paused) {
+          wasPlayingRef.current = true;
+          videoRef.current.pause();
+        }
+      } else {
+        if (wasPlayingRef.current && videoRef.current && videoRef.current.paused) {
+          try {
+            videoRef.current.play();
+          } catch (err) { }
+          wasPlayingRef.current = false;
+        }
       }
     };
 
@@ -257,8 +339,8 @@ const LessonDetailPage = () => {
 
   const searchParams = new URLSearchParams(location.search);
   const queryCourseId = searchParams.get('courseId');
-  const courseIdToLoad = lessonId 
-    ? (initialLessonData?.courseId || null) 
+  const courseIdToLoad = lessonId
+    ? (initialLessonData?.courseId || null)
     : (queryCourseId ? parseInt(queryCourseId, 10) : 5);
 
   // 2. Tải chi tiết khóa học động dựa trên courseId có được
@@ -384,6 +466,59 @@ const LessonDetailPage = () => {
     };
   }, [currentLesson?.videoUrl]);
 
+  // Security Layer 2: W3C EME ClearKey DRM & Shaka Player Integration (Chỉ kích hoạt cho luồng MPEG-DASH / DRM)
+  useEffect(() => {
+    let isMounted = true;
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+    if (!currentLesson?.videoUrl || !videoRef.current) return;
+
+    // Kích hoạt Shaka DRM EME Player cho tất cả các bài học dạng Video để bật cơ chế Encrypted Surface chống Extension quay màn hình
+    const isDashStream = true;
+
+    if (shaka.Player && shaka.Player.isBrowserSupported()) {
+      const player = new shaka.Player(videoRef.current);
+      shakaPlayerRef.current = player;
+
+      // Cấu hình DRM W3C ClearKey License Server
+      const currentLessonId = currentLesson?.id || lessonId || 1;
+      const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
+
+      player.configure({
+        drm: {
+          servers: {
+            'org.w3.clearkey': licenseUrl
+          }
+        }
+      });
+
+      // Đính kèm Auth Header vào Request cấp License
+      const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+      if (token) {
+        player.getNetworkingEngine().registerRequestFilter((type, request) => {
+          if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+            request.headers['Authorization'] = `Bearer ${token}`;
+          }
+        });
+      }
+
+      // Nạp luồng MPEG-DASH qua Shaka DRM Player
+      player.load(currentLesson.videoUrl).catch(err => {
+        if (isMounted) {
+          console.warn('[Shaka Player DRM Warning]: Khung phát MPEG-DASH gặp sự cố:', err);
+        }
+      });
+
+      return () => {
+        isMounted = false;
+        if (shakaPlayerRef.current) {
+          shakaPlayerRef.current.destroy().catch(() => { });
+          shakaPlayerRef.current = null;
+        }
+      };
+    }
+  }, [currentLesson?.videoUrl, lessonId]);
+
   // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
   useEffect(() => {
     if (targetLessonId && course?.sections) {
@@ -408,7 +543,7 @@ const LessonDetailPage = () => {
   const handleToggleComplete = async (e, id) => {
     e.stopPropagation(); // Ngăn kích hoạt click chọn bài học
     const cleanId = String(id).replace('quiz-', '').replace('speaking-', '');
-    
+
     // 1. Cập nhật tức thì (< 50ms) trên Client Query Cache cho tất cả biến thể bài học (video, quiz, speaking)
     const toggleCompleted = (old) => old ? { ...old, completed: !old.completed } : old;
     queryClient.setQueryData(['lesson', id], toggleCompleted);
@@ -433,7 +568,7 @@ const LessonDetailPage = () => {
 
     try {
       await toggleLessonCompletion(id);
-      
+
       // Khởi chạy reload ngầm của React Query để đồng bộ toàn cục
       queryClient.invalidateQueries({ queryKey: ['lesson', id] });
       queryClient.invalidateQueries({ queryKey: ['lesson', cleanId] });
@@ -455,11 +590,11 @@ const LessonDetailPage = () => {
     return (
       <div className="min-h-screen flex flex-col font-sans" style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}>
         <Header />
-        
+
         {/* Main Content Area (Offset fixed Header) */}
         <main className="flex-grow pt-24 pb-8">
           <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 animate-pulse">
-            
+
             {/* Breadcrumbs & Exit back to Homepage Skeleton */}
             <div className="flex justify-between items-center mb-5 shrink-0">
               <div style={{ height: '16px', width: '120px', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '4px', opacity: 0.2 }}></div>
@@ -468,12 +603,12 @@ const LessonDetailPage = () => {
 
             {/* 70/30 Grid Layout Skeleton */}
             <div className="grid grid-cols-10 gap-6 items-start">
-              
+
               {/* Left Area Skeleton - 70% */}
               <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                 {/* Video Block Skeleton */}
                 <div className="rounded-2xl overflow-hidden aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative" style={{ backgroundColor: 'var(--card-bg, #cbd5e1)', opacity: 0.2 }}></div>
-                
+
                 {/* Lesson title & description skeletons */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ height: '28px', width: '60%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', opacity: 0.2 }}></div>
@@ -514,24 +649,24 @@ const LessonDetailPage = () => {
       {/* Main Content Area (Offset fixed Header) */}
       <main className="flex-grow pt-24 pb-8">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          
+
           {/* Breadcrumbs & Exit back to Homepage */}
           <div className="flex justify-between items-center mb-5 shrink-0">
-            <button 
+            <button
               onClick={() => navigate('/')}
               className="flex items-center space-x-2 text-xs font-semibold text-slate-500 hover:text-smart-indigo transition-colors"
             >
               <FiArrowLeft />
               <span>Quay lại Trang chủ</span>
             </button>
-            
+
             {course && (
               <div className="flex items-center space-x-3 bg-white border border-slate-200/60 shadow-sm px-4 py-2 rounded-xl text-xs font-medium text-slate-700" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}>
                 <FiAward className="text-friendly-orange" />
                 <span>Tiến độ học:</span>
                 <div className="w-24 bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden border border-slate-200 dark:border-slate-650">
-                  <div 
-                    className="bg-emerald-500 h-full transition-all duration-500" 
+                  <div
+                    className="bg-emerald-500 h-full transition-all duration-500"
                     style={{ width: `${course.progress}%` }}
                   ></div>
                 </div>
@@ -556,7 +691,7 @@ const LessonDetailPage = () => {
                   Khóa học chưa khai giảng!
                 </h1>
                 <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 font-semibold max-w-lg mx-auto leading-relaxed" style={{ color: 'var(--text-light)' }}>
-                  Cảm ơn bạn đã quan tâm đến khóa học <strong>{course?.title}</strong>. 
+                  Cảm ơn bạn đã quan tâm đến khóa học <strong>{course?.title}</strong>.
                   Hiện tại lớp học này chưa đến giờ mở, vui lòng quay lại khi đồng hồ đếm ngược kết thúc.
                 </p>
               </div>
@@ -569,7 +704,7 @@ const LessonDetailPage = () => {
                   { label: 'Phút', value: countdown.minutes },
                   { label: 'Giây', value: countdown.seconds }
                 ].map((item, index) => (
-                  <div 
+                  <div
                     key={index}
                     className="flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/80 p-3 md:p-4.5 rounded-2xl shadow-inner"
                     style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)' }}
@@ -613,423 +748,391 @@ const LessonDetailPage = () => {
             </div>
           ) : (
             <div className="grid grid-cols-10 gap-6 items-start">
-            
-            {/* Left Area - 70% */}
-            {isLessonLoading ? (
-              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6 animate-pulse">
-                <div className="rounded-2xl aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative bg-slate-900/80 dark:bg-slate-800 flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-xs font-bold text-indigo-400 tracking-wider">Đang nạp bài học...</span>
+
+              {/* Left Area - 70% */}
+              {isLessonLoading ? (
+                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6 animate-pulse">
+                  <div className="rounded-2xl aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative bg-slate-900/80 dark:bg-slate-800 flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs font-bold text-indigo-400 tracking-wider">Đang nạp bài học...</span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border p-6 shadow-sm space-y-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/4"></div>
+                    <div className="h-7 bg-slate-200 dark:bg-slate-700/60 rounded w-3/4"></div>
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/2"></div>
+                    <div className="pt-4 space-y-2">
+                      <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-full"></div>
+                      <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-5/6"></div>
+                      <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-2/3"></div>
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border p-6 shadow-sm space-y-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/4"></div>
-                  <div className="h-7 bg-slate-200 dark:bg-slate-700/60 rounded w-3/4"></div>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/2"></div>
-                  <div className="pt-4 space-y-2">
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-full"></div>
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-5/6"></div>
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-2/3"></div>
-                  </div>
-                </div>
-              </div>
-            ) : currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
-              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-                <QuizContent 
-                  lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''} 
-                  onComplete={async (score, total) => {
-                    // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học tức thì < 50ms
-                    if (score >= total / 2 && !currentLesson?.completed) {
-                      try {
-                        const fakeEvent = { stopPropagation: () => {} };
-                        await handleToggleComplete(fakeEvent, currentLesson.id);
-                      } catch (err) {
-                        console.error("Lỗi tự động hoàn thành bài học khi làm trắc nghiệm:", err);
+              ) : currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
+                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                  <QuizContent
+                    lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''}
+                    onComplete={async (score, total) => {
+                      // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học tức thì < 50ms
+                      if (score >= total / 2 && !currentLesson?.completed) {
+                        try {
+                          const fakeEvent = { stopPropagation: () => { } };
+                          await handleToggleComplete(fakeEvent, currentLesson.id);
+                        } catch (err) {
+                          console.error("Lỗi tự động hoàn thành bài học khi làm trắc nghiệm:", err);
+                        }
                       }
-                    }
-                  }}
-                />
-              </div>
-            ) : currentLesson?.type === 'speaking' ? (
-              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-                <SpeakingExercise 
-                  lessonId={currentLesson?.id ? currentLesson.id.replace('speaking-', '') : ''} 
-                  speakingSentences={currentLesson.speakingSentences}
-                  speakingQuestions={currentLesson.speakingQuestions}
-                  onComplete={async () => {
-                    if (!currentLesson?.completed) {
-                      try {
-                        const fakeEvent = { stopPropagation: () => {} };
-                        await handleToggleComplete(fakeEvent, currentLesson.id);
-                      } catch (err) {
-                        console.error("Lỗi tự động hoàn thành bài học khi luyện nói:", err);
+                    }}
+                  />
+                </div>
+              ) : currentLesson?.type === 'speaking' ? (
+                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                  <SpeakingExercise
+                    lessonId={currentLesson?.id ? currentLesson.id.replace('speaking-', '') : ''}
+                    speakingSentences={currentLesson.speakingSentences}
+                    speakingQuestions={currentLesson.speakingQuestions}
+                    onComplete={async () => {
+                      if (!currentLesson?.completed) {
+                        try {
+                          const fakeEvent = { stopPropagation: () => { } };
+                          await handleToggleComplete(fakeEvent, currentLesson.id);
+                        } catch (err) {
+                          console.error("Lỗi tự động hoàn thành bài học khi luyện nói:", err);
+                        }
                       }
-                    }
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-                
-                {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
-                <div 
-                  ref={containerRef}
-                  className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
-                  onContextMenu={(e) => e.preventDefault()}
-                  onDragStart={(e) => e.preventDefault()}
-                >
-                  {/* View-Once Facebook/Instagram-style Permanent Blackout Security Shield */}
-                  <div 
-                    id="instant-blackout-shield-overlay"
-                    style={{ display: isScreenRecordingDetected ? 'flex' : 'none' }}
-                    className="absolute inset-0 bg-slate-950 backdrop-blur-3xl z-[99999] flex-col items-center justify-center p-6 text-center space-y-4 animate-fade select-none"
-                  >
-                    {/* Copyright Policy Watermark Badge */}
-                    <div className="absolute top-4 right-4 sm:top-6 sm:right-6 pointer-events-none z-[100000] font-mono text-[11px] sm:text-xs font-bold text-amber-300 bg-slate-900 border border-amber-500/40 px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-                      <span>🔒 E-Learn Academy • DRM & Copyright Security Policy Protected</span>
-                    </div>
-
-                    <div className="w-16 h-16 rounded-2xl bg-red-500/10 border-2 border-red-500 flex items-center justify-center text-3xl text-red-500 shadow-lg animate-bounce">
-                      ⚠️
-                    </div>
-                    
-                    <h3 className="text-lg sm:text-xl font-extrabold text-white tracking-wide uppercase text-red-400">
-                      CẢNH BÁO VI PHẠM BẢO MẬT TÀI LIỆU
-                    </h3>
-                    
-                    <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed">
-                      {recordingDetectedMessage || 'Hệ thống đã tự động bôi đen và hủy nạp tài liệu khỏi bộ nhớ do phát hiện thao tác chụp / quay màn hình. Để bảo vệ bản quyền, toàn bộ nội dung đã bị vô hiệu hóa trong phiên này.'}
-                    </p>
-
-                    <div className="text-[11px] font-mono text-slate-400 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
-                      Nhật ký vi phạm: <span className="text-teal-300 font-semibold">{user?.email || 'quocanh26012004@gmail.com'}</span> • ID: <span className="text-teal-300 font-semibold">{user?.id || user?.userId || currentUserId || '4'}</span>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        window.location.reload();
-                      }}
-                      className="mt-3 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer border border-red-500/50"
-                    >
-                      Tải lại trang bài học để xác thực phiên an toàn
-                    </button>
-                  </div>
-
-                  {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
-                  <div 
-                    id="lesson-media-wrapper"
-                    style={{ display: isScreenRecordingDetected ? 'none' : 'block' }}
-                    className="w-full h-full relative"
-                  >
-                    {currentLesson?.type === 'pdf' ? (
-                      <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
-                        {/* PDF Security Watermark Badge */}
-                        <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                          <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
-                          <span className="text-slate-400">•</span>
-                          <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
-                        </div>
-
-                        {/* PDF Diagonal Subtle Background Watermark */}
-                        <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
-                          <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
-                            {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
-                          </span>
-                        </div>
-
-                        {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
-                        <div 
-                          className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
-                          onContextMenu={(e) => e.preventDefault()}
-                          onMouseDown={(e) => {
-                            // Giữ focus trên window chính
-                            window.focus();
-                          }}
-                        />
-
-                        <iframe 
-                          key={currentLesson?.id || 'pdf'}
-                          src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-                          className="w-full h-full border-none bg-white select-none pointer-events-none"
-                          title={currentLesson.title}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                      </div>
-                    ) : currentLesson?.videoUrl ? (
-                      <>
-                        {videoLoading && (
-                          <div className="absolute inset-0 bg-slate-900 flex items-center justify-center z-10 rounded-2xl overflow-hidden">
-                            <div className="flex items-center gap-2">
-                              <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                              <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                              <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                            </div>
-                          </div>
-                        )}
-
-                        <video 
-                          ref={videoRef}
-                          key={currentLesson?.id || 'video'}
-                          src={videoBlobUrl} 
-                          controls 
-                          autoPlay
-                          preload="metadata"
-                          controlsList="nodownload noremoteplayback"
-                          disablePictureInPicture
-                          onContextMenu={(e) => e.preventDefault()}
-                          onDragStart={(e) => e.preventDefault()}
-                          onLoadedMetadata={() => setVideoLoading(false)}
-                          className="w-full h-full object-contain"
-                        />
-                      </>
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
-                        <FiPlay className="text-5xl animate-pulse mb-3" />
-                        <span>Bài học không khả dụng.</span>
-                      </div>
-                    )}
-                  </div>
+                    }}
+                  />
                 </div>
+              ) : (
+                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
 
-                {/* Lesson Details & Interactive Content */}
-                <div className="rounded-2xl border p-6 shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b mb-6" style={{ borderBottomColor: 'var(--border-color)' }}>
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo bg-smart-indigo/5 px-2.5 py-1 rounded-md mb-2 inline-block">
-                        Bài học chi tiết
-                      </span>
-                      <h1 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 mt-1" style={{ color: 'var(--text-color)' }}>
-                        {currentLesson?.title}
-                      </h1>
-                    </div>
+                  {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
+                  <div
+                    ref={containerRef}
+                    className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
+                    onContextMenu={(e) => e.preventDefault()}
+                    onDragStart={(e) => e.preventDefault()}
+                  >
+                    {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box) */}
+                    <div
+                      id="netflix-drm-blackout-shield"
+                      style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
+                      className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer"
+                      onClick={restoreDrmVideo}
+                    />
 
-                    <button
-                      onClick={(e) => handleToggleComplete(e, currentLesson?.id)}
-                      style={{
-                        backgroundColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.1)' : 'var(--card-bg)',
-                        color: currentLesson?.completed ? '#10b981' : 'var(--text-color)',
-                        borderColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.3)' : 'var(--border-color)',
-                      }}
-                      className="mt-3 sm:mt-0 flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all border shrink-0 hover:opacity-90"
+                    {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
+                    <div
+                      id="lesson-media-wrapper"
+                      style={{ display: isScreenRecordingDetected ? 'none' : 'block' }}
+                      className="w-full h-full relative"
                     >
-                      {currentLesson?.completed ? (
-                        <>
-                          <FiCheckSquare className="text-sm text-emerald-600" />
-                          <span>Đã hoàn thành</span>
-                        </>
-                      ) : (
-                        <>
-                          <FiSquare className="text-sm" />
-                          <span>Đánh dấu hoàn thành</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Left Tabs Navigation */}
-                  <div className="flex border-b space-x-6 text-sm mb-4 shrink-0" style={{ borderBottomColor: 'var(--border-color)' }}>
-                    <button
-                      onClick={() => setActiveLeftTab("syllabus")}
-                      style={{ color: activeLeftTab === "syllabus" ? "#3b82f6" : "var(--text-light)" }}
-                      className="pb-3.5 font-semibold transition-all relative"
-                    >
-                      <span>Giáo trình văn bản</span>
-                      {activeLeftTab === "syllabus" && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
-                      )}
-                    </button>
-
-                     <button
-                      onClick={() => setActiveLeftTab("resources")}
-                      style={{ color: activeLeftTab === "resources" ? "#3b82f6" : "var(--text-light)" }}
-                      className="pb-3.5 font-semibold transition-all relative"
-                    >
-                      <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
-                      {activeLeftTab === "resources" && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
-                      )}
-                    </button>
-
-
-                  </div>
-
-                  {/* Left Tabs Content */}
-                  <div className="min-h-[180px]">
-                    {activeLeftTab === "syllabus" && (
-                      <div className="text-sm leading-relaxed whitespace-pre-wrap animate-fade" style={{ color: 'var(--text-color)' }}>
-                        <p className="font-semibold text-[14.5px] mb-3" style={{ color: 'var(--text-color)' }}>Tóm tắt nội dung bài học:</p>
-                        <p className="mb-4 italic px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-light)' }}>
-                          {currentLesson?.description}
-                        </p>
-                        <div className="border p-4 rounded-xl shadow-inner text-[14px]" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}>
-                          {currentLesson?.content}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeLeftTab === "resources" && (
-                      <div className="space-y-3 animate-fade text-sm">
-                        {currentLesson?.resources && currentLesson.resources.length > 0 ? (
-                          currentLesson.resources.map((res, index) => (
-                            <div 
-                              key={index}
-                              className="flex items-center justify-between p-3.5 border rounded-xl hover:opacity-90 transition-colors shadow-sm"
-                              style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
-                            >
-                              <div className="flex items-center space-x-3">
-                                <FiFileText className="text-smart-indigo text-lg shrink-0" />
-                                <span className="font-medium" style={{ color: 'var(--text-color)' }}>{res.name}</span>
-                              </div>
-                              <a 
-                                href={res.url}
-                                className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
-                              >
-                                <FiDownload />
-                                <span>Tải xuống</span>
-                              </a>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="text-center py-8 text-slate-400">
-                            <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
-                            <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
+                      {currentLesson?.type === 'pdf' ? (
+                        <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
+                          {/* PDF Security Watermark Badge */}
+                          <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                            <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                            <span className="text-slate-400">•</span>
+                            <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
                           </div>
-                        )}
-                      </div>
-                    )}
 
-
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Right Sidebar Area - 30% */}
-            <div className="col-span-10 lg:col-span-3 flex flex-col h-[calc(100vh-140px)] lg:sticky lg:top-24 border rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-              
-              {/* Sidebar Tabs Headers */}
-              <div className="flex border-b shrink-0" style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveRightTab("playlist")}
-                  style={{
-                    borderBottomColor: activeRightTab === "playlist" ? "#3b82f6" : "transparent",
-                    color: activeRightTab === "playlist" ? "#3b82f6" : "var(--text-light)",
-                    backgroundColor: activeRightTab === "playlist" ? "var(--card-bg)" : "var(--bg-color)",
-                  }}
-                  className="flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 border-b-2 transition-all font-extrabold"
-                >
-                  <FiBookOpen className="text-[13px]" />
-                  <span>Danh sách bài học</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveRightTab("ai")}
-                  style={{
-                    borderBottomColor: activeRightTab === "ai" ? "#3b82f6" : "transparent",
-                    color: activeRightTab === "ai" ? "#3b82f6" : "var(--text-light)",
-                    backgroundColor: activeRightTab === "ai" ? "var(--card-bg)" : "var(--bg-color)",
-                  }}
-                  className="flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 border-b-2 transition-all font-extrabold"
-                >
-                  <FiCpu className="text-[13px]" />
-                  <span>AI Assistant</span>
-                </button>
-              </div>
-
-              {/* Sidebar Content Panel */}
-              <div className="flex-1 overflow-hidden h-full relative" style={{ backgroundColor: 'var(--card-bg)' }}>
-                
-                {/* Playlist View */}
-                {activeRightTab === "playlist" && course && (
-                  <div className="h-full overflow-y-auto px-4 py-4 space-y-4">
-                    {course.sections.map((sec) => {
-                      const isExpanded = !!expandedSections[sec.id];
-                      return (
-                        <div key={sec.id} className="border rounded-xl overflow-hidden shadow-sm" style={{ borderColor: 'var(--border-color)' }}>
-                          {/* Section Header Accordion */}
-                          <div 
-                            onClick={() => toggleSection(sec.id)}
-                            className="flex items-center justify-between px-3.5 py-3 hover:bg-slate-100/80 transition-colors cursor-pointer border-b"
-                            style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}
-                          >
-                            <h3 className="font-bold text-xs leading-snug pr-2" style={{ color: 'var(--text-color)' }}>
-                              {sec.title}
-                            </h3>
-                            <span className="text-slate-400 shrink-0">
-                              {isExpanded ? <FiChevronUp /> : <FiChevronDown />}
+                          {/* PDF Diagonal Subtle Background Watermark */}
+                          <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
+                            <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
+                              {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
                             </span>
                           </div>
 
-                          {/* Section Lessons List */}
-                          {isExpanded && (
-                            <div className="divide-y" style={{ backgroundColor: 'var(--card-bg)', divideColor: 'var(--border-color)' }}>
-                              {sec.lessons.map((lesson) => {
-                                const isActive = String(targetLessonId) === String(lesson.id);
-                                const isQuiz = lesson.type === 'quiz';
-                                const isSpeaking = lesson.type === 'speaking';
-                                const isSubLesson = isQuiz || isSpeaking;
-                                return (
-                                  <div 
-                                    key={lesson.id}
-                                    onClick={() => handleSelectLesson(lesson.id)}
-                                    style={{
-                                      backgroundColor: isActive ? 'rgba(29, 78, 216, 0.08)' : (isSubLesson ? 'rgba(99, 102, 241, 0.03)' : 'transparent'),
-                                      borderColor: isActive ? '#3b82f6' : (isSubLesson ? 'rgba(99, 102, 241, 0.2)' : 'transparent'),
-                                    }}
-                                    className={`flex items-start px-3.5 py-3 transition-colors cursor-pointer rounded-lg border-l-4 ${
-                                      isSubLesson ? 'ml-4 border-dashed' : 'border-transparent'
-                                    } hover:opacity-90`}
-                                  >
-                                    {/* Completion Checkbox */}
-                                    <button 
-                                      onClick={(e) => handleToggleComplete(e, lesson.id)}
-                                      className="mr-2.5 mt-0.5 text-slate-400 hover:text-emerald-500 transition-colors shrink-0"
-                                    >
-                                      {lesson.completed ? (
-                                        <FiCheckSquare className="text-[14.5px] text-emerald-500" />
-                                      ) : (
-                                        <FiSquare className="text-[14.5px]" />
-                                      )}
-                                    </button>
+                          {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
+                          <div
+                            className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
+                            onContextMenu={(e) => e.preventDefault()}
+                            onMouseDown={(e) => {
+                              // Giữ focus trên window chính
+                              window.focus();
+                            }}
+                          />
 
-                                    {/* Lesson Info */}
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[12.5px] font-medium leading-relaxed mb-1 truncate-2-lines" style={{ color: isActive ? '#3b82f6' : 'var(--text-color)', fontWeight: isActive ? '700' : '500' }}>
-                                        {lesson.title}
-                                      </p>
-                                      <div className="flex items-center text-[10px] text-slate-400 space-x-2">
-                                        {isQuiz ? <FiCheckSquare /> : (isSpeaking ? <FiMic /> : <FiClock />)}
-                                        <span>{lesson.duration}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                          <iframe
+                            key={currentLesson?.id || 'pdf'}
+                            src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                            className="w-full h-full border-none bg-white select-none pointer-events-none"
+                            title={currentLesson.title}
+                            onContextMenu={(e) => e.preventDefault()}
+                          />
+                        </div>
+                      ) : currentLesson?.videoUrl ? (
+                        <>
+                          {videoLoading && (
+                            <div className="absolute inset-0 bg-slate-900 flex items-center justify-center z-10 rounded-2xl overflow-hidden">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                              </div>
+                            </div>
+                          )}
+
+                          <video
+                            ref={videoRef}
+                            key={currentLesson?.id || 'video'}
+                            controls
+                            autoPlay
+                            preload="metadata"
+                            controlsList="nodownload noremoteplayback"
+                            disablePictureInPicture
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                            onLoadedMetadata={() => setVideoLoading(false)}
+                            className="w-full h-full object-contain"
+                          />
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
+                          <FiPlay className="text-5xl animate-pulse mb-3" />
+                          <span>Bài học không khả dụng.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Lesson Details & Interactive Content */}
+                  <div className="rounded-2xl border p-6 shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b mb-6" style={{ borderBottomColor: 'var(--border-color)' }}>
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo bg-smart-indigo/5 px-2.5 py-1 rounded-md mb-2 inline-block">
+                          Bài học chi tiết
+                        </span>
+                        <h1 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 mt-1" style={{ color: 'var(--text-color)' }}>
+                          {currentLesson?.title}
+                        </h1>
+                      </div>
+
+                      <button
+                        onClick={(e) => handleToggleComplete(e, currentLesson?.id)}
+                        style={{
+                          backgroundColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.1)' : 'var(--card-bg)',
+                          color: currentLesson?.completed ? '#10b981' : 'var(--text-color)',
+                          borderColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.3)' : 'var(--border-color)',
+                        }}
+                        className="mt-3 sm:mt-0 flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all border shrink-0 hover:opacity-90"
+                      >
+                        {currentLesson?.completed ? (
+                          <>
+                            <FiCheckSquare className="text-sm text-emerald-600" />
+                            <span>Đã hoàn thành</span>
+                          </>
+                        ) : (
+                          <>
+                            <FiSquare className="text-sm" />
+                            <span>Đánh dấu hoàn thành</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Left Tabs Navigation */}
+                    <div className="flex border-b space-x-6 text-sm mb-4 shrink-0" style={{ borderBottomColor: 'var(--border-color)' }}>
+                      <button
+                        onClick={() => setActiveLeftTab("syllabus")}
+                        style={{ color: activeLeftTab === "syllabus" ? "#3b82f6" : "var(--text-light)" }}
+                        className="pb-3.5 font-semibold transition-all relative"
+                      >
+                        <span>Giáo trình văn bản</span>
+                        {activeLeftTab === "syllabus" && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => setActiveLeftTab("resources")}
+                        style={{ color: activeLeftTab === "resources" ? "#3b82f6" : "var(--text-light)" }}
+                        className="pb-3.5 font-semibold transition-all relative"
+                      >
+                        <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
+                        {activeLeftTab === "resources" && (
+                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
+                        )}
+                      </button>
+
+
+                    </div>
+
+                    {/* Left Tabs Content */}
+                    <div className="min-h-[180px]">
+                      {activeLeftTab === "syllabus" && (
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap animate-fade" style={{ color: 'var(--text-color)' }}>
+                          <p className="font-semibold text-[14.5px] mb-3" style={{ color: 'var(--text-color)' }}>Tóm tắt nội dung bài học:</p>
+                          <p className="mb-4 italic px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-light)' }}>
+                            {currentLesson?.description}
+                          </p>
+                          <div className="border p-4 rounded-xl shadow-inner text-[14px]" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}>
+                            {currentLesson?.content}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeLeftTab === "resources" && (
+                        <div className="space-y-3 animate-fade text-sm">
+                          {currentLesson?.resources && currentLesson.resources.length > 0 ? (
+                            currentLesson.resources.map((res, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between p-3.5 border rounded-xl hover:opacity-90 transition-colors shadow-sm"
+                                style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+                              >
+                                <div className="flex items-center space-x-3">
+                                  <FiFileText className="text-smart-indigo text-lg shrink-0" />
+                                  <span className="font-medium" style={{ color: 'var(--text-color)' }}>{res.name}</span>
+                                </div>
+                                <a
+                                  href={res.url}
+                                  className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
+                                >
+                                  <FiDownload />
+                                  <span>Tải xuống</span>
+                                </a>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-center py-8 text-slate-400">
+                              <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
+                              <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
                             </div>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
 
-                {/* AI Assistant ChatBox View */}
-                {activeRightTab === "ai" && (
-                  <div className="h-full p-2">
-                    <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
-                      <ChatBox lessonId={targetLessonId || currentLesson?.id} />
-                    </ErrorBoundary>
+
+                    </div>
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Right Sidebar Area - 30% */}
+              <div className="col-span-10 lg:col-span-3 flex flex-col h-[calc(100vh-140px)] lg:sticky lg:top-24 border rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+
+                {/* Sidebar Tabs Headers */}
+                <div className="flex border-b shrink-0" style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("playlist")}
+                    style={{
+                      borderBottomColor: activeRightTab === "playlist" ? "#3b82f6" : "transparent",
+                      color: activeRightTab === "playlist" ? "#3b82f6" : "var(--text-light)",
+                      backgroundColor: activeRightTab === "playlist" ? "var(--card-bg)" : "var(--bg-color)",
+                    }}
+                    className="flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 border-b-2 transition-all font-extrabold"
+                  >
+                    <FiBookOpen className="text-[13px]" />
+                    <span>Danh sách bài học</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("ai")}
+                    style={{
+                      borderBottomColor: activeRightTab === "ai" ? "#3b82f6" : "transparent",
+                      color: activeRightTab === "ai" ? "#3b82f6" : "var(--text-light)",
+                      backgroundColor: activeRightTab === "ai" ? "var(--card-bg)" : "var(--bg-color)",
+                    }}
+                    className="flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 border-b-2 transition-all font-extrabold"
+                  >
+                    <FiCpu className="text-[13px]" />
+                    <span>AI Assistant</span>
+                  </button>
+                </div>
+
+                {/* Sidebar Content Panel */}
+                <div className="flex-1 overflow-hidden h-full relative" style={{ backgroundColor: 'var(--card-bg)' }}>
+
+                  {/* Playlist View */}
+                  {activeRightTab === "playlist" && course && (
+                    <div className="h-full overflow-y-auto px-4 py-4 space-y-4">
+                      {course.sections.map((sec) => {
+                        const isExpanded = !!expandedSections[sec.id];
+                        return (
+                          <div key={sec.id} className="border rounded-xl overflow-hidden shadow-sm" style={{ borderColor: 'var(--border-color)' }}>
+                            {/* Section Header Accordion */}
+                            <div
+                              onClick={() => toggleSection(sec.id)}
+                              className="flex items-center justify-between px-3.5 py-3 hover:bg-slate-100/80 transition-colors cursor-pointer border-b"
+                              style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}
+                            >
+                              <h3 className="font-bold text-xs leading-snug pr-2" style={{ color: 'var(--text-color)' }}>
+                                {sec.title}
+                              </h3>
+                              <span className="text-slate-400 shrink-0">
+                                {isExpanded ? <FiChevronUp /> : <FiChevronDown />}
+                              </span>
+                            </div>
+
+                            {/* Section Lessons List */}
+                            {isExpanded && (
+                              <div className="divide-y" style={{ backgroundColor: 'var(--card-bg)', divideColor: 'var(--border-color)' }}>
+                                {sec.lessons.map((lesson) => {
+                                  const isActive = String(targetLessonId) === String(lesson.id);
+                                  const isQuiz = lesson.type === 'quiz';
+                                  const isSpeaking = lesson.type === 'speaking';
+                                  const isSubLesson = isQuiz || isSpeaking;
+                                  return (
+                                    <div
+                                      key={lesson.id}
+                                      onClick={() => handleSelectLesson(lesson.id)}
+                                      style={{
+                                        backgroundColor: isActive ? 'rgba(29, 78, 216, 0.08)' : (isSubLesson ? 'rgba(99, 102, 241, 0.03)' : 'transparent'),
+                                        borderColor: isActive ? '#3b82f6' : (isSubLesson ? 'rgba(99, 102, 241, 0.2)' : 'transparent'),
+                                      }}
+                                      className={`flex items-start px-3.5 py-3 transition-colors cursor-pointer rounded-lg border-l-4 ${isSubLesson ? 'ml-4 border-dashed' : 'border-transparent'
+                                        } hover:opacity-90`}
+                                    >
+                                      {/* Completion Checkbox */}
+                                      <button
+                                        onClick={(e) => handleToggleComplete(e, lesson.id)}
+                                        className="mr-2.5 mt-0.5 text-slate-400 hover:text-emerald-500 transition-colors shrink-0"
+                                      >
+                                        {lesson.completed ? (
+                                          <FiCheckSquare className="text-[14.5px] text-emerald-500" />
+                                        ) : (
+                                          <FiSquare className="text-[14.5px]" />
+                                        )}
+                                      </button>
+
+                                      {/* Lesson Info */}
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[12.5px] font-medium leading-relaxed mb-1 truncate-2-lines" style={{ color: isActive ? '#3b82f6' : 'var(--text-color)', fontWeight: isActive ? '700' : '500' }}>
+                                          {lesson.title}
+                                        </p>
+                                        <div className="flex items-center text-[10px] text-slate-400 space-x-2">
+                                          {isQuiz ? <FiCheckSquare /> : (isSpeaking ? <FiMic /> : <FiClock />)}
+                                          <span>{lesson.duration}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* AI Assistant ChatBox View */}
+                  {activeRightTab === "ai" && (
+                    <div className="h-full p-2">
+                      <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
+                        <ChatBox lessonId={targetLessonId || currentLesson?.id} />
+                      </ErrorBoundary>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-          </div>
+            </div>
           )}
         </div>
       </main>

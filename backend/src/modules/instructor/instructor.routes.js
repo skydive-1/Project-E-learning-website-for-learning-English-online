@@ -21,6 +21,9 @@ router.get('/performance', instructorController.getPerformance);
 // POST /api/instructor/generate-quiz - Sinh câu hỏi trắc nghiệm bằng AI (Gemini)
 router.post('/generate-quiz', aiLimiter, instructorController.generateQuiz);
 
+// POST /api/instructor/accept-policy - Xác nhận thỏa thuận bản quyền & đóng dấu tài liệu
+router.post('/accept-policy', instructorController.acceptPolicy);
+
 /**
  * @swagger
  * tags:
@@ -61,5 +64,33 @@ router.post('/generate-quiz', aiLimiter, instructorController.generateQuiz);
  *     responses:
  *       200:
  *         description: Thành công
+ * 
+ * /api/instructor/accept-policy:
+ *   post:
+ *     summary: Xác thực Thỏa thuận Bản quyền & Đóng dấu Watermark tài liệu PDF
+ *     description: Lưu vết chữ ký số và IP đồng ý điều khoản bản quyền của giảng viên, đồng thời tự động đóng dấu watermark ẩn (mờ) chứa tên giảng viên lên toàn bộ tài liệu bài giảng PDF của giảng viên đó.
+ *     tags: [Instructor]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - signature
+ *             properties:
+ *               signature:
+ *                 type: string
+ *                 description: Chữ ký số / Họ tên xác nhận đồng ý
+ *                 example: NGUYEN VAN A HASH_SIGNATURE_xyz
+ *     responses:
+ *       200:
+ *         description: Thành công
+ *       400:
+ *         description: Thiếu thông tin chữ ký
+ *       404:
+ *         description: Không tìm thấy giảng viên
  */
 module.exports = router;

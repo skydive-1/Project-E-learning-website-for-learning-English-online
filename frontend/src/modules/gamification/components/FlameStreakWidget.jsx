@@ -2,12 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiZap, FiCheck, FiAward, FiTrendingUp, FiChevronRight, FiCalendar } from 'react-icons/fi';
 import { useGamification } from '../../../context/GamificationContext';
+import { useAuth } from '../../../context/AuthContext';
 
 const FlameStreakWidget = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { streak, triggerBadgeUnlock } = useGamification();
   const [isOpen, setIsOpen] = useState(false);
   const widgetRef = useRef(null);
+
+  if (!user) return null;
 
   useEffect(() => {
     const handleClickOutside = (e) => {

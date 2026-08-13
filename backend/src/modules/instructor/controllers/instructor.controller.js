@@ -89,3 +89,30 @@ You must return a JSON array of objects with the following schema:
     next(error);
   }
 };
+
+exports.acceptPolicy = async (req, res, next) => {
+  try {
+    const instructorId = req.user.id;
+    const { signature } = req.body;
+    
+    // Lấy IP thật của giảng viên
+    const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+
+    if (!signature || !signature.trim()) {
+      const err = new Error('Chữ ký số đồng ý điều khoản bản quyền (signature) là bắt buộc');
+      err.status = 400;
+      throw err;
+    }
+
+    const result = await instructorService.acceptPolicy(instructorId, ipAddress, signature.trim());
+
+    res.status(200).json({
+      success: true,
+      message: 'Xác nhận thỏa thuận bản quyền và gắn watermark tài liệu thành công',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

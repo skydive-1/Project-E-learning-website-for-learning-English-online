@@ -3,6 +3,9 @@
  */
 
 const db = require('../../../config/database');
+const fs = require('fs');
+const path = require('path');
+const { PDFDocument, rgb, degrees, StandardFonts } = require('pdf-lib');
 
 class InstructorService {
   /**
@@ -41,15 +44,15 @@ class InstructorService {
       GROUP BY u.user_id, c.course_id, c.course_name
       ORDER BY u.full_name ASC;
     `;
-    
+
     const result = await db.query(queryText, [instructorId]);
-    
+
     // Tính toán tỷ lệ phần trăm tiến độ của học viên
     return result.rows.map(row => {
       const total = parseInt(row.total_lessons || 0, 10);
       const completed = parseInt(row.completed_lessons || 0, 10);
       const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
-      
+
       return {
         userId: row.user_id,
         username: row.username,
@@ -123,7 +126,7 @@ class InstructorService {
       ORDER BY student_count DESC;
     `;
     const courseStatsRes = await db.query(courseStatsQuery, [instructorId]);
-    
+
     // 5. Thống kê học viên mới đăng ký theo tháng
     const monthlyStatsQuery = `
       SELECT 
@@ -166,6 +169,138 @@ class InstructorService {
         month: row.month,
         enrollments: parseInt(row.enrollments_count || 0, 10)
       }))
+    };
+  }
+
+  /**
+   * Xác thực thỏa thuận bản quyền và tự động gắn Watermark ẩn lên tài liệu bài giảng PDF
+   */
+  async acceptPolicy(instructorId, ipAddress, signature) {
+    // 1. Lấy tên đầy đủ của giảng viên
+    const userRes = await db.query('SELECT full_name FROM users WHERE user_id = $1', [instructorId]);
+    if (userRes.rows.length === 0) {
+      const error = new Error('Giảng viên không tồn tại trên hệ thống');
+      error.status = 404;
+      throw error;
+    }
+    const instructorName = userRes.rows[0].full_name;
+
+    // 2. Lưu vết thỏa thuận vào CSDL
+    const agreementQuery = `
+      INSERT INTO instructor_policy_agreements (instructor_id, ip_address, signature)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (instructor_id)
+      DO UPDATE SET
+        ip_address = EXCLUDED.ip_address,
+        signature = EXCLUDED.signature,
+        accepted_at = CURRENT_TIMESTAMP
+      RETURNING *;
+    `;
+    const agreementRes = await db.query(agreementQuery, [instructorId, ipAddress, signature]);
+    const agreement = agreementRes.rows[0];
+
+    // 3. Lấy danh sách các bài học PDF của giảng viên này
+    const pdfQuery = `
+      SELECT l.lesson_id, l.title, l.content_url
+      FROM lessons l
+      JOIN sections s ON l.section_id = s.section_id
+      JOIN courses c ON s.course_id = c.course_id
+      WHERE c.instructor_id = $1 AND l.content_type = 'pdf';
+    `;
+    const pdfRes = await db.query(pdfQuery, [instructorId]);
+    const pdfLessons = pdfRes.rows;
+
+    const watermarkedLessons = [];
+
+    // 4. Lặp qua các tài liệu PDF và đóng dấu Watermark ẩn
+    for (const lesson of pdfLessons) {
+      let relativePath = lesson.content_url;
+      if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) {
+        try {
+          const urlObj = new URL(relativePath);
+          relativePath = urlObj.pathname;
+        } catch (e) {
+          // Bỏ qua lỗi
+        }
+      }
+
+      if (relativePath.startsWith('/')) {
+        relativePath = relativePath.slice(1);
+      }
+
+      // __dirname là backend/src/modules/instructor/services
+      const resolvedPath = path.resolve(__dirname, '../../../../', relativePath);
+
+      if (fs.existsSync(resolvedPath)) {
+        try {
+          const pdfBytes = fs.readFileSync(resolvedPath);
+          const pdfDoc = await PDFDocument.load(pdfBytes);
+
+          // Nhúng font chữ
+          const helveticaFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+          const pages = pdfDoc.getPages();
+
+          for (const page of pages) {
+            const { width, height } = page.getSize();
+
+            // Text đóng dấu bản quyền chéo giữa trang (Ẩn / Mờ)
+            const watermarkText = `Copyright c ${instructorName} - All Rights Reserved`;
+            const fontSize = 20;
+            const textWidth = helveticaFont.widthOfTextAtSize(watermarkText, fontSize);
+
+            page.drawText(watermarkText, {
+              x: (width - textWidth) / 2,
+              y: height / 2,
+              size: fontSize,
+              font: helveticaFont,
+              color: rgb(0.6, 0.6, 0.6),
+              opacity: 0.12, // Rất mờ (ẩn) để không đè tài liệu
+              rotate: degrees(45),
+            });
+
+            // Footer đánh dấu bản quyền góc trái dưới trang
+            page.drawText(`Licensed to E-Learn Academy | Instructor: ${instructorName}`, {
+              x: 30,
+              y: 20,
+              size: 8,
+              font: helveticaFont,
+              color: rgb(0.4, 0.4, 0.4),
+              opacity: 0.25,
+            });
+          }
+
+          const modifiedBytes = await pdfDoc.save();
+          fs.writeFileSync(resolvedPath, modifiedBytes);
+
+          watermarkedLessons.push({
+            lessonId: lesson.lesson_id,
+            title: lesson.title,
+            contentUrl: lesson.content_url,
+            status: 'Success'
+          });
+        } catch (fileErr) {
+          console.error(`[Watermark Error] Lỗi xử lý file lesson ${lesson.lesson_id}:`, fileErr.message);
+          watermarkedLessons.push({
+            lessonId: lesson.lesson_id,
+            title: lesson.title,
+            contentUrl: lesson.content_url,
+            status: `Error: ${fileErr.message}`
+          });
+        }
+      } else {
+        watermarkedLessons.push({
+          lessonId: lesson.lesson_id,
+          title: lesson.title,
+          contentUrl: lesson.content_url,
+          status: 'File not found on server'
+        });
+      }
+    }
+
+    return {
+      agreement,
+      watermarkedCount: watermarkedLessons.filter(l => l.status === 'Success').length,
+      details: watermarkedLessons
     };
   }
 }
