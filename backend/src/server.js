@@ -122,7 +122,6 @@ app.use('/api/consultation', consultationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/comments', commentsRoutes);
- 4f786b8be5a24508d8786829e64d335bac1fcfa3
 
 // Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
