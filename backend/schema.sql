@@ -194,3 +194,13 @@ CREATE TABLE IF NOT EXISTS instructor_policy_agreements (
   signature TEXT NOT NULL,
   accepted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 16. Tạo bảng Phiên học rèn luyện Gamification & Heatmap (learning_ss)
+CREATE TABLE IF NOT EXISTS learning_ss (
+  learning_ss_id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  lesson_id INT REFERENCES lessons(lesson_id) ON DELETE SET NULL,
+  start_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  end_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_learning_ss_user_id ON learning_ss(user_id);

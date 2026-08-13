@@ -162,6 +162,23 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng instructor_policy_agreements:', migErr.message);
     }
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng learning_ss tồn tại cho Gamification & Analytics
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS learning_ss (
+          learning_ss_id SERIAL PRIMARY KEY,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          lesson_id INT REFERENCES lessons(lesson_id) ON DELETE SET NULL,
+          start_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          end_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_learning_ss_user_id ON learning_ss(user_id);`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng learning_ss tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng learning_ss:', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {

@@ -27,7 +27,7 @@ const getUserHeatmap = async (userId, year) => {
                     )) / 60
                 )::numeric, 2), 0) AS total_minutes
             FROM days d
-            LEFT JOIN learning_sessions ls
+            LEFT JOIN learning_ss ls
                 ON ls.user_id = $1
                 AND ls.end_at IS NOT NULL
                 AND ls.start_at < (d.day + INTERVAL '1 day')

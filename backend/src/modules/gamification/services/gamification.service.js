@@ -10,7 +10,7 @@ const calculateStreak = async (userId) => {
   try {
     const query = `
       SELECT DISTINCT (start_at::date) AS day
-      FROM learning_sessions
+      FROM learning_ss
       WHERE user_id = $1
         AND end_at IS NOT NULL
       ORDER BY day DESC
