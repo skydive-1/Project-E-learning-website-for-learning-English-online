@@ -5,11 +5,11 @@
 const express = require('express');
 const router = express.Router();
 const coursesController = require('./controllers/courses.controller');
-const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const { authenticate, optionalAuthenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
 
-// GET /api/courses - Lấy danh sách khóa học công khai
-router.get('/', coursesController.getAllCourses);
+// GET /api/courses - Lấy danh sách khóa học công khai (published) hoặc tất cả (nếu admin/instructor)
+router.get('/', optionalAuthenticate, coursesController.getAllCourses);
 
 // GET /api/courses/subjects - Lấy danh sách môn học
 router.get('/subjects', coursesController.getSubjects);

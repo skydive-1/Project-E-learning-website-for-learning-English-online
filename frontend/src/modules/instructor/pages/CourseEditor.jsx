@@ -273,25 +273,30 @@ const CourseEditor = () => {
       return;
     }
 
+    // Khi Publish (status=1) mới validate chặt chẽ nội dung bài học.
+    // Khi Save Draft (status=0) chỉ cần tên chương không trống là đủ.
     for (let sIdx = 0; sIdx < sections.length; sIdx++) {
       const section = sections[sIdx];
       if (!section.title.trim()) {
         setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
         return;
       }
-      if (section.lessons.length === 0) {
-        setErrorMsg(`Chương "${section.title}" phải có ít nhất 1 bài học.`);
-        return;
-      }
-      for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
-        const lesson = section.lessons[lIdx];
-        if (!lesson.title.trim()) {
-          setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
+      if (status === 1) {
+        // Chỉ kiểm tra bài học khi Publish
+        if (section.lessons.length === 0) {
+          setErrorMsg(`Chương "${section.title}" phải có ít nhất 1 bài học.`);
           return;
         }
-        if (!lesson.contentUrl) {
-          setErrorMsg(`Vui lòng tải lên nội dung (video/pdf) cho bài học "${lesson.title}".`);
-          return;
+        for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
+          const lesson = section.lessons[lIdx];
+          if (!lesson.title.trim()) {
+            setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
+            return;
+          }
+          if (!lesson.contentUrl) {
+            setErrorMsg(`Vui lòng tải lên nội dung (video/pdf) cho bài học "${lesson.title}".`);
+            return;
+          }
         }
       }
     }

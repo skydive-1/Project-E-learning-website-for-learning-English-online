@@ -68,9 +68,52 @@ const authenticate = async (req, res, next) => {
 };
 
 /**
- * Middleware phân quyền (Kiểm tra vai trò người dùng)
- * @param {Array} roles - Danh sách các role ID được phép (1: Admin, 2: Instructor, 3: Student)
+ * Middleware xác thực tùy chọn: nếu có token hợp lệ thì gán req.user, nếu không thì bỏ qua (không bị từ chối).
+ * Dùng cho các route công khai có hành vi khác nhau giữa người dùng đăng nhập và không đăng nhập.
  */
+const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      req.user = null;
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!process.env.JWT_SECRET) {
+      req.user = null;
+      return next();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userRes = await db.query(
+      'SELECT user_id, email, username, full_name, role_id FROM users WHERE user_id = $1 OR email = $2',
+      [decoded.id || 0, decoded.email || '']
+    );
+
+    if (userRes.rows.length === 0) {
+      req.user = null;
+      return next();
+    }
+
+    const dbUser = userRes.rows[0];
+    req.user = {
+      ...decoded,
+      id: dbUser.user_id,
+      email: dbUser.email,
+      username: dbUser.username,
+      fullName: dbUser.full_name,
+      roleId: dbUser.role_id
+    };
+    next();
+  } catch (error) {
+    // Token lỗi hoặc hết hạn: bỏ qua, tiếp tục như anonymous
+    req.user = null;
+    next();
+  }
+};
+
+
 const authorize = (roles = []) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -131,6 +174,7 @@ const authenticateVideoToken = (req, res, next) => {
 
 module.exports = {
   authenticate,
+  optionalAuthenticate,
   authorize,
   authenticateVideoToken
 };

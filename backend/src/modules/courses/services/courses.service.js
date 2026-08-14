@@ -11,8 +11,11 @@ class CoursesService {
     }
   }
 
-  async getAllCourses() {
+  async getAllCourses(filterPublished = true) {
     try {
+      // filterPublished=true  → chỉ trả về khóa học đã publish (cho học viên / public)
+      // filterPublished=false → trả về tất cả (cho giảng viên / admin)
+      const whereClause = filterPublished ? `WHERE c.status = 'published'` : '';
       const queryText = `
         SELECT c.*, s.subject_name,
           COALESCE(
@@ -27,6 +30,7 @@ class CoursesService {
           )::integer AS lessons_count
         FROM courses c
         LEFT JOIN subjects s ON c.subject_id = s.subject_id
+        ${whereClause}
         ORDER BY c.course_id DESC
       `;
       const result = await db.query(queryText);
