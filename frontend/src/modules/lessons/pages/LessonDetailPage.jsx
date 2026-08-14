@@ -29,6 +29,7 @@ const LessonDetailPage = () => {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const shakaPlayerRef = useRef(null);
+  const shakaAttachedToRef = useRef(null); // theo dõi element nào Shaka đang attach vào
   const isScreenRecordingDetectedRef = useRef(false);
   const blurTimeoutRef = useRef(null);
   const lastWarningTimeRef = useRef(0);
@@ -46,8 +47,7 @@ const LessonDetailPage = () => {
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
-  // States for Video Blob URL & Screen Recording Protection
-  const [videoBlobUrl, setVideoBlobUrl] = useState('');
+  // Video & Screen Recording Protection States
   const [videoLoading, setVideoLoading] = useState(false);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
   const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
@@ -421,103 +421,72 @@ const LessonDetailPage = () => {
 
   const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && isLessonLoading);
 
-  // Security Layer 1: Encapsulate Video Source into an In-Memory Blob URL & Anti-Download Guard
+  // Video loading state — browser tự stream qua HTTP Range Requests, không cần tải trước
   useEffect(() => {
-    let isMounted = true;
-    let activeObjectUrl = null;
-
     if (!currentLesson?.videoUrl) {
-      setVideoBlobUrl('');
       setVideoLoading(false);
       return;
     }
-
+    // Set loading=true, onLoadedMetadata của <video> sẽ tự tắt khi metadata đã sẵn sàng
     setVideoLoading(true);
-
-    // Fetch video as Blob to encapsulate actual source URL and obscure direct MP4 link
-    fetch(currentLesson.videoUrl)
-      .then(response => {
-        if (!response.ok) throw new Error('Network error fetching video blob');
-        return response.blob();
-      })
-      .then(blob => {
-        const objectUrl = URL.createObjectURL(blob);
-        if (!isMounted) {
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-        activeObjectUrl = objectUrl;
-        setVideoBlobUrl(objectUrl);
-        setVideoLoading(false);
-      })
-      .catch(err => {
-        // Fallback gracefully if CORS restricts direct fetch so stream never breaks
-        if (!isMounted) return;
-        console.warn('Fallback to direct video stream URL due to CORS:', err);
-        setVideoBlobUrl(currentLesson.videoUrl);
-        setVideoLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-      if (activeObjectUrl) {
-        URL.revokeObjectURL(activeObjectUrl);
-      }
-    };
   }, [currentLesson?.videoUrl]);
 
-  // Security Layer 2: W3C EME ClearKey DRM & Shaka Player Integration (Chỉ kích hoạt cho luồng MPEG-DASH / DRM)
+  // Shaka Player DRM — tái sử dụng instance an toàn qua mọi loại bài học
+  // shakaAttachedToRef theo dõi element nào player đang attach — detect khi video element remount
   useEffect(() => {
-    let isMounted = true;
     const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
     if (!currentLesson?.videoUrl || !videoRef.current) return;
 
-    // Kích hoạt Shaka DRM EME Player cho tất cả các bài học dạng Video để bật cơ chế Encrypted Surface chống Extension quay màn hình
-    const isDashStream = true;
-
     if (shaka.Player && shaka.Player.isBrowserSupported()) {
-      const player = new shaka.Player(videoRef.current);
-      shakaPlayerRef.current = player;
-
-      // Cấu hình DRM W3C ClearKey License Server
-      const currentLessonId = currentLesson?.id || lessonId || 1;
-      const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
-
-      player.configure({
-        drm: {
-          servers: {
-            'org.w3.clearkey': licenseUrl
-          }
-        }
-      });
-
-      // Đính kèm Auth Header vào Request cấp License
-      const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
-      if (token) {
-        player.getNetworkingEngine().registerRequestFilter((type, request) => {
-          if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
-            request.headers['Authorization'] = `Bearer ${token}`;
-          }
-        });
+      // Nếu player cũ attach vào element đã unmount (quiz→video), destroy và tạo lại
+      if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
+        shakaPlayerRef.current.destroy().catch(() => {});
+        shakaPlayerRef.current = null;
+        shakaAttachedToRef.current = null;
       }
 
-      // Nạp luồng MPEG-DASH qua Shaka DRM Player
-      player.load(currentLesson.videoUrl).catch(err => {
-        if (isMounted) {
-          console.warn('[Shaka Player DRM Warning]: Khung phát MPEG-DASH gặp sự cố:', err);
+      // Tạo player mới nếu chưa có
+      if (!shakaPlayerRef.current) {
+        const player = new shaka.Player(videoRef.current);
+        shakaPlayerRef.current = player;
+        shakaAttachedToRef.current = videoRef.current; // ghi nhớ element đang attach
+
+        // Đăng ký Auth Header 1 lần duy nhất cho player này
+        const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+        if (token) {
+          player.getNetworkingEngine().registerRequestFilter((type, request) => {
+            if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+              request.headers['Authorization'] = `Bearer ${token}`;
+            }
+          });
         }
+      }
+
+      // Cập nhật DRM license URL theo bài học hiện tại
+      const currentLessonId = currentLesson?.id || lessonId || 1;
+      const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
+      shakaPlayerRef.current.configure({
+        drm: { servers: { 'org.w3.clearkey': licenseUrl } }
       });
 
-      return () => {
-        isMounted = false;
-        if (shakaPlayerRef.current) {
-          shakaPlayerRef.current.destroy().catch(() => { });
-          shakaPlayerRef.current = null;
-        }
-      };
+      // Nạp URL — browser tự buffer qua HTTP Range Requests, không download toàn bộ file
+      shakaPlayerRef.current.load(currentLesson.videoUrl).catch(err => {
+        console.warn('[Shaka Player]: Lỗi nạp video:', err);
+        setVideoLoading(false); // fallback tắt loading
+      });
     }
   }, [currentLesson?.videoUrl, lessonId]);
+
+  // Cleanup Shaka Player khi component unmount
+  useEffect(() => {
+    return () => {
+      if (shakaPlayerRef.current) {
+        shakaPlayerRef.current.destroy().catch(() => {});
+        shakaPlayerRef.current = null;
+      }
+    };
+  }, []);
 
   // Tự động mở rộng section chứa bài học hiện tại khi load xong dữ liệu
   useEffect(() => {
@@ -758,247 +727,245 @@ const LessonDetailPage = () => {
                   pointerEvents: isLessonLoading ? 'none' : 'auto'
                 }}
               >
-              {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
-                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-                  <QuizContent
-                    lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''}
-                    onComplete={async (score, total) => {
-                      // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học tức thì < 50ms
-                      if (score >= total / 2 && !currentLesson?.completed) {
-                        try {
-                          const fakeEvent = { stopPropagation: () => { } };
-                          await handleToggleComplete(fakeEvent, currentLesson.id);
-                        } catch (err) {
-                          console.error("Lỗi tự động hoàn thành bài học khi làm trắc nghiệm:", err);
+                {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
+                  <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                    <QuizContent
+                      lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''}
+                      onComplete={async (score, total) => {
+                        // Nếu đạt tối thiểu 50% số điểm (ví dụ: làm đúng 3/5 câu), tự động đánh dấu hoàn thành bài học tức thì < 50ms
+                        if (score >= total / 2 && !currentLesson?.completed) {
+                          try {
+                            const fakeEvent = { stopPropagation: () => { } };
+                            await handleToggleComplete(fakeEvent, currentLesson.id);
+                          } catch (err) {
+                            console.error("Lỗi tự động hoàn thành bài học khi làm trắc nghiệm:", err);
+                          }
                         }
-                      }
-                    }}
-                  />
-                </div>
-              ) : currentLesson?.type === 'speaking' ? (
-                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-                  <SpeakingExercise
-                    lessonId={currentLesson?.id ? currentLesson.id.replace('speaking-', '') : ''}
-                    speakingSentences={currentLesson.speakingSentences}
-                    speakingQuestions={currentLesson.speakingQuestions}
-                    onComplete={async () => {
-                      if (!currentLesson?.completed) {
-                        try {
-                          const fakeEvent = { stopPropagation: () => { } };
-                          await handleToggleComplete(fakeEvent, currentLesson.id);
-                        } catch (err) {
-                          console.error("Lỗi tự động hoàn thành bài học khi luyện nói:", err);
-                        }
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
-
-                  {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
-                  <div
-                    ref={containerRef}
-                    className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
-                    onContextMenu={(e) => e.preventDefault()}
-                    onDragStart={(e) => e.preventDefault()}
-                  >
-                    {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box) */}
-                    <div
-                      id="netflix-drm-blackout-shield"
-                      style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
-                      className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer"
-                      onClick={restoreDrmVideo}
+                      }}
                     />
-
-                    {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
-                    <div
-                      id="lesson-media-wrapper"
-                      style={{ display: isScreenRecordingDetected ? 'none' : 'block' }}
-                      className="w-full h-full relative"
-                    >
-                      {currentLesson?.type === 'pdf' ? (
-                        <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
-                          {/* PDF Security Watermark Badge */}
-                          <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                            <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
-                            <span className="text-slate-400">•</span>
-                            <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
-                          </div>
-
-                          {/* PDF Diagonal Subtle Background Watermark */}
-                          <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
-                            <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
-                              {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
-                            </span>
-                          </div>
-
-                          {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
-                          <div
-                            className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
-                            onContextMenu={(e) => e.preventDefault()}
-                            onMouseDown={(e) => {
-                              // Giữ focus trên window chính
-                              window.focus();
-                            }}
-                          />
-
-                          <iframe
-                            key={currentLesson?.id || 'pdf'}
-                            src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                            className="w-full h-full border-none bg-white select-none pointer-events-none"
-                            title={currentLesson.title}
-                            onContextMenu={(e) => e.preventDefault()}
-                          />
-                        </div>
-                      ) : currentLesson?.videoUrl ? (
-                        <>
-                          {videoLoading && (
-                            <div className="absolute inset-0 bg-slate-900 flex items-center justify-center z-10 rounded-2xl overflow-hidden">
-                              <div className="flex items-center gap-2">
-                                <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                                <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                                <span className="w-3.5 h-3.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                              </div>
-                            </div>
-                          )}
-
-                          <video
-                            ref={videoRef}
-                            key={currentLesson?.id || 'video'}
-                            controls
-                            autoPlay
-                            preload="metadata"
-                            controlsList="nodownload noremoteplayback"
-                            disablePictureInPicture
-                            onContextMenu={(e) => e.preventDefault()}
-                            onDragStart={(e) => e.preventDefault()}
-                            onLoadedMetadata={() => setVideoLoading(false)}
-                            className="w-full h-full object-contain"
-                          />
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
-                          <FiPlay className="text-5xl animate-pulse mb-3" />
-                          <span>Bài học không khả dụng.</span>
-                        </div>
-                      )}
-                    </div>
                   </div>
+                ) : currentLesson?.type === 'speaking' ? (
+                  <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                    <SpeakingExercise
+                      lessonId={currentLesson?.id ? currentLesson.id.replace('speaking-', '') : ''}
+                      speakingSentences={currentLesson.speakingSentences}
+                      speakingQuestions={currentLesson.speakingQuestions}
+                      onComplete={async () => {
+                        if (!currentLesson?.completed) {
+                          try {
+                            const fakeEvent = { stopPropagation: () => { } };
+                            await handleToggleComplete(fakeEvent, currentLesson.id);
+                          } catch (err) {
+                            console.error("Lỗi tự động hoàn thành bài học khi luyện nói:", err);
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
 
-                  {/* Lesson Details & Interactive Content */}
-                  <div className="rounded-2xl border p-6 shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b mb-6" style={{ borderBottomColor: 'var(--border-color)' }}>
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo bg-smart-indigo/5 px-2.5 py-1 rounded-md mb-2 inline-block">
-                          Bài học chi tiết
-                        </span>
-                        <h1 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 mt-1" style={{ color: 'var(--text-color)' }}>
-                          {currentLesson?.title}
-                        </h1>
-                      </div>
+                    {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
+                    <div
+                      ref={containerRef}
+                      className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
+                      onContextMenu={(e) => e.preventDefault()}
+                      onDragStart={(e) => e.preventDefault()}
+                    >
+                      {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box) */}
+                      <div
+                        id="netflix-drm-blackout-shield"
+                        style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
+                        className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer"
+                        onClick={restoreDrmVideo}
+                      />
 
-                      <button
-                        onClick={(e) => handleToggleComplete(e, currentLesson?.id)}
-                        style={{
-                          backgroundColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.1)' : 'var(--card-bg)',
-                          color: currentLesson?.completed ? '#10b981' : 'var(--text-color)',
-                          borderColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.3)' : 'var(--border-color)',
-                        }}
-                        className="mt-3 sm:mt-0 flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all border shrink-0 hover:opacity-90"
+                      {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
+                      <div
+                        id="lesson-media-wrapper"
+                        style={{ display: isScreenRecordingDetected ? 'none' : 'block' }}
+                        className="w-full h-full relative"
                       >
-                        {currentLesson?.completed ? (
+                        {currentLesson?.type === 'pdf' ? (
+                          <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
+                            {/* PDF Security Watermark Badge */}
+                            <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                              <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                              <span className="text-slate-400">•</span>
+                              <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
+                            </div>
+
+                            {/* PDF Diagonal Subtle Background Watermark */}
+                            <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
+                              <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
+                                {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
+                              </span>
+                            </div>
+
+                            {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
+                            <div
+                              className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
+                              onContextMenu={(e) => e.preventDefault()}
+                              onMouseDown={(e) => {
+                                // Giữ focus trên window chính
+                                window.focus();
+                              }}
+                            />
+
+                            <iframe
+                              key={currentLesson?.id || 'pdf'}
+                              src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                              className="w-full h-full border-none bg-white select-none pointer-events-none"
+                              title={currentLesson.title}
+                              onContextMenu={(e) => e.preventDefault()}
+                            />
+                          </div>
+                        ) : currentLesson?.videoUrl ? (
                           <>
-                            <FiCheckSquare className="text-sm text-emerald-600" />
-                            <span>Đã hoàn thành</span>
+                            {videoLoading && (
+                              <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4">
+                                <div className="w-10 h-10 border-4 border-slate-700 border-t-teal-400 rounded-full animate-spin"></div>
+                                <span className="text-xs font-semibold text-teal-300 tracking-wider">Đang tải video...</span>
+                              </div>
+                            )}
+
+                            <video
+                              ref={videoRef}
+                              controls
+                              autoPlay
+                              preload="metadata"
+                              controlsList="nodownload noremoteplayback"
+                              disablePictureInPicture
+                              onContextMenu={(e) => e.preventDefault()}
+                              onDragStart={(e) => e.preventDefault()}
+                              onLoadedMetadata={() => setVideoLoading(false)}
+                              onCanPlay={() => setVideoLoading(false)}
+                              onError={() => setVideoLoading(false)}
+                              className="w-full h-full object-contain"
+                            />
                           </>
                         ) : (
-                          <>
-                            <FiSquare className="text-sm" />
-                            <span>Đánh dấu hoàn thành</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Left Tabs Navigation */}
-                    <div className="flex border-b space-x-6 text-sm mb-4 shrink-0" style={{ borderBottomColor: 'var(--border-color)' }}>
-                      <button
-                        onClick={() => setActiveLeftTab("syllabus")}
-                        style={{ color: activeLeftTab === "syllabus" ? "#3b82f6" : "var(--text-light)" }}
-                        className="pb-3.5 font-semibold transition-all relative"
-                      >
-                        <span>Giáo trình văn bản</span>
-                        {activeLeftTab === "syllabus" && (
-                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() => setActiveLeftTab("resources")}
-                        style={{ color: activeLeftTab === "resources" ? "#3b82f6" : "var(--text-light)" }}
-                        className="pb-3.5 font-semibold transition-all relative"
-                      >
-                        <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
-                        {activeLeftTab === "resources" && (
-                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
-                        )}
-                      </button>
-
-
-                    </div>
-
-                    {/* Left Tabs Content */}
-                    <div className="min-h-[180px]">
-                      {activeLeftTab === "syllabus" && (
-                        <div className="text-sm leading-relaxed whitespace-pre-wrap animate-fade" style={{ color: 'var(--text-color)' }}>
-                          <p className="font-semibold text-[14.5px] mb-3" style={{ color: 'var(--text-color)' }}>Tóm tắt nội dung bài học:</p>
-                          <p className="mb-4 italic px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-light)' }}>
-                            {currentLesson?.description}
-                          </p>
-                          <div className="border p-4 rounded-xl shadow-inner text-[14px]" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}>
-                            {currentLesson?.content}
+                          <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
+                            <FiPlay className="text-5xl animate-pulse mb-3" />
+                            <span>Bài học không khả dụng.</span>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                    </div>
 
-                      {activeLeftTab === "resources" && (
-                        <div className="space-y-3 animate-fade text-sm">
-                          {currentLesson?.resources && currentLesson.resources.length > 0 ? (
-                            currentLesson.resources.map((res, index) => (
-                              <div
-                                key={index}
-                                className="flex items-center justify-between p-3.5 border rounded-xl hover:opacity-90 transition-colors shadow-sm"
-                                style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
-                              >
-                                <div className="flex items-center space-x-3">
-                                  <FiFileText className="text-smart-indigo text-lg shrink-0" />
-                                  <span className="font-medium" style={{ color: 'var(--text-color)' }}>{res.name}</span>
-                                </div>
-                                <a
-                                  href={res.url}
-                                  className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
-                                >
-                                  <FiDownload />
-                                  <span>Tải xuống</span>
-                                </a>
-                              </div>
-                            ))
+                    {/* Lesson Details & Interactive Content */}
+                    <div className="rounded-2xl border p-6 shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b mb-6" style={{ borderBottomColor: 'var(--border-color)' }}>
+                        <div>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo bg-smart-indigo/5 px-2.5 py-1 rounded-md mb-2 inline-block">
+                            Bài học chi tiết
+                          </span>
+                          <h1 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 mt-1" style={{ color: 'var(--text-color)' }}>
+                            {currentLesson?.title}
+                          </h1>
+                        </div>
+
+                        <button
+                          onClick={(e) => handleToggleComplete(e, currentLesson?.id)}
+                          style={{
+                            backgroundColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.1)' : 'var(--card-bg)',
+                            color: currentLesson?.completed ? '#10b981' : 'var(--text-color)',
+                            borderColor: currentLesson?.completed ? 'rgba(16, 185, 129, 0.3)' : 'var(--border-color)',
+                          }}
+                          className="mt-3 sm:mt-0 flex items-center justify-center space-x-2 text-xs font-semibold px-4 py-2.5 rounded-xl transition-all border shrink-0 hover:opacity-90"
+                        >
+                          {currentLesson?.completed ? (
+                            <>
+                              <FiCheckSquare className="text-sm text-emerald-600" />
+                              <span>Đã hoàn thành</span>
+                            </>
                           ) : (
-                            <div className="text-center py-8 text-slate-400">
-                              <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
-                              <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
-                            </div>
+                            <>
+                              <FiSquare className="text-sm" />
+                              <span>Đánh dấu hoàn thành</span>
+                            </>
                           )}
-                        </div>
-                      )}
+                        </button>
+                      </div>
+
+                      {/* Left Tabs Navigation */}
+                      <div className="flex border-b space-x-6 text-sm mb-4 shrink-0" style={{ borderBottomColor: 'var(--border-color)' }}>
+                        <button
+                          onClick={() => setActiveLeftTab("syllabus")}
+                          style={{ color: activeLeftTab === "syllabus" ? "#3b82f6" : "var(--text-light)" }}
+                          className="pb-3.5 font-semibold transition-all relative"
+                        >
+                          <span>Giáo trình văn bản</span>
+                          {activeLeftTab === "syllabus" && (
+                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => setActiveLeftTab("resources")}
+                          style={{ color: activeLeftTab === "resources" ? "#3b82f6" : "var(--text-light)" }}
+                          className="pb-3.5 font-semibold transition-all relative"
+                        >
+                          <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
+                          {activeLeftTab === "resources" && (
+                            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
+                          )}
+                        </button>
 
 
+                      </div>
+
+                      {/* Left Tabs Content */}
+                      <div className="min-h-[180px]">
+                        {activeLeftTab === "syllabus" && (
+                          <div className="text-sm leading-relaxed whitespace-pre-wrap animate-fade" style={{ color: 'var(--text-color)' }}>
+                            <p className="font-semibold text-[14.5px] mb-3" style={{ color: 'var(--text-color)' }}>Tóm tắt nội dung bài học:</p>
+                            <p className="mb-4 italic px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-light)' }}>
+                              {currentLesson?.description}
+                            </p>
+                            <div className="border p-4 rounded-xl shadow-inner text-[14px]" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}>
+                              {currentLesson?.content}
+                            </div>
+                          </div>
+                        )}
+
+                        {activeLeftTab === "resources" && (
+                          <div className="space-y-3 animate-fade text-sm">
+                            {currentLesson?.resources && currentLesson.resources.length > 0 ? (
+                              currentLesson.resources.map((res, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-center justify-between p-3.5 border rounded-xl hover:opacity-90 transition-colors shadow-sm"
+                                  style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <FiFileText className="text-smart-indigo text-lg shrink-0" />
+                                    <span className="font-medium" style={{ color: 'var(--text-color)' }}>{res.name}</span>
+                                  </div>
+                                  <a
+                                    href={res.url}
+                                    className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
+                                  >
+                                    <FiDownload />
+                                    <span>Tải xuống</span>
+                                  </a>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-center py-8 text-slate-400">
+                                <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
+                                <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
               </div>{/* end left area opacity wrapper */}
 
               {/* Right Sidebar Area - 30% */}
