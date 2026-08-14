@@ -749,27 +749,16 @@ const LessonDetailPage = () => {
           ) : (
             <div className="grid grid-cols-10 gap-6 items-start">
 
-              {/* Left Area - 70% */}
-              {isLessonLoading ? (
-                <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6 animate-pulse">
-                  <div className="rounded-2xl aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative bg-slate-900/80 dark:bg-slate-800 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs font-bold text-indigo-400 tracking-wider">Đang nạp bài học...</span>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border p-6 shadow-sm space-y-4" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/4"></div>
-                    <div className="h-7 bg-slate-200 dark:bg-slate-700/60 rounded w-3/4"></div>
-                    <div className="h-4 bg-slate-200 dark:bg-slate-700/60 rounded w-1/2"></div>
-                    <div className="pt-4 space-y-2">
-                      <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-full"></div>
-                      <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-5/6"></div>
-                      <div className="h-4 bg-slate-200 dark:bg-slate-700/40 rounded w-2/3"></div>
-                    </div>
-                  </div>
-                </div>
-              ) : currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
+              {/* Left Area - 70% — Wrapper bọc ngoài để transition mượt khi chuyển bài */}
+              <div
+                className="col-span-10 lg:col-span-7 flex flex-col space-y-6"
+                style={{
+                  opacity: isLessonLoading ? 0.6 : 1,
+                  transition: 'opacity 0.2s ease',
+                  pointerEvents: isLessonLoading ? 'none' : 'auto'
+                }}
+              >
+              {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
                 <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
                   <QuizContent
                     lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''}
@@ -1010,6 +999,7 @@ const LessonDetailPage = () => {
                   </div>
                 </div>
               )}
+              </div>{/* end left area opacity wrapper */}
 
               {/* Right Sidebar Area - 30% */}
               <div className="col-span-10 lg:col-span-3 flex flex-col h-[calc(100vh-140px)] lg:sticky lg:top-24 border rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
