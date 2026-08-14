@@ -407,16 +407,17 @@ export const getLessonById = async (lessonId) => {
     const token = localStorage.getItem('token') || '';
     let resolvedUrl = '';
     if (l.content_url) {
-      if (l.content_url.startsWith('http')) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const backendHost = apiUrl.replace(/\/api\/?$/, '');
+
+      if (l.content_type === 'video') {
+        // Luôn dùng backend stream endpoint cho video — backend xử lý CORS đúng và hỗ trợ HTTP Range
+        // Nếu video là Supabase URL, backend sẽ redirect đến Signed URL với đúng CORS headers
+        resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
+      } else if (l.content_url.startsWith('http')) {
         resolvedUrl = l.content_url;
       } else {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        const backendHost = apiUrl.replace(/\/api\/?$/, '');
-        if (l.content_type === 'video') {
-          resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
-        } else {
-          resolvedUrl = `${backendHost}${l.content_url}`;
-        }
+        resolvedUrl = `${backendHost}${l.content_url}`;
       }
     }
 

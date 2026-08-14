@@ -470,11 +470,20 @@ const LessonDetailPage = () => {
         drm: { servers: { 'org.w3.clearkey': licenseUrl } }
       });
 
-      // Nạp URL — browser tự buffer qua HTTP Range Requests, không download toàn bộ file
-      shakaPlayerRef.current.load(currentLesson.videoUrl).catch(err => {
-        console.warn('[Shaka Player]: Lỗi nạp video:', err);
-        setVideoLoading(false); // fallback tắt loading
-      });
+      // Nạp URL qua Shaka — fallback sang native HTML5 <video src> nếu Shaka không hỗ trợ format
+      shakaPlayerRef.current.load(currentLesson.videoUrl)
+        .then(() => {
+          // Shaka load thành công — onLoadedMetadata/onCanPlay sẽ tắt loading
+        })
+        .catch(err => {
+          console.warn('[Shaka]: Fallback về native video src:', err?.message || err);
+          // Native HTML5 fallback: browser tự stream qua HTTP Range Requests
+          if (videoRef.current) {
+            videoRef.current.src = currentLesson.videoUrl;
+            videoRef.current.load();
+          }
+          setVideoLoading(false);
+        });
     }
   }, [currentLesson?.videoUrl, lessonId]);
 
