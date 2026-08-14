@@ -16,7 +16,7 @@ const mockCourseData = {
           id: "lesson-1",
           title: "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
           duration: "03:15",
-          videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+          videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
           description: "Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Chatbot ở thanh bên phải để sửa lỗi phát âm và ngữ pháp.",
           content: `Chào mừng bạn đến với khóa học English for Communication! 
           
@@ -36,7 +36,7 @@ Hãy chuẩn bị một cuốn sổ tay nhỏ và tai nghe có micro để thự
           id: "lesson-2",
           title: "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
           duration: "05:42",
-          videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+          videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
           description: "Làm thế nào để dừng việc dịch nhẩm từ tiếng Việt sang tiếng Anh trước khi nói? Bài học sẽ chỉ ra tư duy suy nghĩ bằng tiếng Anh.",
           content: `Để giao tiếp trôi chảy, điều quan trọng nhất là loại bỏ thói quen dịch nhẩm:
 1. Liên kết trực tiếp hình ảnh/khái niệm với từ tiếng Anh (ví dụ nghĩ đến 'quả táo' -> thấy hình ảnh quả táo và bật ra 'apple' chứ không qua chữ tiếng Việt).
@@ -59,7 +59,7 @@ Hãy chuẩn bị một cuốn sổ tay nhỏ và tai nghe có micro để thự
           id: "lesson-3",
           title: "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
           duration: "08:12",
-          videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+          videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
           description: "Trong văn nói, bạn không cần dùng hết 12 thì. Hãy tập trung làm chủ 3 thì cốt lõi: Hiện tại đơn, Quá khứ đơn, Tương lai đơn.",
           content: `Ba thì cốt lõi chiếm hơn 80% thời lượng giao tiếp hàng ngày:
 1. **Hiện tại đơn (Simple Present)**: Diễn tả thói quen, chân lý. (Ví dụ: I study English every day).
@@ -76,7 +76,7 @@ Hãy dùng Tab AI Assistant bên cạnh để gõ thử 3 câu ví dụ về cu�
           id: "lesson-4",
           title: "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
           duration: "06:30",
-          videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+          videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
           description: "Cách đặt câu hỏi lịch sự, câu hỏi lựa chọn và cách lên giọng cuối câu hỏi để cuộc trò chuyện tự nhiên hơn.",
           content: `Luyện tập cách đặt câu hỏi:
 - Yes/No questions: Lên giọng ở cuối câu. (e.g., Do you like coffee? ↗)
@@ -97,7 +97,7 @@ Hãy dùng Tab AI Assistant bên cạnh để gõ thử 3 câu ví dụ về cu�
           id: "lesson-5",
           title: "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
           duration: "10:15",
-          videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
+          videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
           description: "Phân biệt nghe chủ động và nghe thụ động. Cách áp dụng phương pháp shadowing để rèn giọng điệu nói tiếng Anh.",
           content: `Phương pháp Shadowing (Nói đuổi):
 1. Nghe một câu tiếng Anh ngắn mẫu.
