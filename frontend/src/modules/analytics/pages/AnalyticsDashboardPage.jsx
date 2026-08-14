@@ -50,6 +50,7 @@ const AnalyticsDashboardPage = () => {
   const [heatmapData, setHeatmapData] = useState([]);
   const [summary, setSummary] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [hoveredDay, setHoveredDay] = useState(null);
 
   const fetchAnalyticsData = async (isAutoRefresh = false) => {
     try {
@@ -107,13 +108,13 @@ const AnalyticsDashboardPage = () => {
     return weeks;
   }, [heatmapData]);
 
-  // Color mapping cho Heatmap intensity
+  // Color mapping cho Heatmap intensity (màu sắc hài hòa, không nhấp nháy)
   const getHeatmapColor = (intensity) => {
     switch (intensity) {
-      case 1: return 'bg-emerald-200 dark:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/60';
+      case 1: return 'bg-emerald-200 dark:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700/60';
       case 2: return 'bg-emerald-400 dark:bg-emerald-700 border border-emerald-500 dark:border-emerald-600';
-      case 3: return 'bg-emerald-600 dark:bg-emerald-500 border border-emerald-700 dark:border-emerald-400 shadow-sm';
-      case 4: return 'bg-emerald-700 dark:bg-emerald-300 border border-emerald-800 dark:border-emerald-200 shadow-md animate-pulse';
+      case 3: return 'bg-emerald-500 dark:bg-emerald-500 border border-emerald-600 dark:border-emerald-400 shadow-sm';
+      case 4: return 'bg-emerald-600 dark:bg-emerald-400 border border-emerald-700 dark:border-emerald-300 shadow-sm';
       default: return 'bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50';
     }
   };
@@ -330,25 +331,24 @@ const AnalyticsDashboardPage = () => {
             </div>
 
             {/* Heatmap Grid Rendering */}
-            <div className="overflow-x-auto pb-2 scrollbar-thin">
-              <div className="min-w-[760px] flex gap-1.5 p-2 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/60">
+            <div className="overflow-x-auto pb-3 scrollbar-thin">
+              <div className="min-w-[760px] flex gap-1.5 p-3 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 select-none">
                 {heatmapWeeks.map((week, wIdx) => (
                   <div key={wIdx} className="flex flex-col gap-1.5 flex-1">
                     {week.map((day, dIdx) => (
                       <div
                         key={dIdx}
-                        className={`w-full aspect-square rounded-md transition-all duration-200 hover:scale-125 cursor-pointer relative group ${getHeatmapColor(day.intensity)}`}
-                        title={`${day.date}: ${day.count} phút học tập`}
-                      >
-                        {/* Hover Tooltip Popup */}
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none min-w-[130px]">
-                          <div className="bg-slate-900 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-xl border border-slate-700 whitespace-nowrap text-center">
-                            <div>📅 {day.date}</div>
-                            <div className="text-emerald-400">⏱️ {day.count} phút học</div>
-                          </div>
-                          <div className="w-2 h-2 bg-slate-900 rotate-45 -mt-1"></div>
-                        </div>
-                      </div>
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setHoveredDay({
+                            date: day.date,
+                            count: day.count,
+                            rect
+                          });
+                        }}
+                        onMouseLeave={() => setHoveredDay(null)}
+                        className={`w-full aspect-square rounded-[5px] transition-all duration-150 cursor-pointer hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1 dark:hover:ring-offset-slate-900 ${getHeatmapColor(day.intensity)}`}
+                      />
                     ))}
                   </div>
                 ))}
@@ -553,6 +553,37 @@ const AnalyticsDashboardPage = () => {
 
         </div>
       </main>
+
+      {/* Floating Heatmap Tooltip (Zero Overflow & No Clipping) */}
+      {hoveredDay && (
+        <div
+          className="fixed z-[9999] pointer-events-none transition-opacity duration-150 animate-fade"
+          style={{
+            top: hoveredDay.rect.top < 90
+              ? hoveredDay.rect.bottom + 8
+              : hoveredDay.rect.top - 8,
+            left: hoveredDay.rect.left + hoveredDay.rect.width / 2,
+            transform: hoveredDay.rect.top < 90
+              ? 'translate(-50%, 0)'
+              : 'translate(-50%, -100%)'
+          }}
+        >
+          <div className="bg-slate-900/95 dark:bg-slate-900/95 backdrop-blur-md text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap text-center space-y-0.5">
+            <div className="text-slate-300">📅 {hoveredDay.date}</div>
+            <div className={hoveredDay.count > 0 ? "text-emerald-400 font-extrabold text-xs" : "text-slate-400"}>
+              ⏱️ {hoveredDay.count > 0 ? `${hoveredDay.count} phút học tập` : 'Chưa có hoạt động học'}
+            </div>
+          </div>
+          {/* Tooltip Arrow */}
+          <div
+            className={`w-2.5 h-2.5 bg-slate-900 border-slate-700 mx-auto rotate-45 ${
+              hoveredDay.rect.top < 90
+                ? '-mt-1 border-t border-l -top-1 absolute left-1/2 -translate-x-1/2'
+                : '-mt-1 border-b border-r'
+            }`}
+          />
+        </div>
+      )}
 
       <Footer />
     </div>
