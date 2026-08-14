@@ -42,6 +42,19 @@ class ProgressService {
       RETURNING *;
     `;
     const result = await db.query(queryText, [userId, lessonId, isCompleted]);
+
+    // Tự động ghi nhận phiên học vào learning_ss để cập nhật Heatmap, Tổng thời gian học và Streak real-time
+    if (isCompleted) {
+      try {
+        await db.query(`
+          INSERT INTO learning_ss (user_id, lesson_id, start_at, end_at)
+          VALUES ($1, $2, CURRENT_TIMESTAMP - INTERVAL '15 minutes', CURRENT_TIMESTAMP)
+        `, [userId, lessonId]);
+      } catch (sessionErr) {
+        console.warn('Lỗi ghi nhận phiên học tự động cho progress:', sessionErr.message);
+      }
+    }
+
     return result.rows[0];
   }
 }

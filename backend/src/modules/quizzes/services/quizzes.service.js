@@ -169,6 +169,18 @@ class QuizzesService {
         nickname || null
       ]);
 
+      // Tự động ghi nhận phiên học vào learning_ss khi hoàn thành Quiz
+      if (validUserId) {
+        try {
+          await db.query(`
+            INSERT INTO learning_ss (user_id, lesson_id, start_at, end_at)
+            VALUES ($1, (SELECT lesson_id FROM quizzes WHERE quiz_id = $2), CURRENT_TIMESTAMP - INTERVAL '10 minutes', CURRENT_TIMESTAMP)
+          `, [validUserId, parseInt(quizId, 10)]);
+        } catch (sessionErr) {
+          console.warn('Lỗi ghi nhận phiên học tự động cho quiz:', sessionErr.message);
+        }
+      }
+
       return {
         score,
         correct_count: correctCount,
