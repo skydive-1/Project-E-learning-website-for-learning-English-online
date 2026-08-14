@@ -431,15 +431,28 @@ const LessonDetailPage = () => {
     setVideoLoading(true);
   }, [currentLesson?.videoUrl]);
 
-  // Shaka Player DRM — tái sử dụng instance an toàn qua mọi loại bài học
-  // shakaAttachedToRef theo dõi element nào player đang attach — detect khi video element remount
+  // Shaka Player DRM — Chỉ kích hoạt khi luồng thực sự là MPEG-DASH (.mpd) hoặc HLS (.m3u8) có DRM
+  // Đối với video MP4 thông thường, Native HTML5 Video trong thẻ <video src="..." /> sẽ phát ngay lập tức (< 300ms)
   useEffect(() => {
     const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const videoUrl = currentLesson?.videoUrl;
 
-    if (!currentLesson?.videoUrl || !videoRef.current) return;
+    if (!videoUrl || !videoRef.current) return;
+
+    const isDashOrHls = videoUrl.includes('.mpd') || videoUrl.includes('.m3u8');
+
+    // Nếu không phải luồng DASH/HLS DRM -> Hủy Shaka Player để Native HTML5 Video tự phát mượt mà
+    if (!isDashOrHls) {
+      if (shakaPlayerRef.current) {
+        shakaPlayerRef.current.destroy().catch(() => {});
+        shakaPlayerRef.current = null;
+        shakaAttachedToRef.current = null;
+      }
+      return;
+    }
 
     if (shaka.Player && shaka.Player.isBrowserSupported()) {
-      // Nếu player cũ attach vào element đã unmount (quiz→video), destroy và tạo lại
+      // Nếu player cũ attach vào element khác, destroy và tạo lại
       if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
         shakaPlayerRef.current.destroy().catch(() => {});
         shakaPlayerRef.current = null;
@@ -450,9 +463,8 @@ const LessonDetailPage = () => {
       if (!shakaPlayerRef.current) {
         const player = new shaka.Player(videoRef.current);
         shakaPlayerRef.current = player;
-        shakaAttachedToRef.current = videoRef.current; // ghi nhớ element đang attach
+        shakaAttachedToRef.current = videoRef.current;
 
-        // Đăng ký Auth Header 1 lần duy nhất cho player này
         const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
         if (token) {
           player.getNetworkingEngine().registerRequestFilter((type, request) => {
@@ -470,16 +482,15 @@ const LessonDetailPage = () => {
         drm: { servers: { 'org.w3.clearkey': licenseUrl } }
       });
 
-      // Nạp URL qua Shaka — fallback sang native HTML5 <video src> nếu Shaka không hỗ trợ format
-      shakaPlayerRef.current.load(currentLesson.videoUrl)
+      // Nạp URL qua Shaka
+      shakaPlayerRef.current.load(videoUrl)
         .then(() => {
-          // Shaka load thành công — onLoadedMetadata/onCanPlay sẽ tắt loading
+          setVideoLoading(false);
         })
         .catch(err => {
-          console.warn('[Shaka]: Fallback về native video src:', err?.message || err);
-          // Native HTML5 fallback: browser tự stream qua HTTP Range Requests
+          console.warn('[Shaka DRM]: Lỗi nạp luồng DASH, fallback về Native Video:', err?.message || err);
           if (videoRef.current) {
-            videoRef.current.src = currentLesson.videoUrl;
+            videoRef.current.src = videoUrl;
             videoRef.current.load();
           }
           setVideoLoading(false);
@@ -841,15 +852,19 @@ const LessonDetailPage = () => {
 
                             <video
                               ref={videoRef}
+                              src={currentLesson?.videoUrl || undefined}
                               controls
                               autoPlay
-                              preload="metadata"
+                              preload="auto"
                               controlsList="nodownload noremoteplayback"
                               disablePictureInPicture
                               onContextMenu={(e) => e.preventDefault()}
                               onDragStart={(e) => e.preventDefault()}
+                              onLoadedData={() => setVideoLoading(false)}
                               onLoadedMetadata={() => setVideoLoading(false)}
                               onCanPlay={() => setVideoLoading(false)}
+                              onPlaying={() => setVideoLoading(false)}
+                              onWaiting={() => setVideoLoading(true)}
                               onError={() => setVideoLoading(false)}
                               className="w-full h-full object-contain"
                             />

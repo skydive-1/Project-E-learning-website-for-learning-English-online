@@ -89,45 +89,9 @@ exports.streamLessonVideo = async (req, res, next) => {
 
     const contentUrl = lesson.content_url;
 
-    // Nếu là link video bên ngoài (Supabase signed URL hoặc external)
-    // Proxy stream thay vì redirect — đảm bảo CORS đúng và HTTP Range Requests hoạt động
+    // Nếu là link video bên ngoài (Supabase signed URL hoặc external) -> Redirect trực tiếp đến CDN để client stream với tốc độ tối đa
     if (contentUrl.startsWith('http://') || contentUrl.startsWith('https://')) {
-      const https = require('https');
-      const http = require('http');
-      const urlModule = require('url');
-
-      const parsed = urlModule.parse(contentUrl);
-      const requester = parsed.protocol === 'https:' ? https : http;
-
-      // Forward Range header nếu có (hỗ trợ seeking/tua)
-      const upstreamHeaders = { 'User-Agent': 'ELearnProxy/1.0' };
-      if (req.headers.range) {
-        upstreamHeaders['Range'] = req.headers.range;
-      }
-
-      const proxyReq = requester.get(contentUrl, { headers: upstreamHeaders }, (proxyRes) => {
-        // Thêm CORS headers cho browser
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Headers', 'Range');
-        res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
-
-        // Forward response headers từ Supabase
-        const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
-        headersToForward.forEach(h => {
-          if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]);
-        });
-
-        res.status(proxyRes.statusCode);
-        proxyRes.pipe(res);
-      });
-
-      proxyReq.on('error', (err) => {
-        console.error('[Video Proxy Error]:', err.message);
-        if (!res.headersSent) {
-          res.status(502).json({ success: false, message: 'Không thể tải video từ nguồn' });
-        }
-      });
-      return;
+      return res.redirect(contentUrl);
     }
 
     // Đường dẫn file video cục bộ

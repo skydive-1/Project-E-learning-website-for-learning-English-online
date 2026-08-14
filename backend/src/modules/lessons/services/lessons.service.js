@@ -16,12 +16,18 @@ class LessonsService {
           ORDER BY s.order_index, l.order_index
         `;
         const result = await db.query(queryText, [parseInt(courseId, 10)]);
-        const rows = result.rows;
-        for (let row of rows) {
-          if (row.content_type === 'video' && row.content_url) {
-            row.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(row.content_url, 'videos', 3600);
-          }
-        }
+        const { generateSignedUrl } = require('../../../utils/supabaseStorage');
+        await Promise.all(
+          rows
+            .filter(row => row.content_type === 'video' && row.content_url)
+            .map(async (row) => {
+              try {
+                row.content_url = await generateSignedUrl(row.content_url, 'videos', 3600);
+              } catch (e) {
+                console.error('Failed to generate signed url for lesson', row.lesson_id, e);
+              }
+            })
+        );
         return rows;
       } else if (sectionId) {
         const queryText = `
@@ -31,11 +37,18 @@ class LessonsService {
         `;
         const result = await db.query(queryText, [parseInt(sectionId, 10)]);
         const rows = result.rows;
-        for (let row of rows) {
-          if (row.content_type === 'video' && row.content_url) {
-            row.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(row.content_url, 'videos', 3600);
-          }
-        }
+        const { generateSignedUrl } = require('../../../utils/supabaseStorage');
+        await Promise.all(
+          rows
+            .filter(row => row.content_type === 'video' && row.content_url)
+            .map(async (row) => {
+              try {
+                row.content_url = await generateSignedUrl(row.content_url, 'videos', 3600);
+              } catch (e) {
+                console.error('Failed to generate signed url for lesson', row.lesson_id, e);
+              }
+            })
+        );
         return rows;
       }
       return [];

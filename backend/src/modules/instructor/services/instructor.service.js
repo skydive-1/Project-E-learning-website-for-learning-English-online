@@ -5,7 +5,6 @@
 const db = require('../../../config/database');
 const fs = require('fs');
 const path = require('path');
-const { PDFDocument, rgb, degrees, StandardFonts } = require('pdf-lib');
 
 class InstructorService {
   /**

@@ -407,17 +407,18 @@ export const getLessonById = async (lessonId) => {
     const token = localStorage.getItem('token') || '';
     let resolvedUrl = '';
     if (l.content_url) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      const backendHost = apiUrl.replace(/\/api\/?$/, '');
-
-      if (l.content_type === 'video') {
-        // Luôn dùng backend stream endpoint cho video — backend xử lý CORS đúng và hỗ trợ HTTP Range
-        // Nếu video là Supabase URL, backend sẽ redirect đến Signed URL với đúng CORS headers
-        resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
-      } else if (l.content_url.startsWith('http')) {
+      if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
+        // Link trực tiếp CDN (Google Cloud Storage, Supabase Storage Signed URL) -> Phát trực tiếp để đạt tốc độ cao nhất
         resolvedUrl = l.content_url;
       } else {
-        resolvedUrl = `${backendHost}${l.content_url}`;
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const backendHost = apiUrl.replace(/\/api\/?$/, '');
+        if (l.content_type === 'video') {
+          // File video lưu trên server cục bộ -> Phát qua endpoint stream có hỗ trợ HTTP Range 206
+          resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
+        } else {
+          resolvedUrl = `${backendHost}${l.content_url}`;
+        }
       }
     }
 
