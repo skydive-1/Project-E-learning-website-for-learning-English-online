@@ -107,7 +107,13 @@ const LessonDetailPage = () => {
   const isCapturingKeysRef = useRef(new Set());
 
   const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Ẩn ngay lập tức phần tử video ở tầng DOM (0ms Hardware Response)
+    // 1. Thao tác DOM đồng bộ vi-giây (0ms Synchronous DOM Blackout)
+    const shield = document.getElementById('netflix-drm-blackout-shield');
+    if (shield) shield.style.display = 'block';
+    const wrapper = document.getElementById('lesson-media-wrapper');
+    if (wrapper) wrapper.style.display = 'none';
+
+    // 2. Ẩn và tạm dừng phần tử video
     if (videoRef.current) {
       try {
         videoRef.current.style.opacity = '0';
@@ -119,19 +125,23 @@ const LessonDetailPage = () => {
       } catch (err) { }
     }
 
-    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để triệt tiêu ảnh chụp
+    // 3. Xóa bộ nhớ đệm Clipboard ngay lập tức để triệt tiêu ảnh chụp
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('').catch(() => {});
     }
 
-    // 3. Phủ màu đen tuyền tuyệt đối (#000000)
     setIsScreenRecordingDetected(true);
     isScreenRecordingDetectedRef.current = true;
     setRecordingDetectedMessage(reason || '');
   };
 
   const restoreDrmVideo = () => {
-    // Nhả màn hình đen NGAY LẬP TỨC và cho phép thao tác video bình thường
+    // 1. Khôi phục DOM đồng bộ tức thì (0ms Instant Restore)
+    const shield = document.getElementById('netflix-drm-blackout-shield');
+    if (shield) shield.style.display = 'none';
+    const wrapper = document.getElementById('lesson-media-wrapper');
+    if (wrapper) wrapper.style.display = 'block';
+
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
     setRecordingDetectedMessage('');
@@ -158,7 +168,7 @@ const LessonDetailPage = () => {
     }
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Chuẩn Apple (Chỉ khóa khi chụp, chuyển tab không bị đen)
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Chuẩn Apple (Phản hồi tức thì 0ms trên cả Blur & Phím chụp)
   useEffect(() => {
     let isAltPressed = false;
     let isMetaPressed = false;
@@ -196,7 +206,7 @@ const LessonDetailPage = () => {
       if (e.type === 'keydown') {
         if (isCaptureAttempt) {
           isCapturingKeysRef.current.add(e.key || 'Capture');
-          // ĐEN MÀN HÌNH NGAY LẬP TỨC (0ms)
+          // ĐEN MÀN HÌNH ĐỒNG BỘ 0ms
           triggerZeroLatencyBlackout('Hệ thống bảo vệ bản quyền: Đã phát hiện thao tác chụp màn hình!');
           try {
             e.preventDefault();
@@ -207,25 +217,27 @@ const LessonDetailPage = () => {
       } else if (e.type === 'keyup') {
         isCapturingKeysRef.current.clear();
         if (isCaptureAttempt || isPrtScn) {
-          // Hết nhấn/hết chụp -> NHẢ VIDEO CHO CHẠY TIẾP TỨC THÌ
+          // Hết nhấn/hết chụp -> NHẢ VIDEO NGAY LẬP TỨC
           restoreDrmVideo();
         }
       }
     };
 
-    // Khi người dùng quay trở lại cửa sổ sau khi chụp xong (Window Focus)
+    // Khi Snipping Tool mở ra hoặc mất focus cửa sổ -> Đen ngay tức thì
+    const handleWindowBlur = () => {
+      triggerZeroLatencyBlackout('Window Blur');
+    };
+
+    // Khi người dùng quay trở lại cửa sổ hoặc đóng Snipping Tool -> Nhả video tức thì
     const handleWindowFocus = () => {
       isCapturingKeysRef.current.clear();
       restoreDrmVideo();
     };
 
-    // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Chỉ tạm dừng phát video để tiết kiệm băng thông, không khóa đen)
+    // Khi tab trình duyệt bị ẩn hoặc chuyển tab
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (videoRef.current && !videoRef.current.paused) {
-          wasPlayingRef.current = true;
-          videoRef.current.pause();
-        }
+        triggerZeroLatencyBlackout('Tab Hidden');
       } else {
         isCapturingKeysRef.current.clear();
         restoreDrmVideo();
@@ -234,12 +246,14 @@ const LessonDetailPage = () => {
 
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
+    window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
+      window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -1032,6 +1046,14 @@ const LessonDetailPage = () => {
                               className="w-full h-full object-contain pointer-events-auto cursor-pointer"
                               data-no-download="true"
                             />
+
+                            {/* Dynamic Video Forensic Security Watermark Badge */}
+                            <div className="absolute top-3.5 left-3.5 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-white bg-black/60 border border-white/20 px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                              <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                              <span className="text-white/40">•</span>
+                              <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
+                            </div>
 
                             {/* Smart AI Bilingual Caption Overlay */}
                             <CaptionOverlay
