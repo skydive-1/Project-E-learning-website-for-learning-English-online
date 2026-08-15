@@ -9,6 +9,7 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { DateRangePicker, SingleDatePicker } from '../../../components/ui';
 import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPolicyModal';
+import { subtitlesService } from '../../lessons/services/subtitles.service';
 import '../styles/instructor.scss';
 
 const getRoleFromToken = () => {
@@ -624,6 +625,41 @@ const CourseEditor = () => {
                                 }
                               </span>
                             </button>
+
+                            {/* Trigger AI Subtitle Generator for Video Lessons */}
+                            {lesson.type === 'video' && lesson.id && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    setLoading(true);
+                                    const result = await subtitlesService.generateSubtitles(lesson.id);
+                                    alert(`✅ Đã tạo thành công ${result?.cues?.length || 0} câu phụ đề song ngữ bằng AI Gemini 2.5 Flash!`);
+                                  } catch (err) {
+                                    alert(`❌ Lỗi tạo phụ đề AI: ${err.message}`);
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#0d9488',
+                                  fontSize: '11px',
+                                  fontWeight: '750',
+                                  cursor: 'pointer',
+                                  padding: '4px 0',
+                                  outline: 'none'
+                                }}
+                                title="Tự động bóc băng lời thoại và dịch song ngữ bằng Gemini 2.5 Flash"
+                              >
+                                <span>✨</span>
+                                <span style={{ textDecoration: 'underline' }}>⚡ Tạo phụ đề song ngữ AI (Gemini 2.5)</span>
+                              </button>
+                            )}
 
                             {(lesson.speakingSentences || lesson.speakingQuestions) && (
                               <button

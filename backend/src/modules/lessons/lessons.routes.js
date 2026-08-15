@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const lessonsController = require('./controllers/lessons.controller');
+const subtitlesController = require('./controllers/subtitles.controller');
 const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
 
 // GET /api/lessons/video/ticket/:lessonId - Lấy Video Ticket thời hạn ngắn 60s (Chống tải lậu)
@@ -8,6 +9,11 @@ router.get('/video/ticket/:lessonId', authenticate, lessonsController.getVideoTi
 
 // GET /api/lessons/video/stream/:lessonId - Stream video bảo mật
 router.get('/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
+
+// Phụ đề thông minh & Kịch bản tương tác (Smart AI Subtitles & Interactive Transcript)
+router.get('/:lessonId/subtitles', subtitlesController.getSubtitles);
+router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), subtitlesController.generateSubtitles);
+router.put('/:lessonId/subtitles', authenticate, authorize([1, 2]), subtitlesController.updateSubtitles);
 
 // GET /api/lessons - Lấy danh sách bài giảng (query: ?courseId=X hoặc ?sectionId=Y)
 router.get('/', authenticate, lessonsController.getLessonsByQuery);

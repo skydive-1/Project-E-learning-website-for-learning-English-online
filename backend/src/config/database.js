@@ -179,6 +179,26 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng learning_ss:', migErr.message);
     }
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng lesson_subtitles tồn tại cho Smart AI Subtitles & Interactive Transcript
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lesson_subtitles (
+          subtitle_id SERIAL PRIMARY KEY,
+          lesson_id INT NOT NULL UNIQUE REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+          en_vtt TEXT,
+          vi_vtt TEXT,
+          bilingual_vtt TEXT,
+          cues JSONB NOT NULL DEFAULT '[]',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_subtitles_lesson_id ON lesson_subtitles(lesson_id);`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng lesson_subtitles tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_subtitles:', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {

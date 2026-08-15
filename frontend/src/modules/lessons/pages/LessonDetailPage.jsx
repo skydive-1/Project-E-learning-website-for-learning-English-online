@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   FiPlay, FiCheckSquare, FiSquare, FiFileText,
   FiArrowLeft, FiChevronDown, FiChevronUp, FiAward,
-  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic
+  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic, FiGlobe
 } from 'react-icons/fi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
@@ -13,7 +13,10 @@ import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
+import CaptionOverlay from '../components/CaptionOverlay';
+import InteractiveTranscript from '../components/InteractiveTranscript';
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
+import { subtitlesService } from '../services/subtitles.service';
 import shaka from 'shaka-player';
 import {
   getCourseDetails,
@@ -53,8 +56,55 @@ const LessonDetailPage = () => {
   // Video & Screen Recording Protection States
   const [videoLoading, setVideoLoading] = useState(false);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
-  const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
-  const [isFullscreenMode, setIsFullscreenMode] = useState(false);
+  // Smart AI Subtitles & Interactive Bilingual Transcript States
+  const [subtitleData, setSubtitleData] = useState(null);
+  const [captionMode, setCaptionMode] = useState('bilingual'); // 'off' | 'en' | 'vi' | 'bilingual'
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
+  const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
+
+  // Tự động tải phụ đề khi đổi bài học
+  useEffect(() => {
+    if (!currentLesson?.id) return;
+    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
+    subtitlesService.getSubtitles(rawLessonId).then(data => {
+      if (data) {
+        setSubtitleData(data);
+      } else {
+        setSubtitleData(null);
+      }
+    }).catch(() => {
+      setSubtitleData(null);
+    });
+  }, [currentLesson?.id]);
+
+  // Tua video đến thời gian mong muốn từ Interactive Transcript
+  const handleSeekVideo = (seconds) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = seconds;
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+        setIsVideoPlaying(true);
+      }
+    }
+  };
+
+  // Kích hoạt Gemini 2.5 Flash tạo lại phụ đề
+  const handleGenerateSubtitles = async () => {
+    if (!currentLesson?.id || isGeneratingSubtitles) return;
+    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
+    setIsGeneratingSubtitles(true);
+    try {
+      const data = await subtitlesService.generateSubtitles(rawLessonId);
+      if (data) {
+        setSubtitleData(data);
+      }
+    } catch (err) {
+      console.error("Lỗi sinh phụ đề AI Gemini:", err);
+    } finally {
+      setIsGeneratingSubtitles(false);
+    }
+  };
 
   // Lắng nghe sự thay đổi Fullscreen để giữ dấu bản quyền hiển thị đè lên Video ngay cả trong Chế độ Toàn Màn Hình
   useEffect(() => {
@@ -117,6 +167,20 @@ const LessonDetailPage = () => {
       try {
         videoRef.current.play();
       } catch (err) { }
+    }
+  };
+
+  // Click vào video để tạm dừng hoặc phát tiếp (Play / Pause toggle)
+  const toggleVideoPlayPause = (e) => {
+    if (!videoRef.current) return;
+    if (isScreenRecordingDetectedRef.current) return;
+
+    if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+      setIsVideoPlaying(true);
+    } else {
+      videoRef.current.pause();
+      setIsVideoPlaying(false);
     }
   };
 
@@ -847,7 +911,7 @@ const LessonDetailPage = () => {
                         className="w-full h-full relative"
                       >
                         {currentLesson?.type === 'pdf' ? (
-                          <div className="w-full h-full relative select-none" onContextMenu={(e) => e.preventDefault()}>
+                          <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
                             {/* PDF Security Watermark Badge */}
                             <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
                               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
@@ -863,20 +927,11 @@ const LessonDetailPage = () => {
                               </span>
                             </div>
 
-                            {/* PDF Glass Security Overlay (Giữ focus trên Window chính để bắt 100% phím tắt chụp màn hình) */}
-                            <div
-                              className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default"
-                              onContextMenu={(e) => e.preventDefault()}
-                              onMouseDown={(e) => {
-                                // Giữ focus trên window chính
-                                window.focus();
-                              }}
-                            />
-
+                            {/* PDF Embedded Document Viewer - Cho phép cuộn trang và tương tác đọc bài học */}
                             <iframe
                               key={currentLesson?.id || 'pdf'}
-                              src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                              className="w-full h-full border-none bg-white select-none pointer-events-none"
+                              src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0`}
+                              className="w-full h-full border-none bg-white pointer-events-auto"
                               title={currentLesson.title}
                               onContextMenu={(e) => e.preventDefault()}
                             />
@@ -884,11 +939,81 @@ const LessonDetailPage = () => {
                         ) : currentLesson?.videoUrl ? (
                           <>
                             {videoLoading && (
-                              <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4">
+                              <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4 pointer-events-none">
                                 <div className="w-10 h-10 border-4 border-slate-700 border-t-teal-400 rounded-full animate-spin"></div>
                                 <span className="text-xs font-semibold text-teal-300 tracking-wider">Đang tải video...</span>
                               </div>
                             )}
+
+                            {/* Floating Smart Subtitle [CC] Pill on Video Player */}
+                            <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 pointer-events-auto">
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsCaptionMenuOpen(!isCaptionMenuOpen);
+                                  }}
+                                  title="Tùy chọn Phụ đề Song ngữ (Captions)"
+                                  className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border transition-all cursor-pointer shadow-lg ${
+                                    captionMode !== 'off'
+                                      ? 'bg-teal-500/80 hover:bg-teal-500 text-white border-teal-400/40 shadow-teal-500/20'
+                                      : 'bg-black/60 hover:bg-black/80 text-slate-300 border-white/10'
+                                  }`}
+                                >
+                                  <FiGlobe className="text-xs" />
+                                  <span>CC {captionMode === 'bilingual' ? 'Song ngữ' : captionMode === 'en' ? 'EN' : captionMode === 'vi' ? 'VI' : 'Tắt'}</span>
+                                </button>
+
+                                {isCaptionMenuOpen && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-0 mt-1.5 w-48 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 animate-fade-in"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => { setCaptionMode('bilingual'); setIsCaptionMenuOpen(false); }}
+                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                        captionMode === 'bilingual' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      <span>✨ Song ngữ (EN - VI)</span>
+                                      {captionMode === 'bilingual' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setCaptionMode('en'); setIsCaptionMenuOpen(false); }}
+                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                        captionMode === 'en' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      <span>🇬🇧 Tiếng Anh (English)</span>
+                                      {captionMode === 'en' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setCaptionMode('vi'); setIsCaptionMenuOpen(false); }}
+                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                        captionMode === 'vi' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      <span>🇻🇳 Tiếng Việt</span>
+                                      {captionMode === 'vi' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setCaptionMode('off'); setIsCaptionMenuOpen(false); }}
+                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                        captionMode === 'off' ? 'bg-rose-500/20 text-rose-300 font-bold' : 'text-slate-400 hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      <span>🚫 Tắt phụ đề</span>
+                                      {captionMode === 'off' && <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
 
                             <video
                               ref={videoRef}
@@ -899,6 +1024,8 @@ const LessonDetailPage = () => {
                               controlsList="nodownload noremoteplayback nofullscreen"
                               disablePictureInPicture
                               disableRemotePlayback
+                              onClick={toggleVideoPlayPause}
+                              onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
                               onContextMenu={(e) => e.preventDefault()}
                               onDragStart={(e) => e.preventDefault()}
                               onPlay={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
@@ -910,8 +1037,15 @@ const LessonDetailPage = () => {
                               onCanPlay={() => setVideoLoading(false)}
                               onWaiting={() => setVideoLoading(true)}
                               onError={() => { setVideoLoading(false); setIsVideoPlaying(false); }}
-                              className="w-full h-full object-contain pointer-events-auto"
+                              className="w-full h-full object-contain pointer-events-auto cursor-pointer"
                               data-no-download="true"
+                            />
+
+                            {/* Smart AI Bilingual Caption Overlay */}
+                            <CaptionOverlay
+                              cues={subtitleData?.cues || []}
+                              currentTime={videoCurrentTime}
+                              mode={captionMode}
                             />
                           </>
                         ) : (
@@ -1050,10 +1184,24 @@ const LessonDetailPage = () => {
                       color: activeRightTab === "playlist" ? "#3b82f6" : "var(--text-light)",
                       backgroundColor: activeRightTab === "playlist" ? "var(--card-bg)" : "var(--bg-color)",
                     }}
-                    className="flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 border-b-2 transition-all font-extrabold"
+                    className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
                   >
-                    <FiBookOpen className="text-[13px]" />
-                    <span>Danh sách bài học</span>
+                    <FiBookOpen className="text-[12px]" />
+                    <span>Bài học</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("transcript")}
+                    style={{
+                      borderBottomColor: activeRightTab === "transcript" ? "#14b8a6" : "transparent",
+                      color: activeRightTab === "transcript" ? "#14b8a6" : "var(--text-light)",
+                      backgroundColor: activeRightTab === "transcript" ? "var(--card-bg)" : "var(--bg-color)",
+                    }}
+                    className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
+                  >
+                    <FiGlobe className="text-[12px]" />
+                    <span>Phụ đề AI</span>
                   </button>
 
                   <button
@@ -1064,10 +1212,10 @@ const LessonDetailPage = () => {
                       color: activeRightTab === "ai" ? "#3b82f6" : "var(--text-light)",
                       backgroundColor: activeRightTab === "ai" ? "var(--card-bg)" : "var(--bg-color)",
                     }}
-                    className="flex-1 py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 border-b-2 transition-all font-extrabold"
+                    className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
                   >
-                    <FiCpu className="text-[13px]" />
-                    <span>AI Assistant</span>
+                    <FiCpu className="text-[12px]" />
+                    <span>AI Chat</span>
                   </button>
                 </div>
 
@@ -1144,6 +1292,20 @@ const LessonDetailPage = () => {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {/* Smart AI Interactive Transcript View */}
+                  {activeRightTab === "transcript" && (
+                    <div className="h-full p-2">
+                      <InteractiveTranscript
+                        cues={subtitleData?.cues || []}
+                        currentTime={videoCurrentTime}
+                        onSeek={handleSeekVideo}
+                        onGenerateSubtitles={handleGenerateSubtitles}
+                        isGenerating={isGeneratingSubtitles}
+                        lessonTitle={currentLesson?.title || ''}
+                      />
                     </div>
                   )}
 

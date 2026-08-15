@@ -204,3 +204,16 @@ CREATE TABLE IF NOT EXISTS learning_ss (
   end_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_learning_ss_user_id ON learning_ss(user_id);
+
+-- 17. Tạo bảng Phụ đề Thông minh & Kịch bản Song ngữ (lesson_subtitles)
+CREATE TABLE IF NOT EXISTS lesson_subtitles (
+  subtitle_id SERIAL PRIMARY KEY,
+  lesson_id INT NOT NULL UNIQUE REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+  en_vtt TEXT,
+  vi_vtt TEXT,
+  bilingual_vtt TEXT,
+  cues JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_lesson_subtitles_lesson_id ON lesson_subtitles(lesson_id);
