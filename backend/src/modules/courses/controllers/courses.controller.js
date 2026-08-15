@@ -7,12 +7,13 @@ const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 
 exports.getAllCourses = async (req, res, next) => {
   try {
-    // Nếu người dùng là admin (1) hoặc instructor (2), trả về tất cả khóa học (cả draft).
-    // Người dùng thường / không có token → chỉ lấy published.
+    // Chỉ trả về tất cả khóa học (bao gồm cả draft) khi có tham số includeDrafts=true hoặc all=true VÀ người dùng là Admin hoặc Instructor.
+    // Đối với trang danh mục khóa học chung (/courses) hoặc học viên -> luôn chỉ lấy published.
     const userRole = req.user?.roleId || req.user?.role || null;
     const isAdminOrInstructor = userRole === 1 || userRole === 2 ||
                                  userRole === '1' || userRole === '2';
-    const filterPublished = !isAdminOrInstructor;
+    const includeDrafts = (req.query.includeDrafts === 'true' || req.query.all === 'true');
+    const filterPublished = !(isAdminOrInstructor && includeDrafts);
 
     const courses = await coursesService.getAllCourses(filterPublished);
     res.status(200).json({

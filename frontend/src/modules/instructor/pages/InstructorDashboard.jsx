@@ -66,7 +66,7 @@ const InstructorDashboard = () => {
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/courses`);
+        const response = await apiClient.get('/courses?includeDrafts=true');
         if (response.data && response.data.courses) {
           setCourses(response.data.courses);
         }
@@ -86,12 +86,7 @@ const InstructorDashboard = () => {
     }
     
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/courses/${courseId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      await apiClient.delete(`/courses/${courseId}`);
       setCourses(prev => prev.filter(c => c.course_id !== courseId));
       alert('Xóa khóa học thành công!');
     } catch (err) {
@@ -139,7 +134,7 @@ const InstructorDashboard = () => {
       if (myOwned.length === 0) return;
       setLoadingAllLessons(true);
       try {
-        const promises = myOwned.map(c => axios.get(`${API_BASE_URL}/courses/${c.course_id}`));
+        const promises = myOwned.map(c => apiClient.get(`/courses/${c.course_id}`));
         const responses = await Promise.all(promises);
         const lessonsList = [];
         responses.forEach((response) => {
@@ -328,7 +323,7 @@ const InstructorDashboard = () => {
     const fetchCourseDetails = async () => {
       setLoadingLessons(true);
       try {
-        const response = await axios.get(`${API_BASE_URL}/courses/${selectedQuizCourseId}`);
+        const response = await apiClient.get(`/courses/${selectedQuizCourseId}`);
         if (response.data && response.data.course && response.data.course.sections) {
           const lessonsList = response.data.course.sections.flatMap(sec => 
             sec.lessons.map(l => ({
@@ -429,10 +424,7 @@ const InstructorDashboard = () => {
       const fetchStudents = async () => {
         setStudentsLoading(true);
         try {
-          const token = localStorage.getItem('token');
-          const response = await axios.get(`${API_BASE_URL}/instructor/students`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const response = await apiClient.get('/instructor/students');
           if (response.data && response.data.data) {
             setStudents(response.data.data);
           }
@@ -483,10 +475,7 @@ const InstructorDashboard = () => {
       const fetchPerformance = async () => {
         setPerformanceLoading(true);
         try {
-          const token = localStorage.getItem('token');
-          const response = await axios.get(`${API_BASE_URL}/instructor/performance`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const response = await apiClient.get('/instructor/performance');
           if (response.data && response.data.data) {
             setPerformanceData(response.data.data);
           }

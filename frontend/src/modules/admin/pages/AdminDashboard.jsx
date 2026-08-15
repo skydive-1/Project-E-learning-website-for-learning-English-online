@@ -148,7 +148,7 @@ const AdminDashboard = () => {
 
   const fetchCourses = async () => {
     try {
-      const response = await apiClient.get('/courses');
+      const response = await apiClient.get('/courses?includeDrafts=true');
       if (response.data && response.data.courses) {
         setCourses(response.data.courses || []);
       }

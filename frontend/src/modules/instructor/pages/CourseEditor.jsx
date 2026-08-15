@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import apiClient from '../../../config/api.config';
 import { 
   FiArrowLeft, FiSave, FiUpload, FiTrash2, 
   FiPlus, FiMove, FiVideo, FiFileText, FiAlertCircle, FiLoader
@@ -23,8 +23,6 @@ const getRoleFromToken = () => {
     return null;
   }
 };
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const getTodayCivilDate = () => {
   const d = new Date();
@@ -60,10 +58,7 @@ const CourseEditor = () => {
       const fetchCourse = async () => {
         try {
           setLoading(true);
-          const token = localStorage.getItem('token');
-          const response = await axios.get(`${API_BASE_URL}/courses/${courseId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const response = await apiClient.get(`/courses/${courseId}`);
           if (response.data && response.data.success) {
             const course = response.data.course;
             setCourseName(course.course_name);
@@ -127,7 +122,7 @@ const CourseEditor = () => {
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/courses/subjects`);
+        const response = await apiClient.get('/courses/subjects');
         if (response.data && response.data.subjects) {
           setSubjects(response.data.subjects);
           if (response.data.subjects.length > 0) {
@@ -222,15 +217,13 @@ const CourseEditor = () => {
     handleLessonChange(sIdx, lIdx, 'uploading', true);
     setErrorMsg('');
 
-    const token = localStorage.getItem('token');
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/courses/upload`, formData, {
+      const response = await apiClient.post('/courses/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'multipart/form-data'
         }
       });
 
@@ -305,7 +298,6 @@ const CourseEditor = () => {
     setErrorMsg('');
     setSuccessMsg('');
 
-    const token = localStorage.getItem('token');
     const payload = {
       courseName,
       subjectId: parseInt(subjectId),
@@ -330,16 +322,8 @@ const CourseEditor = () => {
 
     try {
       const response = isEditMode
-        ? await axios.put(`${API_BASE_URL}/courses/${courseId}`, payload, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          })
-        : await axios.post(`${API_BASE_URL}/courses`, payload, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
+        ? await apiClient.put(`/courses/${courseId}`, payload)
+        : await apiClient.post('/courses', payload);
 
       if (response.data && response.data.success) {
         setSuccessMsg(isEditMode ? 'Cập nhật khóa học thành công!' : 'Tạo khóa học thành công!');
