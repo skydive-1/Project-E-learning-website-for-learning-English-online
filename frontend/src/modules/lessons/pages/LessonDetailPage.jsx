@@ -101,21 +101,26 @@ const LessonDetailPage = () => {
     }
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool)
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool / Game Bar)
   useEffect(() => {
     let isAltPressed = false;
-    const WINDOW_FOCUS_THRESHOLD = 2000; // 2 giây thời gian chờ trước khi pause âm thầm
-    const DEBOUNCE_DELAY = 1500; // 1.5 giây chặn spam cảnh báo
+    let isMetaPressed = false;
+    const WINDOW_FOCUS_THRESHOLD = 1500; // 1.5 giây thời gian chờ trước khi pause âm thầm
+    const DEBOUNCE_DELAY = 1200; // 1.2 giây chặn spam cảnh báo
 
     // Bắt các phím tắt quay/chụp màn hình ở cả pha keydown & keyup với capture phase cao nhất
     const handleScreenCaptureKeys = (e) => {
-      // Cập nhật trạng thái phím Alt
+      // Cập nhật trạng thái phím Alt & Meta (Windows key / Command key)
       if (e.key === 'Alt') {
         isAltPressed = e.type === 'keydown';
-        return; // Cho phép bấm phím Alt đơn lẻ mượt mà
+        return;
+      }
+      if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) {
+        isMetaPressed = e.type === 'keydown';
+        return;
       }
 
-      // Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10)
+      // 1. Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10)
       const isAltActive = e.altKey || isAltPressed;
       const isNvidiaInstantReplay = isAltActive && (
         e.key === 'z' || e.key === 'Z' || e.keyCode === 90 ||
@@ -123,14 +128,26 @@ const LessonDetailPage = () => {
         e.key === 'F10' || e.keyCode === 121
       );
 
-      // Phát hiện PrintScreen & Snipping Tool (Win/Ctrl + Shift + S) & In / Lưu trang (Ctrl+P / Ctrl+S)
-      const isPrtScn = e.key === 'PrintScreen' || e.keyCode === 44;
-      const isSnippingTool = (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+      // 2. Phát hiện Xbox Game Bar & Windows Screen Recording (Win + G, Win + Alt + R)
+      const isMetaActive = e.metaKey || isMetaPressed;
+      const isXboxGameBar = (isMetaActive && (e.key === 'g' || e.key === 'G' || e.keyCode === 71)) ||
+                            (isMetaActive && isAltActive && (e.key === 'r' || e.key === 'R' || e.keyCode === 82));
+
+      // 3. Phát hiện PrintScreen (PrtScn / Snapshot key)
+      const isPrtScn = e.key === 'PrintScreen' || e.key === 'Snapshot' || e.keyCode === 44;
+
+      // 4. Phát hiện Snipping Tool & macOS Screen Capture (Win/Cmd/Ctrl + Shift + S, Cmd + Shift + 3/4/5)
+      const isSnippingTool = (e.metaKey || e.ctrlKey || isMetaActive) && e.shiftKey && (
+        e.key === 's' || e.key === 'S' || e.keyCode === 83 ||
+        e.key === '3' || e.key === '4' || e.key === '5'
+      );
+
+      // 5. Phát hiện In / Lưu trang (Ctrl+P / Ctrl+S)
       const isPrintPage = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80);
       const isSavePage = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
 
       const now = Date.now();
-      const isCaptureAttempt = isNvidiaInstantReplay || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
+      const isCaptureAttempt = isNvidiaInstantReplay || isXboxGameBar || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
 
       if (isCaptureAttempt) {
         // Áp dụng Debounce ngăn chặn spam kích hoạt nhiều lần liên tiếp
@@ -143,8 +160,10 @@ const LessonDetailPage = () => {
 
         if (isNvidiaInstantReplay) {
           triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z). Khung hình video chuyển màu đen (#000000).');
+        } else if (isXboxGameBar) {
+          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt Xbox Game Bar / Windows Recording (Win+G). Màn hình video chuyển màu đen (#000000).');
         } else {
-          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P). Màn hình video chuyển màu đen.');
+          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P). Màn hình video chuyển màu đen (#000000).');
         }
 
         e.preventDefault();
@@ -153,21 +172,17 @@ const LessonDetailPage = () => {
       }
     };
 
-    // Khi người dùng chuyển cửa sổ làm việc khác (blur), chúng ta không cảnh báo ngay lập tức để tránh gây phiền hà
-    // khi họ switch tab hoặc bấm nút Windows. Thay vào đó, áp dụng Window Focus Threshold:
-    // Chờ 2000ms, nếu không quay lại focus thì pause video âm thầm.
+    // Khi người dùng chuyển cửa sổ làm việc khác (blur) hoặc đổi tab
     const handleWindowBlur = () => {
       if (blurTimeoutRef.current) {
         clearTimeout(blurTimeoutRef.current);
       }
 
-      // Ghi nhận trạng thái phát của video trước khi mất focus
       if (videoRef.current && !videoRef.current.paused) {
         wasPlayingRef.current = true;
       }
 
       blurTimeoutRef.current = setTimeout(() => {
-        // Chỉ pause video âm thầm nếu người dùng thực sự không focus lại trang và video vẫn đang phát
         if (videoRef.current && !videoRef.current.paused) {
           try {
             videoRef.current.pause();
@@ -176,18 +191,16 @@ const LessonDetailPage = () => {
       }, WINDOW_FOCUS_THRESHOLD);
     };
 
-    // Khi người dùng quay trở lại cửa sổ (focus):
+    // Khi người dùng quay trở lại cửa sổ (focus)
     const handleWindowFocus = () => {
       if (blurTimeoutRef.current) {
         clearTimeout(blurTimeoutRef.current);
         blurTimeoutRef.current = null;
       }
 
-      // Nếu đang có màn hình đen DRM do thực sự bấm PrintScreen / Alt+Z, khôi phục lại
       if (isScreenRecordingDetectedRef.current) {
         restoreDrmVideo();
       } else {
-        // Nếu không phải màn hình đen DRM, mà video chỉ bị pause tạm thời do mất focus quá threshold, tự động phát tiếp
         if (wasPlayingRef.current && videoRef.current && videoRef.current.paused) {
           try {
             videoRef.current.play();
@@ -197,10 +210,23 @@ const LessonDetailPage = () => {
       wasPlayingRef.current = false;
     };
 
+    // Khi tab trình duyệt bị ẩn (visibilitychange)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (videoRef.current && !videoRef.current.paused) {
+          wasPlayingRef.current = true;
+          try {
+            videoRef.current.pause();
+          } catch (err) { }
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
     window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       if (blurTimeoutRef.current) {
@@ -210,6 +236,7 @@ const LessonDetailPage = () => {
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
       window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 

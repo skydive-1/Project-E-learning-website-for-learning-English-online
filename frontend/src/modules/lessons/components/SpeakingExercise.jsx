@@ -85,11 +85,20 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0)
-      .map((line, idx) => ({
-        id: `custom-s-${idx}`,
-        text: line,
-        translation: "Câu phát âm do giảng viên biên soạn"
-      }));
+      .map((line, idx) => {
+        let text = line;
+        let translation = "Câu phát âm do giảng viên biên soạn";
+        if (line.includes('|')) {
+          const parts = line.split('|');
+          text = parts[0].trim();
+          translation = parts.slice(1).join('|').trim() || translation;
+        }
+        return {
+          id: `custom-s-${idx}`,
+          text,
+          translation
+        };
+      });
   } else {
     sentences = SPEAKING_LESSON_DATA[cleanLessonId] || DEFAULT_SPEAKING_DATA;
   }
@@ -101,11 +110,20 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0)
-      .map((line, idx) => ({
-        id: `custom-q-${idx}`,
-        text: line,
-        translation: "Câu hỏi Q&A do giảng viên biên soạn"
-      }));
+      .map((line, idx) => {
+        let text = line;
+        let translation = "Câu hỏi Q&A do giảng viên biên soạn";
+        if (line.includes('|')) {
+          const parts = line.split('|');
+          text = parts[0].trim();
+          translation = parts.slice(1).join('|').trim() || translation;
+        }
+        return {
+          id: `custom-q-${idx}`,
+          text,
+          translation
+        };
+      });
   } else {
     qaQuestions = QA_LESSON_DATA[cleanLessonId] || DEFAULT_QA_DATA;
   }
@@ -155,22 +173,29 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
 
   const handleStopRecord = async (sentenceId, text, e) => {
     e.stopPropagation();
+    const currentDuration = recordingTime;
     const audioBlob = await stopRecording();
     setActiveIdx(null);
     if (!audioBlob) return;
+
+    // Kiểm tra thời lượng thu âm tối thiểu và kích thước audio
+    if (currentDuration < 1 || audioBlob.size < 1500) {
+      alert("Thời gian ghi âm quá ngắn (dưới 1 giây). Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.");
+      return;
+    }
 
     setLoadingStates(prev => ({ ...prev, [sentenceId]: true }));
     setActiveWordFeedback(prev => ({ ...prev, [sentenceId]: null }));
 
     try {
       const evaluation = await askChatbotAudio(audioBlob, lessonId, text, false);
-      if (evaluation.success) {
+      if (evaluation) {
         setResults(prev => ({
           ...prev,
           [sentenceId]: {
-            score: evaluation.score,
-            words: evaluation.words,
-            reply: evaluation.reply
+            score: evaluation.score !== undefined ? Number(evaluation.score) : 0,
+            words: evaluation.words || [],
+            reply: evaluation.reply || evaluation.detailed_feedback || "Đã đánh giá phát âm."
           }
         }));
       }
@@ -195,24 +220,31 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
 
   const handleStopQARecord = async (questionId, e) => {
     e.stopPropagation();
+    const currentDuration = recordingTime;
     const audioBlob = await stopRecording();
     setActiveQAIdx(null);
     if (!audioBlob) return;
+
+    // Kiểm tra thời lượng thu âm tối thiểu và kích thước audio
+    if (currentDuration < 1 || audioBlob.size < 1500) {
+      alert("Thời gian ghi âm quá ngắn (dưới 1 giây). Vui lòng phát âm đầy đủ câu trả lời rồi nhấn Dừng & Nộp.");
+      return;
+    }
 
     setQaLoadingStates(prev => ({ ...prev, [questionId]: true }));
 
     try {
       const evaluation = await askChatbotAudio(audioBlob, lessonId, null, true);
-      if (evaluation.success) {
+      if (evaluation) {
         setQaResults(prev => ({
           ...prev,
           [questionId]: {
-            score: evaluation.score !== undefined ? Number(evaluation.score) : 85,
-            transcription: evaluation.transcription,
+            score: evaluation.score !== undefined ? Number(evaluation.score) : 0,
+            transcription: evaluation.transcription || "Không nhận diện được giọng nói",
             grammarFeedback: evaluation.grammarFeedback,
             pronunciationFeedback: evaluation.pronunciationFeedback,
             suggestion: evaluation.suggestion,
-            reply: evaluation.reply
+            reply: evaluation.reply || evaluation.detailed_feedback
           }
         }));
       }
@@ -311,9 +343,21 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   </div>
 
                   {result && !isLoading && (
-                    <div className="flex items-center space-x-2 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 rounded-xl border border-emerald-200/50">
-                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Độ chính xác:</span>
-                      <span className={`text-sm font-extrabold ${result.score >= 85 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}`}>
+                    <div className={`flex items-center space-x-2 px-3 py-1 rounded-xl border ${
+                      result.score === 0 
+                        ? 'bg-red-50 dark:bg-red-950/40 border-red-200/50' 
+                        : result.score >= 80 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200/50' 
+                          : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200/50'
+                    }`}>
+                      <span className={`text-xs font-bold ${
+                        result.score === 0 ? 'text-red-600 dark:text-red-400' : result.score >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                      }`}>
+                        {result.score === 0 ? "Chưa đạt:" : "Độ chính xác:"}
+                      </span>
+                      <span className={`text-sm font-extrabold ${
+                        result.score === 0 ? 'text-red-600 dark:text-red-400' : result.score >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'
+                      }`}>
                         {result.score}%
                       </span>
                     </div>
@@ -330,7 +374,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                           onClick={() => {
                             setActiveWordFeedback(prev => ({
                               ...prev,
-                              [item.id]: wordObj.correct ? "Từ phát âm chính xác!" : wordObj.feedback
+                              [item.id]: wordObj.correct ? "Từ phát âm chính xác!" : (wordObj.feedback || "Phát âm chưa chính xác hoặc chưa rõ âm.")
                             }));
                           }}
                           style={{
@@ -369,10 +413,24 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
 
                 {/* General feedback paragraph */}
                 {result && !isLoading && (
-                  <div className="mt-4 p-4 rounded-xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100/50 flex items-start space-x-3 text-xs animate-fade">
-                    <FiCheckCircle className="text-emerald-500 text-base mt-0.5 shrink-0" />
+                  <div className={`mt-4 p-4 rounded-xl border flex items-start space-x-3 text-xs animate-fade ${
+                    result.score === 0 
+                      ? 'bg-red-50/50 dark:bg-red-950/20 border-red-200/60' 
+                      : result.score >= 80 
+                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-100/50' 
+                        : 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-100/50'
+                  }`}>
+                    {result.score === 0 ? (
+                      <FiAlertCircle className="text-red-500 text-base mt-0.5 shrink-0" />
+                    ) : (
+                      <FiCheckCircle className="text-emerald-500 text-base mt-0.5 shrink-0" />
+                    )}
                     <div className="space-y-1">
-                      <p className="font-bold text-emerald-800 dark:text-emerald-300">Nhận xét chi tiết từ Trợ lý ảo:</p>
+                      <p className={`font-bold ${
+                        result.score === 0 ? 'text-red-800 dark:text-red-300' : result.score >= 80 ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'
+                      }`}>
+                        {result.score === 0 ? "Thông báo từ Trợ lý ảo:" : "Nhận xét chi tiết từ Trợ lý ảo:"}
+                      </p>
                       <p className="text-slate-600 dark:text-slate-300 leading-relaxed font-medium whitespace-pre-wrap">
                         {result.reply}
                       </p>

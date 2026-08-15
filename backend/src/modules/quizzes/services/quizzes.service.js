@@ -274,28 +274,56 @@ Ensure the response contains ONLY valid JSON without markdown formatting or back
 
   async evaluateAudio(filePathOrBuffer, mimetype, expectedSentence) {
     try {
-      let audioBase64;
+      let audioBuffer;
       if (Buffer.isBuffer(filePathOrBuffer)) {
-        audioBase64 = filePathOrBuffer.toString("base64");
+        audioBuffer = filePathOrBuffer;
       } else if (typeof filePathOrBuffer === 'string') {
         const fs = require('fs');
-        const audioData = fs.readFileSync(filePathOrBuffer);
-        audioBase64 = audioData.toString("base64");
+        audioBuffer = fs.readFileSync(filePathOrBuffer);
       } else {
         throw new Error("Dữ liệu âm thanh không hợp lệ.");
       }
+
+      // Tiền kiểm tra: Nếu buffer < 1500 bytes (file rỗng hoặc không có giọng nói) -> trả về 0 điểm ngay
+      if (!audioBuffer || audioBuffer.length < 1500) {
+        return {
+          score: 0,
+          pronunciation_accuracy: "0%",
+          detailed_feedback: "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng kiểm tra micro, nói to và rõ ràng hơn.",
+          improved_sentence: expectedSentence || '',
+          feedback: "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng kiểm tra micro, nói to và rõ ràng hơn.",
+          suggestedText: expectedSentence || '',
+          errors: ["Chưa phát hiện giọng nói qua micro."]
+        };
+      }
       
-      const prompt = `You are a professional English language and pronunciation tutor.
-Analyze the user's spoken audio. Compare their pronunciation against the expected sentence: "${expectedSentence || ''}".
-Evaluate the user's pronunciation, grammar, and fluency.
+      const audioBase64 = audioBuffer.toString("base64");
+
+      const prompt = `You are a professional, strict English language and pronunciation tutor.
+Listen to the user's spoken audio waveform carefully.
+Compare what they ACTUALLY said against the expected sentence: "${expectedSentence || ''}".
+
+CRITICAL ANTI-CHEAT & SILENCE DETECTION RULES:
+1. If the audio is silent, contains NO human speech, contains only background noise/hiss, breathing, or empty silence:
+   - "score": 0
+   - "pronunciation_accuracy": "0%"
+   - "detailed_feedback": "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và phát âm rõ ràng hơn."
+   - "improved_sentence": "${expectedSentence || ''}"
+   DO NOT hallucinate words or award any points for silence!
+
+2. If the user spoke:
+   - "score": (number from 1 to 100 based on their actual pronunciation, rhythm, and intonation)
+   - "pronunciation_accuracy": (string percentage, e.g. "85%")
+   - "detailed_feedback": (constructive feedback in friendly Vietnamese pointing out accuracy and errors)
+   - "improved_sentence": (the correct native English pronunciation or sentence)
 
 Format the response as a JSON object containing EXACTLY these keys:
-1. "score": (number) An overall score from 0 to 100 based on their pronunciation, rhythm, and intonation. If the audio is silent or contains no speech, score should be 0.
-2. "pronunciation_accuracy": (string) An accuracy percentage of their pronunciation (e.g., "85%"). If silent, it should be "0%".
-3. "detailed_feedback": (string) Constructive, encouraging feedback in friendly Vietnamese pointing out any errors or areas of improvement.
-4. "improved_sentence": (string) A corrected, natural, native-like English alternative or transcription of what they said.
+- "score": (number from 0 to 100)
+- "pronunciation_accuracy": (string percentage)
+- "detailed_feedback": (string in Vietnamese)
+- "improved_sentence": (string)
 
-Ensure the response contains ONLY the valid JSON object, without any markdown formatting or backticks.`;
+Ensure the response contains ONLY valid JSON without markdown formatting.`;
 
       const result = await geminiModel.generateContent({
         contents: [
@@ -325,30 +353,37 @@ Ensure the response contains ONLY the valid JSON object, without any markdown fo
 
       const parsed = JSON.parse(responseText);
 
-      // Map to frontend compatibility keys
+      const isNoSpeech = !parsed.detailed_feedback || 
+        parsed.detailed_feedback.toLowerCase().includes("không nhận diện") ||
+        parsed.detailed_feedback.toLowerCase().includes("no discernible speech") ||
+        Number(parsed.score) === 0;
+
+      const finalScore = isNoSpeech ? 0 : Math.max(0, Math.min(100, parsed.score !== undefined ? Number(parsed.score) : 0));
+
       return {
-        // Required keys
-        score: parsed.score !== undefined ? Number(parsed.score) : 0,
-        pronunciation_accuracy: parsed.pronunciation_accuracy || "0%",
-        detailed_feedback: parsed.detailed_feedback || "",
-        improved_sentence: parsed.improved_sentence || "",
+        score: finalScore,
+        pronunciation_accuracy: `${finalScore}%`,
+        detailed_feedback: (isNoSpeech || finalScore === 0)
+          ? "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và rõ ràng hơn."
+          : (parsed.detailed_feedback || "Bạn đã hoàn thành phần phát âm!"),
+        improved_sentence: parsed.improved_sentence || expectedSentence || "",
         
-        // Mapped keys for frontend compatibility
-        feedback: parsed.detailed_feedback || "",
-        suggestedText: parsed.improved_sentence || "",
-        errors: parsed.score < 70 ? [parsed.detailed_feedback] : []
+        feedback: (isNoSpeech || finalScore === 0)
+          ? "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và rõ ràng hơn."
+          : (parsed.detailed_feedback || "Bạn đã hoàn thành phần phát âm!"),
+        suggestedText: parsed.improved_sentence || expectedSentence || "",
+        errors: finalScore < 70 ? [(isNoSpeech ? "Chưa phát hiện giọng nói qua micro." : (parsed.detailed_feedback || "Cần phát âm rõ ràng hơn."))] : []
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.evaluateAudio:", error);
       return {
         score: 0,
         pronunciation_accuracy: "0%",
-        detailed_feedback: "Chưa ghi nhận được âm thanh giọng nói từ Micro. Vui lòng bấm Micro và nói lại!",
+        detailed_feedback: "Chưa ghi nhận được âm thanh giọng nói từ micro. Vui lòng bấm micro và nói lại!",
         improved_sentence: expectedSentence || '',
-        
-        feedback: "Chưa ghi nhận được âm thanh giọng nói từ Micro. Vui lòng bấm Micro và nói lại!",
+        feedback: "Chưa ghi nhận được âm thanh giọng nói từ micro. Vui lòng bấm micro và nói lại!",
         suggestedText: expectedSentence || '',
-        errors: ["Chưa phát hiện giọng nói qua Micro."]
+        errors: ["Chưa phát hiện giọng nói qua micro."]
       };
     }
   }

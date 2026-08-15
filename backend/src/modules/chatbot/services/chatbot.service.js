@@ -358,35 +358,78 @@ class ChatbotService {
 
   async evaluateAudio(filePathOrBuffer, mimetype, targetText = null, isQA = false) {
     try {
-      let audioBase64;
+      let audioBuffer;
       if (Buffer.isBuffer(filePathOrBuffer)) {
-        audioBase64 = filePathOrBuffer.toString("base64");
+        audioBuffer = filePathOrBuffer;
       } else if (typeof filePathOrBuffer === 'string') {
         const fs = require('fs');
-        const audioData = fs.readFileSync(filePathOrBuffer);
-        audioBase64 = audioData.toString("base64");
+        audioBuffer = fs.readFileSync(filePathOrBuffer);
       } else {
         throw new Error("Dữ liệu âm thanh không hợp lệ.");
       }
 
-      const prompt = `You are a professional English language and pronunciation tutor evaluating a student's spoken audio response.
-Analyze the user's spoken audio carefully.
-${targetText ? `The user was trying to read the target sentence: "${targetText}". Compare their pronunciation against it.` : ''}
+      // Tiền kiểm tra kích thước file âm thanh: Nếu < 1500 bytes (tương đương file rỗng / không có dữ liệu sóng âm) -> chấm 0 ngay lập tức
+      if (!audioBuffer || audioBuffer.length < 1500) {
+        const emptyWords = targetText ? targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/).filter(Boolean).map(w => ({
+          word: w,
+          correct: false,
+          feedback: "Không nghe thấy âm thanh phát âm."
+        })) : [];
+
+        return {
+          success: true,
+          score: 0,
+          pronunciation_accuracy: "0%",
+          transcription: "Không nhận diện được giọng nói (Chưa phát âm)",
+          grammarFeedback: "Chưa ghi nhận được câu trả lời. Bạn hãy ghi âm phát âm rõ ràng hơn nhé.",
+          pronunciationFeedback: "Không phát hiện tín hiệu giọng nói từ micro. Vui lòng kiểm tra micro và phát âm to hơn.",
+          detailed_feedback: "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn.",
+          reply: "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn.",
+          improved_sentence: targetText || "Please speak clearly into your microphone.",
+          suggestion: targetText || "Please speak clearly into your microphone.",
+          words: emptyWords,
+          errors: ["Chưa phát hiện giọng nói qua micro."]
+        };
+      }
+
+      const audioBase64 = audioBuffer.toString("base64");
+
+      const prompt = `You are a professional, strict English pronunciation and speech evaluation AI.
+Listen to the user's spoken audio waveform carefully and transcribe what was actually said.
+
+${targetText ? `Target sentence to read aloud: "${targetText}". Compare their actual spoken pronunciation against this target sentence.` : ''}
 ${isQA ? `The user was responding to a conversational English practice prompt. Evaluate their response for grammar, vocabulary, pronunciation, and flow.` : ''}
 
-CRITICAL REQUIREMENT: You MUST provide TWO SEPARATE, DISTINCT feedback comments in friendly Vietnamese:
-1. "grammarFeedback": Focus EXCLUSIVELY on grammar correctness, verb tenses, word order, and vocabulary choice. (Do NOT mention pronunciation or sounds here!).
-2. "pronunciationFeedback": Focus EXCLUSIVELY on pronunciation of phonemes, word stress, intonation, speech rate, and clarity. (Do NOT mention grammar or sentence structure here!).
+CRITICAL ANTI-CHEAT & SILENCE DETECTION RULES:
+1. If the audio is silent, contains NO human speech, contains only background hiss, breathing, background noise, or is incomprehensible silence:
+   - "score": 0
+   - "pronunciation_accuracy": "0%"
+   - "transcription": ""
+   - "detailed_feedback": "Không nhận diện được giọng nói của bạn. Vui lòng ghé sát micro và phát âm to, rõ ràng hơn."
+   - "grammarFeedback": "Chưa ghi nhận được cấu trúc câu hay từ vựng trong đoạn ghi âm."
+   - "pronunciationFeedback": "Không phát hiện âm thanh giọng nói. Hãy kiểm tra micro và phát âm rõ ràng hơn."
+   ${targetText ? `- "words": (all words of the target sentence with "correct": false and "feedback": "Không nghe thấy từ này")` : ''}
+   DO NOT hallucinate words or award any points for silence!
+
+2. If the user DID speak:
+   - "score": (number from 1 to 100 based on actual accuracy and pronunciation quality)
+   - "pronunciation_accuracy": (string percentage, e.g. "85%")
+   - "transcription": (exact English words spoken by user)
+   - "grammarFeedback": (constructive feedback in friendly Vietnamese focusing EXCLUSIVELY on grammar, tense, word choice)
+   - "pronunciationFeedback": (constructive feedback in friendly Vietnamese focusing EXCLUSIVELY on pronunciation, phonemes, stress, intonation)
+   - "detailed_feedback": (encouraging feedback in friendly Vietnamese)
+   - "improved_sentence": (a refined native English sentence suggestion)
+   ${targetText ? `- "words": array of objects [{"word": "string", "correct": boolean, "feedback": "note if mispronounced or null if correct"}]` : ''}
 
 Format the response as a JSON object containing EXACTLY these keys:
-- "score": (number from 0 to 100 based on overall quality)
+- "score": (number from 0 to 100)
 - "pronunciation_accuracy": (string percentage, e.g. "85%")
-- "transcription": (string, exact English words spoken by user)
-- "grammarFeedback": (string in Vietnamese about grammar & vocabulary ONLY)
-- "pronunciationFeedback": (string in Vietnamese about pronunciation & stress ONLY)
-- "detailed_feedback": (string in Vietnamese summarizing overall feedback)
-- "improved_sentence": (string, a refined native English suggestion for answering the prompt)
-${targetText ? `- "words": (array of objects for word-by-word accuracy)` : ''}
+- "transcription": (string)
+- "grammarFeedback": (string in Vietnamese)
+- "pronunciationFeedback": (string in Vietnamese)
+- "detailed_feedback": (string in Vietnamese)
+- "improved_sentence": (string)
+${targetText ? `- "words": (array of objects)` : ''}
 
 Ensure the response contains ONLY valid JSON without markdown formatting.`;
 
@@ -399,7 +442,7 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
               {
                 inlineData: {
                   data: audioBase64,
-                  mimeType: mimetype || "audio/mp3"
+                  mimeType: mimetype || "audio/webm"
                 }
               }
             ]
@@ -418,27 +461,41 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
 
       const parsed = JSON.parse(responseText);
 
-      // Fallback for words array if targetText is present but words is missing
-      if (targetText && (!parsed.words || !Array.isArray(parsed.words))) {
-        parsed.words = targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/).filter(Boolean).map(w => ({
-          word: w,
-          correct: parsed.score >= 50,
-          feedback: parsed.score >= 50 ? null : "Cần phát âm rõ ràng hơn."
-        }));
-      }
-
       const isNoSpeech = !parsed.transcription || 
+        parsed.transcription.trim() === "" ||
         parsed.transcription.toLowerCase().includes("no discernible speech") || 
         parsed.transcription.toLowerCase().includes("no speech") || 
+        parsed.transcription.toLowerCase().includes("silence") ||
         Number(parsed.score) === 0;
 
-      let finalScore = isNoSpeech ? 0 : (parsed.score !== undefined ? Number(parsed.score) : 80);
+      let finalScore = isNoSpeech ? 0 : Math.max(0, Math.min(100, parsed.score !== undefined ? Number(parsed.score) : 0));
       let finalTranscription = isNoSpeech ? "Không nhận diện được giọng nói (Chưa phát âm)" : parsed.transcription;
+
+      // Xử lý danh sách từ chi tiết nếu có targetText
+      let evaluatedWords = [];
+      if (targetText) {
+        const cleanWords = targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/).filter(Boolean);
+        if (isNoSpeech || finalScore === 0) {
+          evaluatedWords = cleanWords.map(w => ({
+            word: w,
+            correct: false,
+            feedback: "Không nghe thấy từ này."
+          }));
+        } else if (parsed.words && Array.isArray(parsed.words) && parsed.words.length > 0) {
+          evaluatedWords = parsed.words;
+        } else {
+          evaluatedWords = cleanWords.map(w => ({
+            word: w,
+            correct: finalScore >= 60,
+            feedback: finalScore >= 60 ? null : "Cần phát âm rõ ràng hơn."
+          }));
+        }
+      }
 
       let finalGrammarFB = (parsed.grammarFeedback || "").trim();
       let finalPronunFB = (parsed.pronunciationFeedback || "").trim();
 
-      if (isNoSpeech) {
+      if (isNoSpeech || finalScore === 0) {
         finalGrammarFB = "Chưa ghi nhận được câu trả lời có cấu trúc ngữ pháp và từ vựng. Bạn hãy thu âm lại một câu trả lời hoàn chỉnh nhé.";
         finalPronunFB = "Tín hiệu âm thanh thu được chưa đủ rõ ràng. Bạn hãy kiểm tra lại micro, ghé sát thiết bị và phát âm to hơn nhé.";
       } else {
@@ -462,7 +519,7 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
 
       let finalSuggestion = parsed.improved_sentence;
       if (isNoSpeech || !finalSuggestion || finalSuggestion.toLowerCase().includes("no discernible speech")) {
-        finalSuggestion = "In my opinion, practicing English daily is the best way to improve fluency.";
+        finalSuggestion = targetText || "In my opinion, practicing English daily is the best way to improve fluency.";
       }
 
       // Map to frontend compatibility keys
@@ -474,16 +531,22 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
         transcription: finalTranscription,
         grammarFeedback: finalGrammarFB,
         pronunciationFeedback: finalPronunFB,
-        detailed_feedback: parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!",
+        detailed_feedback: (isNoSpeech || finalScore === 0) 
+          ? "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn." 
+          : (parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!"),
         improved_sentence: finalSuggestion,
 
         // Mapped keys for frontend compatibility
-        feedback: parsed.detailed_feedback || "",
-        reply: parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!",
+        feedback: (isNoSpeech || finalScore === 0) 
+          ? "Không nhận diện được giọng nói của bạn. Vui lòng nói to và rõ ràng hơn." 
+          : (parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!"),
+        reply: (isNoSpeech || finalScore === 0) 
+          ? "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn." 
+          : (parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!"),
         suggestedText: finalSuggestion,
         suggestion: finalSuggestion,
         errors: finalScore < 70 ? [finalGrammarFB] : [],
-        words: parsed.words || []
+        words: evaluatedWords
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.evaluateAudio:", error);

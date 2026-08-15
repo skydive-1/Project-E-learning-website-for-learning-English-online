@@ -658,13 +658,13 @@ const CourseEditor = () => {
                             }}>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 <span style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }} className="speaking-label">
-                                  <span>1. Câu luyện phát âm AI (Đọc mẫu - mỗi câu một dòng):</span>
+                                  <span>1. Câu luyện phát âm AI (Đọc mẫu - Cú pháp: Tiếng Anh | Bản dịch):</span>
                                   <span style={{ fontWeight: '500', color: 'var(--text-light, #94a3b8)', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
                                 </span>
                                 <textarea
                                   value={lesson.speakingSentences || ''}
                                   onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingSentences', e.target.value)}
-                                  placeholder="Ví dụ:&#10;Welcome to our speaking class.&#10;How are you doing today?"
+                                  placeholder="Ví dụ:&#10;Welcome to our speaking class. | Chào mừng bạn đến với lớp học.&#10;Practice makes perfect. | Luyện tập tạo nên sự hoàn hảo."
                                   rows={3}
                                   style={{
                                     width: '100%',
@@ -682,13 +682,13 @@ const CourseEditor = () => {
                               
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 <span style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }} className="speaking-label">
-                                  <span>2. Câu hỏi phản xạ nói Q&A (Trả lời tự do - mỗi câu một dòng):</span>
+                                  <span>2. Câu hỏi phản xạ nói Q&A (Cú pháp: Câu hỏi | Bản dịch):</span>
                                   <span style={{ fontWeight: '500', color: 'var(--text-light, #94a3b8)', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
                                 </span>
                                 <textarea
                                   value={lesson.speakingQuestions || ''}
                                   onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingQuestions', e.target.value)}
-                                  placeholder="Ví dụ:&#10;What did you do last weekend?&#10;Tell me about your family."
+                                  placeholder="Ví dụ:&#10;What did you do last weekend? | Cuối tuần trước bạn đã làm gì?&#10;Tell me about your family. | Hãy chia sẻ về gia đình bạn."
                                   rows={3}
                                   style={{
                                     width: '100%',

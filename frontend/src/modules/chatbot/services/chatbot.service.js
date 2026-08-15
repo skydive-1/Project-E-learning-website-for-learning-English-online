@@ -242,54 +242,26 @@ export const askChatbotAudio = async (audioBlob, lessonId, targetText = null, is
     }
     throw new Error('API response invalid structure');
   } catch (error) {
-    console.warn('⚠️ Lỗi kết nối tới API Chatbot Audio hoặc Backend chưa cài đặt endpoint. Sử dụng bộ phản hồi giả lập của frontend.', error.message);
-    
-    // Giả lập độ trễ xử lý âm thanh của AI (từ 1.5s - 3s)
-    const delay = Math.random() * 1500 + 1500;
-    await new Promise(resolve => setTimeout(resolve, delay));
+    console.error('⚠️ Lỗi kết nối tới API Chatbot Audio:', error.message);
+    const words = targetText ? targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/).filter(Boolean).map(w => ({
+      word: w,
+      correct: false,
+      feedback: "Không thể kết nối máy chủ để chấm điểm."
+    })) : [];
 
-    if (isQA) {
-      // Trường hợp: Hỏi & Đáp phản xạ nói tự do (Q&A speaking)
-      return {
-        success: true,
-        transcription: "Yesterday I study English vocabulary with my AI teacher and it is very exciting.",
-        grammarFeedback: "Bạn đã sử dụng các động từ ở thì hiện tại như 'study' và 'is' cho hành động diễn ra trong quá khứ ('Yesterday'). Bạn cần chuyển chúng thành động từ ở thì quá khứ đơn: 'study' -> 'studied' và 'is' -> 'was'.",
-        pronunciationFeedback: "Phát âm từ 'vocabulary' và 'exciting' rất chuẩn xác. Tuy nhiên, bạn cần chú ý nhấn trọng âm đầu của từ 'yesterday' và bật âm đuôi /d/ của động từ 'studied'.",
-        suggestion: "Yesterday, I studied English vocabulary with my AI teacher, and it was very exciting!",
-        reply: "Bạn trả lời khá trôi chảy và dễ hiểu. Tuy nhiên, bạn cần lưu ý chia động từ ở thì quá khứ đơn cho các hành động xảy ra ngày hôm qua."
-      };
-    } else if (targetText) {
-      // Trường hợp: Bài tập phát âm (Speaking Exercise) có câu đối chiếu
-      const words = targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/);
-      const score = Math.floor(Math.random() * 18) + 78; // Random score từ 78 - 95%
-      
-      // Chọn ngẫu nhiên 1 từ phát âm chưa tốt để mô phỏng tính năng highlight lỗi sai
-      const errorIndex = words.length > 3 ? Math.floor(Math.random() * (words.length - 2)) + 1 : -1;
-
-      const evaluatedWords = words.map((word, idx) => {
-        const isCorrect = idx !== errorIndex;
-        return {
-          word: word,
-          correct: isCorrect,
-          feedback: isCorrect ? null : `Phát âm chưa rõ ràng hoặc thiếu âm cuối.`
-        };
-      });
-
-      return {
-        success: true,
-        score: score,
-        reply: errorIndex !== -1 
-          ? `Chúc mừng bạn! Bạn đã đạt điểm số khá tốt (${score}%). Lỗi phát âm duy nhất của bạn nằm ở từ "${words[errorIndex]}", cần chú ý bật hơi và âm đuôi rõ ràng hơn.`
-          : `Chúc mừng bạn! Bạn đã đạt điểm số xuất sắc (${score}%). Trợ lý AI không phát hiện lỗi phát âm nào đáng kể.`,
-        words: evaluatedWords
-      };
-    } else {
-      // Trường hợp: Chat hội thoại tự do bằng giọng nói
-      return {
-        success: true,
-        reply: "Tôi đã lắng nghe file ghi âm của bạn. Giọng nói của bạn rất rõ ràng và biểu cảm! Bạn đang hỏi về nội dung bài học này đúng không? Hãy tiếp tục luyện tập phát âm và shadowing nhé."
-      };
-    }
+    return {
+      success: false,
+      score: 0,
+      pronunciation_accuracy: "0%",
+      transcription: "Không nhận diện được giọng nói",
+      grammarFeedback: "Không thể kết nối tới máy chủ AI để chấm điểm.",
+      pronunciationFeedback: "Không thể kết nối tới máy chủ AI để chấm điểm. Vui lòng kiểm tra lại đường truyền mạng.",
+      detailed_feedback: "Đã xảy ra lỗi khi kết nối máy chủ AI để chấm điểm bài nói. Vui lòng thử lại sau.",
+      reply: "Đã xảy ra lỗi khi kết nối máy chủ AI để chấm điểm bài nói. Vui lòng thử lại sau.",
+      suggestion: targetText || "",
+      words: words,
+      errors: ["Lỗi kết nối máy chủ AI"]
+    };
   }
 };
 

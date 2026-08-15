@@ -370,7 +370,14 @@ const PlayQuizPage = () => {
   };
 
   const handleAudioSubmit = async () => {
-    if (!audioBlob) return;
+    if (!audioBlob) {
+      alert("Vui lòng ghi âm giọng nói trước khi nộp bài!");
+      return;
+    }
+    if (audioBlob.size < 1500) {
+      alert("Thời gian ghi âm quá ngắn hoặc chưa có âm thanh. Vui lòng ghi âm lại và phát âm to, rõ ràng hơn!");
+      return;
+    }
     setAiLoading(true);
     try {
       const res = await submitAudioAnswer(quiz.id, currentQuestion.id, audioBlob);
