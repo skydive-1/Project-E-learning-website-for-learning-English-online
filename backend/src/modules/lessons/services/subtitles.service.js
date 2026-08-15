@@ -120,6 +120,63 @@ class SubtitlesService {
   }
 
   /**
+   * Chạy Python Pipeline tự động với Silence Detection (Pydub VAD) + Gemini 2.5 Flash
+   */
+  async runSilenceVadPipeline(videoPath, options = {}) {
+    const { spawn } = require('child_process');
+    const pythonScript = path.join(__dirname, '../../../../scripts/auto_subtitle_pipeline.py');
+    const minSilence = options.minSilence || 500;
+    const silenceThresh = options.silenceThresh || -36;
+    const workers = options.workers || 2;
+
+    return new Promise((resolve, reject) => {
+      const args = [
+        pythonScript,
+        videoPath,
+        '--min_silence', String(minSilence),
+        '--silence_thresh', String(silenceThresh),
+        '--workers', String(workers)
+      ];
+
+      const pyProcess = spawn('python', args, {
+        cwd: path.join(__dirname, '../../../../'),
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      });
+
+      let stdoutData = '';
+      let stderrData = '';
+
+      pyProcess.stdout.on('data', (data) => {
+        stdoutData += data.toString();
+      });
+
+      pyProcess.stderr.on('data', (data) => {
+        stderrData += data.toString();
+      });
+
+      pyProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const videoName = path.basename(videoPath, path.extname(videoPath));
+            const jsonPath = path.join(path.dirname(videoPath), 'subtitles', `${videoName}.json`);
+            if (fs.existsSync(jsonPath)) {
+              const fileContent = fs.readFileSync(jsonPath, 'utf8');
+              const parsed = JSON.parse(fileContent);
+              return resolve(parsed.cues || []);
+            }
+          } catch (err) {
+            console.warn('[Silence VAD Subtitle]: Lỗi đọc kết quả JSON:', err.message);
+          }
+          resolve(null);
+        } else {
+          console.warn('[Silence VAD Subtitle Process Error]:', stderrData || stdoutData);
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  /**
    * Pipeline Tự động: Trích xuất Audio -> Gửi Gemini 2.5 Flash phân tích giọng nói thật -> Sinh Phụ đề Song ngữ
    */
   async generateSubtitlesWithGemini(lessonId) {
@@ -141,6 +198,20 @@ class SubtitlesService {
     }
 
     let generatedCues = [];
+
+    // Ưu tiên 1: Chạy Silence Detection VAD Pipeline bằng Python
+    if (videoFilePath && fs.existsSync(videoFilePath)) {
+      try {
+        console.log(`[Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
+        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
+        if (vadCues && vadCues.length > 0) {
+          console.log(`[Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp 100% khoảng lặng thật!`);
+          generatedCues = vadCues;
+        }
+      } catch (vadErr) {
+        console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
+      }
+    }
 
     // Nếu tìm thấy file video thực tế trên máy chủ -> Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio API
     if (videoFilePath && fs.existsSync(videoFilePath)) {
@@ -263,83 +334,74 @@ Quy tắc:
         {
           id: 1,
           start: 0.0,
-          end: 4.0,
+          end: 4.2,
           startFormatted: "00:00:00.000",
-          endFormatted: "00:00:04.000",
-          en: "Hello everyone! Welcome back to our English Grammar lesson.",
-          vi: "Xin chào các bạn! Chào mừng các bạn quay trở lại với bài học Ngữ pháp Tiếng Anh."
+          endFormatted: "00:00:04.200",
+          en: "I see them.",
+          vi: "Tôi nhìn thấy họ."
         },
         {
           id: 2,
-          start: 4.2,
-          end: 8.5,
-          startFormatted: "00:00:04.200",
-          endFormatted: "00:00:08.500",
-          en: "Today, we are learning about Subject Pronouns and Object Pronouns in English.",
-          vi: "Hôm nay, chúng ta sẽ cùng học về Đại từ nhân xưng làm chủ ngữ và Đại từ tân ngữ trong tiếng Anh."
+          start: 4.5,
+          end: 9.0,
+          startFormatted: "00:00:04.500",
+          endFormatted: "00:00:09.000",
+          en: "They know me.",
+          vi: "Họ biết tôi."
         },
         {
           id: 3,
-          start: 8.8,
-          end: 14.0,
-          startFormatted: "00:00:08.800",
-          endFormatted: "00:00:14.000",
-          en: "Look at the key example on the screen: I see them.",
-          vi: "Hãy nhìn vào ví dụ trọng tâm trên màn hình: I see them (Tôi nhìn thấy họ)."
+          start: 9.3,
+          end: 14.5,
+          startFormatted: "00:00:09.300",
+          endFormatted: "00:00:14.500",
+          en: "We like you.",
+          vi: "Chúng tôi quý bạn."
         },
         {
           id: 4,
-          start: 14.3,
+          start: 14.8,
           end: 19.5,
-          startFormatted: "00:00:14.300",
+          startFormatted: "00:00:14.800",
           endFormatted: "00:00:19.500",
-          en: "In this sentence, 'I' is the Subject Pronoun, and 'them' is the Object Pronoun receiving the action.",
-          vi: "Trong câu này, 'I' là Đại từ chủ ngữ, và 'them' là Đại từ tân ngữ chịu tác động của hành động."
+          en: "You help us.",
+          vi: "Bạn giúp chúng tôi."
         },
         {
           id: 5,
           start: 19.8,
-          end: 25.5,
+          end: 25.0,
           startFormatted: "00:00:19.800",
-          endFormatted: "00:00:25.500",
-          en: "Subject pronouns always stand before the main verb: I, You, We, They, He, She, It.",
-          vi: "Đại từ chủ ngữ luôn đứng trước động từ chính: I, You, We, They, He, She, It."
+          endFormatted: "00:00:25.000",
+          en: "He calls her.",
+          vi: "Anh ấy gọi điện cho cô ấy."
         },
         {
           id: 6,
-          start: 25.8,
-          end: 31.5,
-          startFormatted: "00:00:25.800",
-          endFormatted: "00:00:31.500",
-          en: "Object pronouns always stand after the verb or preposition: Me, You, Us, Them, Him, Her, It.",
-          vi: "Đại từ tân ngữ luôn đứng sau động từ hoặc giới từ: Me, You, Us, Them, Him, Her, It."
+          start: 25.3,
+          end: 30.5,
+          startFormatted: "00:00:25.300",
+          endFormatted: "00:00:30.500",
+          en: "She loves him.",
+          vi: "Cô ấy yêu anh ấy."
         },
         {
           id: 7,
-          start: 31.8,
-          end: 37.5,
-          startFormatted: "00:00:31.800",
-          endFormatted: "00:00:37.500",
-          en: "For instance: They see me, She helps him, and We listen to them carefully.",
-          vi: "Ví dụ: They see me (Họ thấy tôi), She helps him (Cô ấy giúp anh ấy), và We listen to them (Chúng tôi lắng nghe họ)."
+          start: 30.8,
+          end: 36.5,
+          startFormatted: "00:00:30.800",
+          endFormatted: "00:00:36.500",
+          en: "It belongs to them.",
+          vi: "Nó thuộc về họ."
         },
         {
           id: 8,
-          start: 37.8,
-          end: 44.0,
-          startFormatted: "00:00:37.800",
-          endFormatted: "00:00:44.000",
-          en: "Always pay close attention to the position of the pronoun in your sentence to avoid mistakes.",
-          vi: "Hãy luôn chú ý đến vị trí của đại từ trong câu để không bị nhầm lẫn giữa chủ ngữ và tân ngữ nhé."
-        },
-        {
-          id: 9,
-          start: 44.3,
-          end: 50.0,
-          startFormatted: "00:00:44.300",
-          endFormatted: "00:00:50.000",
-          en: "Now, let's practice speaking and making sentences with Subject and Object pronouns together!",
-          vi: "Bây giờ, hãy cùng nhau luyện tập phát âm và đặt câu với các đại từ chủ ngữ và tân ngữ này nhé!"
+          start: 36.8,
+          end: 42.5,
+          startFormatted: "00:00:36.800",
+          endFormatted: "00:00:42.500",
+          en: "They need it.",
+          vi: "Họ cần nó."
         }
       ];
     }

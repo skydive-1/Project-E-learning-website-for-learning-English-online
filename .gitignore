@@ -433,3 +433,7 @@ FodyWeavers.xsd
 generate_sprint9_report.py
 backend/inspect_quiz_tables.js
 sprint10_content.txt
+backend/scripts/auto_subtitle_pipeline.py
+backend/scripts/test_subtitle_suite.py
+scratch_sprint10.txt
+scratch/generate_comparison_report.py

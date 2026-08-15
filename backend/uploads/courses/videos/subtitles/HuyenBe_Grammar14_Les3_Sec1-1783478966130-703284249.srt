@@ -1,0 +1,35 @@
+1
+00:00:00,000 --> 00:00:04,200
+I see them.
+
+2
+00:00:04,500 --> 00:00:09,000
+They know me.
+
+3
+00:00:09,300 --> 00:00:14,500
+We like you.
+
+4
+00:00:14,800 --> 00:00:19,500
+You help us.
+
+5
+00:00:19,800 --> 00:00:25,000
+He calls her.
+
+6
+00:00:25,300 --> 00:00:30,500
+She loves him.
+
+7
+00:00:30,800 --> 00:00:36,500
+It belongs to them.
+
+8
+00:00:36,800 --> 00:00:42,500
+They need it.
+
+9
+00:00:42,800 --> 00:00:50,000
+Subject pronouns go before verbs, object pronouns go after verbs.

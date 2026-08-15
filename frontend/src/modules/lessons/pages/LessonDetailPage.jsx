@@ -58,7 +58,7 @@ const LessonDetailPage = () => {
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
-  const [captionMode, setCaptionMode] = useState('bilingual'); // 'off' | 'en' | 'vi' | 'bilingual'
+  const [captionMode, setCaptionMode] = useState('off'); // 'off' | 'en' | 'vi' | 'bilingual' (Mặc định tắt phụ đề, người dùng bật khi có nhu cầu)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);

@@ -1,0 +1,85 @@
+{
+  "cues": [
+    {
+      "id": 1,
+      "start": 0,
+      "end": 4.2,
+      "startFormatted": "00:00:00.000",
+      "endFormatted": "00:00:04.200",
+      "en": "I see them.",
+      "vi": "Tôi nhìn thấy họ."
+    },
+    {
+      "id": 2,
+      "start": 4.5,
+      "end": 9,
+      "startFormatted": "00:00:04.500",
+      "endFormatted": "00:00:09.000",
+      "en": "They know me.",
+      "vi": "Họ biết tôi."
+    },
+    {
+      "id": 3,
+      "start": 9.3,
+      "end": 14.5,
+      "startFormatted": "00:00:09.300",
+      "endFormatted": "00:00:14.500",
+      "en": "We like you.",
+      "vi": "Chúng tôi quý bạn."
+    },
+    {
+      "id": 4,
+      "start": 14.8,
+      "end": 19.5,
+      "startFormatted": "00:00:14.800",
+      "endFormatted": "00:00:19.500",
+      "en": "You help us.",
+      "vi": "Bạn giúp chúng tôi."
+    },
+    {
+      "id": 5,
+      "start": 19.8,
+      "end": 25,
+      "startFormatted": "00:00:19.800",
+      "endFormatted": "00:00:25.000",
+      "en": "He calls her.",
+      "vi": "Anh ấy gọi điện cho cô ấy."
+    },
+    {
+      "id": 6,
+      "start": 25.3,
+      "end": 30.5,
+      "startFormatted": "00:00:25.300",
+      "endFormatted": "00:00:30.500",
+      "en": "She loves him.",
+      "vi": "Cô ấy yêu anh ấy."
+    },
+    {
+      "id": 7,
+      "start": 30.8,
+      "end": 36.5,
+      "startFormatted": "00:00:30.800",
+      "endFormatted": "00:00:36.500",
+      "en": "It belongs to them.",
+      "vi": "Nó thuộc về họ."
+    },
+    {
+      "id": 8,
+      "start": 36.8,
+      "end": 42.5,
+      "startFormatted": "00:00:36.800",
+      "endFormatted": "00:00:42.500",
+      "en": "They need it.",
+      "vi": "Họ cần nó."
+    },
+    {
+      "id": 9,
+      "start": 42.8,
+      "end": 50,
+      "startFormatted": "00:00:42.800",
+      "endFormatted": "00:00:50.000",
+      "en": "Subject pronouns go before verbs, object pronouns go after verbs.",
+      "vi": "Đại từ chủ ngữ đứng trước động từ, đại từ tân ngữ đứng sau động từ."
+    }
+  ]
+}
