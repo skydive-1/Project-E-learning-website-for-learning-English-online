@@ -1,6 +1,36 @@
 const fs = require('fs');
 const path = require('path');
+const jwt = require('jsonwebtoken');
 const lessonsService = require('../services/lessons.service');
+
+// Sinh Short-Lived Video Streaming Ticket (Hiệu lực 60 giây - Chống tải lậu & Hotlink)
+exports.getVideoTicket = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const origin = req.headers.origin || req.headers.referer || '';
+
+    const ticket = jwt.sign(
+      {
+        userId,
+        lessonId,
+        origin,
+        type: 'video_stream_ticket'
+      },
+      process.env.JWT_SECRET || 'elearning_video_secure_jwt_secret',
+      { expiresIn: '60s' }
+    );
+
+    return res.status(200).json({
+      success: true,
+      ticket,
+      expiresIn: 60,
+      streamUrl: `/api/lessons/video/stream/${lessonId}?ticket=${ticket}`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 exports.getLessonsByQuery = async (req, res, next) => {
   try {
@@ -87,6 +117,28 @@ exports.streamLessonVideo = async (req, res, next) => {
       });
     }
 
+    // 🔒 1. Chặn các công cụ download tự động bên ngoài (IDM, FDM, Curl, Wget, Downloader)
+    const userAgent = (req.headers['user-agent'] || '').toLowerCase();
+    const isAutomatedDownloader = userAgent.includes('idm') || 
+                                 userAgent.includes('internet download manager') ||
+                                 userAgent.includes('freedownloadmanager') ||
+                                 userAgent.includes('aria2') ||
+                                 userAgent.includes('wget') ||
+                                 userAgent.includes('curl');
+
+    if (isAutomatedDownloader) {
+      return res.status(403).json({
+        success: false,
+        message: 'Quyền truy cập bị từ chối: Hệ thống không cho phép tải video qua các công cụ download tự động.'
+      });
+    }
+
+    // 🔒 2. Thiết lập Anti-Sniffing & Security Headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'inline; filename="encrypted_stream.dat"');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+
     const contentUrl = lesson.content_url;
 
     // Nếu là link video bên ngoài (Supabase signed URL hoặc external) -> Redirect trực tiếp đến CDN để client stream với tốc độ tối đa
@@ -125,6 +177,9 @@ exports.streamLessonVideo = async (req, res, next) => {
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
         'Content-Type': 'video/mp4',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'inline; filename="encrypted_stream.dat"',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private'
       };
 
       res.writeHead(206, head);
@@ -133,6 +188,9 @@ exports.streamLessonVideo = async (req, res, next) => {
       const head = {
         'Content-Length': fileSize,
         'Content-Type': 'video/mp4',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'inline; filename="encrypted_stream.dat"',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private'
       };
       res.writeHead(200, head);
       fs.createReadStream(filePath).pipe(res);

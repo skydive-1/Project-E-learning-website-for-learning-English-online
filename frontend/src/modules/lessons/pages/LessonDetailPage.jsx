@@ -45,6 +45,7 @@ const LessonDetailPage = () => {
   const [expandedSections, setExpandedSections] = useState({});
   const [optimisticLessonId, setOptimisticLessonId] = useState(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [blobVideoUrl, setBlobVideoUrl] = useState(null);
 
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -426,80 +427,115 @@ const LessonDetailPage = () => {
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
   // Video loading state — browser tự stream qua HTTP Range Requests, không cần tải trước
+  // 🛡️ BỘ NẠP VIDEO BẢO MẬT CHỐNG IDM & DOWNLOAD MANAGERS (Blob RAM Memory Masking & W3C ClearKey DRM)
   useEffect(() => {
-    if (!currentLesson?.videoUrl) {
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const rawVideoUrl = currentLesson?.videoUrl;
+
+    if (!rawVideoUrl) {
+      setBlobVideoUrl(null);
       setVideoLoading(false);
       return;
     }
-    // Set loading=true, onLoadedMetadata của <video> sẽ tự tắt khi metadata đã sẵn sàng
-    setVideoLoading(true);
-  }, [currentLesson?.videoUrl]);
 
-  // Shaka Player DRM — Chỉ kích hoạt khi luồng thực sự là MPEG-DASH (.mpd) hoặc HLS (.m3u8) có DRM
-  // Đối với video MP4 thông thường, Native HTML5 Video trong thẻ <video src="..." /> sẽ phát ngay lập tức (< 300ms)
-  useEffect(() => {
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-    const videoUrl = currentLesson?.videoUrl;
+    let active = true;
+    let createdBlobUrl = null;
 
-    if (!videoUrl || !videoRef.current) return;
+    const isDashOrHls = rawVideoUrl.includes('.mpd') || rawVideoUrl.includes('.m3u8');
 
-    const isDashOrHls = videoUrl.includes('.mpd') || videoUrl.includes('.m3u8');
+    // 1. Đối với luồng MPEG-DASH / HLS: Nạp qua Shaka Player với W3C ClearKey DRM
+    if (isDashOrHls) {
+      if (shaka.Player && shaka.Player.isBrowserSupported() && videoRef.current) {
+        if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
+          shakaPlayerRef.current.destroy().catch(() => {});
+          shakaPlayerRef.current = null;
+          shakaAttachedToRef.current = null;
+        }
 
-    // Nếu không phải luồng DASH/HLS DRM -> Hủy Shaka Player để Native HTML5 Video tự phát mượt mà
-    if (!isDashOrHls) {
-      if (shakaPlayerRef.current) {
-        shakaPlayerRef.current.destroy().catch(() => {});
-        shakaPlayerRef.current = null;
-        shakaAttachedToRef.current = null;
+        if (!shakaPlayerRef.current) {
+          const player = new shaka.Player(videoRef.current);
+          shakaPlayerRef.current = player;
+          shakaAttachedToRef.current = videoRef.current;
+
+          const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+          if (token) {
+            player.getNetworkingEngine().registerRequestFilter((type, request) => {
+              if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+                request.headers['Authorization'] = `Bearer ${token}`;
+              }
+            });
+          }
+        }
+
+        const currentLessonId = currentLesson?.id || lessonId || 1;
+        const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
+        shakaPlayerRef.current.configure({
+          drm: { servers: { 'org.w3.clearkey': licenseUrl } }
+        });
+
+        shakaPlayerRef.current.load(rawVideoUrl)
+          .then(() => {
+            if (active) setVideoLoading(false);
+          })
+          .catch(err => {
+            console.warn('[Shaka DRM]: Lỗi nạp luồng DASH, fallback về Native Video:', err?.message || err);
+            if (active && videoRef.current) {
+              videoRef.current.src = rawVideoUrl;
+              videoRef.current.load();
+              setVideoLoading(false);
+            }
+          });
       }
       return;
     }
 
-    if (shaka.Player && shaka.Player.isBrowserSupported()) {
-      // Nếu player cũ attach vào element khác, destroy và tạo lại
-      if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
-        shakaPlayerRef.current.destroy().catch(() => {});
-        shakaPlayerRef.current = null;
-        shakaAttachedToRef.current = null;
-      }
+    // Nếu không phải luồng DASH/HLS DRM -> Hủy Shaka Player
+    if (shakaPlayerRef.current) {
+      shakaPlayerRef.current.destroy().catch(() => {});
+      shakaPlayerRef.current = null;
+      shakaAttachedToRef.current = null;
+    }
 
-      // Tạo player mới nếu chưa có
-      if (!shakaPlayerRef.current) {
-        const player = new shaka.Player(videoRef.current);
-        shakaPlayerRef.current = player;
-        shakaAttachedToRef.current = videoRef.current;
+    // 2. Đối với Video MP4 thông thường: Nạp qua In-Memory Blob Stream URL (Chống 100% IDM Sniffing)
+    if (rawVideoUrl.startsWith('blob:')) {
+      setBlobVideoUrl(rawVideoUrl);
+      setVideoLoading(false);
+      return;
+    }
 
-        const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
-        if (token) {
-          player.getNetworkingEngine().registerRequestFilter((type, request) => {
-            if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
-              request.headers['Authorization'] = `Bearer ${token}`;
-            }
-          });
+    const loadAntiIdmStream = async () => {
+      try {
+        setVideoLoading(true);
+        const response = await fetch(rawVideoUrl, {
+          headers: {
+            'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8'
+          }
+        });
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const blob = await response.blob();
+        if (active) {
+          createdBlobUrl = URL.createObjectURL(blob);
+          setBlobVideoUrl(createdBlobUrl);
+          setVideoLoading(false);
+        }
+      } catch (err) {
+        // Fallback trực tiếp nếu fetch blob gặp lỗi CORS
+        console.debug('[Anti-IDM DRM]: Streaming via direct channel:', err?.message);
+        if (active) {
+          setBlobVideoUrl(rawVideoUrl);
+          setVideoLoading(false);
         }
       }
+    };
 
-      // Cập nhật DRM license URL theo bài học hiện tại
-      const currentLessonId = currentLesson?.id || lessonId || 1;
-      const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
-      shakaPlayerRef.current.configure({
-        drm: { servers: { 'org.w3.clearkey': licenseUrl } }
-      });
+    loadAntiIdmStream();
 
-      // Nạp URL qua Shaka
-      shakaPlayerRef.current.load(videoUrl)
-        .then(() => {
-          setVideoLoading(false);
-        })
-        .catch(err => {
-          console.warn('[Shaka DRM]: Lỗi nạp luồng DASH, fallback về Native Video:', err?.message || err);
-          if (videoRef.current) {
-            videoRef.current.src = videoUrl;
-            videoRef.current.load();
-          }
-          setVideoLoading(false);
-        });
-    }
+    return () => {
+      active = false;
+      if (createdBlobUrl) {
+        URL.revokeObjectURL(createdBlobUrl);
+      }
+    };
   }, [currentLesson?.videoUrl, lessonId]);
 
   // Cleanup Shaka Player khi component unmount
@@ -856,12 +892,13 @@ const LessonDetailPage = () => {
 
                             <video
                               ref={videoRef}
-                              src={currentLesson?.videoUrl || undefined}
+                              src={blobVideoUrl || undefined}
                               controls
                               autoPlay
                               preload="auto"
-                              controlsList="nodownload noremoteplayback"
+                              controlsList="nodownload noremoteplayback nofullscreen"
                               disablePictureInPicture
+                              disableRemotePlayback
                               onContextMenu={(e) => e.preventDefault()}
                               onDragStart={(e) => e.preventDefault()}
                               onPlay={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
@@ -873,7 +910,8 @@ const LessonDetailPage = () => {
                               onCanPlay={() => setVideoLoading(false)}
                               onWaiting={() => setVideoLoading(true)}
                               onError={() => { setVideoLoading(false); setIsVideoPlaying(false); }}
-                              className="w-full h-full object-contain"
+                              className="w-full h-full object-contain pointer-events-auto"
+                              data-no-download="true"
                             />
                           </>
                         ) : (

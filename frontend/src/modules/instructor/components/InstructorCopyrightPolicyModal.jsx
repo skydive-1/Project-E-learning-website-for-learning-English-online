@@ -1,13 +1,13 @@
 /**
- * [TASK-FE-POL-01] Giao diện Modal Policy Bản quyền Giảng viên
+ * [TASK-FE-POL-01] Giao diện Modal Policy Bản quyền Giảng viên khi Xuất bản Khóa học
  * Author: NGUYỄN DŨNG QUỐC ANH (Frontend & AI UI Integration Developer)
  * Module: Instructor Course Management & Legal Compliance
  */
 
 import React, { useState } from 'react';
-import { FiShield, FiCheckSquare, FiSquare, FiAlertCircle, FiX, FiFileText } from 'react-icons/fi';
+import { FiShield, FiCheckSquare, FiSquare, FiAlertCircle, FiX, FiBookOpen } from 'react-icons/fi';
 
-const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = '', fileType = 'video' }) => {
+const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, courseName = '', sectionsCount = 0, lessonsCount = 0 }) => {
   const [checkedOwnership, setCheckedOwnership] = useState(false);
   const [checkedLiability, setCheckedLiability] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,7 +46,7 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
                 KHOẢN 102 • CAM KẾT PHÁP LÝ & BẢN QUYỀN
               </span>
               <h2 className="text-lg font-bold text-slate-100">
-                Thỏa thuận Sở hữu Trí tuệ Bài giảng
+                Thỏa thuận Sở hữu Trí tuệ & Xuất bản Khóa học
               </h2>
             </div>
           </div>
@@ -62,12 +62,12 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
         {/* Modal Body / Policy Content */}
         <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar text-slate-300 text-xs sm:text-sm leading-relaxed">
           
-          {fileName && (
+          {courseName && (
             <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center space-x-3 text-slate-200">
-              <FiFileText className="text-indigo-400 text-lg shrink-0" />
+              <FiBookOpen className="text-indigo-400 text-lg shrink-0" />
               <div className="truncate">
-                <span className="text-[11px] text-slate-400 block">Tệp tin chuẩn bị đăng tải:</span>
-                <span className="font-semibold text-xs text-indigo-300 truncate block">{fileName}</span>
+                <span className="text-[11px] text-slate-400 block">Khóa học chuẩn bị xuất bản công khai:</span>
+                <span className="font-semibold text-xs text-indigo-300 truncate block">{courseName}</span>
               </div>
             </div>
           )}
@@ -75,7 +75,7 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
           <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-start space-x-3 text-amber-200/90 text-xs">
             <FiAlertCircle className="text-amber-400 text-lg shrink-0 mt-0.5" />
             <p>
-              Quy định này áp dụng bắt buộc cho tất cả Giảng viên khi tải lên tài liệu học tập (Bao gồm Video bài giảng, tài liệu PDF, hình ảnh, bài tập trắc nghiệm) trên hệ thống E-Learn Academy.
+              Quy định này áp dụng bắt buộc cho tất cả Giảng viên khi xuất bản khóa học công khai lên hệ thống E-Learn Academy nhằm bảo vệ quyền tác giả và tính hợp pháp của tài liệu giảng dạy.
             </p>
           </div>
 
@@ -86,13 +86,13 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
 
             <div className="space-y-2.5 text-slate-300 text-xs pl-2 border-l-2 border-indigo-500/30">
               <p>
-                <strong>1. Cam kết Quyền sở hữu Hợp pháp:</strong> Giảng viên khẳng định là tác giả duy nhất hoặc có đầy đủ giấy phép, bản quyền hợp pháp từ chủ sở hữu gốc đối với toàn bộ nội dung trong tệp tin đăng tải.
+                <strong>1. Cam kết Quyền sở hữu Hợp pháp:</strong> Giảng viên khẳng định là tác giả duy nhất hoặc có đầy đủ giấy phép, bản quyền hợp pháp từ chủ sở hữu gốc đối với toàn bộ giáo trình, video bài giảng, tài liệu PDF và bài tập trong khóa học.
               </p>
               <p>
                 <strong>2. Miễn trừ Trách nhiệm cho Nền tảng:</strong> Hệ thống E-Learn Academy được miễn trừ toàn bộ nghĩa vụ pháp lý, bồi thường tài chính hoặc các khiếu nại phát sinh từ bên thứ ba liên quan đến vi phạm bản quyền tác giả từ nội dung của Giảng viên.
               </p>
               <p>
-                <strong>3. Quyền Tạm dừng & Gỡ bỏ:</strong> Ban quản trị hệ thống có quyền ngay lập tức tạm dừng hiển thị, gỡ bỏ bài học hoặc khóa tài khoản Giảng viên nếu phát hiện có dấu hiệu sao chép, vi phạm bản quyền mà không cần báo trước.
+                <strong>3. Quyền Tạm dừng & Gỡ bỏ:</strong> Ban quản trị hệ thống có quyền ngay lập tức tạm dừng hiển thị, thu hồi quyền truy cập hoặc gỡ bỏ khóa học nếu phát hiện có dấu hiệu sao chép, vi phạm bản quyền mà không cần báo trước.
               </p>
             </div>
           </div>
@@ -107,7 +107,7 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
                 {checkedOwnership ? <FiCheckSquare className="text-teal-400" /> : <FiSquare className="text-slate-500 group-hover:text-slate-400" />}
               </div>
               <span className="text-xs text-slate-200 font-medium">
-                Tôi cam kết sở hữu 100% bản quyền hoặc có quyền hợp pháp sử dụng và phân phối tệp nội dung này trên E-Learn Academy.
+                Tôi cam kết sở hữu 100% bản quyền hoặc có quyền hợp pháp sử dụng và phân phối toàn bộ nội dung trong khóa học này trên E-Learn Academy.
               </span>
             </div>
 
@@ -119,7 +119,7 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
                 {checkedLiability ? <FiCheckSquare className="text-teal-400" /> : <FiSquare className="text-slate-500 group-hover:text-slate-400" />}
               </div>
               <span className="text-xs text-slate-200 font-medium">
-                Tôi chấp nhận hoàn toàn trách nhiệm cá nhân và pháp lý trước cơ quan chức năng nếu xảy ra bất kỳ tranh chấp bản quyền nào.
+                Tôi chấp nhận hoàn toàn trách nhiệm cá nhân và pháp lý trước cơ quan chức năng nếu xảy ra bất kỳ tranh chấp bản quyền nào liên quan đến khóa học.
               </span>
             </div>
           </div>
@@ -146,7 +146,7 @@ const InstructorCopyrightPolicyModal = ({ isOpen, onClose, onAccept, fileName = 
                 : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
             }`}
           >
-            <span>{isSubmitting ? 'Đang xử lý...' : 'Tôi Đồng Ý & Tiến Hành Upload'}</span>
+            <span>{isSubmitting ? 'Đang xuất bản...' : 'Tôi Đồng Ý & Xuất Bản Khóa Học'}</span>
           </button>
         </div>
 

@@ -42,7 +42,6 @@ const CourseEditor = () => {
 
   // [TASK-FE-POL-01] State quản lý Modal Policy Bản quyền Giảng viên
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
-  const [pendingUpload, setPendingUpload] = useState(null);
 
   // Auth check
   useEffect(() => {
@@ -192,7 +191,7 @@ const CourseEditor = () => {
     setSections(newSections);
   };
 
-  // Upload File với Modal Cam kết Bản quyền [TASK-FE-POL-01]
+  // Upload File trực tiếp (Không làm gián đoạn việc soạn giáo trình)
   const triggerFileSelect = (sIdx, lIdx) => {
     const refKey = `${sIdx}-${lIdx}`;
     if (fileInputRef.current[refKey]) {
@@ -200,18 +199,9 @@ const CourseEditor = () => {
     }
   };
 
-  const handleFileChange = (sIdx, lIdx, e) => {
+  const handleFileChange = async (sIdx, lIdx, e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Mở Modal Cam kết Bản quyền trước khi thực hiện Upload [TASK-FE-POL-01]
-    setPendingUpload({ sIdx, lIdx, file });
-    setPolicyModalOpen(true);
-  };
-
-  const executeFileUpload = async () => {
-    if (!pendingUpload) return;
-    const { sIdx, lIdx, file } = pendingUpload;
 
     // Set uploading state
     handleLessonChange(sIdx, lIdx, 'uploading', true);
@@ -244,13 +234,11 @@ const CourseEditor = () => {
       console.error('Lỗi khi tải file lên:', err);
       setErrorMsg(err.response?.data?.message || 'Lỗi khi tải file lên máy chủ.');
       handleLessonChange(sIdx, lIdx, 'uploading', false);
-    } finally {
-      setPendingUpload(null);
     }
   };
 
-  // Submit Course
-  const handlePublishCourse = async (status = 1) => {
+  // 1. Khi nhấn "Xuất bản khóa học": Validate khung bài giảng rồi mở Modal Cam kết Bản quyền [TASK-FE-POL-01]
+  const handleInitiatePublish = () => {
     if (!courseName.trim()) {
       setErrorMsg('Vui lòng nhập tên khóa học.');
       return;
@@ -260,37 +248,61 @@ const CourseEditor = () => {
       return;
     }
 
-    // Validate curriculum structure
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
       return;
     }
 
-    // Khi Publish (status=1) mới validate chặt chẽ nội dung bài học.
-    // Khi Save Draft (status=0) chỉ cần tên chương không trống là đủ.
+    // Validate toàn bộ cấu trúc bài giảng khi Publish
     for (let sIdx = 0; sIdx < sections.length; sIdx++) {
       const section = sections[sIdx];
       if (!section.title.trim()) {
         setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
         return;
       }
-      if (status === 1) {
-        // Chỉ kiểm tra bài học khi Publish
-        if (section.lessons.length === 0) {
-          setErrorMsg(`Chương "${section.title}" phải có ít nhất 1 bài học.`);
+      if (section.lessons.length === 0) {
+        setErrorMsg(`Chương "${section.title}" phải có ít nhất 1 bài học.`);
+        return;
+      }
+      for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
+        const lesson = section.lessons[lIdx];
+        if (!lesson.title.trim()) {
+          setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
           return;
         }
-        for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
-          const lesson = section.lessons[lIdx];
-          if (!lesson.title.trim()) {
-            setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
-            return;
-          }
-          if (!lesson.contentUrl) {
-            setErrorMsg(`Vui lòng tải lên nội dung (video/pdf) cho bài học "${lesson.title}".`);
-            return;
-          }
+        if (!lesson.contentUrl) {
+          setErrorMsg(`Vui lòng tải lên nội dung (video/pdf) cho bài học "${lesson.title}".`);
+          return;
         }
+      }
+    }
+
+    setErrorMsg('');
+    // Mở Modal Cam kết Bản quyền để Giảng viên ký xác nhận
+    setPolicyModalOpen(true);
+  };
+
+  // 2. Thực hiện lưu hoặc xuất bản khóa học lên máy chủ
+  const executeSubmitCourse = async (status = 1) => {
+    if (!courseName.trim()) {
+      setErrorMsg('Vui lòng nhập tên khóa học.');
+      return;
+    }
+    if (!subjectId) {
+      setErrorMsg('Vui lòng chọn môn học.');
+      return;
+    }
+
+    if (sections.length === 0) {
+      setErrorMsg('Khóa học phải có ít nhất 1 chương.');
+      return;
+    }
+
+    for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+      const section = sections[sIdx];
+      if (!section.title.trim()) {
+        setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
+        return;
       }
     }
 
@@ -298,12 +310,24 @@ const CourseEditor = () => {
     setErrorMsg('');
     setSuccessMsg('');
 
+    // Nếu xuất bản (status = 1), ghi nhận chấp thuận bản quyền vào cơ sở dữ liệu
+    if (status === 1) {
+      try {
+        await apiClient.post('/instructor/accept-policy', {
+          signature: user?.full_name || user?.username || 'Giảng viên',
+          courseName: courseName.trim()
+        });
+      } catch (policyErr) {
+        console.debug('Lỗi ghi nhận accept-policy:', policyErr?.message);
+      }
+    }
+
     const payload = {
       courseName,
       subjectId: parseInt(subjectId),
       startDate,
       endDate,
-      status, // 1: Active, 0: Inactive
+      status, // 1: Published, 0: Draft
       sections: sections.map((sec, sIdx) => ({
         id: sec.id,
         title: sec.title,
@@ -326,7 +350,11 @@ const CourseEditor = () => {
         : await apiClient.post('/courses', payload);
 
       if (response.data && response.data.success) {
-        setSuccessMsg(isEditMode ? 'Cập nhật khóa học thành công!' : 'Tạo khóa học thành công!');
+        setSuccessMsg(
+          status === 0
+            ? 'Đã lưu bản nháp khóa học thành công!'
+            : (isEditMode ? 'Cập nhật & Xuất bản khóa học thành công!' : 'Tạo & Xuất bản khóa học thành công!')
+        );
         setTimeout(() => {
           navigate('/instructor/dashboard');
         }, 1500);
@@ -336,6 +364,7 @@ const CourseEditor = () => {
       setErrorMsg(err.response?.data?.message || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.');
     } finally {
       setLoading(false);
+      setPolicyModalOpen(false);
     }
   };
 
@@ -379,14 +408,14 @@ const CourseEditor = () => {
             <div className="header-actions">
               <button 
                 className="btn-save-draft" 
-                onClick={() => handlePublishCourse(0)}
+                onClick={() => executeSubmitCourse(0)}
                 disabled={loading}
               >
                 <FiSave /> Save Draft
               </button>
               <button 
                 className="btn-publish" 
-                onClick={() => handlePublishCourse(1)}
+                onClick={handleInitiatePublish}
                 disabled={loading}
               >
                 {loading ? <FiLoader className="spin" /> : <FiUpload />} Publish Course
@@ -723,16 +752,14 @@ const CourseEditor = () => {
 
       <Footer />
       
-      {/* [TASK-FE-POL-01] Modal Cam kết Điều khoản & Bản quyền Giảng viên */}
+      {/* [TASK-FE-POL-01] Modal Cam kết Điều khoản & Bản quyền Giảng viên khi Xuất bản */}
       <InstructorCopyrightPolicyModal
         isOpen={policyModalOpen}
-        onClose={() => {
-          setPolicyModalOpen(false);
-          setPendingUpload(null);
-        }}
-        onAccept={executeFileUpload}
-        fileName={pendingUpload?.file?.name || ''}
-        fileType={pendingUpload?.file?.type || 'video'}
+        onClose={() => setPolicyModalOpen(false)}
+        onAccept={() => executeSubmitCourse(1)}
+        courseName={courseName || 'Khóa học chưa đặt tên'}
+        sectionsCount={sections.length}
+        lessonsCount={sections.reduce((sum, s) => sum + (s.lessons?.length || 0), 0)}
       />
 
       {/* Mini loading overlay for full publishing */}

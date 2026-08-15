@@ -3,6 +3,9 @@ const router = express.Router();
 const lessonsController = require('./controllers/lessons.controller');
 const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
 
+// GET /api/lessons/video/ticket/:lessonId - Lấy Video Ticket thời hạn ngắn 60s (Chống tải lậu)
+router.get('/video/ticket/:lessonId', authenticate, lessonsController.getVideoTicket);
+
 // GET /api/lessons/video/stream/:lessonId - Stream video bảo mật
 router.get('/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
 

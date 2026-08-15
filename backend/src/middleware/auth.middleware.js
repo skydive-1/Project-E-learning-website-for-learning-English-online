@@ -142,11 +142,44 @@ const authorize = (roles = []) => {
 };
 
 /**
- * Middleware xác thực video qua query parameter token
+ * Middleware xác thực video qua query parameter token / ticket (Chống IDM, Hotlink & Tải lậu)
  */
 const authenticateVideoToken = (req, res, next) => {
   try {
-    const token = req.query.token;
+    // 🔒 1. Chặn các công cụ download tự động bên ngoài
+    const userAgent = (req.headers['user-agent'] || '').toLowerCase();
+    if (
+      userAgent.includes('idm') ||
+      userAgent.includes('internet download manager') ||
+      userAgent.includes('freedownloadmanager') ||
+      userAgent.includes('aria2') ||
+      userAgent.includes('wget') ||
+      userAgent.includes('curl')
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: Automated download managers are strictly prohibited.'
+      });
+    }
+
+    // 🔒 2. Chặn Hotlink & Xác thực Referer / Origin
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const sourceHeader = origin || referer || '';
+
+    if (sourceHeader) {
+      const allowedPatterns = ['localhost', '127.0.0.1', 'vercel.app', 'railway.app'];
+      const isAllowed = allowedPatterns.some(pattern => sourceHeader.includes(pattern));
+      if (!isAllowed) {
+        return res.status(403).json({
+          success: false,
+          message: 'Hotlink Protection: Yêu cầu truy cập tài nguyên bị từ chối do không thuộc tên miền chính thức.'
+        });
+      }
+    }
+
+    // 🔒 3. Xác thực Token / Ticket
+    const token = req.query.ticket || req.query.token;
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -161,13 +194,12 @@ const authenticateVideoToken = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
     req.user = decoded;
     next();
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: 'Token xác thực video không hợp lệ hoặc đã hết hạn'
+      message: 'Token/Ticket video đã hết hạn hoặc không hợp lệ (Short-lived 60s Token)'
     });
   }
 };
