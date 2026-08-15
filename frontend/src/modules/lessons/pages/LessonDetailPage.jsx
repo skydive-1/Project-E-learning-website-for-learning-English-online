@@ -63,6 +63,29 @@ const LessonDetailPage = () => {
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
 
+  // Refs for DRM and Video Control
+  const blackoutLockUntilRef = useRef(0);
+  const restoreTimeoutRef = useRef(null);
+
+  // ⚡ 60 FPS Ultra-Smooth Video Time Tracking (Loại bỏ 100% hiện tượng khựng/trễ phụ đề)
+  useEffect(() => {
+    let animationFrameId;
+    const trackTime = () => {
+      if (videoRef.current && !videoRef.current.paused) {
+        const t = videoRef.current.currentTime;
+        setVideoCurrentTime(t);
+      }
+      animationFrameId = requestAnimationFrame(trackTime);
+    };
+
+    if (isVideoPlaying) {
+      animationFrameId = requestAnimationFrame(trackTime);
+    }
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [isVideoPlaying]);
+
   // Lắng nghe sự thay đổi Fullscreen để giữ dấu bản quyền hiển thị đè lên Video ngay cả trong Chế độ Toàn Màn Hình
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -80,35 +103,60 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Pure #000000 Pitch Black DRM Engine)
-  const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Tạm dừng video ngay lập tức để ngăn OBS / phần mềm thứ 3 quay tiếp
-    if (videoRef.current && typeof videoRef.current.pause === 'function') {
+  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX & CHỐNG SPAM (Spam-Proof DRM Lockdown Engine)
+  const triggerZeroLatencyBlackout = (reason, isCriticalCapture = false) => {
+    // 1. Nếu là thao tác chụp/quay màn hình (PrtScn, Win+Shift+S, GameBar, SnippingTool), kích hoạt LATCH LOCK 3.0s
+    if (isCriticalCapture) {
+      blackoutLockUntilRef.current = Math.max(blackoutLockUntilRef.current, Date.now() + 3000);
+    }
+
+    // 2. Tạm dừng video và ẩn tức thời DOM video để chống phần mềm chụp màn hình ngoài
+    if (videoRef.current) {
       try {
-        videoRef.current.pause();
+        videoRef.current.style.opacity = '0';
+        videoRef.current.style.visibility = 'hidden';
+        if (typeof videoRef.current.pause === 'function') {
+          videoRef.current.pause();
+        }
       } catch (err) { }
     }
 
-    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức
+    // 3. Xóa bộ nhớ đệm Clipboard liên tục để triệt tiêu ảnh chụp lưu trong clipboard khi spam phím
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText('');
+      [0, 100, 300, 600, 1200, 2000].forEach(delay => {
+        setTimeout(() => {
+          try { navigator.clipboard.writeText(''); } catch (_) {}
+        }, delay);
+      });
     }
 
-    // 3. Phủ màu đen tuyền tuyệt đối (#000000) đè lên video
+    // 4. Phủ màu đen tuyền tuyệt đối (#000000) đè lên toàn bộ khung video
     setIsScreenRecordingDetected(true);
     isScreenRecordingDetectedRef.current = true;
     setRecordingDetectedMessage(reason || '');
   };
 
   const restoreDrmVideo = () => {
-    // 🔒 ĐIỀU KIỆN NGHIÊM NGẶT: CHỈ khôi phục khi người dùng thực sự quay lại trình duyệt và đang focus vào bài học
+    // 🔒 1. Kiểm tra Latch Lock (Nếu vừa bấm/spam phím chụp, khóa cứng màn hình đen 3s, không cho mở lại)
+    const now = Date.now();
+    if (now < blackoutLockUntilRef.current) {
+      if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
+      const remainingTime = blackoutLockUntilRef.current - now + 150;
+      restoreTimeoutRef.current = setTimeout(restoreDrmVideo, remainingTime);
+      return;
+    }
+
+    // 🔒 2. CHỈ khôi phục khi người dùng thực sự quay lại trình duyệt và đang focus vào bài học
     const isTrulyFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
     
     if (!isTrulyFocused) {
-      // Nếu đang click vào viền ứng dụng khác hoặc cửa sổ bên ngoài, tiếp tục giữ màn hình đen và tạm dừng video
-      if (videoRef.current && typeof videoRef.current.pause === 'function') {
+      if (videoRef.current) {
         try {
-          videoRef.current.pause();
+          videoRef.current.style.opacity = '0';
+          videoRef.current.style.visibility = 'hidden';
+          if (typeof videoRef.current.pause === 'function') {
+            videoRef.current.pause();
+          }
         } catch (_) { }
       }
       setIsScreenRecordingDetected(true);
@@ -116,9 +164,17 @@ const LessonDetailPage = () => {
       return;
     }
 
+    // Khôi phục hiển thị video an toàn
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
     setRecordingDetectedMessage('');
+
+    if (videoRef.current) {
+      try {
+        videoRef.current.style.opacity = '1';
+        videoRef.current.style.visibility = 'visible';
+      } catch (_) {}
+    }
 
     if (wasPlayingRef.current && videoRef.current && typeof videoRef.current.play === 'function') {
       try {
@@ -141,7 +197,7 @@ const LessonDetailPage = () => {
     }
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool / Game Bar)
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool / Game Bar / Spam-Proof)
   useEffect(() => {
     let isAltPressed = false;
     let isMetaPressed = false;
@@ -188,7 +244,8 @@ const LessonDetailPage = () => {
       const isCaptureAttempt = isNvidiaInstantReplay || isXboxGameBar || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
 
       if (isCaptureAttempt) {
-        triggerZeroLatencyBlackout('DRM Capture Detected');
+        // Khóa cứng màn hình đen 3.0s chống mọi hành vi spam
+        triggerZeroLatencyBlackout('Hệ thống bảo vệ bản quyền: Phát hiện thao tác chụp / quay màn hình!', true);
 
         try {
           e.preventDefault();
@@ -203,12 +260,12 @@ const LessonDetailPage = () => {
       if (videoRef.current && !videoRef.current.paused) {
         wasPlayingRef.current = true;
       }
-      triggerZeroLatencyBlackout('Window Blur');
+      triggerZeroLatencyBlackout('Window Blur', false);
     };
 
     // Khi người dùng quay trở lại cửa sổ (Window Focus)
     const handleWindowFocus = () => {
-      setTimeout(restoreDrmVideo, 60);
+      setTimeout(restoreDrmVideo, 300);
     };
 
     // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Visibility Change)
@@ -217,9 +274,9 @@ const LessonDetailPage = () => {
         if (videoRef.current && !videoRef.current.paused) {
           wasPlayingRef.current = true;
         }
-        triggerZeroLatencyBlackout('Tab Hidden');
+        triggerZeroLatencyBlackout('Tab Hidden', false);
       } else {
-        setTimeout(restoreDrmVideo, 60);
+        setTimeout(restoreDrmVideo, 300);
       }
     };
 
@@ -228,14 +285,14 @@ const LessonDetailPage = () => {
       const isFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
       if (!isFocused) {
         if (!isScreenRecordingDetectedRef.current) {
-          triggerZeroLatencyBlackout('Lost Focus');
+          triggerZeroLatencyBlackout('Lost Focus', false);
         } else if (videoRef.current && !videoRef.current.paused) {
           try {
             videoRef.current.pause();
           } catch (_) { }
         }
       }
-    }, 200);
+    }, 150);
 
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);

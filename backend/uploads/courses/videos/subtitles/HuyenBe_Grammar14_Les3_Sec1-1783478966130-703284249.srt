@@ -27,9 +27,217 @@ She loves him.
 It belongs to them.
 
 8
-00:00:36,800 --> 00:00:42,500
+00:00:36,799 --> 00:00:42,500
 They need it.
 
 9
-00:00:42,800 --> 00:00:50,000
-Subject pronouns go before verbs, object pronouns go after verbs.
+00:00:43,000 --> 00:00:49,000
+Now, let's understand why we use these different forms in English.
+
+10
+00:00:49,500 --> 00:00:55,500
+First, Subject Pronouns: I, You, We, They, He, She, It.
+
+11
+00:00:56,000 --> 00:01:02,000
+Subject pronouns always perform the action and stand before the verb.
+
+12
+00:01:02,500 --> 00:01:09,000
+For example: I see them. 'I' is the subject doing the action of seeing.
+
+13
+00:01:09,500 --> 00:01:16,000
+Another example: She loves him. 'She' is the subject before the verb 'loves'.
+
+14
+00:01:16,500 --> 00:01:24,000
+Remember: Whenever a pronoun is before the main verb, use the Subject form!
+
+15
+00:01:24,500 --> 00:01:32,000
+We say: They know me, NOT Them know me.
+
+16
+00:01:32,500 --> 00:01:39,000
+Next, let's look at Object Pronouns: Me, You, Us, Them, Him, Her, It.
+
+17
+00:01:39,500 --> 00:01:46,000
+Object pronouns receive the action and stand after verbs or prepositions.
+
+18
+00:01:46,500 --> 00:01:54,000
+In the sentence 'I see them', 'them' is the object pronoun after the verb 'see'.
+
+19
+00:01:54,500 --> 00:02:02,000
+In 'You help us', 'us' is the object receiving the help from 'You'.
+
+20
+00:02:02,500 --> 00:02:10,000
+Notice that 'You' and 'It' have the same form for both subject and object!
+
+21
+00:02:10,500 --> 00:02:18,000
+You see me (Subject), and I see you (Object).
+
+22
+00:02:18,500 --> 00:02:26,000
+A very important rule: Always use Object Pronouns after prepositions like to, with, for, at.
+
+23
+00:02:26,500 --> 00:02:33,000
+Listen to me! We use 'me', not 'I'.
+
+24
+00:02:33,500 --> 00:02:40,000
+Look at him! We use 'him', not 'he'.
+
+25
+00:02:40,500 --> 00:02:47,000
+She is waiting for us. We use 'us' after the preposition 'for'.
+
+26
+00:02:47,500 --> 00:02:55,000
+He wants to speak with them. We use 'them' after 'with'.
+
+27
+00:02:55,500 --> 00:03:03,000
+This gift is for her. Never say 'for she'!
+
+28
+00:03:03,500 --> 00:03:11,000
+Let's compare these sentence pairs to see the difference clearly.
+
+29
+00:03:11,500 --> 00:03:18,000
+He loves her, and she loves him.
+
+30
+00:03:18,500 --> 00:03:26,000
+Notice how 'He' becomes 'him', and 'She' becomes 'her' when their positions swap.
+
+31
+00:03:26,500 --> 00:03:34,000
+We invited them, and they invited us.
+
+32
+00:03:34,500 --> 00:03:42,000
+I teach you English, and you practice English with me.
+
+33
+00:03:42,500 --> 00:03:50,000
+Now, let's review the most common mistakes English learners make.
+
+34
+00:03:50,500 --> 00:03:58,000
+Mistake 1: Saying 'Me and him went to school'.
+
+35
+00:03:58,500 --> 00:04:06,000
+Correction: 'He and I went to school', because both are subjects before the verb!
+
+36
+00:04:06,500 --> 00:04:14,000
+Mistake 2: Saying 'Between you and I'.
+
+37
+00:04:14,500 --> 00:04:22,000
+Correction: 'Between you and me', because 'between' is a preposition!
+
+38
+00:04:22,500 --> 00:04:30,000
+Always check the verb and preposition to choose the right pronoun!
+
+39
+00:04:30,500 --> 00:04:38,000
+Let's do a quick practice quiz together! Fill in the blanks with the correct pronoun.
+
+40
+00:04:38,500 --> 00:04:46,000
+Question 1: Peter called Sarah because he needed to ask (she / her) a question.
+
+41
+00:04:46,500 --> 00:04:54,000
+The answer is: HER! Because it comes after the verb 'ask'.
+
+42
+00:04:54,500 --> 00:05:02,000
+Question 2: (We / Us) are planning a surprise birthday party for our teacher.
+
+43
+00:05:02,500 --> 00:05:10,000
+The answer is: WE! Because it is the subject before the verb 'are planning'.
+
+44
+00:05:10,500 --> 00:05:18,000
+Question 3: Can you pass that book to (I / me), please?
+
+45
+00:05:18,500 --> 00:05:26,000
+The answer is: ME! Because 'to' is a preposition.
+
+46
+00:05:26,500 --> 00:05:34,000
+Let's summarize all Subject and Object Pronoun pairs on the board.
+
+47
+00:05:34,500 --> 00:05:41,000
+I changes to ME. You stays as YOU.
+
+48
+00:05:41,500 --> 00:05:48,000
+We changes to US. They changes to THEM.
+
+49
+00:05:48,500 --> 00:05:55,000
+He changes to HIM. She changes to HER.
+
+50
+00:05:55,500 --> 00:06:03,000
+It stays as IT. Make sure to take notes in your grammar notebook!
+
+51
+00:06:03,500 --> 00:06:11,000
+Now, repeat after me to improve your pronunciation and natural speaking rhythm.
+
+52
+00:06:11,500 --> 00:06:17,000
+I see them. They know me.
+
+53
+00:06:17,500 --> 00:06:23,000
+We like you. You help us.
+
+54
+00:06:23,500 --> 00:06:29,000
+He calls her. She loves him.
+
+55
+00:06:29,500 --> 00:06:36,000
+It belongs to them. They need it.
+
+56
+00:06:36,500 --> 00:06:45,000
+Excellent work! Your pronunciation is getting much more natural!
+
+57
+00:06:45,500 --> 00:06:52,000
+For your homework, complete the practice quiz below this video lesson.
+
+58
+00:06:52,500 --> 00:06:59,000
+Write 5 sentences using both Subject and Object pronouns in your notebook.
+
+59
+00:06:59,500 --> 00:07:07,000
+In our next lesson, we will explore Possessive Adjectives and Possessive Pronouns!
+
+60
+00:07:07,500 --> 00:07:15,000
+Thank you for watching! Keep practicing, and I'll see you in the next lesson. Goodbye!
+
+61
+00:07:15,500 --> 00:07:19,800
+E-Learn Academy - Happy learning!
