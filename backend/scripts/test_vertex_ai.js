@@ -1,12 +1,12 @@
 /**
- * Comprehensive Verification Script for Gemini 2.5 & Vertex AI Integration
- * Tests:
- * 1. AI Client Initialization
- * 2. Real Gemini 2.5 Flash Generate Content
- * 3. Real Gemini 2.5 Flash Generate Content Stream (SSE chunks)
- * 4. Token Counting (countTokens)
- * 5. Embedding Vector Generation (gemini-embedding-001 - 768 dimensions)
- * 6. Pinecone Vector Search Connectivity
+ * Script Kiểm Thử Gemini 2.5 (Google AI Studio - Chế độ Miễn Phí 100%)
+ * 
+ * Kiểm tra:
+ * 1. Khởi tạo Client Gemini API
+ * 2. Gọi thực tế Gemini 2.5 Flash sinh văn bản (Text Generation)
+ * 3. Gọi thực tế Gemini 2.5 Flash sinh Stream chunks (SSE)
+ * 4. Đếm số lượng Token (countTokens)
+ * 5. Tạo vector Embedding 768 chiều (gemini-embedding-001)
  * 
  * Authors:
  * - NGUYỄN DŨNG QUỐC ANH (Frontend & AI UI Integration Developer)
@@ -29,19 +29,20 @@ const {
 
 async function runTests() {
   console.log('====================================================');
-  console.log('🚀 KHỞI CHẠY KIỂM THỬ TOÀN DIỆN GEMINI 2.5 & VERTEX AI');
+  console.log('🚀 KIỂM THỬ HỆ THỐNG GEMINI 2.5 (CHẾ ĐỘ MIỄN PHÍ 100%)');
   console.log('====================================================\n');
 
   let passedTests = 0;
   let totalTests = 5;
 
-  // TEST 1: Khởi tạo Client & Kiểm tra Cấu hình
-  console.log('👉 [TEST 1/5] Kiểm tra Khởi tạo Client & Authentication...');
+  // TEST 1: Kiểm tra Khởi tạo Client & Key
+  console.log('👉 [TEST 1/5] Kiểm tra Khởi tạo Client & API Key...');
   try {
-    if (!ai) {
-      throw new Error('ai client không tồn tại');
+    const key = process.env.GEMINI_API_KEY;
+    if (!key || key.trim() === '') {
+      throw new Error('Chưa có GEMINI_API_KEY trong file backend/.env. Vui lòng lấy key miễn phí từ https://aistudio.google.com/app/apikey và dán vào backend/.env');
     }
-    console.log('   ✅ Test 1 Thành công: AI Client đã khởi tạo thành công.');
+    console.log('   ✅ Test 1 Thành công: Đã tìm thấy GEMINI_API_KEY.');
     passedTests++;
   } catch (err) {
     console.error('   ❌ Test 1 Thất bại:', err.message);
@@ -50,20 +51,17 @@ async function runTests() {
   // TEST 2: Gọi thực tế Gemini 2.5 Flash Text Generation
   console.log('\n👉 [TEST 2/5] Kiểm tra Gọi thực tế Gemini 2.5 Flash Generate Content...');
   try {
-    const prompt = 'Hãy trả lời ngắn gọn đúng 1 câu: "Hệ thống E-learning AI đang hoạt động tốt trên Vertex AI."';
+    const prompt = 'Hãy trả lời ngắn gọn đúng 1 câu: "Hệ thống E-learning AI Gemini 2.5 đang hoạt động miễn phí và ổn định."';
     const result = await geminiModel.generateContent(prompt);
     const text = result.response.text();
     console.log(`   Phản hồi thực tế từ Gemini: "${text.trim()}"`);
     if (!text || text.length === 0) {
       throw new Error('Gemini trả về chuỗi rỗng');
     }
-    console.log('   ✅ Test 2 Thành công: Gemini 2.5 Flash đã phản hồi văn bản thành công!');
+    console.log('   ✅ Test 2 Thành công: Gemini 2.5 Flash đã phản hồi văn bản thực tế!');
     passedTests++;
   } catch (err) {
     console.error('   ❌ Test 2 Thất bại:', err.message);
-    if (err.message.includes('Could not load the default credentials') || err.message.includes('credentials')) {
-      console.log('   ℹ️ HƯỚNG DẪN: Cần chạy "gcloud auth application-default login" hoặc cấu hình GOOGLE_APPLICATION_CREDENTIALS');
-    }
   }
 
   // TEST 3: Gọi thực tế Gemini 2.5 Flash Stream
@@ -129,10 +127,9 @@ async function runTests() {
   console.log('====================================================');
 
   if (passedTests === totalTests) {
-    console.log('🎉 TẤT CẢ CÁC BÀI KIỂM THỬ HẠ TẦNG AI ĐÃ ĐẠT CHUẨN!');
+    console.log('🎉 TẤT CẢ CÁC BÀI KIỂM THỬ GEMINI 2.5 ĐÃ HOÀN TẤT THÀNH CÔNG!');
     process.exit(0);
   } else {
-    console.log('⚠️ CẦN KIỂM TRA LẠI CÁC BƯỚC THẤT BẠI.');
     process.exit(1);
   }
 }
