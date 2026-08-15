@@ -296,7 +296,68 @@ const getUserAnalyticsSummary = async (userId) => {
     }
 };
 
+/**
+ * Ghi nhận thời gian học thực tế qua Real-Time Heartbeat (từng giây / từng phút)
+ * @param {number} userId
+ * @param {number|null} lessonId
+ * @param {number} durationSeconds - Số giây thực tế học viên đã tích lũy trong nhịp này (mặc định 30s)
+ */
+const trackHeartbeat = async (userId, lessonId, durationSeconds = 30) => {
+    try {
+        const uid = parseInt(userId, 10);
+        if (!uid || isNaN(uid)) return { success: false, message: 'Invalid user ID' };
+
+        const lid = lessonId ? parseInt(lessonId, 10) : null;
+        const validSeconds = Math.max(1, Math.min(parseInt(durationSeconds, 10) || 30, 300)); // Giới hạn max 300s/nhịp tránh cheat
+
+        // Tìm phiên học gần nhất của user_id trong vòng 3 phút vừa qua
+        const recentSessionRes = await db.query(`
+            SELECT learning_ss_id, start_at, end_at, lesson_id
+            FROM learning_ss
+            WHERE user_id = $1
+              AND end_at >= (CURRENT_TIMESTAMP - INTERVAL '3 minutes')
+            ORDER BY end_at DESC
+            LIMIT 1
+        `, [uid]);
+
+        if (recentSessionRes.rows.length > 0) {
+            const session = recentSessionRes.rows[0];
+            // Kéo dài phiên học hiện tại đúng bằng số giây học thực
+            await db.query(`
+                UPDATE learning_ss
+                SET end_at = end_at + ($1 || ' seconds')::interval,
+                    lesson_id = COALESCE($2, lesson_id)
+                WHERE learning_ss_id = $3
+            `, [validSeconds, lid, session.learning_ss_id]);
+
+            return {
+                success: true,
+                sessionId: session.learning_ss_id,
+                action: 'extended',
+                addedSeconds: validSeconds
+            };
+        } else {
+            // Tạo mới một phiên học với đúng số giây vừa học
+            const insertRes = await db.query(`
+                INSERT INTO learning_ss (user_id, lesson_id, start_at, end_at)
+                VALUES ($1, $2, CURRENT_TIMESTAMP - ($3 || ' seconds')::interval, CURRENT_TIMESTAMP)
+                RETURNING learning_ss_id
+            `, [uid, lid, validSeconds]);
+
+            return {
+                success: true,
+                sessionId: insertRes.rows[0].learning_ss_id,
+                action: 'created',
+                addedSeconds: validSeconds
+            };
+        }
+    } catch (error) {
+        handleServiceError(error, 'Lỗi khi ghi nhận heartbeat học tập');
+    }
+};
+
 module.exports = {
     getUserHeatmap,
-    getUserAnalyticsSummary
+    getUserAnalyticsSummary,
+    trackHeartbeat
 };

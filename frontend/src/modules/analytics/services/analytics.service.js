@@ -16,7 +16,7 @@ export const getUserHeatmapData = async (timeRange = 'year') => {
 
     if (Array.isArray(rows) && rows.length > 0) {
       return rows.map(r => {
-        const minutes = parseFloat(r.total_minutes ?? r.count ?? 0);
+        const minutes = Math.round(parseFloat(r.total_minutes ?? r.count ?? 0) * 10) / 10;
         // study_date là date object hoặc ISO string từ PostgreSQL
         let dStr = r.study_date || r.date;
         if (dStr) {
@@ -25,7 +25,7 @@ export const getUserHeatmapData = async (timeRange = 'year') => {
         return {
           date: dStr,
           count: minutes,
-          intensity: minutes === 0 ? 0 : minutes < 20 ? 1 : minutes < 45 ? 2 : minutes < 75 ? 3 : 4
+          intensity: minutes === 0 ? 0 : minutes <= 15 ? 1 : minutes <= 30 ? 2 : minutes <= 60 ? 3 : 4
         };
       });
     }
@@ -35,6 +35,27 @@ export const getUserHeatmapData = async (timeRange = 'year') => {
 
   // Fallback: mảng rỗng (không fake data)
   return [];
+};
+
+/**
+ * Gửi heartbeat ghi nhận thời gian học thực tế lên máy chủ (Real-time Learning Tracker)
+ * @param {number|string} lessonId
+ * @param {number} durationSeconds - Số giây thực tế tích lũy trong nhịp này (mặc định 30s)
+ * @param {string} activityType - 'video' | 'pdf' | 'speaking' | 'quiz'
+ */
+export const sendStudyHeartbeat = async (lessonId, durationSeconds = 30, activityType = 'video') => {
+  try {
+    const cleanLessonId = lessonId ? parseInt(String(lessonId).replace('quiz-', '').replace('speaking-', ''), 10) : null;
+    const response = await apiClient.post('/analytics/heartbeat', {
+      lessonId: cleanLessonId,
+      durationSeconds,
+      activityType
+    });
+    return response.data;
+  } catch (error) {
+    console.debug('[Analytics] Heartbeat skipped:', error?.message);
+    return null;
+  }
 };
 
 /**

@@ -27,6 +27,7 @@ import {
   submitWritingAnswer, 
   submitAudioAnswer 
 } from '../services/quizzes.service';
+import useStudyTimeTracker from '../../lessons/hooks/useStudyTimeTracker';
 
 const getEffectiveQuestionType = (q) => {
   if (!q) return 'multiple_choice';
@@ -75,6 +76,10 @@ const PlayQuizPage = () => {
   const [answersLog, setAnswersLog] = useState([]); // Array of { isCorrect, pointsEarned }
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [leaderboard, setLeaderboard] = useState([]);
+
+  // Real-time Study Time Tracker for Quiz
+  const targetLessonId = quiz?.lesson_id ? quiz.lesson_id : (quiz?.lessonId || null);
+  useStudyTimeTracker(targetLessonId, gameState === 'playing' || gameState === 'feedback', 'quiz');
 
   useEffect(() => {
     if (user) {

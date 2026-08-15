@@ -43,15 +43,18 @@ class ProgressService {
     `;
     const result = await db.query(queryText, [userId, lessonId, isCompleted]);
 
-    // Tự động ghi nhận phiên học vào learning_ss để cập nhật Heatmap, Tổng thời gian học và Streak real-time
+    // Khi hoàn thành bài học, cập nhật end_at cho phiên học gần nhất nếu có
     if (isCompleted) {
       try {
         await db.query(`
-          INSERT INTO learning_ss (user_id, lesson_id, start_at, end_at)
-          VALUES ($1, $2, CURRENT_TIMESTAMP - INTERVAL '15 minutes', CURRENT_TIMESTAMP)
+          UPDATE learning_ss
+          SET end_at = CURRENT_TIMESTAMP
+          WHERE user_id = $1
+            AND lesson_id = $2
+            AND end_at >= (CURRENT_TIMESTAMP - INTERVAL '15 minutes');
         `, [userId, lessonId]);
       } catch (sessionErr) {
-        console.warn('Lỗi ghi nhận phiên học tự động cho progress:', sessionErr.message);
+        console.warn('Lỗi đồng bộ phiên học cho progress:', sessionErr.message);
       }
     }
 

@@ -5,5 +5,6 @@ const { authenticate } = require('../../middleware/auth.middleware');
 
 router.get('/user-heatmap', authenticate, analyticsController.getUserHeatmap);
 router.get('/summary', authenticate, analyticsController.getUserAnalyticsSummary);
+router.post('/heartbeat', authenticate, analyticsController.trackHeartbeat);
 
 module.exports = router;

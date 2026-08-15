@@ -35,7 +35,29 @@ const getUserAnalyticsSummary = async (req, res) => {
     }
 };
 
+const trackHeartbeat = async (req, res) => {
+    try {
+        const userId = req.user?.user_id || req.user?.id || req.body.userId;
+        const { lessonId, durationSeconds, courseId, activityType } = req.body;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        const result = await analyticsService.trackHeartbeat(userId, lessonId, durationSeconds);
+        return res.status(200).json({
+            success: true,
+            message: 'Learning heartbeat recorded successfully',
+            data: result
+        });
+    } catch (error) {
+        console.error('Lỗi trackHeartbeat controller:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
 module.exports = {
     getUserHeatmap,
-    getUserAnalyticsSummary
+    getUserAnalyticsSummary,
+    trackHeartbeat
 };

@@ -174,22 +174,7 @@ const testConnection = async () => {
         );
       `);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_learning_ss_user_id ON learning_ss(user_id);`);
-      
-      // Tự động đồng bộ các bài học đã hoàn thành vào learning_ss nếu chưa có phiên học
-      await client.query(`
-        INSERT INTO learning_ss (user_id, lesson_id, start_at, end_at)
-        SELECT up.user_id, up.lesson_id, COALESCE(up.completed_at, CURRENT_TIMESTAMP) - INTERVAL '15 minutes', COALESCE(up.completed_at, CURRENT_TIMESTAMP)
-        FROM user_progress up
-        WHERE up.is_completed = true
-          AND NOT EXISTS (
-            SELECT 1 FROM learning_ss ls 
-            WHERE ls.user_id = up.user_id 
-              AND ls.lesson_id = up.lesson_id 
-              AND (ls.start_at::date = COALESCE(up.completed_at, CURRENT_TIMESTAMP)::date)
-          );
-      `);
-
-      console.log('✅ Tự động đồng bộ: Đảm bảo bảng learning_ss và dữ liệu phiên học tồn tại thành công');
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng learning_ss tồn tại thành công');
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tự động tạo bảng learning_ss:', migErr.message);
     }

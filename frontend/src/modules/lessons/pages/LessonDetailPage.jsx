@@ -13,6 +13,7 @@ import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
+import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
 import shaka from 'shaka-player';
 import {
   getCourseDetails,
@@ -43,6 +44,7 @@ const LessonDetailPage = () => {
   const [activeLeftTab, setActiveLeftTab] = useState("syllabus"); // "syllabus" or "resources"
   const [expandedSections, setExpandedSections] = useState({});
   const [optimisticLessonId, setOptimisticLessonId] = useState(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -447,6 +449,14 @@ const LessonDetailPage = () => {
   const isLessonLoading = lessonLoading || (lessonFetching && String(currentLesson?.id) !== String(targetLessonId));
 
   const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && isLessonLoading);
+
+  // Real-time Study Time Tracker: Tự động ghi nhận từng phút học thực tế vào Heatmap
+  const isSpeakingLesson = String(targetLessonId).startsWith('speaking-') || !!currentLesson?.speakingSentences || !!currentLesson?.speakingQuestions;
+  const isPdfLesson = currentLesson?.type === 'pdf';
+  const isQuizLesson = String(targetLessonId).startsWith('quiz-') || !!currentLesson?.quizId;
+  const activeActivityType = isQuizLesson ? 'quiz' : isSpeakingLesson ? 'speaking' : isPdfLesson ? 'pdf' : 'video';
+
+  useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
   // Video loading state — browser tự stream qua HTTP Range Requests, không cần tải trước
   useEffect(() => {
@@ -887,12 +897,15 @@ const LessonDetailPage = () => {
                               disablePictureInPicture
                               onContextMenu={(e) => e.preventDefault()}
                               onDragStart={(e) => e.preventDefault()}
+                              onPlay={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
+                              onPlaying={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
+                              onPause={() => setIsVideoPlaying(false)}
+                              onEnded={() => setIsVideoPlaying(false)}
                               onLoadedData={() => setVideoLoading(false)}
                               onLoadedMetadata={() => setVideoLoading(false)}
                               onCanPlay={() => setVideoLoading(false)}
-                              onPlaying={() => setVideoLoading(false)}
                               onWaiting={() => setVideoLoading(true)}
-                              onError={() => setVideoLoading(false)}
+                              onError={() => { setVideoLoading(false); setIsVideoPlaying(false); }}
                               className="w-full h-full object-contain"
                             />
                           </>
