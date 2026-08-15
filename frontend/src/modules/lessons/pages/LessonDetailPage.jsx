@@ -63,49 +63,6 @@ const LessonDetailPage = () => {
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
 
-  // Tự động tải phụ đề khi đổi bài học
-  useEffect(() => {
-    if (!currentLesson?.id) return;
-    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
-    subtitlesService.getSubtitles(rawLessonId).then(data => {
-      if (data) {
-        setSubtitleData(data);
-      } else {
-        setSubtitleData(null);
-      }
-    }).catch(() => {
-      setSubtitleData(null);
-    });
-  }, [currentLesson?.id]);
-
-  // Tua video đến thời gian mong muốn từ Interactive Transcript
-  const handleSeekVideo = (seconds) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = seconds;
-      if (videoRef.current.paused) {
-        videoRef.current.play().catch(() => {});
-        setIsVideoPlaying(true);
-      }
-    }
-  };
-
-  // Kích hoạt Gemini 2.5 Flash tạo lại phụ đề
-  const handleGenerateSubtitles = async () => {
-    if (!currentLesson?.id || isGeneratingSubtitles) return;
-    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
-    setIsGeneratingSubtitles(true);
-    try {
-      const data = await subtitlesService.generateSubtitles(rawLessonId);
-      if (data) {
-        setSubtitleData(data);
-      }
-    } catch (err) {
-      console.error("Lỗi sinh phụ đề AI Gemini:", err);
-    } finally {
-      setIsGeneratingSubtitles(false);
-    }
-  };
-
   // Lắng nghe sự thay đổi Fullscreen để giữ dấu bản quyền hiển thị đè lên Video ngay cả trong Chế độ Toàn Màn Hình
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -489,6 +446,49 @@ const LessonDetailPage = () => {
   const activeActivityType = isQuizLesson ? 'quiz' : isSpeakingLesson ? 'speaking' : isPdfLesson ? 'pdf' : 'video';
 
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
+
+  // Tự động tải phụ đề khi đổi bài học (Đặt sau khi currentLesson đã được khai báo an toàn)
+  useEffect(() => {
+    if (!currentLesson?.id) return;
+    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
+    subtitlesService.getSubtitles(rawLessonId).then(data => {
+      if (data) {
+        setSubtitleData(data);
+      } else {
+        setSubtitleData(null);
+      }
+    }).catch(() => {
+      setSubtitleData(null);
+    });
+  }, [currentLesson?.id]);
+
+  // Tua video đến thời gian mong muốn từ Interactive Transcript
+  const handleSeekVideo = (seconds) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = seconds;
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+        setIsVideoPlaying(true);
+      }
+    }
+  };
+
+  // Kích hoạt Gemini 2.5 Flash tạo lại phụ đề
+  const handleGenerateSubtitles = async () => {
+    if (!currentLesson?.id || isGeneratingSubtitles) return;
+    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
+    setIsGeneratingSubtitles(true);
+    try {
+      const data = await subtitlesService.generateSubtitles(rawLessonId);
+      if (data) {
+        setSubtitleData(data);
+      }
+    } catch (err) {
+      console.error("Lỗi sinh phụ đề AI Gemini:", err);
+    } finally {
+      setIsGeneratingSubtitles(false);
+    }
+  };
 
   // Video loading state — browser tự stream qua HTTP Range Requests, không cần tải trước
   // 🛡️ BỘ NẠP VIDEO BẢO MẬT CHỐNG IDM & DOWNLOAD MANAGERS (Blob RAM Memory Masking & W3C ClearKey DRM)
