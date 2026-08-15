@@ -103,58 +103,44 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX & CHỐNG SPAM (Spam-Proof DRM Lockdown Engine)
-  const triggerZeroLatencyBlackout = (reason, isCriticalCapture = false) => {
-    // 1. Nếu là thao tác chụp/quay màn hình (PrtScn, Win+Shift+S, GameBar, SnippingTool), kích hoạt LATCH LOCK 3.0s
-    if (isCriticalCapture) {
-      blackoutLockUntilRef.current = Math.max(blackoutLockUntilRef.current, Date.now() + 3000);
-    }
+  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
+  const isCapturingKeysRef = useRef(new Set());
 
-    // 2. Tạm dừng video và ẩn tức thời DOM video để chống phần mềm chụp màn hình ngoài
+  const triggerZeroLatencyBlackout = (reason) => {
+    // 1. Ẩn ngay lập tức phần tử video ở tầng DOM (0ms Hardware Response)
     if (videoRef.current) {
       try {
         videoRef.current.style.opacity = '0';
         videoRef.current.style.visibility = 'hidden';
-        if (typeof videoRef.current.pause === 'function') {
+        if (!videoRef.current.paused) {
+          wasPlayingRef.current = true;
           videoRef.current.pause();
         }
       } catch (err) { }
     }
 
-    // 3. Xóa bộ nhớ đệm Clipboard liên tục để triệt tiêu ảnh chụp lưu trong clipboard khi spam phím
+    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để triệt tiêu ảnh chụp
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      [0, 100, 300, 600, 1200, 2000].forEach(delay => {
-        setTimeout(() => {
-          try { navigator.clipboard.writeText(''); } catch (_) {}
-        }, delay);
-      });
+      navigator.clipboard.writeText('').catch(() => {});
     }
 
-    // 4. Phủ màu đen tuyền tuyệt đối (#000000) đè lên toàn bộ khung video
+    // 3. Phủ màu đen tuyền tuyệt đối (#000000)
     setIsScreenRecordingDetected(true);
     isScreenRecordingDetectedRef.current = true;
     setRecordingDetectedMessage(reason || '');
   };
 
   const restoreDrmVideo = () => {
-    // 🔒 1. Kiểm tra Latch Lock (Nếu vừa bấm/spam phím chụp, khóa cứng màn hình đen 3s, không cho mở lại)
-    const now = Date.now();
-    if (now < blackoutLockUntilRef.current) {
-      if (restoreTimeoutRef.current) clearTimeout(restoreTimeoutRef.current);
-      const remainingTime = blackoutLockUntilRef.current - now + 150;
-      restoreTimeoutRef.current = setTimeout(restoreDrmVideo, remainingTime);
-      return;
-    }
-
-    // 🔒 2. CHỈ khôi phục khi người dùng thực sự quay lại trình duyệt và đang focus vào bài học
+    // CHỈ khôi phục khi: Cửa sổ đang focus + Không có phím chụp nào đang bị đè
     const isTrulyFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
-    
-    if (!isTrulyFocused) {
+    const hasActiveCaptureKey = isCapturingKeysRef.current.size > 0;
+
+    if (!isTrulyFocused || hasActiveCaptureKey) {
       if (videoRef.current) {
         try {
           videoRef.current.style.opacity = '0';
           videoRef.current.style.visibility = 'hidden';
-          if (typeof videoRef.current.pause === 'function') {
+          if (!videoRef.current.paused) {
             videoRef.current.pause();
           }
         } catch (_) { }
@@ -164,7 +150,7 @@ const LessonDetailPage = () => {
       return;
     }
 
-    // Khôi phục hiển thị video an toàn
+    // Nhả màn hình đen NGAY LẬP TỨC và cho video tiếp tục chạy
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
     setRecordingDetectedMessage('');
@@ -197,12 +183,11 @@ const LessonDetailPage = () => {
     }
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Thông Minh (NVIDIA Instant Replay / OBS / Snipping Tool / Game Bar / Spam-Proof)
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Chuẩn Apple (Phản hồi tức thì 0ms, spam thì đen, hết thì nhả)
   useEffect(() => {
     let isAltPressed = false;
     let isMetaPressed = false;
 
-    // Bắt các phím tắt quay/chụp màn hình ở cả pha keydown & keyup với capture phase cao nhất
     const handleScreenCaptureKeys = (e) => {
       if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
         isAltPressed = (e.type === 'keydown');
@@ -213,86 +198,78 @@ const LessonDetailPage = () => {
 
       const isAltActive = e.altKey || isAltPressed;
       const isMetaActive = e.metaKey || isMetaPressed;
+      const isShiftActive = e.shiftKey;
+      const isCtrlActive = e.ctrlKey;
       const keyLower = (e.key || '').toLowerCase();
       const codeUpper = (e.code || '').toUpperCase();
 
-      // 1. Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10, Alt + Tab)
-      const isNvidiaInstantReplay = isAltActive && (
-        keyLower === 'z' || codeUpper === 'KEYZ' || e.keyCode === 90 ||
-        keyLower === 'f9' || codeUpper === 'F9' || e.keyCode === 120 ||
-        keyLower === 'f10' || codeUpper === 'F10' || e.keyCode === 121
-      );
-
-      // 2. Phát hiện Xbox Game Bar & Windows Screen Recording (Win + G, Win + Alt + R)
-      const isXboxGameBar = (isMetaActive && (keyLower === 'g' || codeUpper === 'KEYG' || e.keyCode === 71)) ||
-                            (isMetaActive && isAltActive && (keyLower === 'r' || codeUpper === 'KEYR' || e.keyCode === 82));
-
-      // 3. Phát hiện PrintScreen (PrtScn / Snapshot key)
+      // 1. Phát hiện PrintScreen
       const isPrtScn = e.key === 'PrintScreen' || e.key === 'Snapshot' || codeUpper === 'PRINTSCREEN' || e.keyCode === 44;
 
-      // 4. Phát hiện Snipping Tool & macOS Screen Capture (Win/Cmd/Ctrl + Shift + S, Cmd + Shift + 3/4/5)
-      const isShiftActive = e.shiftKey;
-      const isSnippingTool = (e.metaKey || e.ctrlKey || isMetaActive) && isShiftActive && (
+      // 2. Phát hiện Snipping Tool & macOS Screen Capture (Win + Shift + S, Cmd + Shift + 3/4/5)
+      const isSnippingTool = (isMetaActive || isCtrlActive) && isShiftActive && (
         keyLower === 's' || codeUpper === 'KEYS' || e.keyCode === 83 ||
         keyLower === '3' || keyLower === '4' || keyLower === '5'
       );
 
-      // 5. Phát hiện In / Lưu trang (Ctrl+P / Ctrl+S)
-      const isPrintPage = (e.ctrlKey || e.metaKey) && (keyLower === 'p' || codeUpper === 'KEYP' || e.keyCode === 80);
-      const isSavePage = (e.ctrlKey || e.metaKey) && !isShiftActive && (keyLower === 's' || codeUpper === 'KEYS' || e.keyCode === 83);
+      // 3. Phát hiện Xbox Game Bar (Win + G) & NVIDIA Instant Replay (Alt + Z, Alt + F9/F10)
+      const isNvidia = isAltActive && (keyLower === 'z' || keyLower === 'f9' || keyLower === 'f10');
+      const isXbox = isMetaActive && (keyLower === 'g' || (isAltActive && keyLower === 'r'));
 
-      const isCaptureAttempt = isNvidiaInstantReplay || isXboxGameBar || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
+      const isCaptureAttempt = isPrtScn || isSnippingTool || isNvidia || isXbox;
 
-      if (isCaptureAttempt) {
-        // Khóa cứng màn hình đen 3.0s chống mọi hành vi spam
-        triggerZeroLatencyBlackout('Hệ thống bảo vệ bản quyền: Phát hiện thao tác chụp / quay màn hình!', true);
-
-        try {
-          e.preventDefault();
-          e.stopPropagation();
-        } catch (_) { }
-        return false;
+      if (e.type === 'keydown') {
+        if (isCaptureAttempt) {
+          isCapturingKeysRef.current.add(e.key || 'Capture');
+          // ĐEN MÀN HÌNH NGAY LẬP TỨC (0ms)
+          triggerZeroLatencyBlackout('Hệ thống bảo vệ bản quyền: Đã phát hiện thao tác chụp màn hình!');
+          try {
+            e.preventDefault();
+            e.stopPropagation();
+          } catch (_) { }
+          return false;
+        }
+      } else if (e.type === 'keyup') {
+        isCapturingKeysRef.current.clear();
+        if (isCaptureAttempt || isPrtScn) {
+          // Hết nhấn/hết chụp -> NHẢ VIDEO CHO CHẠY TIẾP TỨC THÌ
+          restoreDrmVideo();
+        }
       }
     };
 
-    // Khi người dùng chuyển cửa sổ làm việc sang OBS hoặc ứng dụng khác (Window Blur)
+    // Khi người dùng chuyển cửa sổ làm việc hoặc mở Snipping Tool overlay (Window Blur)
     const handleWindowBlur = () => {
-      if (videoRef.current && !videoRef.current.paused) {
-        wasPlayingRef.current = true;
-      }
-      triggerZeroLatencyBlackout('Window Blur', false);
+      triggerZeroLatencyBlackout('Cửa sổ không được kích hoạt (Window Blur)');
     };
 
-    // Khi người dùng quay trở lại cửa sổ (Window Focus)
+    // Khi người dùng quay trở lại cửa sổ sau khi chụp xong (Window Focus)
     const handleWindowFocus = () => {
-      setTimeout(restoreDrmVideo, 300);
+      isCapturingKeysRef.current.clear();
+      restoreDrmVideo();
     };
 
     // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Visibility Change)
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (videoRef.current && !videoRef.current.paused) {
-          wasPlayingRef.current = true;
-        }
-        triggerZeroLatencyBlackout('Tab Hidden', false);
+        triggerZeroLatencyBlackout('Tab Hidden');
       } else {
-        setTimeout(restoreDrmVideo, 300);
+        isCapturingKeysRef.current.clear();
+        restoreDrmVideo();
       }
     };
 
-    // 🛡️ Vòng lặp kiểm tra liên tục (Continuous Focus Guard): Chặn 100% khi người dùng click vào viền hoặc app khác
+    // 🛡️ Vòng lặp kiểm tra liên tục (Continuous Focus Guard): Chặn khi mất focus, nhả ngay khi có focus
     const focusGuardInterval = setInterval(() => {
       const isFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
       if (!isFocused) {
         if (!isScreenRecordingDetectedRef.current) {
-          triggerZeroLatencyBlackout('Lost Focus', false);
-        } else if (videoRef.current && !videoRef.current.paused) {
-          try {
-            videoRef.current.pause();
-          } catch (_) { }
+          triggerZeroLatencyBlackout('Lost Focus');
         }
+      } else if (isScreenRecordingDetectedRef.current && isCapturingKeysRef.current.size === 0) {
+        restoreDrmVideo();
       }
-    }, 150);
+    }, 100);
 
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
