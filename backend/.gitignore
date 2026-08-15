@@ -1,6 +1,16 @@
 node_modules/
 .env
+.env.*
+!.env.example
 .DS_Store
 dist/
 build/
 *.log
+
+# Google Cloud & Security Credentials
+*credentials*.json
+*gcp-key*.json
+*.pem
+*.key
+*.p12
+application_default_credentials.json

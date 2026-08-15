@@ -437,3 +437,12 @@ backend/scripts/auto_subtitle_pipeline.py
 backend/scripts/test_subtitle_suite.py
 scratch_sprint10.txt
 scratch/generate_comparison_report.py
+
+# Google Cloud & Security Credentials
+*credentials*.json
+*gcp-key*.json
+*.pem
+*.key
+*.p12
+application_default_credentials.json
+
