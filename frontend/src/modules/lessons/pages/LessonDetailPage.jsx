@@ -72,31 +72,47 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Declarative React State DRM Engine)
+  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM CHUẨN NETFLIX (Pure #000000 Pitch Black DRM Engine)
   const triggerZeroLatencyBlackout = (reason) => {
-    // 1. Tạm dừng video ngay lập tức để ngăn OBS quay tiếp luồng âm thanh/hình ảnh ngầm
+    // 1. Tạm dừng video ngay lập tức để ngăn OBS / phần mềm thứ 3 quay tiếp
     if (videoRef.current && typeof videoRef.current.pause === 'function') {
       try {
         videoRef.current.pause();
       } catch (err) { }
     }
 
-    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức để vô hiệu hóa hình ảnh nếu chụp phím PrintScreen
+    // 2. Xóa bộ nhớ đệm Clipboard ngay lập tức
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('');
     }
 
-    // 3. Phủ màu đen xì (#000000) đè lên video
+    // 3. Phủ màu đen tuyền tuyệt đối (#000000) đè lên video
     setIsScreenRecordingDetected(true);
     isScreenRecordingDetectedRef.current = true;
-    setRecordingDetectedMessage(reason || 'DRM Protection: Phân vùng video đã tự động chuyển sang màu đen (#000000) khi phát hiện thao tác quay/chụp màn hình hoặc mất Focus.');
+    setRecordingDetectedMessage(reason || '');
   };
 
   const restoreDrmVideo = () => {
+    // 🔒 ĐIỀU KIỆN NGHIÊM NGẶT: CHỈ khôi phục khi người dùng thực sự quay lại trình duyệt và đang focus vào bài học
+    const isTrulyFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
+    
+    if (!isTrulyFocused) {
+      // Nếu đang click vào viền ứng dụng khác hoặc cửa sổ bên ngoài, tiếp tục giữ màn hình đen và tạm dừng video
+      if (videoRef.current && typeof videoRef.current.pause === 'function') {
+        try {
+          videoRef.current.pause();
+        } catch (_) { }
+      }
+      setIsScreenRecordingDetected(true);
+      isScreenRecordingDetectedRef.current = true;
+      return;
+    }
+
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
     setRecordingDetectedMessage('');
-    if (videoRef.current && typeof videoRef.current.play === 'function') {
+
+    if (wasPlayingRef.current && videoRef.current && typeof videoRef.current.play === 'function') {
       try {
         videoRef.current.play();
       } catch (err) { }
@@ -110,7 +126,6 @@ const LessonDetailPage = () => {
 
     // Bắt các phím tắt quay/chụp màn hình ở cả pha keydown & keyup với capture phase cao nhất
     const handleScreenCaptureKeys = (e) => {
-      // Cập nhật trạng thái phím Alt & Meta (Windows key / Command key)
       if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
         isAltPressed = (e.type === 'keydown');
       }
@@ -151,13 +166,7 @@ const LessonDetailPage = () => {
       const isCaptureAttempt = isNvidiaInstantReplay || isXboxGameBar || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
 
       if (isCaptureAttempt) {
-        if (isNvidiaInstantReplay) {
-          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z). Khung hình video chuyển màu đen (#000000).');
-        } else if (isXboxGameBar) {
-          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt Xbox Game Bar / Windows Recording (Win+G). Màn hình video chuyển màu đen (#000000).');
-        } else {
-          triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P). Màn hình video chuyển màu đen (#000000).');
-        }
+        triggerZeroLatencyBlackout('DRM Capture Detected');
 
         try {
           e.preventDefault();
@@ -172,12 +181,12 @@ const LessonDetailPage = () => {
       if (videoRef.current && !videoRef.current.paused) {
         wasPlayingRef.current = true;
       }
-      triggerZeroLatencyBlackout('Netflix DRM Protected: Cửa sổ mất Focus hoặc đang mở ứng dụng thứ 3 (OBS/Screen Capture). Màn hình video chuyển sang màu đen (#000000).');
+      triggerZeroLatencyBlackout('Window Blur');
     };
 
     // Khi người dùng quay trở lại cửa sổ (Window Focus)
     const handleWindowFocus = () => {
-      restoreDrmVideo();
+      setTimeout(restoreDrmVideo, 60);
     };
 
     // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Visibility Change)
@@ -186,11 +195,25 @@ const LessonDetailPage = () => {
         if (videoRef.current && !videoRef.current.paused) {
           wasPlayingRef.current = true;
         }
-        triggerZeroLatencyBlackout('Netflix DRM Protected: Tab bài học đang ở chế độ nền. Màn hình tự động ẩn để bảo vệ bản quyền.');
+        triggerZeroLatencyBlackout('Tab Hidden');
       } else {
-        restoreDrmVideo();
+        setTimeout(restoreDrmVideo, 60);
       }
     };
+
+    // 🛡️ Vòng lặp kiểm tra liên tục (Continuous Focus Guard): Chặn 100% khi người dùng click vào viền hoặc app khác
+    const focusGuardInterval = setInterval(() => {
+      const isFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
+      if (!isFocused) {
+        if (!isScreenRecordingDetectedRef.current) {
+          triggerZeroLatencyBlackout('Lost Focus');
+        } else if (videoRef.current && !videoRef.current.paused) {
+          try {
+            videoRef.current.pause();
+          } catch (_) { }
+        }
+      }
+    }, 200);
 
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
@@ -199,6 +222,7 @@ const LessonDetailPage = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      clearInterval(focusGuardInterval);
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
       window.removeEventListener('blur', handleWindowBlur);
@@ -772,33 +796,13 @@ const LessonDetailPage = () => {
                       onContextMenu={(e) => e.preventDefault()}
                       onDragStart={(e) => e.preventDefault()}
                     >
-                      {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box) */}
+                      {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box - Đen thẩm tuyệt đối, không icon, không chữ) */}
                       <div
                         id="netflix-drm-blackout-shield"
-                        style={{ display: isScreenRecordingDetected ? 'flex' : 'none' }}
-                        className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer flex flex-col items-center justify-center p-6 text-center"
+                        style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
+                        className="absolute inset-0 bg-black z-[9999] select-none cursor-default"
                         onClick={restoreDrmVideo}
-                      >
-                        <div className="w-14 h-14 rounded-2xl bg-red-600/20 border border-red-500/50 flex items-center justify-center text-red-500 mb-3 text-2xl shadow-lg animate-pulse">
-                          🔒
-                        </div>
-                        <div className="text-white text-sm sm:text-base font-bold max-w-md tracking-tight mb-1">
-                          Bảo vệ Bản quyền Video (DRM Protection)
-                        </div>
-                        <p className="text-slate-400 text-xs max-w-sm">
-                          {recordingDetectedMessage || 'Màn hình tự động chuyển sang màu đen (#000000) khi phát hiện phím tắt quay/chụp màn hình hoặc mất Focus.'}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            restoreDrmVideo();
-                          }}
-                          className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white text-xs font-bold rounded-xl border border-slate-700 shadow-md transition-all cursor-pointer"
-                        >
-                          ▶️ Nhấn vào đây để tiếp tục xem bài học
-                        </button>
-                      </div>
+                      />
 
                       {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
                       <div
