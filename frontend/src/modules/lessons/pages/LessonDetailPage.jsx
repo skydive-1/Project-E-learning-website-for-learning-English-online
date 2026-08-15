@@ -107,59 +107,50 @@ const LessonDetailPage = () => {
   useEffect(() => {
     let isAltPressed = false;
     let isMetaPressed = false;
-    const WINDOW_FOCUS_THRESHOLD = 1500; // 1.5 giây thời gian chờ trước khi pause âm thầm
-    const DEBOUNCE_DELAY = 1200; // 1.2 giây chặn spam cảnh báo
 
     // Bắt các phím tắt quay/chụp màn hình ở cả pha keydown & keyup với capture phase cao nhất
     const handleScreenCaptureKeys = (e) => {
       // Cập nhật trạng thái phím Alt & Meta (Windows key / Command key)
-      if (e.key === 'Alt') {
-        isAltPressed = e.type === 'keydown';
-        return;
+      if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+        isAltPressed = (e.type === 'keydown');
       }
-      if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) {
-        isMetaPressed = e.type === 'keydown';
-        return;
+      if (e.key === 'Meta' || e.key === 'OS' || e.code === 'MetaLeft' || e.code === 'MetaRight' || e.keyCode === 91 || e.keyCode === 92) {
+        isMetaPressed = (e.type === 'keydown');
       }
 
-      // 1. Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10)
       const isAltActive = e.altKey || isAltPressed;
+      const isMetaActive = e.metaKey || isMetaPressed;
+      const keyLower = (e.key || '').toLowerCase();
+      const codeUpper = (e.code || '').toUpperCase();
+
+      // 1. Phát hiện NVIDIA Instant Replay / ShadowPlay (Alt + Z, Alt + F9, Alt + F10, Alt + Tab)
       const isNvidiaInstantReplay = isAltActive && (
-        e.key === 'z' || e.key === 'Z' || e.keyCode === 90 ||
-        e.key === 'F9' || e.keyCode === 120 ||
-        e.key === 'F10' || e.keyCode === 121
+        keyLower === 'z' || codeUpper === 'KEYZ' || e.keyCode === 90 ||
+        keyLower === 'f9' || codeUpper === 'F9' || e.keyCode === 120 ||
+        keyLower === 'f10' || codeUpper === 'F10' || e.keyCode === 121
       );
 
       // 2. Phát hiện Xbox Game Bar & Windows Screen Recording (Win + G, Win + Alt + R)
-      const isMetaActive = e.metaKey || isMetaPressed;
-      const isXboxGameBar = (isMetaActive && (e.key === 'g' || e.key === 'G' || e.keyCode === 71)) ||
-                            (isMetaActive && isAltActive && (e.key === 'r' || e.key === 'R' || e.keyCode === 82));
+      const isXboxGameBar = (isMetaActive && (keyLower === 'g' || codeUpper === 'KEYG' || e.keyCode === 71)) ||
+                            (isMetaActive && isAltActive && (keyLower === 'r' || codeUpper === 'KEYR' || e.keyCode === 82));
 
       // 3. Phát hiện PrintScreen (PrtScn / Snapshot key)
-      const isPrtScn = e.key === 'PrintScreen' || e.key === 'Snapshot' || e.keyCode === 44;
+      const isPrtScn = e.key === 'PrintScreen' || e.key === 'Snapshot' || codeUpper === 'PRINTSCREEN' || e.keyCode === 44;
 
       // 4. Phát hiện Snipping Tool & macOS Screen Capture (Win/Cmd/Ctrl + Shift + S, Cmd + Shift + 3/4/5)
-      const isSnippingTool = (e.metaKey || e.ctrlKey || isMetaActive) && e.shiftKey && (
-        e.key === 's' || e.key === 'S' || e.keyCode === 83 ||
-        e.key === '3' || e.key === '4' || e.key === '5'
+      const isShiftActive = e.shiftKey;
+      const isSnippingTool = (e.metaKey || e.ctrlKey || isMetaActive) && isShiftActive && (
+        keyLower === 's' || codeUpper === 'KEYS' || e.keyCode === 83 ||
+        keyLower === '3' || keyLower === '4' || keyLower === '5'
       );
 
       // 5. Phát hiện In / Lưu trang (Ctrl+P / Ctrl+S)
-      const isPrintPage = (e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.keyCode === 80);
-      const isSavePage = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 's' || e.key === 'S' || e.keyCode === 83);
+      const isPrintPage = (e.ctrlKey || e.metaKey) && (keyLower === 'p' || codeUpper === 'KEYP' || e.keyCode === 80);
+      const isSavePage = (e.ctrlKey || e.metaKey) && !isShiftActive && (keyLower === 's' || codeUpper === 'KEYS' || e.keyCode === 83);
 
-      const now = Date.now();
       const isCaptureAttempt = isNvidiaInstantReplay || isXboxGameBar || isPrtScn || isSnippingTool || isPrintPage || isSavePage;
 
       if (isCaptureAttempt) {
-        // Áp dụng Debounce ngăn chặn spam kích hoạt nhiều lần liên tiếp
-        if (now - lastWarningTimeRef.current < DEBOUNCE_DELAY) {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }
-        lastWarningTimeRef.current = now;
-
         if (isNvidiaInstantReplay) {
           triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện kích hoạt NVIDIA Instant Replay / ShadowPlay (Alt+Z). Khung hình video chuyển màu đen (#000000).');
         } else if (isXboxGameBar) {
@@ -168,59 +159,36 @@ const LessonDetailPage = () => {
           triggerZeroLatencyBlackout('Netflix DRM Protected: Phát hiện phím tắt chụp / quay màn hình (PrintScreen / Snipping Tool / Ctrl+P). Màn hình video chuyển màu đen (#000000).');
         }
 
-        e.preventDefault();
-        e.stopPropagation();
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+        } catch (_) { }
         return false;
       }
     };
 
-    // Khi người dùng chuyển cửa sổ làm việc khác (blur) hoặc đổi tab
+    // Khi người dùng chuyển cửa sổ làm việc sang OBS hoặc ứng dụng khác (Window Blur)
     const handleWindowBlur = () => {
-      if (blurTimeoutRef.current) {
-        clearTimeout(blurTimeoutRef.current);
-      }
-
       if (videoRef.current && !videoRef.current.paused) {
         wasPlayingRef.current = true;
       }
-
-      blurTimeoutRef.current = setTimeout(() => {
-        if (videoRef.current && !videoRef.current.paused) {
-          try {
-            videoRef.current.pause();
-          } catch (err) { }
-        }
-      }, WINDOW_FOCUS_THRESHOLD);
+      triggerZeroLatencyBlackout('Netflix DRM Protected: Cửa sổ mất Focus hoặc đang mở ứng dụng thứ 3 (OBS/Screen Capture). Màn hình video chuyển sang màu đen (#000000).');
     };
 
-    // Khi người dùng quay trở lại cửa sổ (focus)
+    // Khi người dùng quay trở lại cửa sổ (Window Focus)
     const handleWindowFocus = () => {
-      if (blurTimeoutRef.current) {
-        clearTimeout(blurTimeoutRef.current);
-        blurTimeoutRef.current = null;
-      }
-
-      if (isScreenRecordingDetectedRef.current) {
-        restoreDrmVideo();
-      } else {
-        if (wasPlayingRef.current && videoRef.current && videoRef.current.paused) {
-          try {
-            videoRef.current.play();
-          } catch (err) { }
-        }
-      }
-      wasPlayingRef.current = false;
+      restoreDrmVideo();
     };
 
-    // Khi tab trình duyệt bị ẩn (visibilitychange)
+    // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Visibility Change)
     const handleVisibilityChange = () => {
       if (document.hidden) {
         if (videoRef.current && !videoRef.current.paused) {
           wasPlayingRef.current = true;
-          try {
-            videoRef.current.pause();
-          } catch (err) { }
         }
+        triggerZeroLatencyBlackout('Netflix DRM Protected: Tab bài học đang ở chế độ nền. Màn hình tự động ẩn để bảo vệ bản quyền.');
+      } else {
+        restoreDrmVideo();
       }
     };
 
@@ -231,9 +199,6 @@ const LessonDetailPage = () => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      if (blurTimeoutRef.current) {
-        clearTimeout(blurTimeoutRef.current);
-      }
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
       window.removeEventListener('blur', handleWindowBlur);
@@ -322,29 +287,7 @@ const LessonDetailPage = () => {
     };
   }, [userRole]);
 
-  // Tạm dừng video phát khi chuyển tab (Page Visibility API)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        if (videoRef.current && !videoRef.current.paused) {
-          wasPlayingRef.current = true;
-          videoRef.current.pause();
-        }
-      } else {
-        if (wasPlayingRef.current && videoRef.current && videoRef.current.paused) {
-          try {
-            videoRef.current.play();
-          } catch (err) { }
-          wasPlayingRef.current = false;
-        }
-      }
-    };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
 
 
 
@@ -832,10 +775,30 @@ const LessonDetailPage = () => {
                       {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box) */}
                       <div
                         id="netflix-drm-blackout-shield"
-                        style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
-                        className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer"
+                        style={{ display: isScreenRecordingDetected ? 'flex' : 'none' }}
+                        className="absolute inset-0 bg-black z-[9999] select-none cursor-pointer flex flex-col items-center justify-center p-6 text-center"
                         onClick={restoreDrmVideo}
-                      />
+                      >
+                        <div className="w-14 h-14 rounded-2xl bg-red-600/20 border border-red-500/50 flex items-center justify-center text-red-500 mb-3 text-2xl shadow-lg animate-pulse">
+                          🔒
+                        </div>
+                        <div className="text-white text-sm sm:text-base font-bold max-w-md tracking-tight mb-1">
+                          Bảo vệ Bản quyền Video (DRM Protection)
+                        </div>
+                        <p className="text-slate-400 text-xs max-w-sm">
+                          {recordingDetectedMessage || 'Màn hình tự động chuyển sang màu đen (#000000) khi phát hiện phím tắt quay/chụp màn hình hoặc mất Focus.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            restoreDrmVideo();
+                          }}
+                          className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white text-xs font-bold rounded-xl border border-slate-700 shadow-md transition-all cursor-pointer"
+                        >
+                          ▶️ Nhấn vào đây để tiếp tục xem bài học
+                        </button>
+                      </div>
 
                       {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
                       <div
