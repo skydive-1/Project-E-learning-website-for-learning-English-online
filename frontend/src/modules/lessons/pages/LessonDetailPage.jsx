@@ -131,26 +131,7 @@ const LessonDetailPage = () => {
   };
 
   const restoreDrmVideo = () => {
-    // CHỈ khôi phục khi: Cửa sổ đang focus + Không có phím chụp nào đang bị đè
-    const isTrulyFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
-    const hasActiveCaptureKey = isCapturingKeysRef.current.size > 0;
-
-    if (!isTrulyFocused || hasActiveCaptureKey) {
-      if (videoRef.current) {
-        try {
-          videoRef.current.style.opacity = '0';
-          videoRef.current.style.visibility = 'hidden';
-          if (!videoRef.current.paused) {
-            videoRef.current.pause();
-          }
-        } catch (_) { }
-      }
-      setIsScreenRecordingDetected(true);
-      isScreenRecordingDetectedRef.current = true;
-      return;
-    }
-
-    // Nhả màn hình đen NGAY LẬP TỨC và cho video tiếp tục chạy
+    // Nhả màn hình đen NGAY LẬP TỨC và cho phép thao tác video bình thường
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
     setRecordingDetectedMessage('');
@@ -160,12 +141,6 @@ const LessonDetailPage = () => {
         videoRef.current.style.opacity = '1';
         videoRef.current.style.visibility = 'visible';
       } catch (_) {}
-    }
-
-    if (wasPlayingRef.current && videoRef.current && typeof videoRef.current.play === 'function') {
-      try {
-        videoRef.current.play();
-      } catch (err) { }
     }
   };
 
@@ -183,7 +158,7 @@ const LessonDetailPage = () => {
     }
   };
 
-  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Chuẩn Apple (Phản hồi tức thì 0ms, spam thì đen, hết thì nhả)
+  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Chuẩn Apple (Chỉ khóa khi chụp, chuyển tab không bị đen)
   useEffect(() => {
     let isAltPressed = false;
     let isMetaPressed = false;
@@ -238,50 +213,33 @@ const LessonDetailPage = () => {
       }
     };
 
-    // Khi người dùng chuyển cửa sổ làm việc hoặc mở Snipping Tool overlay (Window Blur)
-    const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('Cửa sổ không được kích hoạt (Window Blur)');
-    };
-
     // Khi người dùng quay trở lại cửa sổ sau khi chụp xong (Window Focus)
     const handleWindowFocus = () => {
       isCapturingKeysRef.current.clear();
       restoreDrmVideo();
     };
 
-    // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Visibility Change)
+    // Khi tab trình duyệt bị ẩn hoặc chuyển tab (Chỉ tạm dừng phát video để tiết kiệm băng thông, không khóa đen)
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        triggerZeroLatencyBlackout('Tab Hidden');
+        if (videoRef.current && !videoRef.current.paused) {
+          wasPlayingRef.current = true;
+          videoRef.current.pause();
+        }
       } else {
         isCapturingKeysRef.current.clear();
         restoreDrmVideo();
       }
     };
 
-    // 🛡️ Vòng lặp kiểm tra liên tục (Continuous Focus Guard): Chặn khi mất focus, nhả ngay khi có focus
-    const focusGuardInterval = setInterval(() => {
-      const isFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && !document.hidden;
-      if (!isFocused) {
-        if (!isScreenRecordingDetectedRef.current) {
-          triggerZeroLatencyBlackout('Lost Focus');
-        }
-      } else if (isScreenRecordingDetectedRef.current && isCapturingKeysRef.current.size === 0) {
-        restoreDrmVideo();
-      }
-    }, 100);
-
     window.addEventListener('keydown', handleScreenCaptureKeys, true);
     window.addEventListener('keyup', handleScreenCaptureKeys, true);
-    window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      clearInterval(focusGuardInterval);
       window.removeEventListener('keydown', handleScreenCaptureKeys, true);
       window.removeEventListener('keyup', handleScreenCaptureKeys, true);
-      window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
