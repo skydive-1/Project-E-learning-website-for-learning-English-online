@@ -47,6 +47,7 @@ const LessonDetailPage = () => {
   const blurTimeoutRef = useRef(null);
   const lastWarningTimeRef = useRef(0);
   const wasPlayingRef = useRef(false);
+  const blackoutReasonRef = useRef('');
 
   const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
@@ -65,6 +66,7 @@ const LessonDetailPage = () => {
   // Video & Screen Recording Protection States
   const [videoLoading, setVideoLoading] = useState(false);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
+  const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
   const [captionMode, setCaptionMode] = useState('off'); // 'off' | 'en' | 'vi' | 'bilingual' (Mặc định tắt phụ đề, người dùng bật khi có nhu cầu)
@@ -79,7 +81,7 @@ const LessonDetailPage = () => {
   const blackoutLockUntilRef = useRef(0);
   const restoreTimeoutRef = useRef(null);
 
-  // ⚡ Dynamic Forensic Watermark: Tự động đổi vị trí ngẫu nhiên mỗi 10s để chống cắt/làm mờ góc video
+  // ⚡ Dynamic Forensic Watermark: Tự động đổi vị trí ngẫu nhiên mỗi 28s để chống cắt/làm mờ góc video
   useEffect(() => {
     const interval = setInterval(() => {
       setWatermarkPosIndex(prev => {
@@ -87,7 +89,7 @@ const LessonDetailPage = () => {
         if (next === prev) next = (prev + 1) % WATERMARK_POSITIONS.length;
         return next;
       });
-    }, 10000);
+    }, 28000);
     return () => clearInterval(interval);
   }, []);
 
@@ -177,6 +179,7 @@ const LessonDetailPage = () => {
 
     setIsScreenRecordingDetected(true);
     isScreenRecordingDetectedRef.current = true;
+    blackoutReasonRef.current = reason || '';
     setRecordingDetectedMessage(reason || '');
   };
 
@@ -189,15 +192,39 @@ const LessonDetailPage = () => {
 
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
+    blackoutReasonRef.current = '';
     setRecordingDetectedMessage('');
 
     if (videoRef.current) {
       try {
         videoRef.current.style.opacity = '1';
         videoRef.current.style.visibility = 'visible';
+        // Tự động phát tiếp nếu trước khi che đen video đang phát
+        if (wasPlayingRef.current) {
+          videoRef.current.play().catch(() => {});
+          wasPlayingRef.current = false;
+        }
       } catch (_) {}
     }
   };
+
+  // Van an toàn (Safety Valve): Tự động giải phóng màn hình đen nếu tab đã active và có focus trở lại
+  useEffect(() => {
+    const safetyInterval = setInterval(() => {
+      if (isScreenRecordingDetectedRef.current) {
+        const isTabActive = !document.hidden && document.hasFocus();
+        const currentReason = blackoutReasonRef.current || '';
+        const isBlurOrTabHidden = currentReason === 'Tab Hidden' || currentReason === 'Window Blur';
+
+        // Chỉ tự động khôi phục nếu lý do là do chuyển tab/mất focus, KHÔNG can thiệp nếu đang bấm phím chụp màn hình
+        if (isTabActive && isBlurOrTabHidden && isCapturingKeysRef.current.size === 0) {
+          restoreDrmVideo();
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(safetyInterval);
+  }, []);
 
   // Click vào video để tạm dừng hoặc phát tiếp (Play / Pause toggle)
   const toggleVideoPlayPause = (e) => {
@@ -964,8 +991,7 @@ const LessonDetailPage = () => {
                         {currentLesson?.type === 'pdf' ? (
                           <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
                             {/* PDF Security Watermark Badge */}
-                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-20 select-none font-mono text-[9px] sm:text-[10px] text-slate-800 bg-white/80 border border-slate-300 px-2.5 py-0.5 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
                               <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
                               <span className="text-slate-400">•</span>
                               <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>
@@ -1093,8 +1119,7 @@ const LessonDetailPage = () => {
                             />
 
                             {/* Dynamic Video Forensic Security Watermark Badge */}
-                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-white bg-black/60 border border-white/20 px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-20 select-none font-mono text-[9px] sm:text-[10px] text-white bg-black/60 border border-white/20 px-2 py-0.5 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
                               <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
                               <span className="text-white/40">•</span>
                               <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>

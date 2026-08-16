@@ -125,9 +125,9 @@ class SubtitlesService {
   async runSilenceVadPipeline(videoPath, options = {}) {
     const { spawn } = require('child_process');
     const candidates = [
-      path.resolve(__dirname, '../../../scripts/auto_subtitle_pipeline.py'),
+      path.resolve(__dirname, '../../../../backend/scripts/auto_subtitle_pipeline.py'),
       path.resolve(__dirname, '../../../../scripts/auto_subtitle_pipeline.py'),
-      path.resolve(__dirname, '../../../../backend/scripts/auto_subtitle_pipeline.py')
+      path.resolve(__dirname, '../../../scripts/auto_subtitle_pipeline.py')
     ];
     const pythonScript = candidates.find(c => fs.existsSync(c));
     if (!pythonScript) {
@@ -135,9 +135,21 @@ class SubtitlesService {
       return null;
     }
 
-    const minSilence = options.minSilence || 500;
-    const silenceThresh = options.silenceThresh || -36;
+    const minSilence = options.minSilence || 400;
+    const silenceThresh = options.silenceThresh || -40;
     const workers = options.workers || 2;
+
+    const videoName = path.basename(videoPath, path.extname(videoPath));
+    const outputJsonPath = path.join(
+      __dirname,
+      '../../../../uploads/subtitles',
+      `${videoName}_vad_${Date.now()}.json`
+    );
+
+    const outputDir = path.dirname(outputJsonPath);
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
 
     return new Promise((resolve) => {
       const args = [
@@ -145,7 +157,8 @@ class SubtitlesService {
         videoPath,
         '--min_silence', String(minSilence),
         '--silence_thresh', String(silenceThresh),
-        '--workers', String(workers)
+        '--workers', String(workers),
+        '--output', outputJsonPath
       ];
 
       const pyProcess = spawn('python', args, {
@@ -162,6 +175,12 @@ class SubtitlesService {
 
       pyProcess.stdout.on('data', (data) => {
         stdoutData += data.toString();
+        const lines = data.toString().trim().split('\n');
+        for (const line of lines) {
+          if (line.includes('[Tiến độ]') || line.includes('✅') || line.includes('🧩')) {
+            console.log(`[Python VAD Subtitles]: ${line.trim()}`);
+          }
+        }
       });
 
       pyProcess.stderr.on('data', (data) => {
@@ -169,22 +188,13 @@ class SubtitlesService {
       });
 
       pyProcess.on('close', (code) => {
-        if (code === 0) {
+        if (code === 0 && fs.existsSync(outputJsonPath)) {
           try {
-            const videoName = path.basename(videoPath, path.extname(videoPath));
-            const jsonCandidates = [
-              path.join(path.dirname(videoPath), 'subtitles', `${videoName}.json`),
-              path.join(__dirname, '../../../../uploads/subtitles', `${videoName}.json`),
-              path.join(__dirname, '../../../uploads/subtitles', `${videoName}.json`)
-            ];
-            for (const jsonPath of jsonCandidates) {
-              if (fs.existsSync(jsonPath)) {
-                const fileContent = fs.readFileSync(jsonPath, 'utf8');
-                const parsed = JSON.parse(fileContent);
-                if (parsed.cues && Array.isArray(parsed.cues) && parsed.cues.length > 0) {
-                  return resolve(parsed.cues);
-                }
-              }
+            const fileContent = fs.readFileSync(outputJsonPath, 'utf8');
+            const parsed = JSON.parse(fileContent);
+            if (parsed.cues && Array.isArray(parsed.cues) && parsed.cues.length > 0) {
+              try { fs.unlinkSync(outputJsonPath); } catch (_) {}
+              return resolve(parsed.cues);
             }
           } catch (err) {
             console.warn('[Silence VAD Subtitle]: Lỗi đọc kết quả JSON:', err.message);
