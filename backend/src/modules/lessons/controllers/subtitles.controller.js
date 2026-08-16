@@ -25,9 +25,9 @@ exports.getSubtitles = async (req, res, next) => {
 
     if (!subtitles) {
       return res.status(200).json({
-        success: true,
+        success: false,
         data: null,
-        message: 'Bài học chưa có dữ liệu phụ đề'
+        message: 'Không thể tự động sinh phụ đề cho bài học này, vui lòng thử lại hoặc liên hệ giảng viên tải phụ đề thủ công'
       });
     }
 
@@ -59,7 +59,7 @@ exports.generateSubtitles = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Sinh phụ đề song ngữ bằng AI Gemini 2.5 Flash thành công',
+      message: 'Sinh phụ đề song ngữ bằng AI Gemini 3.7 Flash thành công',
       data: {
         subtitleId: subtitles.subtitle_id,
         lessonId: subtitles.lesson_id,
@@ -71,7 +71,12 @@ exports.generateSubtitles = async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(error);
+    console.error(`[Subtitles Controller]: Lỗi kích hoạt sinh phụ đề cho lesson ${req.params?.lessonId}:`, error.message);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      message: error.message || 'Không thể tự động sinh phụ đề cho bài học này, vui lòng thử lại hoặc liên hệ giảng viên tải phụ đề thủ công'
+    });
   }
 };
 

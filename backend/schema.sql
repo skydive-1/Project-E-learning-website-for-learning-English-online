@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS lesson_subtitles (
   vi_vtt TEXT,
   bilingual_vtt TEXT,
   cues JSONB NOT NULL DEFAULT '[]',
+  is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

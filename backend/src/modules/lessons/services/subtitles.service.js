@@ -120,16 +120,26 @@ class SubtitlesService {
   }
 
   /**
-   * Chạy Python Pipeline tự động với Silence Detection (Pydub VAD) + Gemini 2.5 Flash
+   * Chạy Python Pipeline tự động với Silence Detection (Pydub VAD) + Gemini 3.7 Flash
    */
   async runSilenceVadPipeline(videoPath, options = {}) {
     const { spawn } = require('child_process');
-    const pythonScript = path.join(__dirname, '../../../../scripts/auto_subtitle_pipeline.py');
+    const candidates = [
+      path.resolve(__dirname, '../../../scripts/auto_subtitle_pipeline.py'),
+      path.resolve(__dirname, '../../../../scripts/auto_subtitle_pipeline.py'),
+      path.resolve(__dirname, '../../../../backend/scripts/auto_subtitle_pipeline.py')
+    ];
+    const pythonScript = candidates.find(c => fs.existsSync(c));
+    if (!pythonScript) {
+      console.warn('[Silence VAD Subtitle]: Không tìm thấy file auto_subtitle_pipeline.py tại các đường dẫn kiểm tra.');
+      return null;
+    }
+
     const minSilence = options.minSilence || 500;
     const silenceThresh = options.silenceThresh || -36;
     const workers = options.workers || 2;
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const args = [
         pythonScript,
         videoPath,
@@ -139,8 +149,12 @@ class SubtitlesService {
       ];
 
       const pyProcess = spawn('python', args, {
-        cwd: path.join(__dirname, '../../../../'),
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        cwd: path.dirname(pythonScript),
+        env: { 
+          ...process.env, 
+          PYTHONIOENCODING: 'utf-8',
+          FFMPEG_PATH: ffmpegInstaller.path
+        }
       });
 
       let stdoutData = '';
@@ -158,18 +172,26 @@ class SubtitlesService {
         if (code === 0) {
           try {
             const videoName = path.basename(videoPath, path.extname(videoPath));
-            const jsonPath = path.join(path.dirname(videoPath), 'subtitles', `${videoName}.json`);
-            if (fs.existsSync(jsonPath)) {
-              const fileContent = fs.readFileSync(jsonPath, 'utf8');
-              const parsed = JSON.parse(fileContent);
-              return resolve(parsed.cues || []);
+            const jsonCandidates = [
+              path.join(path.dirname(videoPath), 'subtitles', `${videoName}.json`),
+              path.join(__dirname, '../../../../uploads/subtitles', `${videoName}.json`),
+              path.join(__dirname, '../../../uploads/subtitles', `${videoName}.json`)
+            ];
+            for (const jsonPath of jsonCandidates) {
+              if (fs.existsSync(jsonPath)) {
+                const fileContent = fs.readFileSync(jsonPath, 'utf8');
+                const parsed = JSON.parse(fileContent);
+                if (parsed.cues && Array.isArray(parsed.cues) && parsed.cues.length > 0) {
+                  return resolve(parsed.cues);
+                }
+              }
             }
           } catch (err) {
             console.warn('[Silence VAD Subtitle]: Lỗi đọc kết quả JSON:', err.message);
           }
           resolve(null);
         } else {
-          console.warn('[Silence VAD Subtitle Process Error]:', stderrData || stdoutData);
+          console.warn('[Silence VAD Subtitle Process Error]: Process exited with code', code, stderrData || stdoutData);
           resolve(null);
         }
       });
@@ -177,59 +199,37 @@ class SubtitlesService {
   }
 
   /**
-   * Pipeline Tự động: Trích xuất Audio -> Gửi Gemini 2.5 Flash phân tích giọng nói thật -> Sinh Phụ đề Song ngữ
+   * Lấy thời lượng tổng của video bài học (giây) sử dụng FFmpeg
    */
-  async generateSubtitlesWithGemini(lessonId) {
-    const lesson = await lessonsService.getLessonById(lessonId);
-    if (!lesson) {
-      throw new Error(`Không tìm thấy bài học có ID ${lessonId}`);
-    }
-
-    const lessonTitle = lesson.title || 'English Lesson';
-    const contentUrl = lesson.content_url || lesson.contentUrl || '';
-    
-    // Tìm đường dẫn file video cục bộ trên máy chủ nếu có
-    let videoFilePath = null;
-    if (contentUrl && contentUrl.startsWith('/uploads/')) {
-      const candidatePath = path.join(__dirname, '../../../../', contentUrl);
-      if (fs.existsSync(candidatePath)) {
-        videoFilePath = candidatePath;
-      }
-    }
-
-    let generatedCues = [];
-
-    // Ưu tiên 1: Chạy Silence Detection VAD Pipeline bằng Python
-    if (videoFilePath && fs.existsSync(videoFilePath)) {
-      try {
-        console.log(`[Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
-        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
-        if (vadCues && vadCues.length > 0) {
-          console.log(`[Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp 100% khoảng lặng thật!`);
-          generatedCues = vadCues;
+  async getVideoDuration(videoPath) {
+    const { spawn } = require('child_process');
+    return new Promise((resolve) => {
+      const cp = spawn(ffmpegInstaller.path, ['-i', videoPath]);
+      let output = '';
+      cp.stderr.on('data', (d) => { output += d.toString(); });
+      cp.stdout.on('data', (d) => { output += d.toString(); });
+      cp.on('close', () => {
+        const match = output.match(/Duration:\s*(\d+):(\d+):(\d+(\.\d+)?)/);
+        if (match) {
+          const hrs = parseInt(match[1], 10) || 0;
+          const mins = parseInt(match[2], 10) || 0;
+          const secs = parseFloat(match[3]) || 0;
+          const totalSeconds = hrs * 3600 + mins * 60 + secs;
+          return resolve(totalSeconds);
         }
-      } catch (vadErr) {
-        console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
-      }
-    }
+        resolve(0);
+      });
+    });
+  }
 
-    // Nếu tìm thấy file video thực tế trên máy chủ -> Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio API
-    if (videoFilePath && fs.existsSync(videoFilePath)) {
-      const tempAudioDir = path.join(__dirname, '../../../../uploads/temp_audio');
-      if (!fs.existsSync(tempAudioDir)) {
-        fs.mkdirSync(tempAudioDir, { recursive: true });
-      }
+  /**
+   * Gửi 1 file audio tới Gemini 3.7 Flash để bóc băng và dịch thuật
+   */
+  async transcribeAudioWithGemini(audioFilePath, timeOffset = 0) {
+    const audioBuffer = fs.readFileSync(audioFilePath);
+    const base64Audio = audioBuffer.toString('base64');
 
-      const tempAudioPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_${Date.now()}.mp3`);
-
-      try {
-        console.log(`[FFmpeg Audio Pipeline] Đang trích xuất audio 16kHz mono từ video bài học ${lessonId}...`);
-        await this.extractAudio(videoFilePath, tempAudioPath, { duration: 180 }); // Trích xuất đoạn audio đầu bài giảng
-
-        const audioBuffer = fs.readFileSync(tempAudioPath);
-        const base64Audio = audioBuffer.toString('base64');
-
-        const prompt = `
+    const prompt = `
 Bạn là hệ thống bóc băng âm thanh và biên dịch phụ đề video học tiếng Anh tự động (AI Audio Transcription & Bilingual Subtitle Engine).
 Hãy lắng nghe kỹ luồng âm thanh bài giảng tiếng Anh đính kèm và tạo danh sách phụ đề song ngữ chính xác theo giọng người nói thật.
 
@@ -256,47 +256,159 @@ Quy tắc:
 - vi: Bản dịch tiếng Việt tự nhiên, chuẩn nghĩa sư phạm cho người học.
 `;
 
-        console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên Gemini 2.5 Flash...`);
-        const response = await geminiModel.generateContent({
-          contents: [
+    console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên Gemini 3.7 Flash...`);
+    const response = await geminiModel.generateContent({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
             {
-              role: 'user',
-              parts: [
-                { text: prompt },
-                {
-                  inlineData: {
-                    mimeType: 'audio/mp3',
-                    data: base64Audio
-                  }
-                }
-              ]
+              inlineData: {
+                mimeType: 'audio/mp3',
+                data: base64Audio
+              }
             }
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 4096,
-            responseMimeType: "application/json"
-          }
-        });
-
-        const responseText = response?.response?.text() || '';
-        const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```$/, '').trim();
-        const parsed = JSON.parse(cleanJson);
-        generatedCues = parsed.cues || [];
-        console.log(`[Gemini Multimodal Audio] ✅ Đã bóc băng thành công ${generatedCues.length} câu phụ đề từ giọng nói thật của video!`);
-      } catch (audioErr) {
-        console.warn(`[Gemini Audio Pipeline Warning]: Lỗi bóc băng audio (${audioErr.message}). Kích hoạt bộ tạo phụ đề ngữ cảnh:`);
-      } finally {
-        // Dọn dẹp file audio tạm thời
-        if (fs.existsSync(tempAudioPath)) {
-          try { fs.unlinkSync(tempAudioPath); } catch (_) {}
+          ]
         }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json"
+      }
+    });
+
+    const responseText = response?.response?.text() || '';
+    const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```$/, '').trim();
+    const parsed = JSON.parse(cleanJson);
+    const cues = parsed.cues || [];
+
+    return cues.map((c, idx) => {
+      const realStart = Number(c.start || 0) + timeOffset;
+      const realEnd = Number(c.end || (Number(c.start || 0) + 4)) + timeOffset;
+      return {
+        id: c.id || idx + 1,
+        start: realStart,
+        end: realEnd,
+        startFormatted: formatVttTimestamp(realStart),
+        endFormatted: formatVttTimestamp(realEnd),
+        en: c.en || '',
+        vi: c.vi || ''
+      };
+    });
+  }
+
+  /**
+   * Pipeline Tự động: Trích xuất Audio -> Gửi Gemini 3.7 Flash phân tích giọng nói thật -> Sinh Phụ đề Song ngữ
+   */
+  async generateSubtitlesWithGemini(lessonId) {
+    const lesson = await lessonsService.getLessonById(lessonId);
+    if (!lesson) {
+      throw new Error(`Không tìm thấy bài học có ID ${lessonId}`);
+    }
+
+    const contentUrl = lesson.content_url || lesson.contentUrl || '';
+    
+    // Tìm đường dẫn file video cục bộ trên máy chủ nếu có
+    let videoFilePath = null;
+    if (contentUrl && contentUrl.startsWith('/uploads/')) {
+      const candidatePath = path.join(__dirname, '../../../../', contentUrl);
+      if (fs.existsSync(candidatePath)) {
+        videoFilePath = candidatePath;
       }
     }
 
-    // Nếu không có file audio hoặc API bóc băng gặp sự cố -> Sinh phụ đề ngữ cảnh thông minh
+    let generatedCues = [];
+
+    // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python
+    if (videoFilePath && fs.existsSync(videoFilePath)) {
+      try {
+        console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
+        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
+        if (vadCues && vadCues.length > 0) {
+          console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp 100% khoảng lặng thật!`);
+          generatedCues = vadCues;
+        }
+      } catch (vadErr) {
+        console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
+      }
+    }
+
+    // ƯU TIÊN 2: Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio (CHỈ chạy khi Ưu tiên 1 thất bại / không có cues)
+    if ((!generatedCues || generatedCues.length === 0) && videoFilePath && fs.existsSync(videoFilePath)) {
+      console.log(`[Ưu tiên 2 - Gemini Direct Audio] Kích hoạt bóc băng audio cho bài học ${lessonId}...`);
+      const tempAudioDir = path.join(__dirname, '../../../../uploads/temp_audio');
+      if (!fs.existsSync(tempAudioDir)) {
+        fs.mkdirSync(tempAudioDir, { recursive: true });
+      }
+
+      try {
+        let totalDuration = 0;
+        try {
+          totalDuration = await this.getVideoDuration(videoFilePath);
+        } catch (probeErr) {
+          console.warn(`[FFprobe Warning]: Không thể đo thời lượng video (${probeErr.message}), tiến hành trích xuất toàn bộ audio.`);
+        }
+
+        console.log(`[FFmpeg Audio Pipeline] Thời lượng video: ${totalDuration > 0 ? `${totalDuration.toFixed(1)}s` : 'Toàn bộ file'}`);
+
+        if (totalDuration <= 600) {
+          // Video <= 10 phút: Trích xuất và bóc băng toàn bộ một lần
+          const tempAudioPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_${Date.now()}.mp3`);
+          try {
+            await this.extractAudio(videoFilePath, tempAudioPath);
+            const cues = await this.transcribeAudioWithGemini(tempAudioPath, 0);
+            if (cues && cues.length > 0) {
+              generatedCues = cues;
+              console.log(`[Gemini Multimodal Audio] ✅ Đã bóc băng thành công ${generatedCues.length} câu phụ đề từ giọng nói thật của video!`);
+            }
+          } finally {
+            if (fs.existsSync(tempAudioPath)) {
+              try { fs.unlinkSync(tempAudioPath); } catch (_) {}
+            }
+          }
+        } else {
+          // Video > 10 phút: Chia chunk 8-10 phút (500s mỗi chunk)
+          const chunkSize = 500;
+          const numChunks = Math.ceil(totalDuration / chunkSize);
+          console.log(`[Gemini Multimodal Audio] Video dài (${totalDuration.toFixed(1)}s), chia thành ${numChunks} chunks ${chunkSize}s...`);
+
+          let allCues = [];
+          for (let i = 0; i < numChunks; i++) {
+            const seek = i * chunkSize;
+            const duration = Math.min(chunkSize, totalDuration - seek);
+            const tempChunkPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_chunk_${i}_${Date.now()}.mp3`);
+
+            try {
+              console.log(`[FFmpeg Audio Pipeline] Đang trích xuất chunk ${i + 1}/${numChunks} (từ ${seek}s đến ${seek + duration}s)...`);
+              await this.extractAudio(videoFilePath, tempChunkPath, { seek, duration });
+              const chunkCues = await this.transcribeAudioWithGemini(tempChunkPath, seek);
+              if (chunkCues && chunkCues.length > 0) {
+                allCues = allCues.concat(chunkCues);
+              }
+            } catch (chunkErr) {
+              console.warn(`[Gemini Audio Chunk ${i + 1} Warning]: ${chunkErr.message}`);
+            } finally {
+              if (fs.existsSync(tempChunkPath)) {
+                try { fs.unlinkSync(tempChunkPath); } catch (_) {}
+              }
+            }
+          }
+
+          if (allCues.length > 0) {
+            generatedCues = allCues;
+            console.log(`[Gemini Multimodal Audio] ✅ Đã ghép hoàn chỉnh ${generatedCues.length} câu phụ đề cho toàn bộ video dài!`);
+          }
+        }
+      } catch (audioErr) {
+        console.warn(`[Gemini Audio Pipeline Warning]: Lỗi bóc băng audio (${audioErr.message}).`);
+      }
+    }
+
+    // Nếu cả Ưu tiên 1 và Ưu tiên 2 đều thất bại -> Ném lỗi rõ ràng, KHÔNG trả về phụ đề giả
     if (!generatedCues || generatedCues.length === 0) {
-      generatedCues = this.createContextualCues(lessonTitle, contentUrl);
+      throw new Error(`Không thể tự động sinh phụ đề từ audio video bài học ${lessonId}. Vui lòng thử lại hoặc tải lên phụ đề thủ công.`);
     }
 
     // Chuẩn hóa định dạng mốc thời gian
@@ -320,122 +432,6 @@ Quy tắc:
       bilingual_vtt: bilingualVtt,
       cues: generatedCues
     });
-  }
-
-  /**
-   * Tạo phụ đề ngữ cảnh bài học chuẩn xác dựa trên nội dung video
-   */
-  createContextualCues(title, contentUrl = '') {
-    const url = contentUrl.toLowerCase();
-    
-    // Nếu là bài học về Subject & Object Pronouns (I see them)
-    if (url.includes('les3_sec1') || title.includes('Pronoun') || title.includes('Chào mừng')) {
-      return [
-        {
-          id: 1,
-          start: 0.0,
-          end: 4.2,
-          startFormatted: "00:00:00.000",
-          endFormatted: "00:00:04.200",
-          en: "I see them.",
-          vi: "Tôi nhìn thấy họ."
-        },
-        {
-          id: 2,
-          start: 4.5,
-          end: 9.0,
-          startFormatted: "00:00:04.500",
-          endFormatted: "00:00:09.000",
-          en: "They know me.",
-          vi: "Họ biết tôi."
-        },
-        {
-          id: 3,
-          start: 9.3,
-          end: 14.5,
-          startFormatted: "00:00:09.300",
-          endFormatted: "00:00:14.500",
-          en: "We like you.",
-          vi: "Chúng tôi quý bạn."
-        },
-        {
-          id: 4,
-          start: 14.8,
-          end: 19.5,
-          startFormatted: "00:00:14.800",
-          endFormatted: "00:00:19.500",
-          en: "You help us.",
-          vi: "Bạn giúp chúng tôi."
-        },
-        {
-          id: 5,
-          start: 19.8,
-          end: 25.0,
-          startFormatted: "00:00:19.800",
-          endFormatted: "00:00:25.000",
-          en: "He calls her.",
-          vi: "Anh ấy gọi điện cho cô ấy."
-        },
-        {
-          id: 6,
-          start: 25.3,
-          end: 30.5,
-          startFormatted: "00:00:25.300",
-          endFormatted: "00:00:30.500",
-          en: "She loves him.",
-          vi: "Cô ấy yêu anh ấy."
-        },
-        {
-          id: 7,
-          start: 30.8,
-          end: 36.5,
-          startFormatted: "00:00:30.800",
-          endFormatted: "00:00:36.500",
-          en: "It belongs to them.",
-          vi: "Nó thuộc về họ."
-        },
-        {
-          id: 8,
-          start: 36.8,
-          end: 42.5,
-          startFormatted: "00:00:36.800",
-          endFormatted: "00:00:42.500",
-          en: "They need it.",
-          vi: "Họ cần nó."
-        }
-      ];
-    }
-
-    // Mặc định cho các bài học khác
-    return [
-      {
-        id: 1,
-        start: 0.0,
-        end: 4.0,
-        startFormatted: "00:00:00.000",
-        endFormatted: "00:00:04.000",
-        en: `Welcome to this English lesson: ${title}.`,
-        vi: `Chào mừng các bạn đến với bài học tiếng Anh: ${title}.`
-      },
-      {
-        id: 2,
-        start: 4.2,
-        end: 9.0,
-        startFormatted: "00:00:04.200",
-        endFormatted: "00:00:09.000",
-        en: "Listen carefully to the pronunciation and explanations in this video.",
-        vi: "Hãy lắng nghe thật kỹ cách phát âm và giải thích trong video này."
-      },
-      {
-        id: 3,
-        start: 9.3,
-        end: 15.0,
-        startFormatted: "00:00:09.300",
-        endFormatted: "00:00:15.000",
-        en: "Practice speaking each phrase out loud to build your confidence.",
-        vi: "Hãy luyện nói to từng cụm từ để xây dựng sự tự tin trong giao tiếp nhé."
-      }
-    ];
   }
 }
 

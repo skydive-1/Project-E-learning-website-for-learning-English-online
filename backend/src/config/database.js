@@ -4,6 +4,7 @@
  */
 
 const { Pool } = require('pg');
+require('dotenv').config();
 
 let rawDbUrl = process.env.DATABASE_URL;
 if (rawDbUrl && rawDbUrl.includes('southeast-2.pooler')) {
@@ -187,12 +188,14 @@ const testConnection = async () => {
           vi_vtt TEXT,
           bilingual_vtt TEXT,
           cues JSONB NOT NULL DEFAULT '[]',
+          is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_subtitles_lesson_id ON lesson_subtitles(lesson_id);`);
-      console.log('✅ Tự động đồng bộ: Đảm bảo bảng lesson_subtitles tồn tại thành công');
+      await client.query(`ALTER TABLE lesson_subtitles ADD COLUMN IF NOT EXISTS is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE;`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng lesson_subtitles và cột is_auto_generated_fallback tồn tại thành công');
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_subtitles:', migErr.message);
     }
