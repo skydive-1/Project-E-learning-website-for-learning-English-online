@@ -75,33 +75,23 @@ class PineconeVectorStore:
             print(f"❌ Không thể khởi tạo kết nối Pinecone: {e}")
             raise e
             
-    def upload_documents(self, chunks, embeddings_model):
+    def upload_documents(self, chunks, embeddings_model, lesson_id):
         if not chunks:
             print("⚠️ Không có chunks nào để tải lên Pinecone.")
             return None
             
-        print(f"📤 Đang upload {len(chunks)} vectors lên index: {self.index_name}...")
+        print(f"📤 Đang upload {len(chunks)} vectors cho lesson_id={lesson_id} lên index: {self.index_name}...")
         try:
-            import re
-            import os
             for chunk in chunks:
-                source = chunk.metadata.get("source", "")
-                filename = os.path.basename(source)
-                # Tìm số sau chữ 'lesson' (ví dụ: lesson16-supplement.txt -> 16)
-                match = re.search(r"lesson(\d+)", filename, re.IGNORECASE)
-                if match:
-                    lesson_id = int(match.group(1))
-                    chunk.metadata["lesson_id"] = lesson_id
-                else:
-                    # Mặc định nếu không tìm thấy số bài học
-                    chunk.metadata["lesson_id"] = 1
+                chunk.metadata["lesson_id"] = int(lesson_id)
+                chunk.metadata["source"] = chunk.metadata.get("source", "legacy-python-rag-training")
                     
             docsearch = Pinecone.from_documents(
                 chunks,
                 embeddings_model,
                 index_name=self.index_name
             )
-            print("✅ Tải dữ liệu vector lên Pinecone hoàn tất!")
+            print(f"✅ Tải dữ liệu vector cho bài học {lesson_id} lên Pinecone hoàn tất!")
             return docsearch
         except Exception as e:
             print(f"❌ Lỗi xảy ra khi tải vector lên Pinecone: {e}")

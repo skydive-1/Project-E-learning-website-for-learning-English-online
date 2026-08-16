@@ -422,16 +422,18 @@ Quy tắc:
       vi: c.vi || `Nội dung bài học ${idx + 1}`
     }));
 
-    const enVtt = buildVttFromCues(generatedCues, 'en');
-    const viVtt = buildVttFromCues(generatedCues, 'vi');
-    const bilingualVtt = buildVttFromCues(generatedCues, 'bilingual');
-
-    return await this.saveSubtitles(lessonId, {
+    const savedResult = await this.saveSubtitles(lessonId, {
       en_vtt: enVtt,
       vi_vtt: viVtt,
       bilingual_vtt: bilingualVtt,
       cues: generatedCues
     });
+
+    // Tự động nạp transcript vào Pinecone RAG Vector DB (chạy nền non-blocking)
+    const { ingestLessonTranscript } = require('./ragIngestion.service');
+    ingestLessonTranscript(lessonId, generatedCues);
+
+    return savedResult;
   }
 }
 

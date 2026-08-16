@@ -80,6 +80,8 @@ exports.generateSubtitles = async (req, res, next) => {
   }
 };
 
+const { ingestLessonTranscript } = require('../services/ragIngestion.service');
+
 /**
  * PUT /api/lessons/:lessonId/subtitles - Cập nhật phụ đề tùy chỉnh
  */
@@ -95,6 +97,11 @@ exports.updateSubtitles = async (req, res, next) => {
       cues
     });
 
+    // Đồng bộ ngay transcript mới nhất vào Pinecone RAG Vector DB (chạy nền non-blocking)
+    if (cues && Array.isArray(cues) && cues.length > 0) {
+      ingestLessonTranscript(lessonId, cues);
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Cập nhật phụ đề bài học thành công',
@@ -102,5 +109,54 @@ exports.updateSubtitles = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * GET /api/lessons/:lessonId/rag-status - Kiểm tra tình trạng dữ liệu RAG của bài học trong Pinecone
+ */
+exports.getLessonRagStatus = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const { pineconeIndex } = require('../../../utils/ai-clients');
+
+    let hasData = false;
+    let chunkCount = 0;
+
+    if (pineconeIndex && typeof pineconeIndex.query === 'function') {
+      const dummyVector = new Array(768).fill(0);
+      const queryResponse = await pineconeIndex.query({
+        vector: dummyVector,
+        topK: 100,
+        filter: {
+          lesson_id: { $eq: Number(lessonId) }
+        },
+        includeMetadata: true
+      });
+
+      const matches = queryResponse?.matches || [];
+      chunkCount = matches.length;
+      hasData = chunkCount > 0;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        lessonId: Number(lessonId),
+        hasData,
+        chunkCount
+      }
+    });
+  } catch (error) {
+    console.error(`[RAG Status Controller Error] lessonId=${req.params?.lessonId}:`, error.message);
+    return res.status(200).json({
+      success: true,
+      data: {
+        lessonId: Number(req.params?.lessonId),
+        hasData: false,
+        chunkCount: 0,
+        warning: error.message
+      }
+    });
   }
 };

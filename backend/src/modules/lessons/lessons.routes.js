@@ -15,6 +15,9 @@ router.get('/:lessonId/subtitles', subtitlesController.getSubtitles);
 router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), subtitlesController.generateSubtitles);
 router.put('/:lessonId/subtitles', authenticate, authorize([1, 2]), subtitlesController.updateSubtitles);
 
+// Kiểm tra tình trạng vector RAG của bài học (Chỉ Admin / Instructor)
+router.get('/:lessonId/rag-status', authenticate, authorize([1, 2]), subtitlesController.getLessonRagStatus);
+
 // GET /api/lessons - Lấy danh sách bài giảng (query: ?courseId=X hoặc ?sectionId=Y)
 router.get('/', authenticate, lessonsController.getLessonsByQuery);
 
