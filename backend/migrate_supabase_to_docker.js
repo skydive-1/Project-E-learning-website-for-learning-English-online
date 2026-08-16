@@ -1,11 +1,26 @@
 const { Client } = require('pg');
 require('dotenv').config();
 
-// Kết nối tới Supabase cũ
-const supabaseUrl = process.env.DATABASE_URL || 'postgresql://postgres.tdiqliihqdlpcelacypc:Chuongdeptraivodichvutru@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres';
-// Kết nối tới PostgreSQL trong Docker (sử dụng DB_HOST từ env nếu chạy trong container, hoặc localhost nếu chạy ngoài)
-const dbHost = process.env.DB_HOST || 'localhost';
-const dockerUrl = "postgresql://postgres:postgres123@localhost:5432/elearning_db";
+const supabaseUrl = process.env.DATABASE_URL;
+
+const dockerHost = process.env.DB_HOST || 'localhost';
+const dockerPort = process.env.DB_PORT || '5432';
+const dockerUser = process.env.DB_USER || 'postgres';
+const dockerPassword = process.env.DB_PASSWORD;
+const dockerDatabase = process.env.DB_NAME || 'elearning_db';
+
+const dockerUrl =
+  `postgresql://${encodeURIComponent(dockerUser)}:` +
+  `${encodeURIComponent(dockerPassword)}@` +
+  `${dockerHost}:${dockerPort}/${dockerDatabase}`;
+
+if (!supabaseUrl) {
+  throw new Error('❌ DATABASE_URL chưa được cấu hình trong file .env');
+}
+
+if (!dockerPassword) {
+  throw new Error('❌ DB_PASSWORD chưa được cấu hình trong file .env');
+}
 
 
 // Danh sách các bảng theo thứ tự ràng buộc khóa ngoại (Foreign Key)
@@ -31,89 +46,89 @@ async function syncColumns(tableName, supabase, docker) {
     FROM information_schema.columns
     WHERE table_name = $1 AND table_schema = 'public'
   `, [tableName]);
-  
+
   const dockColsRes = await docker.query(`
     SELECT column_name, data_type, character_maximum_length
     FROM information_schema.columns
     WHERE table_name = $1 AND table_schema = 'public'
   `, [tableName]);
-  
-    const dockCols = new Map(dockColsRes.rows.map(r => [r.column_name,r]));  
+
+  const dockCols = new Map(dockColsRes.rows.map(r => [r.column_name, r]));
 
   for (const supCol of supColsRes.rows) {
 
-  let typeStr = supCol.data_type;
+    let typeStr = supCol.data_type;
 
-  // Chuẩn hóa kiểu dữ liệu
-  if (supCol.character_maximum_length) {
-    typeStr = `varchar(${supCol.character_maximum_length})`;
-  } 
-  else if (typeStr === 'character varying') {
-    typeStr = 'varchar';
-  }
-
-
-  // Trường hợp Docker thiếu cột
-  if (!dockCols.has(supCol.column_name)) {
-
-    console.log(
-      `   🛠️ Thêm cột thiếu: ${tableName}.${supCol.column_name} ${typeStr}`
-    );
+    // Chuẩn hóa kiểu dữ liệu
+    if (supCol.character_maximum_length) {
+      typeStr = `varchar(${supCol.character_maximum_length})`;
+    }
+    else if (typeStr === 'character varying') {
+      typeStr = 'varchar';
+    }
 
 
-    await docker.query(`
-      ALTER TABLE "${tableName}"
-      ADD COLUMN "${supCol.column_name}" ${typeStr}
-    `);
-
-  }
-
-
-  // Trường hợp Docker có cột nhưng sai kiểu dữ liệu
-  else {
-
-    const dockerCol = dockCols.get(supCol.column_name);
-
-
-    if (dockerCol.data_type !== supCol.data_type) {
+    // Trường hợp Docker thiếu cột
+    if (!dockCols.has(supCol.column_name)) {
 
       console.log(
-        `   Sai kiểu dữ liệu: ${tableName}.${supCol.column_name}`
-      );
-
-      console.log(
-        `   Docker: ${dockerCol.data_type}`
-      );
-
-      console.log(
-        `   Supabase: ${supCol.data_type}`
+        `   🛠️ Thêm cột thiếu: ${tableName}.${supCol.column_name} ${typeStr}`
       );
 
 
       await docker.query(`
+      ALTER TABLE "${tableName}"
+      ADD COLUMN "${supCol.column_name}" ${typeStr}
+    `);
+
+    }
+
+
+    // Trường hợp Docker có cột nhưng sai kiểu dữ liệu
+    else {
+
+      const dockerCol = dockCols.get(supCol.column_name);
+
+
+      if (dockerCol.data_type !== supCol.data_type) {
+
+        console.log(
+          `   Sai kiểu dữ liệu: ${tableName}.${supCol.column_name}`
+        );
+
+        console.log(
+          `   Docker: ${dockerCol.data_type}`
+        );
+
+        console.log(
+          `   Supabase: ${supCol.data_type}`
+        );
+
+
+        await docker.query(`
         ALTER TABLE "${tableName}"
         ALTER COLUMN "${supCol.column_name}"
         TYPE ${typeStr}
       `);
 
 
-      console.log(
-        `  Đã sửa kiểu ${supCol.column_name} thành ${typeStr}`
-      );
+        console.log(
+          `  Đã sửa kiểu ${supCol.column_name} thành ${typeStr}`
+        );
+
+      }
 
     }
-
   }
-}
 }
 
 async function migrate() {
-  const supabase = new Client({ 
-    connectionString: supabaseUrl, 
-    ssl: { rejectUnauthorized: false } 
+  const supabase = new Client({
+    connectionString: supabaseUrl,
+    ssl: { rejectUnauthorized: false }
   });
-  const docker = new Client({ 
-    connectionString: dockerUrl 
+  const docker = new Client({
+    connectionString: dockerUrl
   });
 
   try {
@@ -145,7 +160,7 @@ async function migrate() {
       console.log(`\n👉 Đang sao chép bảng: "${table.name}"`);
       const srcData = await supabase.query(`SELECT * FROM "${table.name}"`);
       console.log(`   Tìm thấy ${srcData.rows.length} dòng dữ liệu.`);
-      
+
       if (srcData.rows.length === 0) {
         console.log(`   (Bỏ qua do bảng trống)`);
         continue;
@@ -153,7 +168,7 @@ async function migrate() {
 
       const columns = Object.keys(srcData.rows[0]);
       const columnsList = columns.map(c => `"${c}"`).join(', ');
-      
+
       let insertedCount = 0;
       for (const row of srcData.rows) {
         const valuePlaceholders = columns.map((_, idx) => `$${idx + 1}`).join(', ');
@@ -165,7 +180,7 @@ async function migrate() {
           }
           return val;
         });
-        
+
         await docker.query(
           `INSERT INTO "${table.name}" (${columnsList}) VALUES (${valuePlaceholders})`,
           values

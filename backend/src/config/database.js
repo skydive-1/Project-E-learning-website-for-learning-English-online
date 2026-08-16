@@ -5,7 +5,7 @@
 
 const { Pool } = require('pg');
 
-const DEFAULT_DB_URL = 'postgresql://postgres.tdiqliihqdlpcelacypc:Chuongdeptraivodichvutru@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres';
+const DEFAULT_DB_URL = 'postgresql://postgres.tdiqliihqdlpcelacypc:Chuongdeptraivodichvutru%40%40%40@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres';
 
 let rawDbUrl = process.env.DATABASE_URL || (process.env.DB_HOST ? null : DEFAULT_DB_URL);
 if (rawDbUrl && rawDbUrl.includes('southeast-2.pooler')) {

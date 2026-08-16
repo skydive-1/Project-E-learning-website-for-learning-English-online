@@ -1,5 +1,5 @@
 # PINECONE_API_KEY
-PINECONE_API_KEY=pcsk_3DmT7x_RtwcNyBDBAkM65tAbgCBmWqsDL3AktxsWug2XgdoNf6RhGQKJeWEde2hLmnC1Vg
+PINECONE_API_KEY=your-pinecone-api-key-here
 
 # Thêm vào file .env để ẩn Rate Limit
 # Rate Limiting Settings
