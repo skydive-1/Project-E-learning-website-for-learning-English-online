@@ -1,125 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { askChatbot, askChatbotStream, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance } from '../services/chatbot.service';
+import { askChatbot, askChatbotStream, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance, generateChatbotQuiz, clearChatHistory } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
-
-// Hàm helper để sinh câu hỏi trắc nghiệm tương tác tùy theo bài học (lessonId)
-const getLessonSpecificQuiz = (lessonId) => {
-  const cleanId = String(lessonId).replace('quiz-', '');
-  
-  const quizzes = {
-    "1": [
-      {
-        question: "Phương pháp 'Active Recall' trong học tập có nghĩa là gì?",
-        options: [
-          "Đọc đi đọc lại bài học một cách thụ động",
-          "Chủ động kiểm tra trí nhớ để truy xuất thông tin",
-          "Dịch từng từ tiếng Anh sang tiếng Việt trong đầu",
-          "Chỉ nghe nhạc tiếng Anh trong lúc làm việc khác"
-        ],
-        correctAnswer: 1,
-        explanation: "'Active recall' là phương pháp chủ động gợi nhớ bằng cách tự kiểm tra hoặc đặt câu hỏi để truy xuất thông tin từ bộ nhớ, thay vì đọc lại thụ động."
-      },
-      {
-        question: "Đâu là cách thiết lập mục tiêu luyện nói tiếng Anh hàng ngày hiệu quả?",
-        options: [
-          "Học thuộc lòng toàn bộ cuốn từ điển dày",
-          "Dành ra thời gian cố định mỗi ngày để nói/chat",
-          "Chỉ học công thức ngữ pháp chứ không nói",
-          "Đợi đến khi phát âm thật hoàn hảo mới bắt đầu nói"
-        ],
-        correctAnswer: 1,
-        explanation: "Thiết lập thói quen nhỏ đều đặn hàng ngày là chìa khóa để cải thiện phản xạ giao tiếp tiếng Anh tốt nhất."
-      }
-    ],
-    "2": [
-      {
-        question: "Làm thế nào để hạn chế thói quen dịch nhẩm từ Việt sang Anh?",
-        options: [
-          "Luôn luôn suy nghĩ nghĩa tiếng Việt trước",
-          "Liên kết từ tiếng Anh trực tiếp với hình ảnh/khái niệm",
-          "Nói thật chậm để kiểm tra từng quy tắc ngữ pháp",
-          "Tránh sử dụng tiếng Anh trong giao tiếp hàng ngày"
-        ],
-        correctAnswer: 1,
-        explanation: "Hãy liên kết từ vựng trực tiếp với khái niệm thực tế (ví dụ: nghĩ 'apple' -> hình ảnh quả táo, thay vì dịch 'apple' -> 'quả táo' -> hình ảnh)."
-      },
-      {
-        question: "Thái độ đúng đắn nhất đối với các lỗi sai ngữ pháp khi bắt đầu luyện nói là gì?",
-        options: [
-          "Sợ hãi và không dám nói tiếp để tránh sai lầm",
-          "Chấp nhận lỗi sai như một phần tự nhiên của quá trình học",
-          "Học hết tất cả ngữ pháp trước khi thử mở miệng nói",
-          "Luôn xin lỗi và lo lắng quá mức vì đã nói sai"
-        ],
-        correctAnswer: 1,
-        explanation: "Mắc lỗi là hoàn toàn bình thường. Bạn cần vượt qua nỗi sợ sai để giao tiếp tự nhiên và trôi chảy hơn ở giai đoạn đầu."
-      }
-    ],
-    "3": [
-      {
-        question: "She usually ______ to the gym after work. (Chọn đáp án đúng)",
-        options: ["go", "goes", "went", "going"],
-        correctAnswer: 1,
-        explanation: "Chủ ngữ là 'She' (ngôi thứ 3 số ít), trạng từ chỉ tần suất 'usually' chỉ thì Hiện tại đơn -> Động từ chia thêm -s/es thành 'goes'."
-      },
-      {
-        question: "Yesterday, I ______ English vocabulary with my AI teacher. (Chọn đáp án đúng)",
-        options: ["study", "studies", "studied", "studying"],
-        correctAnswer: 2,
-        explanation: "Dấu hiệu thời gian là 'Yesterday' (hôm qua) chỉ hành động đã xảy ra trong quá khứ -> Dùng động từ quá khứ đơn (V-ed): 'studied'."
-      }
-    ],
-    "4": [
-      {
-        question: "Chọn câu hỏi đuôi chính xác: 'You are a student, ______?'",
-        options: ["are you", "aren't you", "don't you", "do you"],
-        correctAnswer: 1,
-        explanation: "Vế trước là thể khẳng định của to be ('are') -> Phần câu hỏi đuôi tương ứng dùng phủ định phủ nhận: 'aren't you'."
-      },
-      {
-        question: "Đối với câu hỏi nghi vấn dạng 'Yes/No', ngữ điệu cuối câu nên như thế nào?",
-        options: [
-          "Lên giọng ở cuối câu",
-          "Xuống giọng ở cuối câu",
-          "Giữ giọng điệu phẳng lặng",
-          "Nói thầm từ cuối cùng"
-        ],
-        correctAnswer: 0,
-        explanation: "Theo quy tắc ngữ điệu tiếng Anh chuẩn, câu hỏi dạng Yes/No (ví dụ: Do you like coffee? ↗) cần lên giọng ở cuối câu."
-      }
-    ],
-    "5": [
-      {
-        question: "Phương pháp 'Shadowing' (Nói đuổi) yêu cầu người học phải làm gì?",
-        options: [
-          "Nghe một đoạn hội thoại dài rồi tóm tắt lại",
-          "Bắt chước lặp lại ngay lập tức theo ngữ điệu người nói mẫu",
-          "Dịch thầm câu nói trong đầu trước khi lặp lại",
-          "Đọc to văn bản dịch sẵn trên giấy"
-        ],
-        correctAnswer: 1,
-        explanation: "'Shadowing' yêu cầu học viên nghe và lặp lại ngay lập tức (như một cái bóng) theo sát cách nhấn âm, nối âm và ngữ điệu của người nói bản xứ."
-      },
-      {
-        question: "Tại sao nên ghi âm lại giọng nói của chính mình khi shadowing?",
-        options: [
-          "Để đăng lên mạng xã hội giải trí ngay lập tức",
-          "Để nghe lại, đối chiếu lỗi sai với giọng đọc mẫu và tự sửa",
-          "Để kiểm tra chất lượng phần cứng microphone của máy",
-          "Để chắc chắn rằng giọng mình càng to càng tốt"
-        ],
-        correctAnswer: 1,
-        explanation: "Ghi âm giúp bạn nghe lại giọng mình một cách khách quan, so sánh trực tiếp với câu mẫu bản xứ để phát hiện các âm phát âm lỗi và sửa chữa kịp thời."
-      }
-    ]
-  };
-  
-  return quizzes[cleanId] || quizzes["3"]; // Mặc định trả về bộ câu hỏi ngữ pháp (Bài 3)
-};
 
 const ChatBox = ({ lessonId = 0, onClose = null }) => {
   const { user } = useAuth();
@@ -342,14 +227,16 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
 
       if (isQuizRequest) {
         const quizIntro = "Tôi đã tạo cho bạn 2 câu hỏi trắc nghiệm nhanh dưới đây để kiểm tra kiến thức về bài học này:";
-        const quizData = getLessonSpecificQuiz(lessonId);
+        const quizData = await generateChatbotQuiz(lessonId);
         await streamTextWordByWord(aiMessageId, quizIntro, { quizData });
+        fetchBalance();
       } else {
         const finalAnswer = await askChatbotStream(text, lessonId, (accumulatedText) => {
           setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: accumulatedText, isStreaming: true } : m));
         });
 
-        await streamTextWordByWord(aiMessageId, finalAnswer);
+        // Kết thúc streaming thành công
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: finalAnswer, isStreaming: false } : m));
         fetchBalance();
 
         if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
@@ -359,9 +246,17 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
         }
       }
     } catch (error) {
+      console.error('⚠️ Lỗi phản hồi chatbot:', error);
+      const isLimitError = error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"));
+      const errorMsg = isLimitError 
+        ? error.message 
+        : (error.message?.includes("trắc nghiệm") 
+            ? "Không thể tạo bài tập trắc nghiệm lúc này, vui lòng thử lại sau ít phút."
+            : "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.");
+
       setMessages(prev => prev.map(m => m.id === aiMessageId ? {
         ...m,
-        text: "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.",
+        text: errorMsg,
         isStreaming: false,
         isError: true
       } : m));
@@ -375,20 +270,25 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
     handleSendMessage();
   };
 
-
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
     if (window.confirm("Bạn có muốn xóa cuộc hội thoại này không?")) {
-      const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
-        ? "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn?"
-        : "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?";
-      setMessages([
-        {
-          id: "msg-welcome-new",
-          sender: "ai",
-          text: resetText,
-          timestamp: new Date()
-        }
-      ]);
+      try {
+        await clearChatHistory(lessonId);
+        const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
+          ? "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn?"
+          : "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?";
+        setMessages([
+          {
+            id: "msg-welcome-new",
+            sender: "ai",
+            text: resetText,
+            timestamp: new Date()
+          }
+        ]);
+      } catch (err) {
+        console.error('⚠️ Lỗi khi xóa lịch sử chat:', err);
+        alert("Không thể xóa lịch sử trò chuyện lúc này. Vui lòng thử lại sau.");
+      }
     }
   };
 

@@ -92,10 +92,24 @@ exports.clearHistory = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Người dùng chưa xác thực' });
     }
 
-    const result = await chatbotService.clearHistory(userId);
+    const lessonId = req.params.lessonId !== undefined ? req.params.lessonId : (req.query.lessonId !== undefined ? req.query.lessonId : req.body.lessonId);
+    const result = await chatbotService.clearHistory(userId, lessonId);
     res.status(200).json({
       success: true,
       message: result.message
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.generateQuiz = async (req, res, next) => {
+  try {
+    const { lessonId } = req.body;
+    const quiz = await chatbotService.generateQuiz(lessonId);
+    res.status(200).json({
+      success: true,
+      data: quiz
     });
   } catch (error) {
     next(error);

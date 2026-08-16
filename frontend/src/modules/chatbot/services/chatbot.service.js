@@ -1,47 +1,6 @@
 import apiClient from '../../../config/api.config';
 
 /**
- * Danh sách câu hỏi/câu trả lời giả định để làm phương án dự phòng (fallback)
- * khi API backend chưa có key Pinecone hoặc Gemini.
- */
-const fallbackAnswers = [
-  {
-    keywords: ["chào", "hello", "hi", "xin chào"],
-    answer: "Hello! I am your AI Learning Assistant. How can I help you improve your English today? You can ask me about grammar rules, vocabulary, pronunciation, or practice a conversation with me!"
-  },
-  {
-    keywords: ["ngữ pháp", "grammar", "thì", "tenses", "công thức"],
-    answer: "Trong bài học này, bạn nên tập trung vào **3 thì cốt lõi trong văn nói**:\n\n1. **Hiện tại đơn (Simple Present)**: S + V(s/es) -> Dùng cho thói quen. *e.g., I study English every day.*\n2. **Quá khứ đơn (Simple Past)**: S + V-ed/V2 -> Dùng cho sự việc đã kết thúc. *e.g., I watched a movie yesterday.*\n3. **Tương lai đơn (Simple Future)**: S + will + V -> Dùng cho ý định nhanh. *e.g., I will check it later.*\n\nBạn muốn tôi giải thích chi tiết hơn về thì nào không?"
-  },
-  {
-    keywords: ["từ vựng", "vocabulary", "từ mới", "word"],
-    answer: "Dưới đây là một số từ vựng hữu ích liên quan đến chủ đề phản xạ học tập:\n\n*   **Active Recall** (n): Chủ động gợi nhớ kiến thức.\n*   **Shadowing** (n): Kỹ thuật nói đuổi (bắt chước giọng nói mẫu lập tức).\n*   **Fluency** (n): Sự trôi chảy khi giao tiếp.\n*   **Language Barrier** (n): Rào cản ngôn ngữ.\n\nHãy thử đặt một câu với một trong các từ trên, tôi sẽ giúp bạn sửa lỗi nhé!"
-  },
-  {
-    keywords: ["bài tập", "exercise", "practice", "luyện tập"],
-    answer: "Dưới đây là một bài tập thực hành phản xạ ngắn cho bạn:\n\n*Hãy dịch câu sau sang tiếng Anh sử dụng Thì Quá khứ đơn:*\n> \"Hôm qua, tôi đã học nói tiếng Anh với trợ lý AI trong 30 phút.\"\n\nHãy gõ câu trả lời của bạn vào đây, tôi sẽ chấm điểm và chỉnh sửa ngữ pháp cho bạn!"
-  },
-  {
-    keywords: ["dịch", "translate", "nghĩa là gì"],
-    answer: "Tất nhiên rồi! Bạn hãy gửi cụm từ hoặc đoạn văn cần dịch sang tiếng Anh (hoặc ngược lại) cho tôi nhé. Tôi sẽ dịch nghĩa đồng thời giải thích ngữ cảnh sử dụng phù hợp nhất cho bạn."
-  }
-];
-
-const getFallbackResponse = (question) => {
-  const normalizedQuestion = question.toLowerCase().trim();
-  
-  // Tìm từ khóa khớp trong câu hỏi
-  for (const item of fallbackAnswers) {
-    if (item.keywords.some(keyword => normalizedQuestion.includes(keyword))) {
-      return item.answer;
-    }
-  }
-  
-  // Trả về câu trả lời mặc định nếu không khớp từ khóa
-  return `Trợ lý AI đã nhận được câu hỏi: "${question}". \n\nĐể hỗ trợ bạn tốt nhất, tôi khuyên bạn nên: \n1. Thực hành nói đuổi (shadowing) theo video bài học. \n2. Sử dụng các thì đơn giản để đặt câu hỏi. \n3. Nhờ tôi giải thích cụm từ vựng bạn chưa hiểu rõ trong video. \n\n*(Lưu ý: Phản hồi này được sinh tự động từ hệ thống trợ lý học tập AI)*`;
-};
-
-/**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend
  */
 export const askChatbot = async (question, lessonId) => {
@@ -53,113 +12,97 @@ export const askChatbot = async (question, lessonId) => {
     throw new Error('API response invalid structure');
   } catch (error) {
     if (error.response && (error.response.status === 429 || error.response.status === 403)) {
-      return error.response.data?.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!";
+      throw new Error(error.response.data?.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!");
     }
-
-    console.warn('⚠️ Lỗi kết nối tới API Chatbot hoặc chưa cài đặt key AI ở backend. Chuyển sang sử dụng bộ phản hồi giả lập của frontend.', error.message);
-    
-    // Giả lập độ trễ phản hồi của AI (từ 1.2s - 2.5s) để người dùng thấy hiệu ứng loading chân thực
-    const delay = Math.random() * 1300 + 1200;
-    await new Promise(resolve => setTimeout(resolve, delay));
-    
-    return getFallbackResponse(question);
+    console.error('⚠️ Lỗi kết nối tới API Chatbot:', error.message);
+    throw error;
   }
 };
 
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend dạng SSE Stream.
- * Nếu API stream thất bại hoặc offline, sẽ sử dụng bộ phản hồi fallback 
- * và phát lại theo dạng typewriter từng câu từng từ để tạo trải nghiệm đồng nhất.
  */
 export const askChatbotStream = async (question, lessonId, onChunk) => {
   const token = localStorage.getItem('token');
   const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = envUrl.replace(/\/+$/, '');
 
-  try {
-    const response = await fetch(`${baseUrl}/chatbot/ask-stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
-      },
-      body: JSON.stringify({ question, lessonId })
-    });
+  const response = await fetch(`${baseUrl}/chatbot/ask-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    },
+    body: JSON.stringify({ question, lessonId })
+  });
 
-    if (!response.ok) {
-      if (response.status === 429 || response.status === 403) {
-        const errJson = await response.json().catch(() => ({}));
-        const limitMsg = errJson.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!";
-        throw new Error(limitMsg);
-      }
-      throw new Error(`HTTP Error ${response.status}`);
+  if (!response.ok) {
+    if (response.status === 429 || response.status === 403) {
+      const errJson = await response.json().catch(() => ({}));
+      const limitMsg = errJson.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!";
+      throw new Error(limitMsg);
     }
+    throw new Error(`HTTP Error ${response.status}`);
+  }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let done = false;
-    let fullText = '';
-    let buffer = '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let done = false;
+  let fullText = '';
+  let buffer = '';
 
-    while (!done) {
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-      if (value) {
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // giữ lại phần chưa hoàn thành
+  while (!done) {
+    const { value, done: doneReading } = await reader.read();
+    done = doneReading;
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // giữ lại phần chưa hoàn thành
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data:')) continue;
-          const dataStr = trimmed.replace(/^data:\s*/, '');
-          if (dataStr === '[DONE]') {
-            done = true;
-            break;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.replace(/^data:\s*/, '');
+        if (dataStr === '[DONE]') {
+          done = true;
+          break;
+        }
+        try {
+          const parsed = JSON.parse(dataStr);
+          if (parsed.text) {
+            fullText += parsed.text;
+            if (onChunk) onChunk(fullText);
+          } else if (parsed.error) {
+            throw new Error(parsed.error);
           }
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (parsed.text) {
-              fullText += parsed.text;
-              if (onChunk) onChunk(fullText);
-            } else if (parsed.error) {
-              throw new Error(parsed.error);
-            }
-          } catch (e) {
-            // ignore malformed json
+        } catch (e) {
+          if (e.message && !e.message.includes('JSON')) {
+            throw e;
           }
         }
       }
     }
+  }
 
-    if (fullText) {
-      return fullText;
+  if (fullText) {
+    return fullText;
+  }
+  throw new Error('Empty response from stream');
+};
+
+/**
+ * Sinh câu hỏi trắc nghiệm tự động từ AI theo bài học
+ */
+export const generateChatbotQuiz = async (lessonId) => {
+  try {
+    const response = await apiClient.post('/chatbot/generate-quiz', { lessonId });
+    if (response.data && response.data.success && Array.isArray(response.data.data)) {
+      return response.data.data;
     }
-    throw new Error('Empty response from stream');
+    throw new Error('Không thể lấy câu hỏi trắc nghiệm từ AI');
   } catch (error) {
-    console.warn('⚠️ Gặp sự cố kết nối stream từ backend, sử dụng typewriter fallback:', error.message);
-
-    let targetText = "";
-    if (error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"))) {
-      targetText = error.message;
-    } else {
-      try {
-        const fullResponse = await askChatbot(question, lessonId);
-        targetText = fullResponse;
-      } catch (e) {
-        targetText = getFallbackResponse(question);
-      }
-    }
-
-    let currentText = '';
-    const words = targetText.split(/(\s+)/);
-    for (let i = 0; i < words.length; i++) {
-      currentText += words[i];
-      if (onChunk) onChunk(currentText);
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 20 + 15));
-    }
-
-    return currentText;
+    console.error('⚠️ Lỗi tạo câu hỏi trắc nghiệm từ AI:', error.message);
+    throw error;
   }
 };
 
@@ -195,15 +138,18 @@ export const saveChatHistory = async (userId, lessonId, question, answer) => {
 };
 
 /**
- * Xóa sạch lịch sử trò chuyện AI khi đăng xuất
+ * Xóa sạch lịch sử trò chuyện AI theo lessonId (hoặc toàn bộ)
  */
-export const clearChatHistory = async () => {
+export const clearChatHistory = async (lessonId = null) => {
   try {
-    const response = await apiClient.delete('/chatbot/history');
+    const url = (lessonId !== undefined && lessonId !== null)
+      ? `/chatbot/history/${lessonId}`
+      : '/chatbot/history';
+    const response = await apiClient.delete(url);
     return response.data;
   } catch (error) {
-    console.warn('⚠️ Lỗi xóa lịch sử chat khi logout:', error.message);
-    return null;
+    console.error('⚠️ Lỗi xóa lịch sử chat:', error.message);
+    throw error;
   }
 };
 
@@ -276,12 +222,8 @@ export const getTokenBalance = async (userId) => {
     }
     return response.data;
   } catch (error) {
-    console.warn('⚠️ Lỗi gọi API ví token từ backend, sử dụng mock balance để demo:', error.message);
-    return {
-      tokens_used: 1500,
-      token_max_limit: 6000,
-      tokens_remaining: 4500
-    };
+    console.warn('⚠️ Lỗi gọi API ví token từ backend:', error.message);
+    return null;
   }
 };
 

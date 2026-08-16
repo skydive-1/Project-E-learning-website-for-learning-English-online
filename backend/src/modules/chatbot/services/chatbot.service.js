@@ -349,13 +349,130 @@ class ChatbotService {
     }
   }
 
-  async clearHistory(userId) {
+  async clearHistory(userId, lessonId = null) {
     try {
-      await db.query('DELETE FROM ai_chat WHERE student_id = $1', [userId]);
-      return { success: true, message: 'Đã xóa toàn bộ lịch sử trò chuyện AI' };
+      if (lessonId !== undefined && lessonId !== null && lessonId !== 'all') {
+        const hasLesson = lessonId !== 'null' && lessonId !== 'undefined' && Number(lessonId) !== 0;
+        if (hasLesson) {
+          await db.query('DELETE FROM ai_chat WHERE student_id = $1 AND lesson_id = $2', [userId, Number(lessonId)]);
+        } else {
+          await db.query('DELETE FROM ai_chat WHERE student_id = $1 AND lesson_id IS NULL', [userId]);
+        }
+        return { success: true, message: `Đã xóa lịch sử trò chuyện cho bài học ${hasLesson ? lessonId : 'toàn cục'}` };
+      } else {
+        await db.query('DELETE FROM ai_chat WHERE student_id = $1', [userId]);
+        return { success: true, message: 'Đã xóa toàn bộ lịch sử trò chuyện AI' };
+      }
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.clearHistory:", error);
       throw error;
+    }
+  }
+
+  async generateQuiz(lessonId) {
+    try {
+      const isGlobalChat = !lessonId || Number(lessonId) === 0;
+      let contextText = "";
+
+      if (isGlobalChat) {
+        try {
+          const coursesResult = await db.query(`
+            SELECT course_name, description 
+            FROM courses 
+            ORDER BY course_id ASC
+          `);
+          const coursesList = coursesResult.rows;
+          if (coursesList.length > 0) {
+            contextText = "Danh sách khóa học trên hệ thống:\n" +
+              coursesList.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - ${c.description || ""}`).join("\n");
+          }
+        } catch (dbErr) {
+          console.warn("Lỗi lấy danh sách khóa học khi tạo quiz:", dbErr.message);
+        }
+      } else {
+        try {
+          const lessonRes = await db.query('SELECT title, content FROM lessons WHERE lesson_id = $1', [lessonId]);
+          const lessonInfo = lessonRes.rows[0];
+          const lessonTitle = lessonInfo?.title || `Bài học #${lessonId}`;
+
+          const embeddingResult = await embeddingModel.embedContent({
+            content: { parts: [{ text: `Kiến thức trọng tâm, ngữ pháp và từ vựng bài học ${lessonTitle}` }] },
+            outputDimensionality: 768
+          });
+          const queryVector = embeddingResult.embedding?.values;
+
+          if (queryVector) {
+            const queryOptions = {
+              vector: queryVector,
+              topK: 3,
+              includeMetadata: true,
+              filter: { lesson_id: { $eq: Number(lessonId) } }
+            };
+
+            const queryResponse = await pineconeIndex.query(queryOptions);
+            const matches = queryResponse.matches || [];
+            const ragText = matches
+              .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
+              .filter(Boolean)
+              .join("\n");
+
+            contextText = `Tiêu đề bài học: ${lessonTitle}\nNội dung bổ trợ: ${ragText || lessonInfo?.content || ""}`;
+          } else {
+            contextText = `Tiêu đề bài học: ${lessonTitle}\nNội dung: ${lessonInfo?.content || ""}`;
+          }
+        } catch (ragErr) {
+          console.warn("⚠️ Lỗi truy vấn Pinecone RAG khi tạo quiz, sử dụng thông tin DB:", ragErr.message);
+          try {
+            const lessonRes = await db.query('SELECT title, content FROM lessons WHERE lesson_id = $1', [lessonId]);
+            if (lessonRes.rows.length > 0) {
+              contextText = `Bài học: ${lessonRes.rows[0].title}\nNội dung: ${lessonRes.rows[0].content || ""}`;
+            }
+          } catch (e) {}
+        }
+      }
+
+      const prompt = `You are a professional English teacher at E-Learn Academy.
+Based on the following lesson/course context, generate EXACTLY 2 multiple-choice practice quiz questions (4 options each, exactly 1 correct answer) to test the student's comprehension, grammar, or vocabulary.
+
+CONTEXT:
+${contextText || "English grammar, vocabulary, and communication skills"}
+
+REQUIREMENTS:
+- Output MUST be a valid JSON array of exactly 2 quiz objects.
+- Each quiz object MUST contain EXACTLY these keys:
+  - "question": (string question in Vietnamese or English)
+  - "options": (array of 4 distinct string choices)
+  - "correctAnswer": (integer 0, 1, 2, or 3 pointing to the correct choice in options)
+  - "explanation": (friendly, clear explanation in Vietnamese explaining why this answer is correct)
+
+Ensure the response contains ONLY valid JSON without markdown code fences.`;
+
+      const result = await geminiModel.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      });
+
+      let responseText = result.response.text();
+      if (responseText.includes("```")) {
+        responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+      }
+
+      const parsedQuiz = JSON.parse(responseText);
+      if (!Array.isArray(parsedQuiz) || parsedQuiz.length === 0) {
+        throw new Error("Dữ liệu quiz từ AI không đúng định dạng mảng.");
+      }
+
+      return parsedQuiz;
+    } catch (error) {
+      console.error("Lỗi xảy ra tại ChatbotService.generateQuiz:", error);
+      throw new Error("Không thể tạo bài tập trắc nghiệm tự động: " + error.message);
     }
   }
 
@@ -614,9 +731,10 @@ const serviceInstance = new ChatbotService();
 module.exports = {
   ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
   askStream: (question, lessonId, userId, onChunk) => serviceInstance.askStream(question, lessonId, userId, onChunk),
+  generateQuiz: (lessonId) => serviceInstance.generateQuiz(lessonId),
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
-  clearHistory: (userId) => serviceInstance.clearHistory(userId),
+  clearHistory: (userId, lessonId) => serviceInstance.clearHistory(userId, lessonId),
   evaluateAudio: (filePath, mimetype, targetText, isQA) => serviceInstance.evaluateAudio(filePath, mimetype, targetText, isQA),
   getTokenBalance: (userId) => serviceInstance.getTokenBalance(userId),
   handleRagChat
