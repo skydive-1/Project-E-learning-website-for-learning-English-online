@@ -97,7 +97,10 @@ HƯỚNG DẪN TRẢ LỜI:
 - Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, hãy sử dụng NGỮ CẢNH HỆ THỐNG dưới đây để cung cấp thông tin chính xác về các khóa học thực tế đang hoạt động trên trang web. Hãy giới thiệu tự nhiên và hấp dẫn.
 - Nếu học viên hỏi các câu hỏi tiếng Anh chung (ví dụ: giải thích ngữ pháp, từ vựng, giao tiếp tự do, dịch thuật), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để giảng dạy và hỗ trợ họ một cách chuyên nghiệp. Khi cung cấp từ vựng/câu mẫu tiếng Anh, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
 - Tuyệt đối không nhắc đến các cụm từ kỹ thuật như "dựa vào ngữ cảnh cung cấp", "theo tài liệu".
-
+- Nếu người dùng hỏi về bản chất kỹ thuật của bạn (model AI nào, framework nào, được xây dựng ra sao), 
+hãy trả lời ngắn gọn, trung thực rằng bạn được xây dựng dựa trên công nghệ AI của Google (Gemini), 
+tùy biến riêng cho mục đích học tiếng Anh, rồi khéo léo dẫn dắt quay lại hỗ trợ học tập.
+Luôn trả lời bằng đúng ngôn ngữ mà người dùng đang sử dụng để hỏi.
 NGỮ CẢNH HỆ THỐNG:
 ${contextText}
 
@@ -461,10 +464,10 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
 
       const parsed = JSON.parse(responseText);
 
-      const isNoSpeech = !parsed.transcription || 
+      const isNoSpeech = !parsed.transcription ||
         parsed.transcription.trim() === "" ||
-        parsed.transcription.toLowerCase().includes("no discernible speech") || 
-        parsed.transcription.toLowerCase().includes("no speech") || 
+        parsed.transcription.toLowerCase().includes("no discernible speech") ||
+        parsed.transcription.toLowerCase().includes("no speech") ||
         parsed.transcription.toLowerCase().includes("silence") ||
         Number(parsed.score) === 0;
 
@@ -500,13 +503,13 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
         finalPronunFB = "Tín hiệu âm thanh thu được chưa đủ rõ ràng. Bạn hãy kiểm tra lại micro, ghé sát thiết bị và phát âm to hơn nhé.";
       } else {
         if (!finalGrammarFB || finalGrammarFB === finalPronunFB || finalGrammarFB === parsed.detailed_feedback) {
-          finalGrammarFB = finalScore >= 80 
-            ? "Cấu trúc ngữ pháp chính xác, từ vựng được lựa chọn phù hợp và tự nhiên với ngữ cảnh câu hỏi." 
+          finalGrammarFB = finalScore >= 80
+            ? "Cấu trúc ngữ pháp chính xác, từ vựng được lựa chọn phù hợp và tự nhiên với ngữ cảnh câu hỏi."
             : "Cần chú ý chia đúng thì của động từ và bổ sung các từ nối để câu văn thêm mạch lạc.";
         }
         if (!finalPronunFB || finalGrammarFB === finalPronunFB || finalPronunFB === parsed.detailed_feedback) {
-          finalPronunFB = finalScore >= 80 
-            ? "Phát âm các âm tiết rõ ràng, biết nhấn đúng trọng âm từ và duy trì ngữ điệu tự nhiên." 
+          finalPronunFB = finalScore >= 80
+            ? "Phát âm các âm tiết rõ ràng, biết nhấn đúng trọng âm từ và duy trì ngữ điệu tự nhiên."
             : "Chú ý phát âm rõ các âm tiết cuối (ending sounds) và luyện tập nhấn đúng trọng âm từ.";
         }
       }
@@ -531,17 +534,17 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
         transcription: finalTranscription,
         grammarFeedback: finalGrammarFB,
         pronunciationFeedback: finalPronunFB,
-        detailed_feedback: (isNoSpeech || finalScore === 0) 
-          ? "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn." 
+        detailed_feedback: (isNoSpeech || finalScore === 0)
+          ? "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn."
           : (parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!"),
         improved_sentence: finalSuggestion,
 
         // Mapped keys for frontend compatibility
-        feedback: (isNoSpeech || finalScore === 0) 
-          ? "Không nhận diện được giọng nói của bạn. Vui lòng nói to và rõ ràng hơn." 
+        feedback: (isNoSpeech || finalScore === 0)
+          ? "Không nhận diện được giọng nói của bạn. Vui lòng nói to và rõ ràng hơn."
           : (parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!"),
-        reply: (isNoSpeech || finalScore === 0) 
-          ? "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn." 
+        reply: (isNoSpeech || finalScore === 0)
+          ? "Không nhận diện được giọng nói của bạn. Vui lòng kiểm tra micro, nói to và rõ ràng hơn."
           : (parsed.detailed_feedback || "Bạn đã hoàn thành bài luyện nói!"),
         suggestedText: finalSuggestion,
         suggestion: finalSuggestion,
