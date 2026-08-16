@@ -5,6 +5,7 @@
  */
 
 const { generateLessonDrmKeys, buildClearKeyJwkResponse } = require('../../utils/drm.util');
+const coursesService = require('../courses/services/courses.service');
 
 /**
  * Endpoint xử lý yêu cầu cấp DRM License chuẩn W3C EME ClearKey JWK (RFC 7517)
@@ -21,6 +22,16 @@ const getClearKeyLicense = async (req, res) => {
   }
 
   try {
+    // 1. Kiểm tra xác thực người dùng (bắt buộc phải qua authenticate middleware)
+    const user = req.user;
+    if (!user || !user.id) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Bạn cần đăng nhập để yêu cầu khóa giải mã DRM'
+      });
+    }
+
     let rawBody = req.body;
 
     // Trích xuất JSON nếu req.body nhận từ W3C EME dạng Buffer hoặc String
@@ -45,7 +56,18 @@ const getClearKeyLicense = async (req, res) => {
       lessonId = 1;
     }
 
-    // Lấy thông tin cặp khóa DRM (Key ID & Secret Key) tương ứng với bài học
+    // 2. Kiểm tra phân quyền: User có quyền truy cập bài học này không
+    const hasAccess = await coursesService.canUserAccessLesson(user.id, lessonId, user.roleId);
+    if (!hasAccess) {
+      console.warn(`🔒 [DRM Access Denied]: User ${user.id} (${user.email}) bị từ chối cấp key cho Lesson ${lessonId}`);
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Bạn không có quyền truy cập khóa giải mã DRM của bài học này (chưa đăng ký khóa học hoặc khóa học chưa phát hành)'
+      });
+    }
+
+    // 3. Lấy thông tin cặp khóa DRM (Key ID & Secret Key) tương ứng với bài học
     const drmPair = generateLessonDrmKeys(lessonId || 1);
 
     // Đóng gói cấu trúc W3C ClearKey JSON Web Key (JWK)
@@ -82,6 +104,24 @@ const getLessonDrmInfo = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Thiếu tham số lessonId'
+      });
+    }
+
+    const user = req.user;
+    if (!user || !user.id) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Bạn cần đăng nhập để xem thông tin DRM'
+      });
+    }
+
+    const hasAccess = await coursesService.canUserAccessLesson(user.id, lessonId, user.roleId);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Bạn không có quyền truy cập thông tin DRM của bài học này'
       });
     }
 

@@ -53,22 +53,28 @@ exports.uploadFile = async (req, res, next) => {
     const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
     let fileUrl = `/uploads${subFolder}/${req.file.filename}`;
 
+    let isDrmProtected = false;
+
     // TỰ ĐỘNG KHÓA MÃ HÓA DRM CENC NẾU LÀ FILE VIDEO
     if (req.file.mimetype.startsWith('video/') || req.file.filename.endsWith('.mp4')) {
       const lessonId = req.body?.lessonId || Date.now();
       const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
       if (drmResult.success && drmResult.mpdUrl) {
         fileUrl = drmResult.mpdUrl;
+        isDrmProtected = true;
+      } else {
+        isDrmProtected = false;
+        console.warn(`⚠️ [DRM Packaging Failed] Video lessonId=${lessonId} đang được phát ở dạng KHÔNG mã hóa vì thiếu shaka-packager binary. Lý do: ${drmResult.error || 'Unknown error'}`);
       }
     }
 
     res.status(200).json({
       success: true,
-      message: 'Tải file lên và đóng gói mã hóa DRM thành công',
+      message: isDrmProtected ? 'Tải file lên và đóng gói mã hóa DRM thành công' : 'Tải file lên thành công (chưa mã hóa DRM)',
       fileUrl,
       originalName: req.file.originalname,
       mimetype: req.file.mimetype,
-      isDrmProtected: true
+      isDrmProtected
     });
   } catch (error) {
     next(error);
@@ -101,6 +107,7 @@ exports.uploadMedia = async (req, res) => {
     const uploadIdx = destNormalized.indexOf('/uploads');
     const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
     let fileUrl = `/uploads${subFolder}/${req.file.filename}`;
+    let isDrmProtected = false;
     
     // TỰ ĐỘNG KHÓA MÃ HÓA DRM CENC NẾU LÀ FILE VIDEO
     if (req.file.mimetype.startsWith('video/') || req.file.filename.endsWith('.mp4')) {
@@ -108,13 +115,17 @@ exports.uploadMedia = async (req, res) => {
       const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
       if (drmResult.success && drmResult.mpdUrl) {
         fileUrl = drmResult.mpdUrl;
+        isDrmProtected = true;
+      } else {
+        isDrmProtected = false;
+        console.warn(`⚠️ [DRM Packaging Failed] Video lessonId=${lessonId} đang được phát ở dạng KHÔNG mã hóa vì thiếu shaka-packager binary. Lý do: ${drmResult.error || 'Unknown error'}`);
       }
     }
 
     res.status(200).json({
       success: true,
       url: fileUrl,
-      isDrmProtected: true
+      isDrmProtected
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

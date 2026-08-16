@@ -12,12 +12,13 @@ const { authenticate } = require('../../middleware/auth.middleware');
 // Supporting raw payload parser for W3C EME binary/buffer request bodies
 const rawBodyParser = express.raw({ type: '*/*', limit: '2mb' });
 
-// Public or Authenticated DRM License Request Endpoint (Shaka Player / EME standard)
+// Authenticated DRM License Request Endpoints (Shaka Player / W3C EME standard)
 router.options('/license', getClearKeyLicense);
 router.options('/license/:lessonId', getClearKeyLicense);
-router.post('/license', rawBodyParser, getClearKeyLicense);
-router.post('/license/:lessonId', rawBodyParser, getClearKeyLicense);
-router.get('/license', getClearKeyLicense);
+router.post('/license', authenticate, rawBodyParser, getClearKeyLicense);
+router.post('/license/:lessonId', authenticate, rawBodyParser, getClearKeyLicense);
+router.get('/license', authenticate, getClearKeyLicense);
+router.get('/license/:lessonId', authenticate, getClearKeyLicense);
 
 // Protected DRM Info Endpoint for registered students/instructors
 router.options('/info/:lessonId', getClearKeyLicense);

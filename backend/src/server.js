@@ -25,6 +25,8 @@ const consultationRoutes = require('./modules/consultation/consultation.routes')
 const analyticsRoutes = require('./modules/analytic/analytic.routes');
 const gamificationRoutes = require('./modules/gamification/gamification.routes');
 const commentsRoutes = require('./modules/comments/comments.routes');
+const drmRoutes = require('./modules/drm/drm.routes');
+const { checkShakaPackagerInstalled } = require('./utils/drmPackager.util');
 
 // ===== SWAGGER =====
 const swaggerSpec = require('./swagger');
@@ -114,6 +116,7 @@ app.use('/api/consultation', consultationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/comments', commentsRoutes);
+app.use('/api/drm', drmRoutes);
 
 // Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -128,6 +131,20 @@ const { testConnection } = require('./config/database');
 app.listen(PORT, async () => {
   // Kiểm tra kết nối Database khi khởi chạy
   await testConnection();
+
+  // Kiểm tra Shaka Packager binary cho DRM Video Protection
+  const shakaStatus = checkShakaPackagerInstalled();
+  if (shakaStatus.installed) {
+    console.log(`🔒 [DRM Infrastructure]: Shaka Packager đã sẵn sàng (${shakaStatus.version})`);
+  } else {
+    console.warn(`
+    ⚠️ ═══════════════════════════════════════════════════════════════════════════ ⚠️
+    [CẢNH BÁO DRM]: Shaka Packager binary CHƯA được cài đặt trên máy chủ này!
+    - Video tải lên sẽ được lưu ở dạng MP4 gốc (isDrmProtected: false).
+    - Xem hướng dẫn cài đặt chi tiết tại tệp: HUONG_DAN_CAI_DAT_SHAKA_PACKAGER.md
+    ⚠️ ═══════════════════════════════════════════════════════════════════════════ ⚠️
+    `);
+  }
 
   console.log(`
     ╔═══════════════════════════════════════════╗
@@ -144,6 +161,7 @@ app.listen(PORT, async () => {
   console.log('   - GET    /api/courses');
   console.log('   - POST   /api/chatbot/ask');
   console.log('   - GET    /api/progress/:userId');
+  console.log('   - GET    /api/drm/license');
   console.log('   - GET    /api/health');
 });
 

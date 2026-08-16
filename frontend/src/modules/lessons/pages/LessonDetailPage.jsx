@@ -24,6 +24,15 @@ import {
   toggleLessonCompletion
 } from '../services/lessons.service';
 
+const WATERMARK_POSITIONS = [
+  'top-3.5 left-3.5',
+  'top-3.5 right-3.5',
+  'bottom-3.5 left-3.5',
+  'bottom-3.5 right-3.5',
+  'top-1/2 left-3.5 -translate-y-1/2',
+  'top-1/2 right-3.5 -translate-y-1/2'
+];
+
 const LessonDetailPage = () => {
   const navigate = useNavigate();
   const { lessonId } = useParams();
@@ -63,9 +72,31 @@ const LessonDetailPage = () => {
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
 
+  // Forensic Dynamic Watermark State
+  const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
+
   // Refs for DRM and Video Control
   const blackoutLockUntilRef = useRef(0);
   const restoreTimeoutRef = useRef(null);
+
+  // ⚡ Dynamic Forensic Watermark: Tự động đổi vị trí ngẫu nhiên mỗi 10s để chống cắt/làm mờ góc video
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWatermarkPosIndex(prev => {
+        let next = Math.floor(Math.random() * WATERMARK_POSITIONS.length);
+        if (next === prev) next = (prev + 1) % WATERMARK_POSITIONS.length;
+        return next;
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatWatermarkTimestamp = (seconds) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
 
   // ⚡ 60 FPS Ultra-Smooth Video Time Tracking (Loại bỏ 100% hiện tượng khựng/trễ phụ đề)
   useEffect(() => {
@@ -103,7 +134,21 @@ const LessonDetailPage = () => {
     };
   }, []);
 
-  // ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
+  /**
+   * ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
+   * 
+   * [PHẠM VI BẢO VỆ]:
+   * - Ngăn chặn 100% các thao tác chụp màn hình từ bàn phím (PrintScreen, Win+Shift+S, Alt+PrtScn)
+   * - Ngăn chặn chia sẻ màn hình qua getDisplayMedia của trình duyệt
+   * - Tự động che đen khi người dùng chuyển tab (visibilitychange) hoặc mất focus (window blur)
+   * 
+   * [GIỚI HẠN KỸ THUẬT CLIENT-SIDE JAVASCRIPT]:
+   * - Không thể phát hiện OBS Studio / Bandicam chạy chế độ Display Capture (Toàn màn hình) khi Tab vẫn giữ active focus
+   *   (do hạn chế bảo mật Sandbox của trình duyệt web không thể can thiệp quét tiến trình hệ điều hành).
+   * - Không thể ngăn chặn thiết bị Capture Card phần cứng hoặc quay phim trực tiếp bằng camera/điện thoại ngoại vi.
+   * => Hệ thống sử dụng Forensic Watermark Động (Email + UserID + Timestamp mm:ss) để truy vết và xử lý bản quyền.
+   * Xem tài liệu kỹ thuật chi tiết tại: GIOI_HAN_BAO_MAT_VIDEO.md
+   */
   const isCapturingKeysRef = useRef(new Set());
 
   const triggerZeroLatencyBlackout = (reason) => {
@@ -919,17 +964,17 @@ const LessonDetailPage = () => {
                         {currentLesson?.type === 'pdf' ? (
                           <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
                             {/* PDF Security Watermark Badge */}
-                            <div className="absolute bottom-4 right-4 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-slate-800 bg-white/80 border border-slate-300 px-3 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
                               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                              <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                              <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
                               <span className="text-slate-400">•</span>
-                              <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
+                              <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>
                             </div>
 
                             {/* PDF Diagonal Subtle Background Watermark */}
                             <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
                               <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
-                                {user?.email || 'quocanh26012004@gmail.com'} • E-LEARN ACADEMY COPYRIGHT
+                                {user?.email || 'Unknown User'} • E-LEARN ACADEMY COPYRIGHT
                               </span>
                             </div>
 
@@ -1048,11 +1093,13 @@ const LessonDetailPage = () => {
                             />
 
                             {/* Dynamic Video Forensic Security Watermark Badge */}
-                            <div className="absolute top-3.5 left-3.5 pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-white bg-black/60 border border-white/20 px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5">
+                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-40 select-none font-mono text-[10px] sm:text-xs text-white bg-black/60 border border-white/20 px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                              <span>🔒 E-Learn Academy • {user?.email || 'quocanh26012004@gmail.com'}</span>
+                              <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
                               <span className="text-white/40">•</span>
-                              <span>ID: {user?.id || user?.userId || currentUserId || '4'}</span>
+                              <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>
+                              <span className="text-white/40">•</span>
+                              <span className="text-emerald-300 font-bold">[{formatWatermarkTimestamp(videoCurrentTime)}]</span>
                             </div>
 
                             {/* Smart AI Bilingual Caption Overlay */}

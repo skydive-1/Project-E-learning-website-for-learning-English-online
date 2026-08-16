@@ -450,6 +450,75 @@ class CoursesService {
       handleServiceError(error, 'Lỗi xóa khóa học');
     }
   }
+
+  /**
+   * Kiểm tra quyền truy cập của người dùng đối với một bài học cụ thể (DRM / Video Access)
+   * @param {number|string} userId ID của người dùng
+   * @param {number|string} lessonId ID của bài học
+   * @param {number} [roleId] ID vai trò (1: Admin, 2: Instructor, 3: Student)
+   * @returns {Promise<boolean>} True nếu có quyền truy cập, False nếu không
+   */
+  async canUserAccessLesson(userId, lessonId, roleId) {
+    try {
+      const parsedUserId = parseInt(userId, 10);
+      const parsedLessonId = parseInt(lessonId, 10);
+      const parsedRoleId = parseInt(roleId, 10);
+
+      if (isNaN(parsedLessonId) || parsedLessonId <= 0) {
+        return false;
+      }
+
+      // 1. Admin (Role ID = 1) có toàn quyền truy cập tất cả bài học
+      if (parsedRoleId === 1) {
+        return true;
+      }
+
+      // 2. Tìm thông tin khóa học chứa bài học này
+      const lessonQuery = `
+        SELECT l.lesson_id, s.course_id, c.instructor_id, c.status
+        FROM lessons l
+        JOIN sections s ON l.section_id = s.section_id
+        JOIN courses c ON s.course_id = c.course_id
+        WHERE l.lesson_id = $1
+      `;
+      const lessonRes = await db.query(lessonQuery, [parsedLessonId]);
+      if (lessonRes.rows.length === 0) {
+        return false;
+      }
+
+      const { instructor_id, status } = lessonRes.rows[0];
+
+      // 3. Instructor (Role ID = 2) có quyền nếu là giảng viên của khóa học hoặc khóa học đã published
+      if (parsedRoleId === 2) {
+        if (instructor_id === parsedUserId || status === 'published') {
+          return true;
+        }
+        return false;
+      }
+
+      // 4. Student / Học viên (Role ID = 3 hoặc người dùng thông thường):
+      // Có quyền nếu khóa học đã published hoặc đã có bản ghi học tập trong user_progress
+      if (status === 'published') {
+        return true;
+      }
+
+      // Nếu khóa học đang ở trạng thái draft/archived, kiểm tra xem học viên đã từng có tiến độ học tập chưa
+      if (parsedUserId) {
+        const progressRes = await db.query(
+          'SELECT progress_id FROM user_progress WHERE user_id = $1 AND lesson_id = $2 LIMIT 1',
+          [parsedUserId, parsedLessonId]
+        );
+        if (progressRes.rows.length > 0) {
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('❌ [CoursesService.canUserAccessLesson Error]:', error);
+      return false;
+    }
+  }
 }
 
 module.exports = new CoursesService();
