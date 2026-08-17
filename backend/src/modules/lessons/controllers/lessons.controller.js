@@ -163,11 +163,17 @@ exports.streamLessonVideo = async (req, res, next) => {
     if (range) {
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
-      if (start >= fileSize) {
-        res.status(416).send('Requested range not satisfiable\n' + start + ' >= ' + fileSize);
-        return;
+      if (isNaN(start) || start >= fileSize || (parts[1] && isNaN(end))) {
+        res.writeHead(416, {
+          'Content-Range': `bytes */${fileSize}`
+        });
+        return res.end();
+      }
+
+      if (end >= fileSize) {
+        end = fileSize - 1;
       }
 
       const chunksize = (end - start) + 1;
@@ -186,6 +192,7 @@ exports.streamLessonVideo = async (req, res, next) => {
       file.pipe(res);
     } else {
       const head = {
+        'Accept-Ranges': 'bytes',
         'Content-Length': fileSize,
         'Content-Type': 'video/mp4',
         'X-Content-Type-Options': 'nosniff',

@@ -581,7 +581,6 @@ const LessonDetailPage = () => {
     }
 
     let active = true;
-    let createdBlobUrl = null;
 
     const isDashOrHls = rawVideoUrl.includes('.mpd') || rawVideoUrl.includes('.m3u8');
 
@@ -638,46 +637,9 @@ const LessonDetailPage = () => {
       shakaAttachedToRef.current = null;
     }
 
-    // 2. Đối với Video MP4 thông thường: Nạp qua In-Memory Blob Stream URL (Chống 100% IDM Sniffing)
-    if (rawVideoUrl.startsWith('blob:')) {
-      setBlobVideoUrl(rawVideoUrl);
-      setVideoLoading(false);
-      return;
-    }
-
-    const loadAntiIdmStream = async () => {
-      try {
-        setVideoLoading(true);
-        const response = await fetch(rawVideoUrl, {
-          headers: {
-            'Accept': 'video/mp4,video/*;q=0.9,*/*;q=0.8'
-          }
-        });
-        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-        const blob = await response.blob();
-        if (active) {
-          createdBlobUrl = URL.createObjectURL(blob);
-          setBlobVideoUrl(createdBlobUrl);
-          setVideoLoading(false);
-        }
-      } catch (err) {
-        // Fallback trực tiếp nếu fetch blob gặp lỗi CORS
-        console.debug('[Anti-IDM DRM]: Streaming via direct channel:', err?.message);
-        if (active) {
-          setBlobVideoUrl(rawVideoUrl);
-          setVideoLoading(false);
-        }
-      }
-    };
-
-    loadAntiIdmStream();
-
-    return () => {
-      active = false;
-      if (createdBlobUrl) {
-        URL.revokeObjectURL(createdBlobUrl);
-      }
-    };
+    // 2. Đối với Video MP4 thông thường (nhánh không phải DASH/HLS): Gán trực tiếp URL để trình duyệt tự stream qua HTTP Range Requests
+    setBlobVideoUrl(rawVideoUrl);
+    setVideoLoading(false);
   }, [currentLesson?.videoUrl, lessonId]);
 
   // Cleanup Shaka Player khi component unmount
