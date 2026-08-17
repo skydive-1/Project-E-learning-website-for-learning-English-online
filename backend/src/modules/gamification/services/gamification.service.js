@@ -36,6 +36,13 @@ const calculateStreak = async (userId) => {
     const now = new Date();
     let checkDate = new Date(now);
 
+    // 1. Tính ngày Thứ 2 của tuần hiện tại (Thứ 2 -> Chủ nhật) TRƯỚC vòng lặp đếm streak
+    const currentDayOfWeek = now.getDay(); // 0 = CN, 1 = T2,...
+    const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    const mondayKey = getLocalDateStr(monday);
+
     const todayKey = getLocalDateStr(now);
     const hasToday = daySet.has(todayKey) || daySet.has(now.toISOString().slice(0, 10));
 
@@ -54,6 +61,12 @@ const calculateStreak = async (userId) => {
       while (true) {
         const localKey = getLocalDateStr(checkDate);
         const utcKey = checkDate.toISOString().slice(0, 10);
+
+        // Nếu checkDate lùi về trước Thứ 2 của tuần hiện tại, dừng ngay không tính tiếp ngày thuộc tuần trước
+        if (localKey < mondayKey) {
+          break;
+        }
+
         if (daySet.has(localKey) || daySet.has(utcKey)) {
           streak += 1;
           checkDate = new Date(checkDate.getTime() - 24 * 60 * 60 * 1000);
@@ -63,12 +76,10 @@ const calculateStreak = async (userId) => {
       }
     }
 
-    // Tính trạng thái 7 ngày trong tuần hiện tại (Thứ 2 -> Chủ nhật)
-    const currentDayOfWeek = now.getDay(); // 0 = CN, 1 = T2,...
-    const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diffToMonday);
+    // Đảm bảo streak trong tuần trả về tối đa 7 ngày
+    streak = Math.min(streak, 7);
 
+    // 2. Tính trạng thái 7 ngày trong tuần hiện tại (Thứ 2 -> Chủ nhật)
     const weekDays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     const weekLabels = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
     const weeklyStatus = weekDays.map((day, idx) => {
@@ -87,11 +98,38 @@ const calculateStreak = async (userId) => {
 
     const lastActivity = days.length > 0 ? days[0] : null;
 
+    // 3. Quản lý Longest Streak lưu trữ trong CSDL (MAX giữa kỷ lục cũ và streak hiện tại)
+    let savedLongestStreak = 0;
+    try {
+      const userRes = await db.query(
+        'SELECT longest_streak FROM users WHERE user_id = $1',
+        [parseInt(userId, 10)]
+      );
+      if (userRes.rows.length > 0 && userRes.rows[0].longest_streak != null) {
+        savedLongestStreak = parseInt(userRes.rows[0].longest_streak, 10) || 0;
+      }
+    } catch (dbErr) {
+      console.warn('⚠️ Lỗi đọc longest_streak từ users table:', dbErr.message);
+    }
+
+    const finalLongestStreak = Math.max(savedLongestStreak, streak);
+
+    if (streak > savedLongestStreak) {
+      try {
+        await db.query(
+          'UPDATE users SET longest_streak = $1 WHERE user_id = $2',
+          [finalLongestStreak, parseInt(userId, 10)]
+        );
+      } catch (upErr) {
+        console.warn('⚠️ Lỗi cập nhật longest_streak vào users table:', upErr.message);
+      }
+    }
+
     return {
       user_id: parseInt(userId, 10),
       streak,
       currentStreak: streak,
-      longestStreak: streak,
+      longestStreak: finalLongestStreak,
       weeklyStatus,
       last_activity_date: lastActivity
     };

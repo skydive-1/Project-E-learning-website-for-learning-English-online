@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   gender VARCHAR(10) CHECK (gender IN ('Male','Female','Other')),
   profile_picture_url VARCHAR(255),
   supabase_uid UUID UNIQUE,
+  longest_streak INTEGER DEFAULT 0,
   CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(role_id)
 );
 
