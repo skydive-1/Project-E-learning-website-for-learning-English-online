@@ -3,12 +3,18 @@ const router = express.Router();
 const lessonsController = require('./controllers/lessons.controller');
 const subtitlesController = require('./controllers/subtitles.controller');
 const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
+const upload = require('../../middleware/upload.middleware');
 
 // GET /api/lessons/video/ticket/:lessonId - Lấy Video Ticket thời hạn ngắn 60s (Chống tải lậu)
 router.get('/video/ticket/:lessonId', authenticate, lessonsController.getVideoTicket);
 
 // GET /api/lessons/video/stream/:lessonId - Stream video bảo mật
 router.get('/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
+
+// Tài liệu đính kèm bài học (Lesson Materials / Resources PDF)
+router.post('/:lessonId/materials', authenticate, authorize([1, 2]), upload.materialPdf.single('file'), lessonsController.uploadMaterial);
+router.get('/:lessonId/materials', authenticate, lessonsController.getMaterialsByLesson);
+router.delete('/:lessonId/materials/:materialId', authenticate, authorize([1, 2]), lessonsController.deleteMaterial);
 
 // Phụ đề thông minh & Kịch bản tương tác (Smart AI Subtitles & Interactive Transcript)
 router.get('/:lessonId/subtitles', subtitlesController.getSubtitles);

@@ -206,3 +206,95 @@ exports.streamLessonVideo = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Helper định dạng URL tài liệu động theo host runtime
+ */
+function resolveMaterialUrl(req, fileUrl) {
+  if (!fileUrl) return '';
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+    return fileUrl;
+  }
+  const host = req.get('host');
+  const protocol = req.protocol;
+  const baseUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+  return `${baseUrl.replace(/\/$/, '')}/${fileUrl.replace(/^\//, '')}`;
+}
+
+function formatMaterialItem(req, m) {
+  return {
+    id: m.material_id,
+    name: m.file_name,
+    url: resolveMaterialUrl(req, m.file_url),
+    fileType: m.file_type || 'application/pdf',
+    sizeKb: m.file_size_kb || 0,
+    createdAt: m.created_at
+  };
+}
+
+/**
+ * Upload tài liệu đính kèm bài học (Giảng viên / Admin)
+ */
+exports.uploadMaterial = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role, 10);
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng đính kèm tệp tin PDF hợp lệ (tối đa 20MB)'
+      });
+    }
+
+    const material = await lessonsService.uploadLessonMaterial(lessonId, file, userId, userRole);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Tải lên tài liệu đính kèm thành công',
+      material: formatMaterialItem(req, material)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Lấy danh sách tài liệu đính kèm của một bài học
+ */
+exports.getMaterialsByLesson = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const rawMaterials = await lessonsService.getLessonMaterials(lessonId);
+    const materials = rawMaterials.map(m => formatMaterialItem(req, m));
+
+    return res.status(200).json({
+      success: true,
+      materials
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Xóa tài liệu đính kèm (Owner-check Giảng viên / Admin)
+ */
+exports.deleteMaterial = async (req, res, next) => {
+  try {
+    const { lessonId, materialId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role, 10);
+
+    await lessonsService.deleteLessonMaterial(lessonId, materialId, userId, userRole);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đã xóa tài liệu đính kèm và vector AI liên quan'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

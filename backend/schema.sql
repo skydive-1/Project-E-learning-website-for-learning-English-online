@@ -219,3 +219,17 @@ CREATE TABLE IF NOT EXISTS lesson_subtitles (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_lesson_subtitles_lesson_id ON lesson_subtitles(lesson_id);
+
+-- 18. Tạo bảng Tài liệu đính kèm bài học (lesson_materials)
+CREATE TABLE IF NOT EXISTS lesson_materials (
+  material_id SERIAL PRIMARY KEY,
+  lesson_id INT NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+  file_name VARCHAR(255) NOT NULL,
+  file_url TEXT NOT NULL,
+  file_type VARCHAR(50) DEFAULT 'application/pdf',
+  file_size_kb INT DEFAULT 0,
+  uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_lesson_materials_lesson_id ON lesson_materials(lesson_id);

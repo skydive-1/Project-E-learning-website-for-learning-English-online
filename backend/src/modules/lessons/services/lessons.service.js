@@ -202,15 +202,174 @@ class LessonsService {
   }
 
   /**
-   * Lấy chi tiết một bài học
+   * Kiểm tra quyền sở hữu bài học/khóa học của Giảng viên (Owner-check)
+   */
+  async checkLessonOwnership(lessonId, userId, userRole) {
+    if (userRole === 1) return true; // Admin có toàn quyền
+    const query = `
+      SELECT c.instructor_id
+      FROM lessons l
+      JOIN sections s ON l.section_id = s.section_id
+      JOIN courses c ON s.course_id = c.course_id
+      WHERE l.lesson_id = $1
+    `;
+    const res = await db.query(query, [parseInt(lessonId, 10)]);
+    if (res.rows.length === 0) return false;
+    return Number(res.rows[0].instructor_id) === Number(userId);
+  }
+
+  /**
+   * Upload tài liệu đính kèm (PDF), trích xuất text và nạp vào Pinecone RAG
+   */
+  async uploadLessonMaterial(lessonId, file, userId, userRole) {
+    try {
+      const cleanLessonId = parseInt(lessonId, 10);
+      const isOwner = await this.checkLessonOwnership(cleanLessonId, userId, userRole);
+      if (!isOwner) {
+        const error = new Error('Bạn không có quyền quản lý tài liệu của khóa học này.');
+        error.status = 403;
+        throw error;
+      }
+
+      if (!file) {
+        const error = new Error('Không có tệp tin nào được tải lên.');
+        error.status = 400;
+        throw error;
+      }
+
+      const relativeUrl = `/uploads/courses/documents/${file.filename}`;
+      const sizeKb = Math.round(file.size / 1024) || 1;
+
+      // 1. Lưu thông tin tài liệu vào CSDL
+      const insertQuery = `
+        INSERT INTO lesson_materials (lesson_id, file_name, file_url, file_type, file_size_kb, uploaded_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING material_id, lesson_id, file_name, file_url, file_type, file_size_kb, created_at
+      `;
+      const result = await db.query(insertQuery, [
+        cleanLessonId,
+        file.originalname,
+        relativeUrl,
+        file.mimetype || 'application/pdf',
+        sizeKb,
+        userId
+      ]);
+
+      const material = result.rows[0];
+
+      // 2. Trích xuất text từ tệp PDF và nạp vào Pinecone RAG
+      const { extractTextFromPdf } = require('../../../utils/pdfExtractor.util');
+      const extractedText = await extractTextFromPdf(file.path);
+
+      if (extractedText && extractedText.trim()) {
+        const { ingestPdfDocument } = require('./ragIngestion.service');
+        // Nạp vector chạy ngầm bất đồng bộ không chặn luồng phản hồi
+        ingestPdfDocument(cleanLessonId, material.material_id, file.originalname, extractedText).catch(ragErr => {
+          console.error(`[RAG Ingestion] Lỗi nạp vector tài liệu ${material.material_id}:`, ragErr.message);
+        });
+      }
+
+      return material;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi tải lên tài liệu bài học');
+    }
+  }
+
+  /**
+   * Lấy danh sách tài liệu đính kèm của một bài học
+   */
+  async getLessonMaterials(lessonId) {
+    try {
+      const cleanLessonId = parseInt(lessonId, 10);
+      const query = `
+        SELECT material_id, lesson_id, file_name, file_url, file_type, file_size_kb, created_at
+        FROM lesson_materials
+        WHERE lesson_id = $1
+        ORDER BY material_id ASC
+      `;
+      const result = await db.query(query, [cleanLessonId]);
+      return result.rows || [];
+    } catch (error) {
+      handleServiceError(error, 'Lỗi lấy danh sách tài liệu đính kèm');
+    }
+  }
+
+  /**
+   * Xóa tài liệu đính kèm (Kèm Owner-Check và dọn dẹp vector Pinecone)
+   */
+  async deleteLessonMaterial(lessonId, materialId, userId, userRole) {
+    try {
+      const cleanLessonId = parseInt(lessonId, 10);
+      const cleanMaterialId = parseInt(materialId, 10);
+
+      const isOwner = await this.checkLessonOwnership(cleanLessonId, userId, userRole);
+      if (!isOwner) {
+        const error = new Error('Bạn không có quyền xóa tài liệu của khóa học này.');
+        error.status = 403;
+        throw error;
+      }
+
+      // 1. Lấy thông tin file trước khi xóa
+      const checkQuery = `SELECT file_url FROM lesson_materials WHERE material_id = $1 AND lesson_id = $2`;
+      const checkRes = await db.query(checkQuery, [cleanMaterialId, cleanLessonId]);
+      if (checkRes.rows.length === 0) {
+        const error = new Error('Không tìm thấy tài liệu đính kèm để xóa.');
+        error.status = 404;
+        throw error;
+      }
+
+      const fileUrl = checkRes.rows[0].file_url;
+
+      // 2. Xóa trong CSDL
+      await db.query(`DELETE FROM lesson_materials WHERE material_id = $1`, [cleanMaterialId]);
+
+      // 3. Xóa file vật lý trên đĩa
+      if (fileUrl && fileUrl.startsWith('/uploads/')) {
+        const path = require('path');
+        const fs = require('fs');
+        const absoluteFilePath = path.resolve(__dirname, '../../../../', fileUrl.replace(/^\//, ''));
+        if (fs.existsSync(absoluteFilePath)) {
+          try {
+            fs.unlinkSync(absoluteFilePath);
+          } catch (e) {
+            console.warn(`[File Delete] Cảnh báo lỗi xóa file vật lý ${absoluteFilePath}:`, e.message);
+          }
+        }
+      }
+
+      // 4. Xóa vector trong Pinecone
+      const { deleteMaterialVectors } = require('./ragIngestion.service');
+      deleteMaterialVectors(cleanMaterialId).catch(err => {
+        console.warn(`[RAG Vector Delete] Cảnh báo xóa vector materialId=${cleanMaterialId}:`, err.message);
+      });
+
+      return true;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi xóa tài liệu đính kèm');
+    }
+  }
+
+  /**
+   * Lấy chi tiết một bài học (Kèm danh sách tài liệu đính kèm resources)
    */
   async getLessonById(lessonId) {
     try {
-      const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [parseInt(lessonId, 10)]);
+      const cleanLessonId = parseInt(lessonId, 10);
+      const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [cleanLessonId]);
       const lesson = result.rows[0];
-      if (lesson && lesson.content_type === 'video' && lesson.content_url) {
+      if (!lesson) return null;
+
+      if (lesson.content_type === 'video' && lesson.content_url) {
         lesson.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(lesson.content_url, 'videos', 3600);
       }
+
+      // Lấy danh sách tài liệu đính kèm từ bảng lesson_materials
+      const materialsRes = await db.query(
+        'SELECT material_id, file_name, file_url, file_type, file_size_kb, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',
+        [cleanLessonId]
+      );
+
+      lesson.materials = materialsRes.rows || [];
       return lesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin bài giảng');

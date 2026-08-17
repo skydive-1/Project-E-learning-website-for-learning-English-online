@@ -1190,13 +1190,23 @@ const LessonDetailPage = () => {
                                   className="flex items-center justify-between p-3.5 border rounded-xl hover:opacity-90 transition-colors shadow-sm"
                                   style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
                                 >
-                                  <div className="flex items-center space-x-3">
+                                  <div className="flex items-center space-x-3 overflow-hidden pr-3">
                                     <FiFileText className="text-smart-indigo text-lg shrink-0" />
-                                    <span className="font-medium" style={{ color: 'var(--text-color)' }}>{res.name}</span>
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="font-medium truncate" style={{ color: 'var(--text-color)' }}>{res.name}</span>
+                                      {res.sizeKb > 0 && (
+                                        <span className="text-[11px] opacity-60">
+                                          {res.sizeKb >= 1024 ? `${(res.sizeKb / 1024).toFixed(1)} MB` : `${res.sizeKb} KB`}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                   <a
                                     href={res.url}
-                                    className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={res.name || true}
+                                    className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors shrink-0"
                                   >
                                     <FiDownload />
                                     <span>Tải xuống</span>

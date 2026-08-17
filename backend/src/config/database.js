@@ -201,6 +201,27 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_subtitles:', migErr.message);
     }
 
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng lesson_materials tồn tại cho tài liệu đính kèm (PDF/Resources)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lesson_materials (
+          material_id SERIAL PRIMARY KEY,
+          lesson_id INT NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+          file_name VARCHAR(255) NOT NULL,
+          file_url TEXT NOT NULL,
+          file_type VARCHAR(50) DEFAULT 'application/pdf',
+          file_size_kb INT DEFAULT 0,
+          uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_materials_lesson_id ON lesson_materials(lesson_id);`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng lesson_materials tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_materials:', migErr.message);
+    }
+
     client.release();
     return true;
   } catch (error) {

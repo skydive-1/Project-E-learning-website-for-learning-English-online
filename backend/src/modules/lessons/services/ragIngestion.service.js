@@ -32,34 +32,43 @@ function chunkText(text, chunkSize = 900, overlap = 150) {
 /**
  * Tự động phân tách transcript phụ đề bài học thành các vector embedding và upsert vào Pinecone
  * @param {number|string} lessonId ID của bài học
- * @param {Array<{en: string, vi?: string, start?: number, end?: number}>} cues Danh sách phụ đề
+ * @param {Array<{en: string, vi?: string, start?: number, end?: number}>|string} cues Danh sách phụ đề hoặc chuỗi text
+ * @param {Object} options Tùy chọn nguồn nạp dữ liệu (source, materialId, fileName)
  */
-async function ingestLessonTranscript(lessonId, cues) {
+async function ingestLessonTranscript(lessonId, cues, options = {}) {
   try {
-    if (!cues || !Array.isArray(cues) || cues.length === 0) {
-      console.log(`[RAG Ingestion] lessonId=${lessonId}: Không có cues phụ đề hợp lệ để ingest.`);
+    const source = options.source || 'auto-subtitle-transcript';
+    let fullText = '';
+
+    if (typeof cues === 'string') {
+      fullText = cues;
+    } else if (Array.isArray(cues) && cues.length > 0) {
+      fullText = cues.map(c => c.en).filter(Boolean).join(' ');
+    } else {
+      console.log(`[RAG Ingestion] lessonId=${lessonId}: Không có dữ liệu transcript hợp lệ để ingest.`);
       return;
     }
 
-    const fullText = cues.map(c => c.en).filter(Boolean).join(' ');
     if (!fullText.trim()) {
-      console.log(`[RAG Ingestion] lessonId=${lessonId}: Transcript tiếng Anh rỗng, bỏ qua.`);
+      console.log(`[RAG Ingestion] lessonId=${lessonId}: Nội dung văn bản rỗng, bỏ qua.`);
       return;
     }
 
     const chunks = chunkText(fullText);
-    console.log(`[RAG Ingestion] lessonId=${lessonId}: Phân tách thành ${chunks.length} chunks (tổng độ dài ${fullText.length} ký tự).`);
+    console.log(`[RAG Ingestion] lessonId=${lessonId} [source: ${source}]: Phân tách thành ${chunks.length} chunks (tổng độ dài ${fullText.length} ký tự).`);
 
-    // 1. Xóa các vector cũ của bài học này để tránh dư thừa khi sinh/sửa lại phụ đề
+    // 1. Xóa các vector cũ của bài học này theo ĐÚNG nguồn (source) để tránh xóa nhầm dữ liệu PDF/phụ đề khác
     try {
       if (pineconeIndex && typeof pineconeIndex.deleteMany === 'function') {
-        await pineconeIndex.deleteMany({
-          filter: {
-            lesson_id: { $eq: Number(lessonId) },
-            source: { $eq: 'auto-subtitle-transcript' }
-          }
-        });
-        console.log(`[RAG Ingestion] lessonId=${lessonId}: Đã xóa vector cũ thuộc nguồn 'auto-subtitle-transcript'.`);
+        const deleteFilter = {
+          lesson_id: { $eq: Number(lessonId) },
+          source: { $eq: source }
+        };
+        if (options.materialId) {
+          deleteFilter.material_id = { $eq: Number(options.materialId) };
+        }
+        await pineconeIndex.deleteMany({ filter: deleteFilter });
+        console.log(`[RAG Ingestion] lessonId=${lessonId}: Đã dọn dẹp vector cũ thuộc nguồn '${source}'.`);
       }
     } catch (delErr) {
       console.warn(`[RAG Ingestion] Cảnh báo xóa vector cũ lessonId=${lessonId} (có thể chưa tồn tại):`, delErr.message);
@@ -80,17 +89,26 @@ async function ingestLessonTranscript(lessonId, cues) {
           throw new Error('Vector embedding trả về rỗng từ mô hình.');
         }
 
+        const chunkId = options.materialId
+          ? `material-${options.materialId}-chunk-${i}`
+          : `lesson-${lessonId}-chunk-${i}`;
+
+        const metadata = {
+          lesson_id: Number(lessonId),
+          text: chunks[i],
+          source: source
+        };
+
+        if (options.materialId) metadata.material_id = Number(options.materialId);
+        if (options.fileName) metadata.file_name = String(options.fileName);
+
         if (pineconeIndex) {
           try {
             await pineconeIndex.upsert([
               {
-                id: `lesson-${lessonId}-chunk-${i}`,
+                id: chunkId,
                 values: vector,
-                metadata: {
-                  lesson_id: Number(lessonId),
-                  text: chunks[i],
-                  source: 'auto-subtitle-transcript'
-                }
+                metadata: metadata
               }
             ]);
           } catch (upsertErr) {
@@ -99,13 +117,9 @@ async function ingestLessonTranscript(lessonId, cues) {
               await pineconeIndex.upsert({
                 records: [
                   {
-                    id: `lesson-${lessonId}-chunk-${i}`,
+                    id: chunkId,
                     values: vector,
-                    metadata: {
-                      lesson_id: Number(lessonId),
-                      text: chunks[i],
-                      source: 'auto-subtitle-transcript'
-                    }
+                    metadata: metadata
                   }
                 ]
               });
@@ -121,14 +135,49 @@ async function ingestLessonTranscript(lessonId, cues) {
       }
     }
 
-    console.log(`[RAG Ingestion] ✅ lessonId=${lessonId}: Đã nạp thành công ${successCount}/${chunks.length} chunks vào Pinecone Vector DB!`);
+    console.log(`[RAG Ingestion] ✅ lessonId=${lessonId} [source: ${source}]: Đã nạp thành công ${successCount}/${chunks.length} chunks vào Pinecone Vector DB!`);
   } catch (error) {
     console.error(`[RAG Ingestion] ❌ Lỗi tổng quát khi ingest transcript cho lessonId=${lessonId}:`, error.message);
-    // Lưu ý: Không throw lỗi ra ngoài để tránh làm hỏng luồng lưu trữ phụ đề chính
+  }
+}
+
+/**
+ * Tự động phân tách nội dung tài liệu PDF và nạp vào Pinecone Vector DB
+ * @param {number|string} lessonId ID bài học
+ * @param {number|string} materialId ID của tài liệu trong bảng lesson_materials
+ * @param {string} fileName Tên file
+ * @param {string} textContent Toàn bộ nội dung text trích xuất từ PDF
+ */
+async function ingestPdfDocument(lessonId, materialId, fileName, textContent) {
+  return ingestLessonTranscript(lessonId, textContent, {
+    source: 'lesson-material-pdf',
+    materialId: Number(materialId),
+    fileName: fileName
+  });
+}
+
+/**
+ * Xóa toàn bộ vector của một tài liệu đính kèm khi tài liệu bị xóa khỏi bài học
+ * @param {number|string} materialId ID tài liệu
+ */
+async function deleteMaterialVectors(materialId) {
+  try {
+    if (pineconeIndex && typeof pineconeIndex.deleteMany === 'function') {
+      await pineconeIndex.deleteMany({
+        filter: {
+          material_id: { $eq: Number(materialId) }
+        }
+      });
+      console.log(`[RAG Ingestion] ✅ Đã xóa toàn bộ vector của materialId=${materialId} khỏi Pinecone.`);
+    }
+  } catch (err) {
+    console.warn(`[RAG Ingestion] Cảnh báo xóa vector của materialId=${materialId}:`, err.message);
   }
 }
 
 module.exports = {
   chunkText,
-  ingestLessonTranscript
+  ingestLessonTranscript,
+  ingestPdfDocument,
+  deleteMaterialVectors
 };

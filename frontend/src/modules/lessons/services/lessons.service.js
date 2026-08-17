@@ -462,6 +462,24 @@ export const getLessonById = async (lessonId) => {
     }
 
     const isSpeakingType = l.content_type === 'speaking';
+    
+    // Map danh sách tài liệu đính kèm thực tế từ bảng lesson_materials
+    let resolvedResources = [];
+    if (l.materials && Array.isArray(l.materials)) {
+      resolvedResources = l.materials.map(m => ({
+        id: m.material_id || m.id,
+        name: m.file_name || m.name,
+        url: m.file_url ? (m.file_url.startsWith('http') ? m.file_url : `${backendHost}${m.file_url}`) : (m.url || ''),
+        fileType: m.file_type || m.fileType || 'application/pdf',
+        sizeKb: m.file_size_kb || m.sizeKb || 0,
+        createdAt: m.created_at || m.createdAt
+      }));
+    }
+
+    if (resolvedResources.length === 0 && l.content_type === 'pdf' && resolvedUrl) {
+      resolvedResources = [{ name: l.title + ' (PDF)', url: resolvedUrl, sizeKb: 0 }];
+    }
+
     return {
       id: String(l.lesson_id),
       courseId: l.course_id,
@@ -472,7 +490,7 @@ export const getLessonById = async (lessonId) => {
       pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
       description: description,
       content: content,
-      resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
+      resources: resolvedResources,
       completed: completed,
       speakingSentences: l.speaking_sentences || l.speakingSentences || '',
       speakingQuestions: l.speaking_questions || l.speakingQuestions || ''
@@ -484,4 +502,38 @@ export const getLessonById = async (lessonId) => {
     }
     throw error;
   }
+};
+
+/**
+ * Lấy danh sách tài liệu đính kèm của bài học
+ */
+export const getLessonMaterials = async (lessonId) => {
+  try {
+    const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+    const response = await api.get(`/lessons/${cleanId}/materials`);
+    return response.data?.materials || [];
+  } catch (error) {
+    console.error("Lỗi getLessonMaterials:", error);
+    return [];
+  }
+};
+
+/**
+ * Tải lên tài liệu đính kèm cho bài học (Giảng viên / Admin)
+ */
+export const uploadLessonMaterial = async (lessonId, formData) => {
+  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  const response = await api.post(`/lessons/${cleanId}/materials`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data?.material;
+};
+
+/**
+ * Xóa tài liệu đính kèm (Giảng viên / Admin)
+ */
+export const deleteLessonMaterial = async (lessonId, materialId) => {
+  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  const response = await api.delete(`/lessons/${cleanId}/materials/${materialId}`);
+  return response.data;
 };
