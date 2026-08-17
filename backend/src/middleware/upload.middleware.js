@@ -97,6 +97,15 @@ const upload = multer({
 });
 
 // Thêm cấu hình memory storage để upload nhanh chóng vào buffer (giảm độ trễ đọc/ghi đĩa cho audio)
+const memoryStorage = multer.memoryStorage();
+upload.memory = multer({
+  storage: memoryStorage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10 MB limit
+  }
+});
+
 // Cấu hình tải tài liệu bài học (Lesson Material PDF): Tối đa 20MB, chỉ chấp nhận PDF
 const materialPdfFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
