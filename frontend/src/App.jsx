@@ -21,8 +21,9 @@ import { LanguageProvider } from './context/LanguageContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
-import PlayQuizPage from './modules/quizzes/pages/PlayQuizPage';
 import GlobalChatbot from './components/common/GlobalChatbot';
+import OfflineIndicator from './components/common/OfflineIndicator';
+import MobileBottomNav from './components/common/MobileBottomNav';
 import AnalyticsDashboardPage from './modules/analytics/pages/AnalyticsDashboardPage';
 import { GamificationProvider } from './context/GamificationContext';
 import BadgeUnlockModal from './modules/gamification/components/BadgeUnlockModal';
@@ -161,7 +162,9 @@ function App() {
                     />
                   </Routes>
                   <GlobalChatbot />
+                  <MobileBottomNav />
                   <BadgeUnlockModal />
+                  <OfflineIndicator />
                 </GamificationProvider>
               </AuthProvider>
             </BrowserRouter>

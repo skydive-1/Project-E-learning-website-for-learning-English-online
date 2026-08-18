@@ -297,12 +297,11 @@
 }
 
 /* Responsive cho màn hình nhỏ di động (Impeccable Floating Sheet) */
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .global-chatbot-container {
-    bottom: 16px;
+    bottom: 80px; /* Elevated above Mobile Bottom Navigation bar */
     right: 16px;
-    left: 16px;
-    align-items: flex-end;
+    z-index: 45;
   }
 
   .chatbot-floating-trigger {

@@ -1253,8 +1253,8 @@ const LessonDetailPage = () => {
                 )}
               </div>{/* end left area opacity wrapper */}
 
-              {/* Right Sidebar Area - 35%-40% (xl: 4 cols, lg: 5 cols, desktop width ~440-480px) */}
-              <div className="col-span-1 lg:col-span-5 xl:col-span-4 flex flex-col h-[calc(100vh-110px)] lg:sticky lg:top-20 border rounded-2xl overflow-hidden shadow-sm transition-all duration-300" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+              {/* Right Sidebar Area - 35%-40% (xl: 4 cols, lg: 5 cols, desktop width ~440-480px, mobile 580px container) */}
+              <div className="col-span-1 lg:col-span-5 xl:col-span-4 flex flex-col min-h-[520px] h-[580px] lg:h-[calc(100vh-110px)] lg:sticky lg:top-20 border rounded-2xl overflow-hidden shadow-sm transition-all duration-300" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
 
                 {/* Sidebar Tabs Headers */}
                 <div className="flex border-b shrink-0" style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}>

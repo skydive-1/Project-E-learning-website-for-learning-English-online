@@ -1,0 +1,55 @@
+P0: 📝 TÀI LIỆU PHÂN CHIA NHIỆM VỤ VÀ HƯỚNG DẪN KỸ THUẬT - SPRINT 11 
+P1: Dự án: Website Học Tiếng Anh Trực Tuyến Tích Hợp Trợ Lý AI (E-Learn Academy) 
+P2: Thời gian thực hiện: Từ 18/08/2026 đến 21/08/2026
+P3: Trọng tâm Sprint: Đóng gói PWA Mobile/Offline Cache, Tổng duyệt kiểm thử liên thông End-to-End (UAT), Khóa mã nguồn (Code Freeze), Hoàn tất 100% Quyển Thuyết minh Đồ án và Thiết kế Slide Thuyết trình. 
+P4: 🤝 NGUYÊN TẮC VẬN HÀNH SPRINT CUỐI (CODE FREEZE & UAT PROTOCOL)
+P5: Khóa tính năng (Code Freeze): Không thêm bất kỳ tính năng lớn mới nào phát sinh ngoài kế hoạch để giữ ổn định hệ thống.
+P6: Kịch bản Demo chuẩn (Golden Path): Cả 3 thành viên thống nhất 1 luồng Demo xuyên suốt từ: Đăng ký/Đăng nhập $\rightarrow$ Học bài & RAG AI $\rightarrow$ Luyện nói AI $\rightarrow$ Làm Quiz $\rightarrow$ Xem Heatmap Analytics & Streak. 
+P7: Môi trường Live: Đảm bảo toàn bộ hệ thống trên Vercel/Railway/Supabase đồng bộ 100%. 
+P8: 📱 PHẦN 1: CHI TIẾT NHIỆM VỤ CỦA QUỐC ANH (FRONTEND & AI UI LEAD)
+P9: 📌 Hiện trạng:
+P10: Đã hoàn thành: Chuyển bài Optimistic/Skeleton, UI Heatmap Analytics, Widget Flame Streak, Modal Policy bản quyền, Chương 1 & 2 Thuyết minh. 
+P11: Mục tiêu tuần này: Đóng gói PWA Mobile, kiểm thử toàn diện giao diện 
+P12: 🎯 Các công việc cần làm và hướng dẫn chi tiết:
+P13: [TASK-FE-PWA-01] Đóng gói Progressive Web App (PWA) & Tối ưu Giao diện Di động (Mobile UX)
+P14: Hướng dẫn thực hiện:
+P15: Cấu hình plugin vite-plugin-pwa và file manifest.json (tên ứng dụng, icon, màu chủ đạo Deep Navy #0F172A). 
+P16: Thiết lập Workbox Service Worker để lưu bộ nhớ đệm (Cache-First) cho giao diện và các tài nguyên tĩnh, cho phép học viên có thể mở ứng dụng ngay cả khi mất kết nối mạng (Offline Shell). 
+P17: Tinh chỉnh CSS để thanh điều hướng dưới đáy (Bottom Navigation) và trình phát video hiển thị chuẩn nét trên điện thoại di động và máy tính bảng. 
+P18: [TASK-FE-DOC-03] Thiết kế Slide Thuyết trình Đồ án Tốt nghiệp (Presentation Deck)
+P19: Hướng dẫn thực hiện: Thiết kế bộ slide chuyên nghiệp từ 25-30 trang theo nhận diện EdTech Premium (Deep Navy/Indigo/Emerald). Bố cục gồm: Vấn đề & Giải pháp, Điểm khác biệt độc nhất (RAG AI & Speaking AI), Kiến trúc hệ thống, Demo tính năng trực quan, và Kết quả đánh giá hiệu năng. 
+P20: [TASK-FE-TEST-01] Tổng kiểm thử Giao diện & Trải nghiệm Người dùng (Frontend UAT)
+P21: Hướng dẫn thực hiện: Chạy thử toàn bộ các màn hình trên 3 trình duyệt (Chrome, Safari, Edge) và thiết bị di động. Kiểm tra lại các trường hợp ngoại lệ: mất mạng, token hết hạn, micro bị từ chối cấp quyền, và kiểm chứng việc chặn tải video. 
+P22: 🔧 PHẦN 2: CHI TIẾT NHIỆM VỤ CỦA LIÊM (BACKEND & SECURITY LEAD)
+P23: 📌 Hiện trạng:
+P24: Đã hoàn thành: Khóa học Starter & Vector Pinecone, DRM Netflix Pitch Black & Anti-IDM 4 lớp, Chấm phát âm Zero False Positive, API Lesson Comments. 
+P25: Mục tiêu tuần này: Tối ưu hóa bảo mật Production, chuẩn bị kịch bản phòng ngừa rủi ro 
+P26: 🛠️ Các công việc cần làm và hướng dẫn chi tiết:
+P27: [TASK-BE-HARDEN-01] Rà soát Bảo mật & Tối ưu Hạ tầng Backend Production
+P28: Hướng dẫn thực hiện:
+P29: Thiết lập biến môi trường dự phòng (Backup Gemini API Keys) để phòng ngừa trường hợp tài khoản chính bị cạn hạn mức hoặc nghẽn mạng trong lúc Hội đồng chấm thi đang diễn ra.
+P30: Rà soát lại toàn bộ Middleware bảo mật: CORS, Helmet headers, Rate Limiting (100 req/15 phút), kiểm tra tính hợp lệ của JWT token. 
+P31: Xóa bỏ hoàn toàn các log in dữ liệu nhạy cảm trên máy chủ Cloud (Railway/Render). 
+P32: [TASK-BE-TEST-01] Kiểm thử Tải & Độ ổn định API (API Load & Stress Testing)
+P33: Hướng dẫn thực hiện: Sử dụng công cụ nhẹ (như Postman Runner hoặc Autocannon) để kiểm thử đồng thời 50-100 requests vào các endpoint trọng yếu (/api/chatbot/ask, /api/quizzes/submit-audio, /api/analytics/heartbeat). Đảm bảo không xảy ra hiện tượng tràn bộ nhớ hay crash server. 
+P34: 🗄️ PHẦN 3: CHI TIẾT NHIỆM VỤ CỦA CHƯƠNG (DATA, INFRASTRUCTURE & ANALYTICS SPECIALIST)
+P35: 📌 Hiện trạng:
+P36: Đã hoàn thành: Analytics Engine & Heartbeat, Bảng bản quyền & Thảo luận, Client Prefetching (<50ms),
+P37: Mục tiêu tuần này: Cố định dữ liệu Demo, 
+P38: 🎯 Các công việc cần làm và hướng dẫn chi tiết:
+P39: [TASK-DB-SEED-01] Chuẩn hóa Dữ liệu "Vàng" phục vụ Demo (Golden Demo Dataset)
+P40: Hướng dẫn thực hiện:
+P41: Tạo sẵn 3 tài khoản Demo chuẩn phân quyền: admin@elearn.edu.vn, instructor@elearn.edu.vn, student@elearn.edu.vn kèm mật khẩu tiêu chuẩn.
+P42: Nạp sẵn dữ liệu học tập thực tế phong phú: Lịch sử học tập 30 ngày gần nhất (để vẽ Heatmap đầy màu sắc rực rỡ), chuỗi 7 ngày học liên tiếp (Streak 7 days), và các bình luận thảo luận sôi nổi trong bài học. 
+P43: [TASK-DB-OPS-02] Thiết lập Kịch bản Khôi phục Thảm họa (Disaster Recovery Plan)
+P44: Hướng dẫn thực hiện: Xuất bản sao lưu CSDL chuẩn golden_demo_backup.sql. Viết 1 script khôi phục một chạm (One-click Restore). Trong trường hợp buổi Demo thực tế bị học viên test thử làm sai lệch dữ liệu, chỉ cần 60 giây là đưa toàn bộ CSDL về trạng thái sạch đẹp ban đầu. 
+P45: 👥 PHẦN 4: HẠNG MỤC CHUNG CỦA CẢ NHÓM (TỔNG DUYỆT BẢO VỆ)
+P46: [TASK-TEAM-02] Buổi Tổng duyệt Thuyết trình Nội bộ (Dry-Run Defense)
+P47: Cả 3 thành viên tiến hành chạy thử buổi bảo vệ tốt nghiệp bấm giờ thực tế (Thời gian quy chuẩn: 15-20 phút thuyết trình + 10 phút trả lời câu hỏi phản biện).
+P48: Phân chia vai trò báo cáo trước Hội đồng:
+P49: Quốc Anh: Báo cáo Tổng quan, Kiến trúc Frontend, UI/UX EdTech, và Demo luồng trải nghiệm học viên/RAG AI. 
+P50: Liêm: Báo cáo Kiến trúc Backend Modular Monolith, Xử lý Audio Multimodal, Cơ chế DRM Blackout & Anti-IDM 4 lớp. 
+P51: Chương: Báo cáo Mô hình CSDL 15 thực thể, Engine Real-Time Analytics Heartbeat, Chiến lược Caching tăng tốc độ truy vấn, và Đánh giá hiệu năng thực nghiệm. 
+P52: 📊 TIÊU CHUẨN NGHIỆM THU CUỐI SPRINT 11 (HẠN CHÓT: 21/08/2026)
+P53: Hệ thống Đóng gói Hoàn chỉnh: Ứng dụng hoạt động ổn định trên môi trường Cloud thực tế, hỗ trợ cài đặt PWA Mobile và chạy offline mượt mà. 
+P54: Dữ liệu Demo Chuẩn mực: 3 tài khoản mẫu sẵn sàng với dữ liệu Heatmap, Streak, Quizzes và Thảo luận sống động. 
