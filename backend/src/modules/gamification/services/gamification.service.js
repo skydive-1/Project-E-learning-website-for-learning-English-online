@@ -138,6 +138,40 @@ const calculateStreak = async (userId) => {
   }
 };
 
+/**
+ * Lấy danh sách huy hiệu của người dùng (User Badges)
+ */
+const getUserBadges = async (userId) => {
+  const DEFAULT_BADGES = [
+    { id: 'first_lesson', title: 'Khởi đầu nan', desc: 'Hoàn thành bài học đầu tiên', icon: '🌱', unlocked: true },
+    { id: 'streak_3', title: 'Chiến binh kiên trì', desc: 'Đạt chuỗi học 3 ngày liên tiếp', icon: '🔥', unlocked: true },
+    { id: 'streak_7', title: 'Thói quen vàng', desc: 'Đạt chuỗi học 7 ngày liên tiếp', icon: '⚡', unlocked: false },
+    { id: 'streak_30', title: 'Bậc thầy kỷ luật', desc: 'Đạt chuỗi học 30 ngày liên tiếp', icon: '👑', unlocked: false },
+    { id: 'quiz_master', title: 'Vua trắc nghiệm', desc: 'Đạt điểm tuyệt đối trong 5 bài Quiz', icon: '🎯', unlocked: true },
+    { id: 'ai_interactive', title: 'Tương tác thông minh', desc: 'Hỏi đáp với AI Chatbot trên 10 lần', icon: '🤖', unlocked: true },
+    { id: 'grammar_guru', title: 'Bậc thầy Ngữ pháp', desc: 'Hoàn thành toàn bộ bài tập ngữ pháp', icon: '📚', unlocked: false },
+    { id: 'speed_learner', title: 'Tốc độ ánh sáng', desc: 'Hoàn thành 3 bài học trong 1 ngày', icon: '🚀', unlocked: false }
+  ];
+
+  if (!userId) return DEFAULT_BADGES;
+
+  try {
+    const streakInfo = await calculateStreak(userId);
+    const curStreak = streakInfo?.currentStreak || 0;
+
+    return DEFAULT_BADGES.map(b => {
+      if (b.id === 'streak_3' && curStreak >= 3) return { ...b, unlocked: true };
+      if (b.id === 'streak_7' && curStreak >= 7) return { ...b, unlocked: true };
+      if (b.id === 'streak_30' && curStreak >= 30) return { ...b, unlocked: true };
+      return b;
+    });
+  } catch (err) {
+    console.warn('⚠️ Lỗi tính toán huy hiệu:', err.message);
+    return DEFAULT_BADGES;
+  }
+};
+
 module.exports = {
-  calculateStreak
+  calculateStreak,
+  getUserBadges
 };

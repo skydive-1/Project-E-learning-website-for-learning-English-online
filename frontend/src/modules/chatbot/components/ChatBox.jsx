@@ -7,7 +7,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 
-const ChatBox = ({ lessonId = 0, onClose = null }) => {
+const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose = null }) => {
   const { user } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -239,6 +239,10 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
         let finalSources = [];
         let finalActions = [];
 
+        const validCurrentTime = (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0) 
+          ? Number(currentTime) 
+          : null;
+
         const streamRes = await askChatbotStream(text, lessonId, (accumulatedText, eventPayload) => {
           if (eventPayload?.sources && eventPayload.sources.length > 0) {
             finalSources = eventPayload.sources;
@@ -251,7 +255,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
             sources: finalSources,
             actions: finalActions
           } : m));
-        }, 'lesson', currentTime);
+        }, 'lesson', validCurrentTime);
 
         const finalAnswerText = typeof streamRes === 'string' ? streamRes : (streamRes.reply || '');
         if (streamRes && streamRes.sources) {
@@ -277,12 +281,21 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
       }
     } catch (error) {
       console.error('⚠️ Lỗi phản hồi chatbot:', error);
-      const isLimitError = error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"));
-      const errorMsg = isLimitError 
-        ? error.message 
-        : (error.message?.includes("trắc nghiệm") 
-            ? "Không thể tạo bài tập trắc nghiệm lúc này, vui lòng thử lại sau ít phút."
-            : "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.");
+      let errorMsg = "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.";
+      
+      if (error instanceof ReferenceError || error instanceof TypeError) {
+        errorMsg = `Lỗi thực thi giao diện: ${error.message}`;
+      } else if (error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"))) {
+        errorMsg = error.message;
+      } else if (error.message && error.message.includes("trắc nghiệm")) {
+        errorMsg = "Không thể tạo bài tập trắc nghiệm lúc này, vui lòng thử lại sau ít phút.";
+      } else if (error.message && (error.message.includes("NetworkError") || error.message.includes("Failed to fetch") || error.message.includes("ERR_CONNECTION"))) {
+        errorMsg = "Lỗi kết nối mạng: Không thể kết nối tới máy chủ AI.";
+      } else if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.message && error.message.length > 0 && !error.message.includes("status code")) {
+        errorMsg = error.message;
+      }
 
       setMessages(prev => prev.map(m => m.id === aiMessageId ? {
         ...m,
