@@ -1397,6 +1397,7 @@ const LessonDetailPage = () => {
                       <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
                         <ChatBox 
                           lessonId={targetLessonId || currentLesson?.id} 
+                          lessonTitle={currentLesson?.title || ''}
                           currentTime={videoCurrentTime} 
                           onSeekVideo={handleSeekVideo} 
                         />

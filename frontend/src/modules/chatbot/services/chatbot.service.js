@@ -3,11 +3,14 @@ import apiClient from '../../../config/api.config';
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend
  */
-export const askChatbot = async (question, lessonId, scope = 'lesson', currentTime = null) => {
+export const askChatbot = async (question, lessonId, scope = 'lesson', currentTime = null, quickAction = null) => {
   try {
     const payload = { question, lessonId, scope };
     if (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime))) {
       payload.currentTime = Number(currentTime);
+    }
+    if (quickAction) {
+      payload.quickAction = quickAction;
     }
     const response = await apiClient.post('/chatbot/ask', payload);
     if (response.data && response.data.success) {
@@ -26,7 +29,7 @@ export const askChatbot = async (question, lessonId, scope = 'lesson', currentTi
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend dạng SSE Stream.
  */
-export const askChatbotStream = async (question, lessonId, onChunk, scope = 'lesson', currentTime = null) => {
+export const askChatbotStream = async (question, lessonId, onChunk, scope = 'lesson', currentTime = null, quickAction = null) => {
   const token = localStorage.getItem('token');
   const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = envUrl.replace(/\/+$/, '');
@@ -34,6 +37,9 @@ export const askChatbotStream = async (question, lessonId, onChunk, scope = 'les
   const payload = { question, lessonId, scope };
   if (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime))) {
     payload.currentTime = Number(currentTime);
+  }
+  if (quickAction) {
+    payload.quickAction = quickAction;
   }
 
   const response = await fetch(`${baseUrl}/chatbot/ask-stream`, {

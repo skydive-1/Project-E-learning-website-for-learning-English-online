@@ -6,7 +6,7 @@ import { FiCpu, FiMessageSquare, FiBookOpen, FiHelpCircle, FiZap } from 'react-i
  * - Hiển thị trạng thái khởi đầu sạch sẽ, tạo cảm hứng tương tác
  * - Cung cấp các thẻ câu hỏi gợi ý nhanh theo ngữ cảnh bài học
  */
-const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
+const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
   const isGlobal = Number(lessonId) === 0;
 
   const quickPrompts = isGlobal
@@ -14,34 +14,46 @@ const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
         {
           icon: <FiBookOpen className="text-smart-indigo" />,
           title: "Khóa học phù hợp",
-          desc: "Tư vấn lộ trình học cho người mới bắt đầu"
+          desc: "Tư vấn lộ trình học cho người mới bắt đầu",
+          promptText: "Cho tôi tóm tắt về các khóa học tiếng Anh hiện có trên website.",
+          action: null
         },
         {
           icon: <FiHelpCircle className="text-emerald-500" />,
           title: "Tính năng nổi bật",
-          desc: "Giới thiệu các chức năng học tiếng Anh trên trang"
+          desc: "Giới thiệu các chức năng học tiếng Anh trên trang",
+          promptText: "Trang web E-Learn Academy có những tính năng học tập nổi bật nào?",
+          action: null
         },
         {
           icon: <FiZap className="text-amber-500" />,
           title: "Mẹo học nhanh",
-          desc: "Cách luyện nghe và ghi nhớ từ vựng hiệu quả"
+          desc: "Cách luyện nghe và ghi nhớ từ vựng hiệu quả",
+          promptText: "Gợi ý cho tôi mẹo luyện nghe và ghi nhớ từ vựng tiếng Anh hiệu quả.",
+          action: null
         }
       ]
     : [
         {
           icon: <FiBookOpen className="text-smart-indigo" />,
           title: "Giải thích ngữ pháp chính",
-          desc: "Tóm tắt các cấu trúc và lưu ý quan trọng trong bài này"
+          desc: lessonTitle ? `Tóm tắt các cấu trúc trong "${lessonTitle}"` : "Tóm tắt các cấu trúc và lưu ý quan trọng trong bài này",
+          promptText: "Giải thích ngắn gọn những điểm ngữ pháp và cấu trúc câu chính trong bài học này.",
+          action: null
         },
         {
           icon: <FiZap className="text-amber-500" />,
           title: "Từ vựng trọng tâm",
-          desc: "Cho 3 từ vựng tiêu biểu kèm ví dụ câu thực tế"
+          desc: lessonTitle ? `Trích xuất từ vựng & thuật ngữ trong "${lessonTitle}"` : "Trích xuất 5-8 từ vựng và thuật ngữ xuất hiện trong bài",
+          promptText: "Từ vựng trọng tâm của bài học này là gì?",
+          action: "LESSON_KEY_VOCAB"
         },
         {
           icon: <FiMessageSquare className="text-emerald-500" />,
           title: "Tạo bài tập ôn nhanh",
-          desc: "Tạo 2 câu trắc nghiệm kiểm tra kiến thức bài học"
+          desc: lessonTitle ? `Luyện tập 3-4 câu trắc nghiệm cho "${lessonTitle}"` : "Tạo 3-4 câu trắc nghiệm kiểm tra kiến thức bài học",
+          promptText: "Tạo bài tập ôn nhanh cho bài học này.",
+          action: "LESSON_QUICK_QUIZ"
         }
       ];
 
@@ -53,7 +65,7 @@ const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
           <FiCpu className="text-2xl" />
         </div>
         <h4 className="font-bold text-slate-800 dark:text-slate-100 text-[14px]">
-          {isGlobal ? "Xin chào! Bạn muốn tìm hiểu gì hôm nay?" : "Bạn có thắc mắc gì về bài học này?"}
+          {isGlobal ? "Xin chào! Bạn muốn tìm hiểu gì hôm nay?" : (lessonTitle ? `Hỏi đáp về: "${lessonTitle}"` : "Bạn có thắc mắc gì về bài học này?")}
         </h4>
         <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[320px] leading-relaxed">
           {isGlobal
@@ -72,7 +84,7 @@ const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
             <button
               key={idx}
               type="button"
-              onClick={() => onSelectPrompt(item.desc)}
+              onClick={() => onSelectPrompt(item.promptText, item.action)}
               className="w-full flex items-start gap-3 p-3 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 hover:border-smart-indigo dark:hover:border-indigo-500 hover:shadow-sm transition-all duration-200 group text-left cursor-pointer"
             >
               <div className="mt-0.5 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-700/50 group-hover:scale-110 transition-transform shrink-0">

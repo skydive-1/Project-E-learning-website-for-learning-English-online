@@ -17,15 +17,18 @@ import ChatHeader from './ChatHeader';
 import MessageList from './MessageList';
 import EmptyState from './EmptyState';
 import Composer from './Composer';
+import DeleteConfirmModal from './DeleteConfirmModal';
 
 /**
  * ChatBox Component (Udemy-like AI Assistant Panel)
  * - Đảm nhận toàn bộ điều phối luồng hội thoại RAG AI
- * - Phân rã mô-đun hóa: ChatHeader, MessageList, EmptyState, Composer
+ * - Phân rã mô-đun hóa: ChatHeader, MessageList, EmptyState, Composer, DeleteConfirmModal
+ * - Hỗ trợ Custom Delete Confirmation (Zero window.confirm / Zero window.alert)
  * - Hỗ trợ Click-to-Seek video, trắc nghiệm tương tác, voice recording
  */
 const ChatBox = ({ 
   lessonId = 0, 
+  lessonTitle = '',
   currentTime = null, 
   onSeekVideo = null, 
   onClose = null 
@@ -40,8 +43,15 @@ const ChatBox = ({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [quizStates, setQuizStates] = useState({});
 
+  // Custom Delete Modal & Toast State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+
   const messagesEndRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
+  const toastTimeoutRef = useRef(null);
   const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
 
   // Helper gõ chữ từng từ mượt mà
@@ -197,7 +207,15 @@ const ChatBox = ({
     scrollToBottom();
   }, [messages, isLoading, isHistoryLoading]);
 
-  const handleSendMessage = async (textToSend = null) => {
+  const showInternalToast = (msg) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastMessage(msg);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 3500);
+  };
+
+  const handleSendMessage = async (textToSend = null, quickAction = null) => {
     const text = (textToSend !== null ? textToSend : inputText).trim();
     if (!text || isLoading) return;
 
@@ -223,14 +241,8 @@ const ChatBox = ({
     setIsLoading(true);
 
     try {
-      const isQuizRequest = text.toLowerCase().includes("trắc nghiệm") || 
-                            text.toLowerCase().includes("quizzes") || 
-                            text.toLowerCase().includes("quizz") || 
-                            text.toLowerCase().includes("bài tập nhỏ") ||
-                            text.toLowerCase().includes("bài tập trắc nghiệm");
-
-      if (isQuizRequest) {
-        const quizIntro = "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức:";
+      if (quickAction === 'LESSON_QUICK_QUIZ' || text.toLowerCase().includes("trắc nghiệm") || text.toLowerCase().includes("bài tập ôn nhanh")) {
+        const quizIntro = "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức bài học này:";
         const quizData = await generateChatbotQuiz(lessonId);
         await streamTextWordByWord(aiMessageId, quizIntro, { quizData });
       } else {
@@ -242,6 +254,16 @@ const ChatBox = ({
           : null;
 
         const streamRes = await askChatbotStream(text, lessonId, (accumulatedText, eventPayload) => {
+          if (eventPayload?.type === 'quiz' && eventPayload?.quizData) {
+            setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+              ...m,
+              text: "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức bài học này:",
+              quizData: eventPayload.quizData,
+              isStreaming: false
+            } : m));
+            return;
+          }
+
           if (eventPayload?.sources && eventPayload.sources.length > 0) {
             finalSources = eventPayload.sources;
             finalActions = eventPayload.actions || [];
@@ -253,7 +275,7 @@ const ChatBox = ({
             sources: finalSources,
             actions: finalActions
           } : m));
-        }, 'lesson', validCurrentTime);
+        }, 'lesson', validCurrentTime, quickAction);
 
         const finalAnswerText = typeof streamRes === 'string' ? streamRes : (streamRes.reply || '');
         if (streamRes && streamRes.sources) {
@@ -304,27 +326,44 @@ const ChatBox = ({
     }
   };
 
-  const handleClearChat = async () => {
-    if (window.confirm("Bạn có muốn xóa cuộc trò chuyện này để bắt đầu lại không?")) {
-      try {
-        if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
-          await clearChatHistory(user.userId, lessonId);
-        }
-        const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
-          ? "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn?"
-          : "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?";
-        setMessages([
-          {
-            id: "msg-welcome-new",
-            sender: "ai",
-            text: resetText,
-            timestamp: new Date()
-          }
-        ]);
-      } catch (err) {
-        console.error('⚠️ Lỗi khi xóa lịch sử chat:', err);
-        alert("Không thể xóa lịch sử lúc này. Vui lòng thử lại sau.");
+  // Mở Custom Delete Confirmation Modal (thay thế hoàn toàn window.confirm)
+  const handleRequestClearChat = () => {
+    setDeleteErrorMessage(null);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Thực thi xóa lịch sử chat an toàn (Zero native alert/confirm)
+  const handleConfirmClearChat = async () => {
+    if (isDeletingChat) return;
+
+    setIsDeletingChat(true);
+    setDeleteErrorMessage(null);
+
+    try {
+      if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
+        await clearChatHistory(user.userId, lessonId);
       }
+
+      const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
+        ? "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn?"
+        : "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?";
+
+      setMessages([
+        {
+          id: "msg-welcome-new",
+          sender: "ai",
+          text: resetText,
+          timestamp: new Date()
+        }
+      ]);
+
+      setIsDeleteModalOpen(false);
+      showInternalToast("Đã xóa lịch sử trò chuyện thành công.");
+    } catch (err) {
+      console.error('⚠️ Lỗi khi xóa lịch sử chat:', err);
+      setDeleteErrorMessage("Không thể xóa lịch sử lúc này. Vui lòng thử lại sau.");
+    } finally {
+      setIsDeletingChat(false);
     }
   };
 
@@ -362,18 +401,33 @@ const ChatBox = ({
       {/* 1. Header Area */}
       <ChatHeader
         lessonId={lessonId}
-        onClearChat={handleClearChat}
+        onClearChat={handleRequestClearChat}
         onClose={onClose}
         isLoading={isLoading}
         t={t}
       />
+
+      {/* Internal Success Toast Notification */}
+      {toastMessage && (
+        <div className="absolute top-14 left-4 right-4 z-40 p-2.5 rounded-xl bg-emerald-500 text-white text-xs font-semibold shadow-lg flex items-center justify-between animate-fade-in">
+          <span>✓ {toastMessage}</span>
+          <button 
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="text-white/80 hover:text-white text-sm font-bold ml-2 cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* 2. Main Conversation Area / Empty State */}
       {messages.length === 1 && !isLoading && !isHistoryLoading ? (
         <div className="flex-1 overflow-y-auto p-3 flex flex-col justify-center">
           <EmptyState
             lessonId={lessonId}
-            onSelectPrompt={(promptText) => handleSendMessage(promptText)}
+            lessonTitle={lessonTitle}
+            onSelectPrompt={(promptText, action) => handleSendMessage(promptText, action)}
           />
         </div>
       ) : (
@@ -401,6 +455,17 @@ const ChatBox = ({
         onStopRecord={handleStopAudioRecording}
         onCancelRecord={handleCancelAudioRecording}
         placeholder={Number(lessonId) === 0 ? "Đặt câu hỏi cho Trợ lý AI..." : "Hỏi trợ lý AI về bài học này..."}
+      />
+
+      {/* 4. Custom Delete Chat Confirmation Modal (Panel Overlay) */}
+      <DeleteConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          if (!isDeletingChat) setIsDeleteModalOpen(false);
+        }}
+        onConfirm={handleConfirmClearChat}
+        isDeleting={isDeletingChat}
+        errorMessage={deleteErrorMessage}
       />
     </div>
   );

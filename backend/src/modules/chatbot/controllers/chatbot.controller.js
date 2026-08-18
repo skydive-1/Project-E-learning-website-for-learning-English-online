@@ -6,8 +6,8 @@ const chatbotService = require('../services/chatbot.service');
 
 exports.ask = async (req, res, next) => {
   try {
-    const { question, lessonId, scope, currentTime } = req.body;
-    const answer = await chatbotService.ask(question, lessonId, req.user?.id, scope || 'lesson', currentTime);
+    const { question, lessonId, scope, currentTime, quickAction } = req.body;
+    const answer = await chatbotService.ask(question, lessonId, req.user?.id, scope || 'lesson', currentTime, quickAction);
 
     res.status(200).json({
       success: true,
@@ -23,7 +23,7 @@ exports.ask = async (req, res, next) => {
 
 exports.askStream = async (req, res, next) => {
   try {
-    const { question, lessonId, scope, currentTime } = req.body;
+    const { question, lessonId, scope, currentTime, quickAction } = req.body;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -38,7 +38,7 @@ exports.askStream = async (req, res, next) => {
       } else {
         res.write(`data: ${JSON.stringify(eventData)}\n\n`);
       }
-    }, scope || 'lesson', currentTime);
+    }, scope || 'lesson', currentTime, quickAction);
 
     res.write(`data: [DONE]\n\n`);
     res.end();
@@ -113,10 +113,10 @@ exports.clearHistory = async (req, res, next) => {
 exports.generateQuiz = async (req, res, next) => {
   try {
     const { lessonId } = req.body;
-    const quiz = await chatbotService.generateQuiz(lessonId);
+    const quiz = await chatbotService.generateQuiz(lessonId, req.user?.id);
     res.status(200).json({
       success: true,
-      data: quiz
+      data: quiz.questions || quiz.quizData || quiz
     });
   } catch (error) {
     next(error);

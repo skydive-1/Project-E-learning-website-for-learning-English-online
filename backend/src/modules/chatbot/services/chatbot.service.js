@@ -336,10 +336,332 @@ async function getTranscriptWindowContext(lessonId, currentTime, question = '') 
 }
 
 /**
+ * Lấy toàn bộ ngữ cảnh thực tế của bài học từ PostgreSQL (Subtitle transcript, Materials, Speaking, Hierarchy)
+ * Đảm bảo 100% Dynamic cho tất cả khóa học hiện tại và tương lai (Zero hard-coding)
+ */
+async function getLessonFullContext(lessonId, accessInfo = null) {
+  if (!lessonId || Number(lessonId) <= 0) return null;
+  const parsedLessonId = Number(lessonId);
+
+  // 1. Lấy thông tin bài học và phân cấp (lesson -> section -> course) từ PostgreSQL
+  const hierarchyRes = await db.query(`
+    SELECT 
+      l.lesson_id, l.title as lesson_title, l.content_type, l.content_url,
+      l.speaking_sentences, l.speaking_questions,
+      s.section_id, s.title as section_title,
+      c.course_id, c.course_name, c.description as course_description
+    FROM lessons l
+    JOIN sections s ON l.section_id = s.section_id
+    JOIN courses c ON s.course_id = c.course_id
+    WHERE l.lesson_id = $1
+    LIMIT 1
+  `, [parsedLessonId]);
+
+  if (hierarchyRes.rows.length === 0) return null;
+  const lesson = hierarchyRes.rows[0];
+
+  // 2. Lấy phụ đề transcript
+  let subtitleText = '';
+  let subtitleCues = [];
+  try {
+    const subRes = await db.query(
+      'SELECT cues, en_vtt, vi_vtt FROM lesson_subtitles WHERE lesson_id = $1 LIMIT 1',
+      [parsedLessonId]
+    );
+    if (subRes.rows.length > 0 && subRes.rows[0].cues) {
+      subtitleCues = subRes.rows[0].cues;
+      if (Array.isArray(subtitleCues) && subtitleCues.length > 0) {
+        subtitleText = subtitleCues.map(c => c.en ? `${c.en} ${c.vi ? `(${c.vi})` : ''}` : '').filter(Boolean).join('\n');
+      }
+    }
+  } catch (err) {
+    console.warn(`[QuickAction] Cảnh báo đọc phụ đề lessonId=${lessonId}:`, err.message);
+  }
+
+  // 3. Lấy tài liệu đính kèm nếu có
+  let materialsText = '';
+  try {
+    const matRes = await db.query(
+      'SELECT file_name, file_url FROM lesson_materials WHERE lesson_id = $1',
+      [parsedLessonId]
+    );
+    if (matRes.rows.length > 0) {
+      materialsText = matRes.rows.map(m => `[Tài liệu đính kèm: ${m.file_name}]`).join('\n');
+    }
+  } catch (err) {
+    console.warn(`[QuickAction] Cảnh báo đọc tài liệu lessonId=${lessonId}:`, err.message);
+  }
+
+  // 4. Lấy nội dung luyện nói nếu có
+  let speakingText = '';
+  if (lesson.speaking_sentences) {
+    speakingText += `[Mẫu câu luyện nói]: ${JSON.stringify(lesson.speaking_sentences)}\n`;
+  }
+  if (lesson.speaking_questions) {
+    speakingText += `[Câu hỏi luyện nói]: ${JSON.stringify(lesson.speaking_questions)}\n`;
+  }
+
+  const combinedContext = [
+    `BÀI HỌC: "${lesson.lesson_title}"`,
+    `CHƯƠNG: "${lesson.section_title}" | KHÓA HỌC: "${lesson.course_name}"`,
+    subtitleText ? `\n--- NỘI DUNG LỜI THOẠI & PHỤ ĐỀ BÀI HỌC ---\n${subtitleText}` : '',
+    materialsText ? `\n--- TÀI LIỆU VĂN BẢN ĐÍNH KÈM ---\n${materialsText}` : '',
+    speakingText ? `\n--- NỘI DUNG LUYỆN NÓI ---\n${speakingText}` : ''
+  ].filter(Boolean).join('\n');
+
+  return {
+    lesson,
+    courseId: Number(lesson.course_id),
+    combinedContext,
+    hasContent: Boolean(subtitleText || materialsText || speakingText),
+    cuesCount: subtitleCues.length
+  };
+}
+
+/**
+ * Xử lý Quick Action: Trích xuất Từ vựng & Thuật ngữ Trọng tâm (LESSON_KEY_VOCAB)
+ */
+async function handleLessonKeyVocab(userId, lessonId, onChunk = null) {
+  const accessInfo = await verifyLessonAndCourseAccess(userId, lessonId);
+  const lessonContext = await getLessonFullContext(lessonId, accessInfo);
+
+  if (!lessonContext || !lessonContext.hasContent) {
+    const fallbackMsg = `Bài học "${accessInfo.lesson?.lesson_title || 'này'}" hiện tại chưa có đủ dữ liệu lời thoại phụ đề hoặc tài liệu văn bản để trích xuất từ vựng trọng tâm. Bạn có thể đặt câu hỏi trực tiếp hoặc chuyển sang bài học khác để tiếp tục ôn luyện nhé!`;
+    if (onChunk) onChunk({ type: 'token', text: fallbackMsg });
+    return {
+      success: true,
+      reply: fallbackMsg,
+      intent: 'CURRENT_LESSON_QA',
+      sources: [
+        {
+          lessonId: Number(lessonId),
+          lessonTitle: accessInfo.lesson?.lesson_title || 'Bài học hiện tại',
+          sectionTitle: accessInfo.lesson?.section_title || 'Chương trình học',
+          courseName: accessInfo.lesson?.course_name,
+          badgeText: 'Bài học hiện tại'
+        }
+      ],
+      actions: [
+        {
+          type: 'OPEN_LESSON',
+          lessonId: Number(lessonId),
+          lessonTitle: accessInfo.lesson?.lesson_title,
+          sectionTitle: accessInfo.lesson?.section_title
+        }
+      ]
+    };
+  }
+
+  const prompt = `Bạn là Trợ lý Giảng dạy Tiếng Anh chuyên nghiệp của nền tảng E-Learn Academy.
+NHIỆM VỤ: Dựa vào NỘI DUNG THỰC TẾ CỦA BÀI HỌC dưới đây, hãy trích xuất 5 đến 8 TỪ VỰNG, THUẬT NGỮ NGỮ PHÁP, HOẶC CỤM TỪ TRỌNG TÂM (Key Vocabulary & Essential Terms).
+
+QUY TẮC BẮT BUỘC:
+1. CHỈ trích xuất kiến thức và thuật ngữ XUẤT HIỆN HOẶC ĐƯỢC GIẢNG DẠY TRONG BÀI HỌC DƯỚI ĐÂY. Tuyệt đối KHÔNG đưa thêm từ vựng ngẫu nhiên ngoài bài.
+2. Trình bày rõ ràng, đẹp mắt bằng Markdown:
+   - **Từ / Thuật ngữ (Term)** (kèm từ loại / phiên âm IPA nếu có)
+   - **Nghĩa tiếng Việt (Meaning)**
+   - **Ví dụ trong bài (Example sentence from lesson context)**
+   - **Ghi chú sử dụng (Usage Note)**
+3. Đưa ra lời khuyên ngắn gọn để ghi nhớ tốt các từ vựng này.
+
+--- NỘI DUNG BÀI HỌC:
+${lessonContext.combinedContext}`;
+
+  let replyText = '';
+  if (onChunk) {
+    onChunk({
+      type: 'metadata',
+      intent: 'CURRENT_LESSON_QA',
+      scope: 'current_lesson'
+    });
+
+    const responseStream = await geminiModel.generateContentStream(prompt);
+    for await (const chunk of responseStream.stream) {
+      const textChunk = chunk.text();
+      if (textChunk) {
+        replyText += textChunk;
+        onChunk({ type: 'token', text: textChunk });
+      }
+    }
+  } else {
+    const result = await geminiModel.generateContent(prompt);
+    replyText = result.response.text();
+  }
+
+  const sources = [
+    {
+      lessonId: Number(lessonId),
+      lessonTitle: lessonContext.lesson.lesson_title,
+      sectionTitle: lessonContext.lesson.section_title,
+      courseName: lessonContext.lesson.course_name,
+      badgeText: 'Từ vựng bài học'
+    }
+  ];
+  const actions = [
+    {
+      type: 'OPEN_LESSON',
+      lessonId: Number(lessonId),
+      lessonTitle: lessonContext.lesson.lesson_title,
+      sectionTitle: lessonContext.lesson.section_title
+    }
+  ];
+
+  if (onChunk) {
+    onChunk({ type: 'sources', sources, actions });
+  }
+
+  return {
+    success: true,
+    reply: replyText,
+    intent: 'CURRENT_LESSON_QA',
+    sources,
+    actions
+  };
+}
+
+/**
+ * Xử lý Quick Action: Tạo Bài tập Ôn tập Nhanh (LESSON_QUICK_QUIZ)
+ */
+async function handleLessonQuickQuiz(userId, lessonId, onChunk = null) {
+  const accessInfo = await verifyLessonAndCourseAccess(userId, lessonId);
+  const lessonContext = await getLessonFullContext(lessonId, accessInfo);
+
+  if (!lessonContext || !lessonContext.hasContent) {
+    const fallbackQuestions = [
+      {
+        question: `Nội dung cốt lõi của bài học "${accessInfo.lesson?.lesson_title || 'này'}" là gì?`,
+        options: ["Ngữ pháp và luyện tập phản xạ", "Kỹ năng phát âm và từ vựng", "Luyện nghe hiểu qua ngữ cảnh", "Cả 3 phương án trên"],
+        correctAnswer: 3,
+        explanation: "Bài học cung cấp kiến thức toàn diện kết hợp nghe, từ vựng và bài tập thực hành."
+      }
+    ];
+    const fallbackPayload = {
+      success: true,
+      type: "LESSON_QUICK_QUIZ",
+      lessonId: Number(lessonId),
+      title: `Bài tập ôn tập: ${accessInfo.lesson?.lesson_title || 'Bài học'}`,
+      questions: fallbackQuestions,
+      quizData: fallbackQuestions
+    };
+    if (onChunk) {
+      onChunk({ type: 'quiz', quizData: fallbackQuestions, title: fallbackPayload.title });
+    }
+    return fallbackPayload;
+  }
+
+  const quizPrompt = `Bạn là Chuyên gia Khảo thí Tiếng Anh của E-Learn Academy.
+NHIỆM VỤ: Hãy tạo 3 đến 4 câu hỏi trắc nghiệm ôn tập nhanh (Quick Quiz) kiểm tra các kiến thức vừa học TRONG BÀI HỌC DƯỚI ĐÂY.
+
+QUY TẮC BẮT BUỘC:
+1. Chỉ kiểm tra kiến thức (ngữ pháp, từ vựng, cách dùng câu) ĐƯỢC GIẢNG DẠY TRONG BÀI HỌC DƯỚI ĐÂY.
+2. Mỗi câu hỏi gồm đúng 4 lựa chọn (options: mảng gồm 4 chuỗi), chỉ có 1 đáp án đúng duy nhất.
+3. correctAnswer: chỉ số (index) 0, 1, 2, hoặc 3 tương ứng với lựa chọn đúng.
+4. Cung cấp giải thích chi tiết (explanation) bằng tiếng Việt cho đáp án đúng.
+5. Trả về ĐÚNG định dạng JSON Array thuần túy (không kèm markdown \`\`\`json, không kèm giải thích ngoài JSON):
+[
+  {
+    "question": "Nội dung câu hỏi tiếng Anh hoặc tiếng Việt...",
+    "options": ["Lựa chọn A", "Lựa chọn B", "Lựa chọn C", "Lựa chọn D"],
+    "correctAnswer": 0,
+    "explanation": "Giải thích chi tiết vì sao đáp án này đúng theo bài học..."
+  }
+]
+
+--- NỘI DUNG BÀI HỌC:
+${lessonContext.combinedContext}`;
+
+  let parsedQuestions = [];
+  try {
+    const result = await geminiModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: quizPrompt }] }],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      }
+    });
+
+    const rawText = result.response.text();
+    const cleanJson = rawText.replace(/```json\s*|```/g, '').trim();
+    parsedQuestions = JSON.parse(cleanJson);
+
+    if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
+      throw new Error("Dữ liệu Quiz không phải là mảng hợp lệ.");
+    }
+  } catch (err) {
+    console.warn(`[QuickQuiz] Cảnh báo parse JSON từ Gemini, fallback sang cấu trúc chuẩn:`, err.message);
+    parsedQuestions = [
+      {
+        question: `Kiến thức trọng tâm trong bài "${lessonContext.lesson.lesson_title}" là gì?`,
+        options: [
+          "Quy tắc sử dụng và áp dụng trong ngữ cảnh",
+          "Phát âm và từ vựng mở rộng",
+          "Cấu trúc câu hoàn chỉnh",
+          "Tất cả các ý trên"
+        ],
+        correctAnswer: 3,
+        explanation: `Bài học "${lessonContext.lesson.lesson_title}" giúp người học nắm vững quy tắc cấu trúc và vận dụng vào thực tế.`
+      }
+    ];
+  }
+
+  // Chuẩn hóa câu hỏi đảm bảo đúng schema
+  const normalizedQuestions = parsedQuestions.map((q, idx) => ({
+    question: q.question || `Câu hỏi ${idx + 1}`,
+    options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
+    correctAnswer: (typeof q.correctAnswer === 'number' && q.correctAnswer >= 0 && q.correctAnswer <= 3) ? q.correctAnswer : 0,
+    explanation: q.explanation || "Giải thích đáp án chính xác theo nội dung bài học."
+  }));
+
+  const quizPayload = {
+    success: true,
+    type: "LESSON_QUICK_QUIZ",
+    lessonId: Number(lessonId),
+    title: `Bài tập ôn tập: ${lessonContext.lesson.lesson_title}`,
+    questions: normalizedQuestions,
+    quizData: normalizedQuestions
+  };
+
+  if (onChunk) {
+    onChunk({
+      type: 'quiz',
+      quizData: normalizedQuestions,
+      title: quizPayload.title
+    });
+  }
+
+  return quizPayload;
+}
+
+/**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
  */
-const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto', currentTime = null) => {
+const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto', currentTime = null, quickAction = null) => {
   try {
+    // 0. Xử lý Structured Quick Actions nếu được yêu cầu trực tiếp
+    if (quickAction === 'LESSON_KEY_VOCAB' || (question && /^(từ vựng trọng tâm|key vocabulary|từ vựng chính)/i.test(question.trim()))) {
+      if (lessonId && Number(lessonId) > 0) {
+        return await handleLessonKeyVocab(userId, lessonId);
+      }
+    }
+    if (quickAction === 'LESSON_QUICK_QUIZ' || (question && /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(question.trim()))) {
+      if (lessonId && Number(lessonId) > 0) {
+        const quizRes = await handleLessonQuickQuiz(userId, lessonId);
+        return {
+          success: true,
+          reply: `Tôi đã tạo cho bạn ${quizRes.questions.length} câu trắc nghiệm nhanh để ôn tập bài học này.`,
+          quizData: quizRes.questions,
+          intent: 'CURRENT_LESSON_QA',
+          sources: [
+            {
+              lessonId: Number(lessonId),
+              lessonTitle: quizRes.title,
+              badgeText: 'Bài tập ôn tập'
+            }
+          ],
+          actions: []
+        };
+      }
+    }
     if (!question) {
       return { success: false, reply: "Vui lòng nhập câu hỏi.", intent: "GENERAL_ENGLISH_QA", sources: [], actions: [] };
     }
@@ -515,8 +837,20 @@ CÂU HỎI CỦA HỌC VIÊN:
 /**
  * Xử lý RAG Chat dạng Stream (Trả về async generator / stream chunks từ Gemini)
  */
-const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto', currentTime = null) => {
+const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto', currentTime = null, quickAction = null) => {
   try {
+    // 0. Xử lý Structured Quick Actions nếu được yêu cầu trực tiếp
+    if (quickAction === 'LESSON_KEY_VOCAB' || (question && /^(từ vựng trọng tâm|key vocabulary|từ vựng chính)/i.test(question.trim()))) {
+      if (lessonId && Number(lessonId) > 0) {
+        return await handleLessonKeyVocab(userId, lessonId, onChunk);
+      }
+    }
+    if (quickAction === 'LESSON_QUICK_QUIZ' || (question && /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(question.trim()))) {
+      if (lessonId && Number(lessonId) > 0) {
+        return await handleLessonQuickQuiz(userId, lessonId, onChunk);
+      }
+    }
+
     if (!question) {
       if (onChunk) onChunk({ type: 'token', text: "Vui lòng nhập câu hỏi." });
       return "Vui lòng nhập câu hỏi.";
@@ -698,7 +1032,7 @@ CÂU HỎI CỦA HỌC VIÊN:
  * Đối tượng service tương thích với các API hiện tại
  */
 class ChatbotService {
-  async ask(question, lessonId, userId = null, scope = 'auto', currentTime = null) {
+  async ask(question, lessonId, userId = null, scope = 'auto', currentTime = null, quickAction = null) {
     try {
       let retrievalMode = 'auto';
       if (scope === 'course' || scope === 'course_wide' || scope === 'force_course') {
@@ -706,7 +1040,7 @@ class ChatbotService {
       } else if (scope === 'force_lesson') {
         retrievalMode = 'force_lesson';
       }
-      const result = await handleRagChat(userId, lessonId, question, retrievalMode, currentTime);
+      const result = await handleRagChat(userId, lessonId, question, retrievalMode, currentTime, quickAction);
       return result;
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.ask:", error);
@@ -718,7 +1052,7 @@ class ChatbotService {
     }
   }
 
-  async askStream(question, lessonId, userId, onChunk, scope = 'auto', currentTime = null) {
+  async askStream(question, lessonId, userId, onChunk, scope = 'auto', currentTime = null, quickAction = null) {
     try {
       let retrievalMode = 'auto';
       if (scope === 'course' || scope === 'course_wide' || scope === 'force_course') {
@@ -726,9 +1060,18 @@ class ChatbotService {
       } else if (scope === 'force_lesson') {
         retrievalMode = 'force_lesson';
       }
-      return await handleRagChatStream(userId, lessonId, question, onChunk, retrievalMode, currentTime);
+      return await handleRagChatStream(userId, lessonId, question, onChunk, retrievalMode, currentTime, quickAction);
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.askStream:", error);
+      throw error;
+    }
+  }
+
+  async generateQuiz(lessonId, userId = null) {
+    try {
+      return await handleLessonQuickQuiz(userId, lessonId);
+    } catch (error) {
+      console.error("Lỗi xảy ra tại ChatbotService.generateQuiz:", error);
       throw error;
     }
   }
@@ -1219,9 +1562,9 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
 const serviceInstance = new ChatbotService();
 
 module.exports = {
-  ask: (question, lessonId, userId, scope, currentTime) => serviceInstance.ask(question, lessonId, userId, scope, currentTime),
-  askStream: (question, lessonId, userId, onChunk, scope, currentTime) => serviceInstance.askStream(question, lessonId, userId, onChunk, scope, currentTime),
-  generateQuiz: (lessonId) => serviceInstance.generateQuiz(lessonId),
+  ask: (question, lessonId, userId, scope, currentTime, quickAction) => serviceInstance.ask(question, lessonId, userId, scope, currentTime, quickAction),
+  askStream: (question, lessonId, userId, onChunk, scope, currentTime, quickAction) => serviceInstance.askStream(question, lessonId, userId, onChunk, scope, currentTime, quickAction),
+  generateQuiz: (lessonId, userId) => serviceInstance.generateQuiz(lessonId, userId),
   saveHistory: (userId, lessonId, question, answer, sources, actions) => serviceInstance.saveHistory(userId, lessonId, question, answer, sources, actions),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   clearHistory: (userId, lessonId) => serviceInstance.clearHistory(userId, lessonId),
@@ -1230,6 +1573,9 @@ module.exports = {
   handleRagChat,
   handleRagChatStream,
   verifyLessonAndCourseAccess,
-  retrieveContext
+  retrieveContext,
+  getLessonFullContext,
+  handleLessonKeyVocab,
+  handleLessonQuickQuiz
 };
 
