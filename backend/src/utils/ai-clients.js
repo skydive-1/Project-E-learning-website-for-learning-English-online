@@ -284,9 +284,18 @@ const embeddingModel = {
   }
 };
 
-// Khởi tạo Pinecone Client
-const pc = new Pinecone({ apiKey: pineconeApiKey || "dummy-pinecone-key" });
-const pineconeIndex = pc.index(pineconeIndexName);
+// Khởi tạo Pinecone Client (chỉ khởi tạo khi có PINECONE_API_KEY hợp lệ để tránh lỗi 401 spam console)
+let pc = null;
+let pineconeIndex = null;
+
+if (pineconeApiKey && pineconeApiKey !== 'dummy-pinecone-key' && pineconeApiKey.trim() !== '') {
+  try {
+    pc = new Pinecone({ apiKey: pineconeApiKey });
+    pineconeIndex = pc.index(pineconeIndexName);
+  } catch (err) {
+    console.warn(`[Pinecone Init Warning] Không thể kết nối Pinecone Index: ${err.message}`);
+  }
+}
 
 const pineconeClient = {
   async search(question, lessonId) {

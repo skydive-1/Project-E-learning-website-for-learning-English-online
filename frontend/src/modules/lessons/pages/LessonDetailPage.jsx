@@ -226,6 +226,41 @@ const LessonDetailPage = () => {
     return () => clearInterval(safetyInterval);
   }, []);
 
+  // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
+  const handleSeekVideo = (seconds) => {
+    if (!videoRef.current) return;
+    const targetSec = Number(seconds);
+    if (isNaN(targetSec) || !isFinite(targetSec) || targetSec < 0) return;
+
+    const duration = videoRef.current.duration;
+    const safeTime = (duration && isFinite(duration) && duration > 0)
+      ? Math.min(Math.max(0, targetSec), duration)
+      : Math.max(0, targetSec);
+
+    videoRef.current.currentTime = safeTime;
+    setVideoCurrentTime(safeTime);
+
+    if (videoRef.current.paused) {
+      videoRef.current.play().catch(() => {});
+      setIsVideoPlaying(true);
+    }
+  };
+
+  // Tự động tua video khi URL có tham số ?seek= (điều hướng từ thẻ bài học khác sang)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const seekParam = params.get('seek');
+    if (seekParam) {
+      const seekSec = parseFloat(seekParam);
+      if (!isNaN(seekSec) && seekSec >= 0) {
+        const timer = setTimeout(() => {
+          handleSeekVideo(seekSec);
+        }, 600);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [location.search, lessonId]);
+
   // Click vào video để tạm dừng hoặc phát tiếp (Play / Pause toggle)
   const toggleVideoPlayPause = (e) => {
     if (!videoRef.current) return;
@@ -539,17 +574,6 @@ const LessonDetailPage = () => {
       setSubtitleData(null);
     });
   }, [currentLesson?.id]);
-
-  // Tua video đến thời gian mong muốn từ Interactive Transcript
-  const handleSeekVideo = (seconds) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = seconds;
-      if (videoRef.current.paused) {
-        videoRef.current.play().catch(() => {});
-        setIsVideoPlaying(true);
-      }
-    }
-  };
 
   // Kích hoạt Gemini 2.5 Flash tạo lại phụ đề
   const handleGenerateSubtitles = async () => {
@@ -1371,7 +1395,11 @@ const LessonDetailPage = () => {
                   {activeRightTab === "ai" && (
                     <div className="h-full p-2">
                       <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
-                        <ChatBox lessonId={targetLessonId || currentLesson?.id} />
+                        <ChatBox 
+                          lessonId={targetLessonId || currentLesson?.id} 
+                          currentTime={videoCurrentTime} 
+                          onSeekVideo={handleSeekVideo} 
+                        />
                       </ErrorBoundary>
                     </div>
                   )}

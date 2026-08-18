@@ -68,37 +68,84 @@ async function fetchAuthoritativeLessons(lessonIds = [], expectedCourseId = null
 }
 
 /**
- * Xây dựng Structured Sources và Navigation Actions đã được kiểm chứng
+ * Định dạng số giây thành chuỗi thời gian hiển thị (MM:SS hoặc HH:MM:SS)
+ */
+function formatTimestamp(seconds) {
+  if (seconds === null || seconds === undefined || isNaN(seconds) || seconds < 0) return null;
+  const totalSecs = Math.floor(Number(seconds));
+  const hrs = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  if (hrs > 0) {
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Xác thực mốc thời gian an toàn (0 <= start < end, là số hữu hạn)
+ */
+function validateTimestamp(startTime, endTime) {
+  if (startTime === null || startTime === undefined) return null;
+  const start = Number(startTime);
+  if (isNaN(start) || !isFinite(start) || start < 0) return null;
+  
+  let end = endTime !== null && endTime !== undefined ? Number(endTime) : null;
+  if (end !== null && (isNaN(end) || !isFinite(end) || end < start)) {
+    end = null;
+  }
+  return { startTime: start, endTime: end };
+}
+
+/**
+ * Xây dựng danh sách Verified Sources có cấu trúc và Action tương ứng cho Frontend
+ * - Xác thực 100% qua PostgreSQL (Anti-Hallucination)
+ * - Tách biệt rõ ràng theo từng Intent
+ * - Giới hạn số lượng tối đa 1-3 thẻ
+ * - Gắn timestamp (startTime/endTime) khi có dữ liệu phụ đề tin cậy
+ * 
  * @param {Object} params
- * @param {string} params.intent Ý định người dùng (SEARCH_LESSON, NAVIGATE_TO_LESSON, etc.)
- * @param {Array} params.rankedLessons Danh sách bài học từ Hybrid Retrieval (nếu có)
- * @param {number|null} params.currentLessonId ID bài học hiện tại (nếu có)
- * @param {number|null} params.courseId ID khóa học hiện tại (nếu có)
- * @param {number} params.maxSources Giới hạn số thẻ tối đa (mặc định 3)
- * @returns {Promise<{sources: Array, actions: Array}>}
+ * @param {string} params.intent
+ * @param {Array} params.rankedLessons - Danh sách bài học được xếp hạng từ Reranker
+ * @param {number|string} params.currentLessonId - ID bài học hiện tại (nếu có)
+ * @param {number|string} params.courseId - ID khóa học (nếu có)
+ * @param {number} params.maxSources - Giới hạn tối đa (mặc định 3)
+ * @param {Object|Array} params.timestampInfo - Thông tin mốc thời gian { lessonId, startTime, endTime }
+ * @returns {Promise<{ sources: Array, actions: Array }>}
  */
 async function buildVerifiedSources({
   intent,
   rankedLessons = [],
   currentLessonId = null,
   courseId = null,
-  maxSources = MAX_SOURCES_LIMIT
+  maxSources = MAX_SOURCES_LIMIT,
+  timestampInfo = null
 }) {
-  // 1. Nếu là câu hỏi Tiếng Anh chung hoặc không có ý định liên quan bài học -> Không tạo source
-  if (intent === INTENTS.GENERAL_ENGLISH_QA || intent === 'none') {
+  // 1. Nếu là Out-of-Domain hoặc General English QA -> Trả về mảng rỗng (Tuyệt đối không sinh card ảo)
+  if (
+    intent === INTENTS.GENERAL_ENGLISH_QA ||
+    intent === 'OUT_OF_DOMAIN' ||
+    intent === 'OOD'
+  ) {
     return { sources: [], actions: [] };
   }
 
-  // 2. Thu thập danh sách candidate lesson IDs cần xác thực
   let candidateIds = [];
 
-  if (intent === INTENTS.CURRENT_LESSON_QA && currentLessonId && Number(currentLessonId) > 0) {
+  // 2. Phân loại theo Intent
+  if (
+    (intent === INTENTS.CURRENT_LESSON_QA || 
+     intent === 'SUMMARIZE_CURRENT_LESSON' || 
+     intent === INTENTS.SUMMARIZE_CURRENT_LESSON ||
+     intent === 'CURRENT_LESSON_QA' ||
+     intent === 'current_lesson') && 
+    currentLessonId && Number(currentLessonId) > 0
+  ) {
     candidateIds = [Number(currentLessonId)];
   } else if (intent === INTENTS.RECOMMEND_LESSON) {
     if (rankedLessons && rankedLessons.length > 0) {
       candidateIds = rankedLessons.map(l => l.lessonId).filter(id => id !== Number(currentLessonId));
     }
-    // Nếu chưa có đề xuất khác ngoài bài hiện tại, tự động lấy các bài học tiếp theo theo lộ trình của khóa học
     if (candidateIds.length === 0 && courseId && currentLessonId) {
       try {
         let nextQuery = `
@@ -111,7 +158,6 @@ async function buildVerifiedSources({
         `;
         let nextRes = await db.query(nextQuery, [Number(courseId), Number(currentLessonId)]);
         if (nextRes.rows.length === 0) {
-          // Nếu đang ở bài cuối cùng của khóa học -> Gợi ý các bài học ôn tập trọng tâm khác trong khóa
           nextQuery = `
             SELECT l.lesson_id
             FROM lessons l
@@ -131,23 +177,17 @@ async function buildVerifiedSources({
     }
     candidateIds = candidateIds.slice(0, maxSources);
   } else if (rankedLessons && rankedLessons.length > 0) {
-    // Lấy ID theo thứ tự xếp hạng của Reranker
     candidateIds = rankedLessons.map(l => l.lessonId).filter(Boolean);
     if (intent === INTENTS.NAVIGATE_TO_LESSON) {
-      // NAVIGATE_TO_LESSON chỉ tập trung vào 1 bài học đích duy nhất
       candidateIds = candidateIds.slice(0, 1);
     } else {
       candidateIds = candidateIds.slice(0, maxSources);
     }
   }
 
-  if (candidateIds.length === 0) {
-    return { sources: [], actions: [] };
-  }
+  if (candidateIds.length === 0) return { sources: [], actions: [] };
 
-  // 3. Xác thực tính tồn tại và lấy dữ liệu chính xác từ PostgreSQL (Source of Truth)
   const authLessonsMap = await fetchAuthoritativeLessons(candidateIds, courseId);
-
   const sources = [];
   const actions = [];
 
@@ -158,7 +198,37 @@ async function buildVerifiedSources({
 
   for (const item of itemsToIterate) {
     const auth = authLessonsMap.get(item.lessonId);
-    if (!auth) continue; // Bỏ qua nếu không tồn tại trong PostgreSQL (Anti-Hallucination)
+    if (!auth) continue;
+
+    let rawStart = item.startTime !== undefined ? item.startTime : (item.start_time !== undefined ? item.start_time : null);
+    let rawEnd = item.endTime !== undefined ? item.endTime : (item.end_time !== undefined ? item.end_time : null);
+
+    if (rawStart === null && timestampInfo) {
+      if (Array.isArray(timestampInfo)) {
+        const foundTs = timestampInfo.find(t => Number(t.lessonId) === Number(item.lessonId));
+        if (foundTs) {
+          rawStart = foundTs.startTime;
+          rawEnd = foundTs.endTime;
+        }
+      } else if (Number(timestampInfo.lessonId) === Number(item.lessonId) || !timestampInfo.lessonId) {
+        rawStart = timestampInfo.startTime;
+        rawEnd = timestampInfo.endTime;
+      }
+    }
+
+    const validatedTs = validateTimestamp(rawStart, rawEnd);
+    const formattedStart = validatedTs ? formatTimestamp(validatedTs.startTime) : null;
+
+    let badgeText = 'Bài học liên quan';
+    if (intent === INTENTS.RECOMMEND_LESSON) {
+      badgeText = 'Đề xuất học tiếp';
+    } else if (intent === INTENTS.NAVIGATE_TO_LESSON) {
+      badgeText = 'Bài học đích';
+    } else if (intent === INTENTS.CURRENT_LESSON_QA) {
+      badgeText = formattedStart 
+        ? `Nội dung bài học hiện tại (${formattedStart})` 
+        : 'Nội dung bài học hiện tại';
+    }
 
     const sourceObj = {
       courseId: auth.courseId,
@@ -170,21 +240,36 @@ async function buildVerifiedSources({
       contentType: auth.contentType || 'video',
       sourceType: item.lexicalScore > 0 ? (item.semanticScore > 0 ? 'hybrid' : 'lexical') : 'transcript',
       relevanceScore: item.rerankScore || 1.0,
-      badgeText: intent === INTENTS.RECOMMEND_LESSON 
-        ? 'Đề xuất học tiếp' 
-        : (intent === INTENTS.NAVIGATE_TO_LESSON ? 'Bài học đích' : 'Bài học liên quan')
+      badgeText
     };
+
+    if (validatedTs) {
+      sourceObj.startTime = validatedTs.startTime;
+      if (validatedTs.endTime !== null) sourceObj.endTime = validatedTs.endTime;
+      sourceObj.formattedTime = formattedStart;
+    }
 
     sources.push(sourceObj);
 
-    // Xây dựng Action mở bài học cho Frontend
-    actions.push({
-      type: 'OPEN_LESSON',
-      lessonId: auth.lessonId,
-      courseId: auth.courseId,
-      lessonTitle: auth.lessonTitle,
-      route: `/lessons/${auth.lessonId}`
-    });
+    if (validatedTs) {
+      actions.push({
+        type: 'SEEK_VIDEO',
+        lessonId: auth.lessonId,
+        courseId: auth.courseId,
+        lessonTitle: auth.lessonTitle,
+        startTime: validatedTs.startTime,
+        formattedTime: formattedStart,
+        route: `/lessons/${auth.lessonId}?seek=${validatedTs.startTime}`
+      });
+    } else {
+      actions.push({
+        type: 'OPEN_LESSON',
+        lessonId: auth.lessonId,
+        courseId: auth.courseId,
+        lessonTitle: auth.lessonTitle,
+        route: `/lessons/${auth.lessonId}`
+      });
+    }
 
     if (sources.length >= maxSources) break;
   }
@@ -194,6 +279,8 @@ async function buildVerifiedSources({
 
 module.exports = {
   MAX_SOURCES_LIMIT,
+  formatTimestamp,
+  validateTimestamp,
   fetchAuthoritativeLessons,
   buildVerifiedSources
 };

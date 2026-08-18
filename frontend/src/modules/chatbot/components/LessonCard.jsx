@@ -1,15 +1,21 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlayCircle, FiArrowRight, FiBookOpen } from 'react-icons/fi';
+import { FiPlayCircle, FiArrowRight, FiBookOpen, FiClock } from 'react-icons/fi';
 import './LessonCard.css';
 
 /**
- * LessonCard Component (Phase 7)
+ * LessonCard Component (Phase 8 - Timestamp Awareness & Click-to-Seek)
  * - Hiển thị thẻ bài học xác thực (Udemy-like UX)
- * - Hiển thị tiêu đề bài học, chương học, huy hiệu nguồn
- * - Nút "Mở bài học" điều hướng trực tiếp đến route /lessons/:lessonId
+ * - Hiển thị mốc thời gian phụ đề (startTime / endTime)
+ * - Click-to-Seek: Tua trực tiếp video nếu đang ở cùng bài học, hoặc điều hướng kèm query ?seek= nếu ở bài khác
  */
-const LessonCard = ({ source, action, onNavigate = null }) => {
+const LessonCard = ({ 
+  source, 
+  action, 
+  currentLessonId = null, 
+  onSeekVideo = null, 
+  onNavigate = null 
+}) => {
   const navigate = useNavigate();
 
   if (!source) return null;
@@ -20,12 +26,34 @@ const LessonCard = ({ source, action, onNavigate = null }) => {
   const badgeText = source.badgeText || 'Bài học liên quan';
   const courseName = source.courseName;
 
+  const startTime = source.startTime !== undefined && source.startTime !== null 
+    ? Number(source.startTime) 
+    : (action?.startTime !== undefined && action?.startTime !== null ? Number(action.startTime) : null);
+
+  const formattedTime = source.formattedTime || action?.formattedTime || (startTime !== null ? formatSecondsToMMSS(startTime) : null);
+
+  const isCurrentLesson = currentLessonId && Number(currentLessonId) === Number(lessonId);
+
+  function formatSecondsToMMSS(secs) {
+    if (isNaN(secs) || secs < 0) return null;
+    const total = Math.floor(secs);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
   const handleCardClick = (e) => {
     e.preventDefault();
-    if (onNavigate) {
-      onNavigate(lessonId);
+    if (isCurrentLesson && startTime !== null && onSeekVideo) {
+      // Đang ở đúng bài học -> Tua trực tiếp video đến mốc thời gian
+      onSeekVideo(startTime);
+    } else if (onNavigate) {
+      onNavigate(lessonId, startTime);
     } else if (lessonId) {
-      navigate(`/lessons/${lessonId}`);
+      const targetUrl = startTime !== null 
+        ? `/lessons/${lessonId}?seek=${startTime}` 
+        : `/lessons/${lessonId}`;
+      navigate(targetUrl);
     }
   };
 
@@ -36,6 +64,12 @@ const LessonCard = ({ source, action, onNavigate = null }) => {
           <FiBookOpen className="badge-icon" />
           {badgeText}
         </span>
+        {formattedTime && (
+          <span className="ai-lesson-card-time-badge" title={`Thời điểm bắt đầu: ${formattedTime}`}>
+            <FiClock className="time-icon" />
+            {formattedTime}
+          </span>
+        )}
         {courseName && (
           <span className="ai-lesson-card-course">{courseName}</span>
         )}
@@ -54,10 +88,14 @@ const LessonCard = ({ source, action, onNavigate = null }) => {
       <div className="ai-lesson-card-footer">
         <button 
           type="button" 
-          className="ai-lesson-card-btn"
+          className={`ai-lesson-card-btn ${isCurrentLesson && startTime !== null ? 'seek-btn' : ''}`}
           onClick={handleCardClick}
         >
-          <span>Mở bài học</span>
+          <span>
+            {isCurrentLesson && startTime !== null 
+              ? `Tua đến ${formattedTime}` 
+              : (startTime !== null ? `Mở bài học (từ ${formattedTime})` : 'Mở bài học')}
+          </span>
           <FiArrowRight className="arrow-icon" />
         </button>
       </div>

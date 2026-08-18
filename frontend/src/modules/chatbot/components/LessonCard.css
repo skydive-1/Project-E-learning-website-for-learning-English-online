@@ -168,6 +168,31 @@
   transform: translateX(2px);
 }
 
+.ai-lesson-card-time-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #059669;
+  background: #ecfdf5;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.time-icon {
+  font-size: 0.75rem;
+}
+
+.ai-lesson-card-btn.seek-btn {
+  color: #059669;
+}
+
+.ai-lesson-card-btn.seek-btn:hover {
+  color: #047857;
+}
+
 .animate-fade-in {
   animation: fadeInCard 0.28s ease-out forwards;
 }

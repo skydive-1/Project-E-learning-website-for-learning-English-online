@@ -117,12 +117,14 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
   };
 
   const fetchBalance = async () => {
-    if (user?.userId || user?.id) {
-      const uId = user.userId || user.id;
-      const balance = await getTokenBalance(uId);
+    if (!user?.userId) return;
+    try {
+      const balance = await getTokenBalance(user.userId);
       if (balance) {
         setTokenBalance(balance);
       }
+    } catch (err) {
+      console.warn('⚠️ Cảnh báo kiểm tra số dư Token AI:', err.message);
     }
   };
 
@@ -194,13 +196,13 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading]);
+  }, [messages, isLoading, isHistoryLoading]);
 
-  const handleSendMessage = async (textToSend) => {
-    const text = textToSend || inputText;
-    if (!text.trim() || isLoading) return;
+  const handleSendMessage = async (textToSend = null) => {
+    const text = (textToSend !== null ? textToSend : inputText).trim();
+    if (!text || isLoading) return;
 
-    if (!textToSend) setInputText("");
+    if (textToSend === null) setInputText("");
 
     const userMessage = {
       id: `msg-${Date.now()}-user`,
@@ -249,7 +251,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
             sources: finalSources,
             actions: finalActions
           } : m));
-        });
+        }, 'lesson', currentTime);
 
         const finalAnswerText = typeof streamRes === 'string' ? streamRes : (streamRes.reply || '');
         if (streamRes && streamRes.sources) {
@@ -579,7 +581,7 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
                         <span className="inline-block w-2 h-4 ml-1 bg-smart-indigo dark:bg-indigo-400 animate-pulse align-middle rounded-xs"></span>
                       )}
                       
-                      {/* Render Verified AI Lesson Cards (Phase 7 - Udemy-like UX) */}
+                      {/* Render Verified AI Lesson Cards (Phase 8 - Udemy-like UX & Click-to-Seek) */}
                       {msg.sources && msg.sources.length > 0 && !msg.isStreaming && (
                         <div className="ai-lesson-cards-container">
                           {msg.sources.map((source, sIdx) => (
@@ -587,8 +589,13 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
                               key={`src-${msg.id}-${sIdx}-${source.lessonId}`}
                               source={source}
                               action={msg.actions?.[sIdx]}
-                              onNavigate={(targetLessonId) => {
-                                navigate(`/lessons/${targetLessonId}`);
+                              currentLessonId={lessonId}
+                              onSeekVideo={onSeekVideo}
+                              onNavigate={(targetLessonId, targetSeek) => {
+                                const targetUrl = targetSeek !== null && targetSeek !== undefined
+                                  ? `/lessons/${targetLessonId}?seek=${targetSeek}`
+                                  : `/lessons/${targetLessonId}`;
+                                navigate(targetUrl);
                                 if (onClose) onClose();
                               }}
                             />

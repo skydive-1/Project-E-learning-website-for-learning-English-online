@@ -15,6 +15,21 @@ const getVietnamDateString = (date = new Date()) => {
   }).format(date);
 };
 
+let hasLoggedPineconeAuthWarning = false;
+
+function handlePineconeError(err, prefix = 'Pinecone Retrieval') {
+  if (!err) return;
+  const isAuthError = err.message && (err.message.includes('rejected') || err.message.includes('API key') || err.message.includes('401') || err.message.includes('Unauthorized'));
+  if (isAuthError) {
+    if (!hasLoggedPineconeAuthWarning) {
+      console.log(`[RAG Resilient Engine] ℹ️ Pinecone API Key chưa kích hoạt hoặc hết hạn -> Tự động chuyển 100% sang PostgreSQL Full-text & Transcript Search.`);
+      hasLoggedPineconeAuthWarning = true;
+    }
+  } else {
+    console.warn(`[${prefix} Warning] ${err.message}`);
+  }
+}
+
 /**
  * Xác thực quyền truy cập bài học và khóa học dựa trên PostgreSQL làm Source of Truth
  */
@@ -150,7 +165,7 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
       if (results[0].status === 'fulfilled') {
         vectorMatches = results[0].value?.matches || [];
       } else {
-        console.warn(`[Hybrid Retrieval Warning] Pinecone Vector Search: ${results[0].reason?.message}`);
+        handlePineconeError(results[0].reason, 'Hybrid Retrieval');
       }
 
       if (results[1].status === 'fulfilled') {
@@ -159,7 +174,7 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
         console.warn(`[Hybrid Retrieval Warning] PostgreSQL Lexical Search: ${results[1].reason?.message}`);
       }
     } catch (searchErr) {
-      console.warn(`[Hybrid Retrieval Warning] ${searchErr.message}`);
+      handlePineconeError(searchErr, 'Hybrid Retrieval');
     }
 
     // Hợp nhất, Gom nhóm theo bài học (Lesson Grouping) và Tái xếp hạng (Deterministic Reranking)
@@ -197,7 +212,7 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
         matches = queryResponse.matches || [];
       }
     } catch (pcErr) {
-      console.warn(`[Pinecone Retrieval Warning] ${pcErr.message}`);
+      handlePineconeError(pcErr, 'Pinecone Retrieval');
     }
 
     contextText = matches
@@ -211,12 +226,119 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
 
 const { routeIntent, INTENTS } = require('./intentRouter.service');
 const { contextualizeQuery, getRecentConversationHistory } = require('./queryRewriter.service');
-const { buildVerifiedSources } = require('./sourceBuilder.service');
+const { buildVerifiedSources, formatTimestamp, validateTimestamp } = require('./sourceBuilder.service');
+
+/**
+ * Trích xuất các đoạn phụ đề theo mốc thời gian (Time-Window Subtitle Retrieval)
+ * - Tự động nhận diện ngữ nghĩa thời gian: "phần vừa rồi", "phần tiếp theo", "đoạn này"
+ * - Cửa sổ mặc định: [currentTime - 45s, currentTime + 45s]
+ * - Cửa sổ quá khứ: [currentTime - 60s, currentTime]
+ * - Cửa sổ tương lai: [currentTime, currentTime + 60s]
+ */
+async function getTranscriptWindowContext(lessonId, currentTime, question = '') {
+  if (!lessonId || currentTime === null || currentTime === undefined || isNaN(Number(currentTime))) {
+    return { contextSnippet: '', startTime: null, endTime: null, cuesFound: false };
+  }
+
+  const curTime = Number(currentTime);
+  if (curTime < 0) {
+    return { contextSnippet: '', startTime: null, endTime: null, cuesFound: false };
+  }
+
+  // 1. Phân tích hướng thời gian trong câu hỏi
+  const q = (question || '').toLowerCase();
+  const isPastReference = /phần vừa rồi|vừa nói gì|vừa xong|trước đó|câu vừa rồi|đoạn vừa qua|previous|just said|just now/i.test(q);
+  const isFutureReference = /phần tiếp theo|đoạn sau|tiếp theo là gì|tiếp theo|next part|coming up/i.test(q);
+
+  let windowStart = Math.max(0, curTime - 45);
+  let windowEnd = curTime + 45;
+
+  if (isPastReference) {
+    windowStart = Math.max(0, curTime - 60);
+    windowEnd = Math.max(curTime, 5);
+  } else if (isFutureReference) {
+    windowStart = curTime;
+    windowEnd = curTime + 60;
+  }
+
+  try {
+    const subRes = await db.query(
+      'SELECT cues FROM lesson_subtitles WHERE lesson_id = $1 LIMIT 1',
+      [Number(lessonId)]
+    );
+
+    if (subRes.rows.length === 0 || !Array.isArray(subRes.rows[0].cues) || subRes.rows[0].cues.length === 0) {
+      return { contextSnippet: '', startTime: null, endTime: null, cuesFound: false };
+    }
+
+    const allCues = subRes.rows[0].cues;
+    // Lọc các cues giao với cửa sổ thời gian [windowStart, windowEnd]
+    const matchedCues = allCues.filter(c => {
+      const start = Number(c.start);
+      const end = Number(c.end);
+      return !isNaN(start) && !isNaN(end) && start <= windowEnd && end >= windowStart;
+    });
+
+    if (matchedCues.length === 0) {
+      // Fallback: Tìm cue gần nhất với currentTime
+      let closestCue = null;
+      let minDiff = Infinity;
+      for (const c of allCues) {
+        const diff = Math.abs(Number(c.start) - curTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestCue = c;
+        }
+      }
+      if (closestCue) {
+        matchedCues.push(closestCue);
+      }
+    }
+
+    if (matchedCues.length === 0) {
+      return { contextSnippet: '', startTime: null, endTime: null, cuesFound: false };
+    }
+
+    matchedCues.sort((a, b) => Number(a.start) - Number(b.start));
+
+    // Tìm cue trọng tâm nhất
+    let bestCue = matchedCues[0];
+    let minDistance = Infinity;
+    for (const c of matchedCues) {
+      const start = Number(c.start);
+      const end = Number(c.end);
+      if (curTime >= start && curTime <= end) {
+        bestCue = c;
+        break;
+      }
+      const dist = Math.abs(start - curTime);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestCue = c;
+      }
+    }
+
+    const snippetLines = matchedCues.map(c => {
+      const timeTag = c.startFormatted ? `[${c.startFormatted}]` : `[${formatTimestamp(c.start)}]`;
+      return `${timeTag} ${c.en ? `(EN) ${c.en}` : ''} ${c.vi ? `(VI) ${c.vi}` : ''}`.trim();
+    });
+
+    return {
+      contextSnippet: `NỘI DUNG PHỤ ĐỀ BÀI HỌC TẠI MỐC THỜI GIAN HIỆN TẠI (Thời điểm xem: ${formatTimestamp(curTime)}):\n` + snippetLines.join('\n'),
+      startTime: Number(bestCue.start),
+      endTime: Number(bestCue.end),
+      cuesFound: true
+    };
+  } catch (err) {
+    console.warn('[Transcript Window Error]:', err.message);
+    return { contextSnippet: '', startTime: null, endTime: null, cuesFound: false };
+  }
+}
 
 /**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
  */
-const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto') => {
+const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto', currentTime = null) => {
   try {
     if (!question) {
       return { success: false, reply: "Vui lòng nhập câu hỏi.", intent: "GENERAL_ENGLISH_QA", sources: [], actions: [] };
@@ -243,6 +365,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
     let rewriteInfo = null;
     let conversationHistory = [];
     let retrievalRes = null;
+    let timestampInfo = null;
 
     if (userId) {
       conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
@@ -282,7 +405,23 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
         effectiveScope = 'current_lesson';
       }
 
-      if (effectiveScope !== 'none') {
+      // Xử lý Time-window Transcript Retrieval nếu có currentTime và câu hỏi liên quan bài hiện tại
+      if (
+        (effectiveScope === 'current_lesson' || detectedIntent.intent === INTENTS.CURRENT_LESSON_QA) &&
+        currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0
+      ) {
+        const timeWindowRes = await getTranscriptWindowContext(lessonId, currentTime, question);
+        if (timeWindowRes.cuesFound) {
+          contextText = timeWindowRes.contextSnippet;
+          timestampInfo = {
+            lessonId: Number(lessonId),
+            startTime: timeWindowRes.startTime,
+            endTime: timeWindowRes.endTime
+          };
+        }
+      }
+
+      if (effectiveScope !== 'none' && !contextText) {
         rewriteInfo = await contextualizeQuery(question, conversationHistory, {
           userId,
           lessonId,
@@ -338,12 +477,17 @@ CÂU HỎI CỦA HỌC VIÊN:
     // 4. Xây dựng Structured Sources & Actions đã qua xác thực PostgreSQL
     let sources = [];
     let actions = [];
-    if (retrievalRes) {
+    const isCurrentLessonIntent = detectedIntent?.intent === INTENTS.CURRENT_LESSON_QA || 
+      detectedIntent?.intent === 'SUMMARIZE_CURRENT_LESSON' || 
+      detectedIntent?.intent === INTENTS.SUMMARIZE_CURRENT_LESSON;
+
+    if (retrievalRes || timestampInfo || (!isGlobalChat && isCurrentLessonIntent)) {
       const verifiedOutput = await buildVerifiedSources({
         intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
-        rankedLessons: retrievalRes.rankedLessons || (retrievalRes.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
+        rankedLessons: retrievalRes?.rankedLessons || (retrievalRes?.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
         currentLessonId: lessonId,
-        courseId: accessInfo.courseId
+        courseId: accessInfo.courseId,
+        timestampInfo
       });
       sources = verifiedOutput.sources || [];
       actions = verifiedOutput.actions || [];
@@ -371,7 +515,7 @@ CÂU HỎI CỦA HỌC VIÊN:
 /**
  * Xử lý RAG Chat dạng Stream (Trả về async generator / stream chunks từ Gemini)
  */
-const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto') => {
+const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto', currentTime = null) => {
   try {
     if (!question) {
       if (onChunk) onChunk({ type: 'token', text: "Vui lòng nhập câu hỏi." });
@@ -395,6 +539,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     let rewriteInfo = null;
     let conversationHistory = [];
     let retrievalRes = null;
+    let timestampInfo = null;
     let effectiveScope = 'current_lesson';
 
     if (userId) {
@@ -435,7 +580,23 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
         effectiveScope = 'current_lesson';
       }
 
-      if (effectiveScope !== 'none') {
+      // Xử lý Time-window Transcript Retrieval nếu có currentTime và câu hỏi liên quan bài hiện tại
+      if (
+        (effectiveScope === 'current_lesson' || detectedIntent.intent === INTENTS.CURRENT_LESSON_QA) &&
+        currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0
+      ) {
+        const timeWindowRes = await getTranscriptWindowContext(lessonId, currentTime, question);
+        if (timeWindowRes.cuesFound) {
+          contextText = timeWindowRes.contextSnippet;
+          timestampInfo = {
+            lessonId: Number(lessonId),
+            startTime: timeWindowRes.startTime,
+            endTime: timeWindowRes.endTime
+          };
+        }
+      }
+
+      if (effectiveScope !== 'none' && !contextText) {
         rewriteInfo = await contextualizeQuery(question, conversationHistory, {
           userId,
           lessonId,
@@ -501,12 +662,17 @@ CÂU HỎI CỦA HỌC VIÊN:
     // 2. Phát sự kiện Sources & Actions (SSE)
     let sources = [];
     let actions = [];
-    if (retrievalRes) {
+    const isCurrentLessonIntent = detectedIntent?.intent === INTENTS.CURRENT_LESSON_QA || 
+      detectedIntent?.intent === 'SUMMARIZE_CURRENT_LESSON' || 
+      detectedIntent?.intent === INTENTS.SUMMARIZE_CURRENT_LESSON;
+
+    if (retrievalRes || timestampInfo || (!isGlobalChat && isCurrentLessonIntent)) {
       const verifiedOutput = await buildVerifiedSources({
         intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
-        rankedLessons: retrievalRes.rankedLessons || (retrievalRes.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
+        rankedLessons: retrievalRes?.rankedLessons || (retrievalRes?.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
         currentLessonId: lessonId,
-        courseId: accessInfo.courseId
+        courseId: accessInfo.courseId,
+        timestampInfo
       });
       sources = verifiedOutput.sources || [];
       actions = verifiedOutput.actions || [];
@@ -532,7 +698,7 @@ CÂU HỎI CỦA HỌC VIÊN:
  * Đối tượng service tương thích với các API hiện tại
  */
 class ChatbotService {
-  async ask(question, lessonId, userId = null, scope = 'auto') {
+  async ask(question, lessonId, userId = null, scope = 'auto', currentTime = null) {
     try {
       let retrievalMode = 'auto';
       if (scope === 'course' || scope === 'course_wide' || scope === 'force_course') {
@@ -540,7 +706,7 @@ class ChatbotService {
       } else if (scope === 'force_lesson') {
         retrievalMode = 'force_lesson';
       }
-      const result = await handleRagChat(userId, lessonId, question, retrievalMode);
+      const result = await handleRagChat(userId, lessonId, question, retrievalMode, currentTime);
       return result;
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.ask:", error);
@@ -552,7 +718,7 @@ class ChatbotService {
     }
   }
 
-  async askStream(question, lessonId, userId, onChunk, scope = 'auto') {
+  async askStream(question, lessonId, userId, onChunk, scope = 'auto', currentTime = null) {
     try {
       let retrievalMode = 'auto';
       if (scope === 'course' || scope === 'course_wide' || scope === 'force_course') {
@@ -560,7 +726,7 @@ class ChatbotService {
       } else if (scope === 'force_lesson') {
         retrievalMode = 'force_lesson';
       }
-      return await handleRagChatStream(userId, lessonId, question, onChunk, retrievalMode);
+      return await handleRagChatStream(userId, lessonId, question, onChunk, retrievalMode, currentTime);
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.askStream:", error);
       throw error;
@@ -661,6 +827,7 @@ class ChatbotService {
           chat_id: row.ai_chat,
           sender: row.sender_type,
           message: content,
+          title: content,
           sources,
           actions,
           created_date: row.created_date
@@ -1052,10 +1219,10 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
 const serviceInstance = new ChatbotService();
 
 module.exports = {
-  ask: (question, lessonId, userId, scope) => serviceInstance.ask(question, lessonId, userId, scope),
-  askStream: (question, lessonId, userId, onChunk, scope) => serviceInstance.askStream(question, lessonId, userId, onChunk, scope),
+  ask: (question, lessonId, userId, scope, currentTime) => serviceInstance.ask(question, lessonId, userId, scope, currentTime),
+  askStream: (question, lessonId, userId, onChunk, scope, currentTime) => serviceInstance.askStream(question, lessonId, userId, onChunk, scope, currentTime),
   generateQuiz: (lessonId) => serviceInstance.generateQuiz(lessonId),
-  saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
+  saveHistory: (userId, lessonId, question, answer, sources, actions) => serviceInstance.saveHistory(userId, lessonId, question, answer, sources, actions),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   clearHistory: (userId, lessonId) => serviceInstance.clearHistory(userId, lessonId),
   evaluateAudio: (filePath, mimetype, targetText, isQA) => serviceInstance.evaluateAudio(filePath, mimetype, targetText, isQA),

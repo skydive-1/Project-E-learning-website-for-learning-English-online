@@ -3,11 +3,15 @@ import apiClient from '../../../config/api.config';
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend
  */
-export const askChatbot = async (question, lessonId) => {
+export const askChatbot = async (question, lessonId, scope = 'lesson', currentTime = null) => {
   try {
-    const response = await apiClient.post('/chatbot/ask', { question, lessonId });
+    const payload = { question, lessonId, scope };
+    if (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime))) {
+      payload.currentTime = Number(currentTime);
+    }
+    const response = await apiClient.post('/chatbot/ask', payload);
     if (response.data && response.data.success) {
-      return response.data.data;
+      return response.data;
     }
     throw new Error('API response invalid structure');
   } catch (error) {
@@ -22,10 +26,15 @@ export const askChatbot = async (question, lessonId) => {
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend dạng SSE Stream.
  */
-export const askChatbotStream = async (question, lessonId, onChunk) => {
+export const askChatbotStream = async (question, lessonId, onChunk, scope = 'lesson', currentTime = null) => {
   const token = localStorage.getItem('token');
   const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = envUrl.replace(/\/+$/, '');
+
+  const payload = { question, lessonId, scope };
+  if (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime))) {
+    payload.currentTime = Number(currentTime);
+  }
 
   const response = await fetch(`${baseUrl}/chatbot/ask-stream`, {
     method: 'POST',
@@ -33,7 +42,7 @@ export const askChatbotStream = async (question, lessonId, onChunk) => {
       'Content-Type': 'application/json',
       'Authorization': token ? `Bearer ${token}` : ''
     },
-    body: JSON.stringify({ question, lessonId })
+    body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
@@ -75,8 +84,17 @@ export const askChatbotStream = async (question, lessonId, onChunk) => {
           if (parsed.type === 'metadata') {
             metadata = parsed;
           } else if (parsed.type === 'sources') {
-            sources = parsed.sources || [];
-            actions = parsed.actions || [];
+            const rawSources = Array.isArray(parsed.sources) ? parsed.sources : [];
+            const seenIds = new Set();
+            const dedupedSources = [];
+            for (const s of rawSources) {
+              if (s && s.lessonId && !seenIds.has(s.lessonId)) {
+                seenIds.add(s.lessonId);
+                dedupedSources.push(s);
+              }
+            }
+            sources = dedupedSources;
+            actions = Array.isArray(parsed.actions) ? parsed.actions : [];
           } else if (parsed.type === 'token' || parsed.text) {
             const tokenText = parsed.text || '';
             fullText += tokenText;
