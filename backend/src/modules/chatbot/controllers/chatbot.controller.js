@@ -11,7 +11,10 @@ exports.ask = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: answer
+      data: answer.reply !== undefined ? answer.reply : answer,
+      intent: answer.intent || 'CURRENT_LESSON_QA',
+      sources: answer.sources || [],
+      actions: answer.actions || []
     });
   } catch (error) {
     next(error);
@@ -29,8 +32,12 @@ exports.askStream = async (req, res, next) => {
       res.flushHeaders();
     }
 
-    await chatbotService.askStream(question, lessonId, req.user?.id, (chunkText) => {
-      res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+    await chatbotService.askStream(question, lessonId, req.user?.id, (eventData) => {
+      if (typeof eventData === 'string') {
+        res.write(`data: ${JSON.stringify({ type: 'token', text: eventData })}\n\n`);
+      } else {
+        res.write(`data: ${JSON.stringify(eventData)}\n\n`);
+      }
     }, scope || 'lesson');
 
     res.write(`data: [DONE]\n\n`);
@@ -39,7 +46,7 @@ exports.askStream = async (req, res, next) => {
     if (!res.headersSent) {
       next(error);
     } else {
-      res.write(`data: ${JSON.stringify({ error: error.message || 'Stream error' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Stream error' })}\n\n`);
       res.end();
     }
   }
@@ -48,7 +55,7 @@ exports.askStream = async (req, res, next) => {
 exports.saveHistory = async (req, res, next) => {
   try {
     // Tiếp nhận các trường dữ liệu theo API Contract
-    const { user_id, lesson_id, question, answer } = req.body;
+    const { user_id, lesson_id, question, answer, sources, actions } = req.body;
 
     if (!user_id || !question || !answer) {
       const err = new Error("Dữ liệu không đầy đủ. Yêu cầu các trường: user_id, question, answer");
@@ -56,7 +63,7 @@ exports.saveHistory = async (req, res, next) => {
       throw err;
     }
 
-    const result = await chatbotService.saveHistory(user_id, lesson_id, question, answer);
+    const result = await chatbotService.saveHistory(user_id, lesson_id, question, answer, sources, actions);
     res.status(201).json({
       success: true,
       message: "Lưu lịch sử tin nhắn thành công",

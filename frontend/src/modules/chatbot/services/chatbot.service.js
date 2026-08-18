@@ -49,6 +49,9 @@ export const askChatbotStream = async (question, lessonId, onChunk) => {
   const decoder = new TextDecoder('utf-8');
   let done = false;
   let fullText = '';
+  let metadata = null;
+  let sources = [];
+  let actions = [];
   let buffer = '';
 
   while (!done) {
@@ -69,9 +72,15 @@ export const askChatbotStream = async (question, lessonId, onChunk) => {
         }
         try {
           const parsed = JSON.parse(dataStr);
-          if (parsed.text) {
-            fullText += parsed.text;
-            if (onChunk) onChunk(fullText);
+          if (parsed.type === 'metadata') {
+            metadata = parsed;
+          } else if (parsed.type === 'sources') {
+            sources = parsed.sources || [];
+            actions = parsed.actions || [];
+          } else if (parsed.type === 'token' || parsed.text) {
+            const tokenText = parsed.text || '';
+            fullText += tokenText;
+            if (onChunk) onChunk(fullText, { sources, actions, metadata });
           } else if (parsed.error) {
             throw new Error(parsed.error);
           }
@@ -85,7 +94,12 @@ export const askChatbotStream = async (question, lessonId, onChunk) => {
   }
 
   if (fullText) {
-    return fullText;
+    return {
+      reply: fullText,
+      sources,
+      actions,
+      metadata
+    };
   }
   throw new Error('Empty response from stream');
 };
@@ -96,43 +110,45 @@ export const askChatbotStream = async (question, lessonId, onChunk) => {
 export const generateChatbotQuiz = async (lessonId) => {
   try {
     const response = await apiClient.post('/chatbot/generate-quiz', { lessonId });
-    if (response.data && response.data.success && Array.isArray(response.data.data)) {
+    if (response.data && response.data.success) {
       return response.data.data;
     }
-    throw new Error('Không thể lấy câu hỏi trắc nghiệm từ AI');
+    throw new Error(response.data?.message || 'Không thể tạo quiz');
   } catch (error) {
-    console.error('⚠️ Lỗi tạo câu hỏi trắc nghiệm từ AI:', error.message);
+    console.error('⚠️ Lỗi API generateChatbotQuiz:', error.message);
     throw error;
   }
 };
 
 /**
- * Lấy lịch sử chat cũ từ backend
+ * Lấy lịch sử đoạn chat của học viên
  */
 export const getChatHistory = async (userId, lessonId) => {
   try {
     const response = await apiClient.get(`/chatbot/history/${userId}/${lessonId}`);
-    return response.data; // Mảng tin nhắn [{ chat_id, sender, message }]
+    return response.data || [];
   } catch (error) {
-    console.error('⚠️ Không thể tải lịch sử chat từ backend:', error.message);
+    console.warn('⚠️ Lỗi tải lịch sử chat:', error.message);
     return [];
   }
 };
 
 /**
- * Lưu lượt hội thoại mới vào backend
+ * Lưu lịch sử chat của học viên kèm structured sources
  */
-export const saveChatHistory = async (userId, lessonId, question, answer) => {
+export const saveChatHistory = async (userId, lessonId, question, answer, sources = [], actions = []) => {
   try {
     const response = await apiClient.post('/chatbot/history', {
-      user_id: Number(userId),
-      lesson_id: Number(lessonId),
+      user_id: userId,
+      lesson_id: lessonId,
       question,
-      answer
+      answer,
+      sources,
+      actions
     });
     return response.data;
   } catch (error) {
-    console.error('⚠️ Không thể lưu lịch sử chat vào backend:', error.message);
+    console.warn('⚠️ Lỗi lưu lịch sử chat:', error.message);
     return null;
   }
 };

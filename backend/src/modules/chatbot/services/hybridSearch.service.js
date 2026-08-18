@@ -24,6 +24,10 @@ const CONFIDENCE_THRESHOLD = 0.58; // Ngưỡng tự tin tối ưu dựa trên p
 async function searchPostgreSQLLexical(query, courseId) {
   if (!query || !courseId) return [];
   const q = query.trim().toLowerCase();
+  const cleanQ = q
+    .replace(/^(bài\s+nào\s+dạy|bài\s+nào\s+nói\s+về|bài\s+nào\s+giải\s+thích|học\s+xong\s+bài\s+này\s+tôi\s+nên\s+học\s+bài\s+nào|đưa\s+tôi\s+tới\s+bài|chuyển\s+tới\s+bài|mở\s+bài|cho\s+tôi\s+xem\s+bài|bài\s+học\s+về|học\s+về|tìm\s+bài)\s*/i, '')
+    .replace(/[?!.,;]/g, '')
+    .trim();
 
   try {
     const sql = `
@@ -44,6 +48,8 @@ async function searchPostgreSQLLexical(query, courseId) {
     const res = await db.query(sql, [courseId]);
     const lessonsMap = new Map();
 
+    const queryTokens = (cleanQ || q).split(/\s+/).filter(t => t.length >= 3);
+
     for (const row of res.rows) {
       const lessonId = row.lesson_id;
       const lessonTitle = row.lesson_title || '';
@@ -58,27 +64,54 @@ async function searchPostgreSQLLexical(query, courseId) {
       let matchReason = '';
 
       // A. Khớp chính xác tiêu đề bài học (Exact Title Match)
-      if (ltLower === q) {
+      if (ltLower === cleanQ || ltLower === q) {
         lexicalScore = 1.0;
         matchReason = 'exact_lesson_title';
+      } else if (cleanQ.length >= 3 && (ltLower.includes(cleanQ) || (cleanQ.length >= 6 && cleanQ.includes(ltLower)))) {
+        lexicalScore = 0.95;
+        matchReason = 'clean_lesson_title';
       } else if (ltLower.includes(q) || (q.length >= 4 && q.includes(ltLower))) {
         lexicalScore = 0.90;
         matchReason = 'partial_lesson_title';
       }
       // B. Khớp tiêu đề chương học (Section Title Match)
-      else if (stLower === q || (q.length >= 4 && stLower.includes(q))) {
+      else if (stLower === cleanQ || (cleanQ.length >= 4 && stLower.includes(cleanQ)) || stLower === q || (q.length >= 4 && stLower.includes(q))) {
         lexicalScore = Math.max(lexicalScore, 0.75);
         matchReason = 'section_title';
       }
       // C. Khớp từ khóa trong tên tài liệu đính kèm (Material Name Match)
-      else if (matName && matName.includes(q)) {
+      else if (matName && (matName.includes(cleanQ) || matName.includes(q))) {
         lexicalScore = Math.max(lexicalScore, 0.70);
         matchReason = 'material_name';
       }
       // D. Khớp từ khóa trong phụ đề kịch bản (Subtitle VTT Match)
-      else if ((enVtt && enVtt.includes(q)) || (viVtt && viVtt.includes(q))) {
-        lexicalScore = Math.max(lexicalScore, 0.65);
+      else if ((enVtt && (enVtt.includes(cleanQ) || enVtt.includes(q))) || (viVtt && (viVtt.includes(cleanQ) || viVtt.includes(q)))) {
+        lexicalScore = Math.max(lexicalScore, 0.68);
         matchReason = 'subtitle_content';
+      }
+      // E. Khớp Bigram (2 từ liền kề) trong tiêu đề (ví dụ: "phương pháp nghe")
+      else {
+        const cleanTokens = (cleanQ || q).split(/\s+/).filter(t => t.length >= 2);
+        for (let i = 0; i < cleanTokens.length - 1; i++) {
+          const bigram = cleanTokens[i] + ' ' + cleanTokens[i+1];
+          if (bigram.length >= 6 && (ltLower.includes(bigram) || stLower.includes(bigram))) {
+            lexicalScore = Math.max(lexicalScore, 0.85);
+            matchReason = 'bigram_match: ' + bigram;
+            break;
+          }
+        }
+      }
+
+      // F. Khớp tỷ lệ Token Overlap nếu có từ khóa quan trọng
+      if (lexicalScore === 0 && queryTokens.length > 0) {
+        const matchedTokens = queryTokens.filter(tok => ltLower.includes(tok) || stLower.includes(tok));
+        if (matchedTokens.length === queryTokens.length && queryTokens.length >= 2) {
+          lexicalScore = Math.max(lexicalScore, 0.85);
+          matchReason = 'all_tokens_title_match';
+        } else if (matchedTokens.length >= 1 && queryTokens.length === 1) {
+          lexicalScore = Math.max(lexicalScore, 0.72);
+          matchReason = 'single_token_title_match';
+        }
       }
 
       if (lexicalScore > 0) {
@@ -113,6 +146,10 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
   const topK = options.topK || 3;
   const threshold = options.confidenceThreshold !== undefined ? options.confidenceThreshold : CONFIDENCE_THRESHOLD;
   const q = (query || '').trim().toLowerCase();
+  const cleanQ = q
+    .replace(/^(bài\s+nào\s+dạy|bài\s+nào\s+nói\s+về|bài\s+nào\s+giải\s+thích|học\s+xong\s+bài\s+này\s+tôi\s+nên\s+học\s+bài\s+nào|đưa\s+tôi\s+tới\s+bài|chuyển\s+tới\s+bài|mở\s+bài|cho\s+tôi\s+xem\s+bài|bài\s+học\s+về|học\s+về|tìm\s+bài)\s*/i, '')
+    .replace(/[?!.,;]/g, '')
+    .trim();
 
   const lessonsGroup = new Map();
 
@@ -178,7 +215,7 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
 
     // Exact lesson title boost
     let exactTitleBoost = 0;
-    if (ltLower && (ltLower === q || (q.length >= 4 && (ltLower.includes(q) || q.includes(ltLower))))) {
+    if (ltLower && (ltLower === cleanQ || (cleanQ.length >= 3 && ltLower.includes(cleanQ)) || ltLower === q || (q.length >= 4 && ltLower.includes(q)))) {
       exactTitleBoost = 0.15;
     }
 
@@ -199,11 +236,11 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
         lessonId,
         lessonTitle: item.lessonTitle,
         sectionTitle: item.sectionTitle,
-        rerankScore: Number(rerankScore.toFixed(4)),
-        semanticScore: Number(sem.toFixed(4)),
-        lexicalScore: Number(lex.toFixed(4)),
+        rerankScore: Number(rerankScore.toFixed(3)),
+        semanticScore: Number(sem.toFixed(3)),
+        lexicalScore: Number(lex.toFixed(3)),
         chunks: item.chunks,
-        matchCount: item.rawMatches.length
+        matchCount: item.rawMatches ? item.rawMatches.length : 1
       });
     }
   }

@@ -140,14 +140,24 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
     let vectorMatches = [];
     let lexicalMatches = [];
 
-    // Chạy song song Semantic Vector Search và PostgreSQL Lexical Search
+    // Chạy song song Semantic Vector Search và PostgreSQL Lexical Search độc lập (Resilient)
     try {
-      const [pcRes, lexRes] = await Promise.all([
+      const results = await Promise.allSettled([
         targetIndex ? targetIndex.query(queryOptions) : Promise.resolve({ matches: [] }),
         searchPostgreSQLLexical(question, Number(verifiedCourseId))
       ]);
-      vectorMatches = pcRes.matches || [];
-      lexicalMatches = lexRes || [];
+
+      if (results[0].status === 'fulfilled') {
+        vectorMatches = results[0].value?.matches || [];
+      } else {
+        console.warn(`[Hybrid Retrieval Warning] Pinecone Vector Search: ${results[0].reason?.message}`);
+      }
+
+      if (results[1].status === 'fulfilled') {
+        lexicalMatches = results[1].value || [];
+      } else {
+        console.warn(`[Hybrid Retrieval Warning] PostgreSQL Lexical Search: ${results[1].reason?.message}`);
+      }
     } catch (searchErr) {
       console.warn(`[Hybrid Retrieval Warning] ${searchErr.message}`);
     }
@@ -201,6 +211,7 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
 
 const { routeIntent, INTENTS } = require('./intentRouter.service');
 const { contextualizeQuery, getRecentConversationHistory } = require('./queryRewriter.service');
+const { buildVerifiedSources } = require('./sourceBuilder.service');
 
 /**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
@@ -208,7 +219,7 @@ const { contextualizeQuery, getRecentConversationHistory } = require('./queryRew
 const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto') => {
   try {
     if (!question) {
-      return { success: false, reply: "Vui lòng nhập câu hỏi." };
+      return { success: false, reply: "Vui lòng nhập câu hỏi.", intent: "GENERAL_ENGLISH_QA", sources: [], actions: [] };
     }
 
     // Kiểm tra an toàn (Guardrails) ngăn chặn lạm dụng AI để tìm cách hack hệ thống / gỡ bảo mật
@@ -217,7 +228,10 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
     if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
       return {
         success: true,
-        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!"
+        reply: "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!",
+        intent: "GENERAL_ENGLISH_QA",
+        sources: [],
+        actions: []
       };
     }
 
@@ -228,13 +242,13 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
     let retrievalQuery = question;
     let rewriteInfo = null;
     let conversationHistory = [];
+    let retrievalRes = null;
 
     if (userId) {
-      conversationHistory = await getRecentConversationHistory(userId, lessonId, 6);
+      conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
     }
 
     if (isGlobalChat) {
-      // 1. Đối với Chatbot toàn cục: Lấy dữ liệu khóa học thật từ DB để AI trả lời đúng trọng tâm thông tin hệ thống
       try {
         const coursesResult = await db.query(`
           SELECT course_name, description 
@@ -253,40 +267,30 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
         contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
       }
     } else {
-      // 2. Đối với AI Assistant trong bài học: Sử dụng Intent Router tự động phân giải phạm vi Retrieval
       const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
-      let effectiveScope = 'current_lesson';
+      
+      detectedIntent = await routeIntent(question, {
+        lessonId,
+        hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
+        courseId: accessInfo.courseId
+      });
 
+      let effectiveScope = detectedIntent.scope;
       if (isDevOrAdmin && (retrievalMode === 'force_course' || retrievalMode === 'course_wide')) {
         effectiveScope = 'course_wide';
-        console.log(`[Intent Router Debug] Overridden to course_wide by ${accessInfo.isAdmin ? 'Admin' : 'Dev Environment'}`);
       } else if (isDevOrAdmin && retrievalMode === 'force_lesson') {
         effectiveScope = 'current_lesson';
-        console.log(`[Intent Router Debug] Overridden to current_lesson by ${accessInfo.isAdmin ? 'Admin' : 'Dev Environment'}`);
-      } else {
-        // Trong môi trường Production: Backend Intent Router là nguồn quyết định tuyệt đối
-        detectedIntent = await routeIntent(question, {
-          lessonId,
-          hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
-          courseId: accessInfo.courseId
-        });
-        effectiveScope = detectedIntent.scope;
-        console.log(`[Intent Router] Question: "${question.slice(0, 40)}..." -> Intent: ${detectedIntent.intent} | Scope: ${effectiveScope} (${detectedIntent.method})`);
       }
 
       if (effectiveScope !== 'none') {
-        // 2.2. Conversational Query Rewriting: Tách biệt Original Query và Retrieval Query
         rewriteInfo = await contextualizeQuery(question, conversationHistory, {
           userId,
           lessonId,
           courseId: accessInfo.courseId
         });
         retrievalQuery = rewriteInfo.retrievalQuery;
-        if (rewriteInfo.rewritten) {
-          console.log(`[Query Rewriter] Rewrote: "${question}" -> "${retrievalQuery}" (${rewriteInfo.method}, ${rewriteInfo.latencyMs}ms)`);
-        }
 
-        const retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
+        retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
       }
     }
@@ -331,15 +335,35 @@ CÂU HỎI CỦA HỌC VIÊN:
     const result = await geminiModel.generateContent(systemPrompt);
     const reply = result.response ? result.response.text() : (typeof result === 'string' ? result : "");
 
+    // 4. Xây dựng Structured Sources & Actions đã qua xác thực PostgreSQL
+    let sources = [];
+    let actions = [];
+    if (retrievalRes) {
+      const verifiedOutput = await buildVerifiedSources({
+        intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
+        rankedLessons: retrievalRes.rankedLessons || (retrievalRes.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
+        currentLessonId: lessonId,
+        courseId: accessInfo.courseId
+      });
+      sources = verifiedOutput.sources || [];
+      actions = verifiedOutput.actions || [];
+    }
+
     return {
       success: true,
-      reply: reply || "Tôi đã nhận được câu hỏi nhưng không thể phản hồi ngay lúc này."
+      reply: reply || "Tôi đã nhận được câu hỏi nhưng không thể phản hồi ngay lúc này.",
+      intent: detectedIntent?.intent || (isGlobalChat ? 'GENERAL_ENGLISH_QA' : 'CURRENT_LESSON_QA'),
+      sources,
+      actions
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChat:", error);
     return {
       success: false,
-      reply: "Rất tiếc, đã có sự cố kết nối tới hệ thống AI Assistant. Vui lòng thử lại sau ít phút."
+      reply: "Rất tiếc, đã có sự cố kết nối tới hệ thống AI Assistant. Vui lòng thử lại sau ít phút.",
+      intent: "GENERAL_ENGLISH_QA",
+      sources: [],
+      actions: []
     };
   }
 };
@@ -350,7 +374,7 @@ CÂU HỎI CỦA HỌC VIÊN:
 const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto') => {
   try {
     if (!question) {
-      if (onChunk) onChunk("Vui lòng nhập câu hỏi.");
+      if (onChunk) onChunk({ type: 'token', text: "Vui lòng nhập câu hỏi." });
       return "Vui lòng nhập câu hỏi.";
     }
 
@@ -359,7 +383,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     const toxicKeywords = ['hack', 'bypass', 'bẻ khóa', 'gỡ bảo mật', 'quocanh26012004', 'super admin', 'superadmin', 'cướp quyền', 'lạm quyền', 'user_token_limits', 'tokenlimit', 'reset-token'];
     if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
       const safeReply = "Xin lỗi, tôi là trợ lý học tiếng Anh ảo của E-Learn Academy. Tôi không được phép cung cấp thông tin hoặc hướng dẫn liên quan đến cấu trúc bảo mật hệ thống, cơ sở dữ liệu, mã nguồn, hoặc thay đổi quyền quản trị. Chúng ta hãy quay lại các chủ đề luyện tập tiếng Anh nhé!";
-      if (onChunk) onChunk(safeReply);
+      if (onChunk) onChunk({ type: 'token', text: safeReply });
       return safeReply;
     }
 
@@ -370,9 +394,11 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     let retrievalQuery = question;
     let rewriteInfo = null;
     let conversationHistory = [];
+    let retrievalRes = null;
+    let effectiveScope = 'current_lesson';
 
     if (userId) {
-      conversationHistory = await getRecentConversationHistory(userId, lessonId, 6);
+      conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
     }
 
     if (isGlobalChat) {
@@ -395,19 +421,18 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       }
     } else {
       const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
-      let effectiveScope = 'current_lesson';
 
+      detectedIntent = await routeIntent(question, {
+        lessonId,
+        hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
+        courseId: accessInfo.courseId
+      });
+
+      effectiveScope = detectedIntent.scope;
       if (isDevOrAdmin && (retrievalMode === 'force_course' || retrievalMode === 'course_wide')) {
         effectiveScope = 'course_wide';
       } else if (isDevOrAdmin && retrievalMode === 'force_lesson') {
         effectiveScope = 'current_lesson';
-      } else {
-        detectedIntent = await routeIntent(question, {
-          lessonId,
-          hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
-          courseId: accessInfo.courseId
-        });
-        effectiveScope = detectedIntent.scope;
       }
 
       if (effectiveScope !== 'none') {
@@ -418,9 +443,19 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
         });
         retrievalQuery = rewriteInfo.retrievalQuery;
 
-        const retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
+        retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
       }
+    }
+
+    // 1. Phát sự kiện Metadata (SSE)
+    if (onChunk) {
+      onChunk({
+        type: 'metadata',
+        intent: detectedIntent?.intent || (isGlobalChat ? 'GENERAL_ENGLISH_QA' : 'CURRENT_LESSON_QA'),
+        scope: effectiveScope,
+        rewrittenQuery: rewriteInfo?.rewritten ? retrievalQuery : undefined
+      });
     }
 
     const systemPrompt = isGlobalChat
@@ -459,11 +494,34 @@ CÂU HỎI CỦA HỌC VIÊN:
       const text = chunk.text();
       fullText += text;
       if (onChunk) {
-        onChunk(text);
+        onChunk({ type: 'token', text });
       }
     }
 
-    return fullText;
+    // 2. Phát sự kiện Sources & Actions (SSE)
+    let sources = [];
+    let actions = [];
+    if (retrievalRes) {
+      const verifiedOutput = await buildVerifiedSources({
+        intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
+        rankedLessons: retrievalRes.rankedLessons || (retrievalRes.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
+        currentLessonId: lessonId,
+        courseId: accessInfo.courseId
+      });
+      sources = verifiedOutput.sources || [];
+      actions = verifiedOutput.actions || [];
+    }
+
+    if (onChunk && sources.length > 0) {
+      onChunk({ type: 'sources', sources, actions });
+    }
+
+    return {
+      fullText,
+      intent: detectedIntent?.intent || (isGlobalChat ? 'GENERAL_ENGLISH_QA' : 'CURRENT_LESSON_QA'),
+      sources,
+      actions
+    };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChatStream:", error);
     throw new Error("Hệ thống AI Assistant đang bận.");
@@ -483,7 +541,7 @@ class ChatbotService {
         retrievalMode = 'force_lesson';
       }
       const result = await handleRagChat(userId, lessonId, question, retrievalMode);
-      return result.reply;
+      return result;
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.ask:", error);
 
@@ -509,7 +567,7 @@ class ChatbotService {
     }
   }
 
-  async saveHistory(userId, lessonId, question, answer) {
+  async saveHistory(userId, lessonId, question, answer, sources = [], actions = []) {
     try {
       const finalLessonId = (lessonId === 0 || lessonId === '0' || lessonId === null || lessonId === undefined || lessonId === 'null') ? null : lessonId;
 
@@ -521,17 +579,26 @@ class ChatbotService {
       `;
       const userResult = await db.query(insertUserQuery, [userId, finalLessonId, question]);
 
-      // 2. Lưu câu trả lời của bot/ai
+      // 2. Lưu câu trả lời của bot/ai (Có lưu kèm sources nếu có)
+      const botContent = (sources && sources.length > 0)
+        ? JSON.stringify({ answer, sources, actions: actions || [] })
+        : answer;
+
       const insertBotQuery = `
         INSERT INTO ai_chat (student_id, lesson_id, title, sender_type, created_at)
         VALUES ($1, $2, $3, 'bot', NOW())
         RETURNING ai_chat, student_id, lesson_id, title, sender_type, created_at AS created_date
       `;
-      const botResult = await db.query(insertBotQuery, [userId, finalLessonId, answer]);
+      const botResult = await db.query(insertBotQuery, [userId, finalLessonId, botContent]);
 
       return {
         userMessage: userResult.rows[0],
-        botMessage: botResult.rows[0]
+        botMessage: {
+          ...botResult.rows[0],
+          title: answer,
+          sources: sources || [],
+          actions: actions || []
+        }
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.saveHistory:", error);
@@ -574,12 +641,31 @@ class ChatbotService {
       const params = hasLesson ? [userId, lessonId] : [userId];
       const result = await db.query(queryText, params);
 
-      return result.rows.map(row => ({
-        chat_id: row.ai_chat,
-        sender: row.sender_type,
-        message: row.title,
-        created_date: row.created_date
-      }));
+      return result.rows.map(row => {
+        let content = row.title;
+        let sources = [];
+        let actions = [];
+
+        if (row.sender_type === 'bot' && row.title && row.title.startsWith('{') && row.title.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(row.title);
+            if (parsed.answer !== undefined) {
+              content = parsed.answer;
+              sources = parsed.sources || [];
+              actions = parsed.actions || [];
+            }
+          } catch (e) {}
+        }
+
+        return {
+          chat_id: row.ai_chat,
+          sender: row.sender_type,
+          message: content,
+          sources,
+          actions,
+          created_date: row.created_date
+        };
+      });
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.getHistory:", error);
       throw error;

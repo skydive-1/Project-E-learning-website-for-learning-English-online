@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { askChatbot, askChatbotStream, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance, generateChatbotQuiz, clearChatHistory } from '../services/chatbot.service';
+import LessonCard from './LessonCard';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
@@ -152,6 +153,8 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
               id: `msg-db-${msg.chat_id}`,
               sender: msg.sender === 'bot' ? 'ai' : 'user',
               text: msg.message,
+              sources: msg.sources || [],
+              actions: msg.actions || [],
               timestamp: new Date()
             }));
             setMessages(mappedMessages);
@@ -231,16 +234,41 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
         await streamTextWordByWord(aiMessageId, quizIntro, { quizData });
         fetchBalance();
       } else {
-        const finalAnswer = await askChatbotStream(text, lessonId, (accumulatedText) => {
-          setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: accumulatedText, isStreaming: true } : m));
+        let finalSources = [];
+        let finalActions = [];
+
+        const streamRes = await askChatbotStream(text, lessonId, (accumulatedText, eventPayload) => {
+          if (eventPayload?.sources && eventPayload.sources.length > 0) {
+            finalSources = eventPayload.sources;
+            finalActions = eventPayload.actions || [];
+          }
+          setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+            ...m,
+            text: accumulatedText,
+            isStreaming: true,
+            sources: finalSources,
+            actions: finalActions
+          } : m));
         });
 
+        const finalAnswerText = typeof streamRes === 'string' ? streamRes : (streamRes.reply || '');
+        if (streamRes && streamRes.sources) {
+          finalSources = streamRes.sources;
+          finalActions = streamRes.actions || [];
+        }
+
         // Kết thúc streaming thành công
-        setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: finalAnswer, isStreaming: false } : m));
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+          ...m,
+          text: finalAnswerText,
+          isStreaming: false,
+          sources: finalSources,
+          actions: finalActions
+        } : m));
         fetchBalance();
 
         if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
-          saveChatHistory(user.userId, lessonId, text, finalAnswer).catch(err => {
+          saveChatHistory(user.userId, lessonId, text, finalAnswerText, finalSources, finalActions).catch(err => {
             console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
           });
         }
@@ -549,6 +577,23 @@ const ChatBox = ({ lessonId = 0, onClose = null }) => {
                       <span className="whitespace-pre-wrap">{msg.text}</span>
                       {msg.isStreaming && (
                         <span className="inline-block w-2 h-4 ml-1 bg-smart-indigo dark:bg-indigo-400 animate-pulse align-middle rounded-xs"></span>
+                      )}
+                      
+                      {/* Render Verified AI Lesson Cards (Phase 7 - Udemy-like UX) */}
+                      {msg.sources && msg.sources.length > 0 && !msg.isStreaming && (
+                        <div className="ai-lesson-cards-container">
+                          {msg.sources.map((source, sIdx) => (
+                            <LessonCard
+                              key={`src-${msg.id}-${sIdx}-${source.lessonId}`}
+                              source={source}
+                              action={msg.actions?.[sIdx]}
+                              onNavigate={(targetLessonId) => {
+                                navigate(`/lessons/${targetLessonId}`);
+                                if (onClose) onClose();
+                              }}
+                            />
+                          ))}
+                        </div>
                       )}
                     </>
                   )}
