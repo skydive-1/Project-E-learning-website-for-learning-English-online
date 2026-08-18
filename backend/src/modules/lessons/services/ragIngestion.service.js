@@ -74,7 +74,26 @@ async function ingestLessonTranscript(lessonId, cues, options = {}) {
       console.warn(`[RAG Ingestion] Cảnh báo xóa vector cũ lessonId=${lessonId} (có thể chưa tồn tại):`, delErr.message);
     }
 
-    // 2. Tạo Vector Embedding và Upsert tuần tự từng chunk vào Pinecone
+    // 2. Lấy thông tin phân cấp thực tế từ PostgreSQL (lesson -> section -> course) làm Source of Truth
+    let hierarchyMeta = {};
+    try {
+      const db = require('../../../config/database');
+      const metaRes = await db.query(`
+        SELECT l.lesson_id, l.title as lesson_title, s.section_id, s.title as section_title, s.course_id, c.course_name
+        FROM lessons l
+        JOIN sections s ON l.section_id = s.section_id
+        JOIN courses c ON s.course_id = c.course_id
+        WHERE l.lesson_id = $1
+        LIMIT 1;
+      `, [Number(lessonId)]);
+      if (metaRes.rows.length > 0) {
+        hierarchyMeta = metaRes.rows[0];
+      }
+    } catch (metaErr) {
+      console.warn(`[RAG Ingestion] ⚠️ Cảnh báo lấy metadata phân cấp cho lessonId=${lessonId}:`, metaErr.message);
+    }
+
+    // 3. Tạo Vector Embedding và Upsert tuần tự từng chunk vào Pinecone theo Schema v2
     let successCount = 0;
     for (let i = 0; i < chunks.length; i++) {
       try {
@@ -90,15 +109,34 @@ async function ingestLessonTranscript(lessonId, cues, options = {}) {
         }
 
         const chunkId = options.materialId
-          ? `material-${options.materialId}-chunk-${i}`
-          : `lesson-${lessonId}-chunk-${i}`;
+          ? `lesson-${lessonId}-v2-material-${options.materialId}-chunk-${i}`
+          : `lesson-${lessonId}-v2-transcript-chunk-${i}`;
+
+        let startTime = null;
+        let endTime = null;
+        if (Array.isArray(cues) && cues.length > 0) {
+          const cueIndex = Math.min(cues.length - 1, Math.floor((i / chunks.length) * cues.length));
+          const endCueIndex = Math.min(cues.length - 1, Math.floor(((i + 1) / chunks.length) * cues.length));
+          if (cues[cueIndex] && cues[cueIndex].start !== undefined) startTime = Number(cues[cueIndex].start);
+          if (cues[endCueIndex] && cues[endCueIndex].end !== undefined) endTime = Number(cues[endCueIndex].end);
+        }
 
         const metadata = {
+          course_id: hierarchyMeta.course_id ? Number(hierarchyMeta.course_id) : 0,
+          course_name: String(hierarchyMeta.course_name || ''),
+          section_id: hierarchyMeta.section_id ? Number(hierarchyMeta.section_id) : 0,
+          section_title: String(hierarchyMeta.section_title || ''),
           lesson_id: Number(lessonId),
-          text: chunks[i],
-          source: source
+          lesson_title: String(hierarchyMeta.lesson_title || ''),
+          chunk_index: Number(i),
+          content_type: options.materialId ? 'pdf_material' : 'transcript',
+          source: source,
+          schema_version: 'v2',
+          text: chunks[i]
         };
 
+        if (startTime !== null) metadata.start_time = startTime;
+        if (endTime !== null) metadata.end_time = endTime;
         if (options.materialId) metadata.material_id = Number(options.materialId);
         if (options.fileName) metadata.file_name = String(options.fileName);
 

@@ -6,8 +6,8 @@ const chatbotService = require('../services/chatbot.service');
 
 exports.ask = async (req, res, next) => {
   try {
-    const { question, lessonId } = req.body;
-    const answer = await chatbotService.ask(question, lessonId, req.user?.id);
+    const { question, lessonId, scope } = req.body;
+    const answer = await chatbotService.ask(question, lessonId, req.user?.id, scope || 'lesson');
 
     res.status(200).json({
       success: true,
@@ -20,7 +20,7 @@ exports.ask = async (req, res, next) => {
 
 exports.askStream = async (req, res, next) => {
   try {
-    const { question, lessonId } = req.body;
+    const { question, lessonId, scope } = req.body;
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -31,7 +31,7 @@ exports.askStream = async (req, res, next) => {
 
     await chatbotService.askStream(question, lessonId, req.user?.id, (chunkText) => {
       res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
-    });
+    }, scope || 'lesson');
 
     res.write(`data: [DONE]\n\n`);
     res.end();

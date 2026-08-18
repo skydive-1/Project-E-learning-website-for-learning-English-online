@@ -10,7 +10,8 @@ const { checkTokenLimit } = require('../../middleware/tokenLimit.middleware');
 const askSchema = {
   body: {
     question: { required: true },
-    lessonId: { required: false }
+    lessonId: { required: false },
+    scope: { required: false }
   }
 };
 

@@ -1,0 +1,1252 @@
+{
+  "summary": {
+    "totalQueries": 22,
+    "inDomainQueries": 20,
+    "outOfDomainQueries": 2,
+    "avgLatencyMs": 347,
+    "productionCurrentMetrics": {
+      "description": "Hệ thống hiện tại: Filter cứng lesson_id hiện tại, topK = 2",
+      "hitAt1": "90.0%",
+      "hitAt3": "90.0%",
+      "mrr": "0.900"
+    },
+    "unfilteredVectorMetrics": {
+      "description": "Đối chứng Vector Space toàn cục: Không filter, topK = 5",
+      "hitAt1": "40.0%",
+      "hitAt3": "70.0%"
+    },
+    "categoryBreakdown": {
+      "1. Exact lesson title": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "2. Exact keyword": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "3. Semantic paraphrase": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "4. Câu hỏi bằng tiếng Việt": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "5. Câu hỏi bằng tiếng Anh": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "6. Query ngắn": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "7. Query tự nhiên dài": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "8. Query không chứa tên chính xác của lesson": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "9. Query không có kết quả": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "10. Follow-up query (Conversational)": {
+        "total": 2,
+        "hit1": 2,
+        "mrrSum": 2
+      },
+      "Course-wide Cross-Lesson (Limitation Test)": {
+        "total": 2,
+        "hit1": 0,
+        "mrrSum": 0
+      }
+    }
+  },
+  "details": [
+    {
+      "id": "TC-01",
+      "category": "1. Exact lesson title",
+      "query": "Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 339,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.8061,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.8061,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.5801,
+            "lessonId": 17,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          },
+          {
+            "score": 0.5801,
+            "lessonId": 19,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-02",
+      "category": "1. Exact lesson title",
+      "query": "First Meeting – Hello and Introductions",
+      "currentLessonId": 35,
+      "expectedLessonId": 35,
+      "isOutOfDomain": false,
+      "latencyMs": 349,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 35
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.747,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.747,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          },
+          {
+            "score": 0.6389,
+            "lessonId": 31,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          },
+          {
+            "score": 0.6303,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-03",
+      "category": "2. Exact keyword",
+      "query": "Subject Pronouns and Object Pronouns",
+      "currentLessonId": 11,
+      "expectedLessonId": 11,
+      "isOutOfDomain": false,
+      "latencyMs": 363,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 11
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7371,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "t and Object pronouns together!..."
+          },
+          {
+            "score": 0.7349,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome back to our English Gr..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.832,
+            "lessonId": 12,
+            "lessonTitle": "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
+            "snippet": "ubject and Object pronouns together!..."
+          },
+          {
+            "score": 0.7698,
+            "lessonId": 39,
+            "lessonTitle": "Meet My Family",
+            "snippet": "Meet My Family Hello everyone! Welcome back to our English Grammar lesson. Today, we are learning ab..."
+          },
+          {
+            "score": 0.7691,
+            "lessonId": 37,
+            "lessonTitle": "Talking About Yourself",
+            "snippet": "Talking About Yourself Hello everyone! Welcome back to our English Grammar lesson. Today, we are lea..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-04",
+      "category": "2. Exact keyword",
+      "query": "Present Continuous Tense formula",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 356,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7274,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7734,
+            "lessonId": 18,
+            "lessonTitle": "HIện tại tiếp diễn",
+            "snippet": "HIện tại tiếp diễn Hello everyone! Today, we are exploring the Present Continuous Tense. We use the ..."
+          },
+          {
+            "score": 0.7274,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.5844,
+            "lessonId": 12,
+            "lessonTitle": "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
+            "snippet": "3. Các thì thời gian trong văn phong nói (Speaking Tenses) Hello everyone! Welcome back to our Engli..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-05",
+      "category": "3. Semantic paraphrase",
+      "query": "Cách dùng đại từ nhân xưng làm chủ ngữ và tân ngữ trong câu tiếng Anh",
+      "currentLessonId": 11,
+      "expectedLessonId": 11,
+      "isOutOfDomain": false,
+      "latencyMs": 348,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 11
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7438,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome back to our English Gr..."
+          },
+          {
+            "score": 0.673,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "t and Object pronouns together!..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.7547,
+            "lessonId": 12,
+            "lessonTitle": "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
+            "snippet": "3. Các thì thời gian trong văn phong nói (Speaking Tenses) Hello everyone! Welcome back to our Engli..."
+          },
+          {
+            "score": 0.7471,
+            "lessonId": 33,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới I see them. They know me. We like you. You help us. He calls her. She loves him. It belo..."
+          },
+          {
+            "score": 0.744,
+            "lessonId": 13,
+            "lessonTitle": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
+            "snippet": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên I see them. They know me. We like you. You help us...."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-06",
+      "category": "3. Semantic paraphrase",
+      "query": "Quy tắc chia động từ thêm đuôi ing khi hành động đang xảy ra",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 354,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.6846,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7345,
+            "lessonId": 18,
+            "lessonTitle": "HIện tại tiếp diễn",
+            "snippet": "HIện tại tiếp diễn Hello everyone! Today, we are exploring the Present Continuous Tense. We use the ..."
+          },
+          {
+            "score": 0.6846,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.59,
+            "lessonId": 13,
+            "lessonTitle": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
+            "snippet": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên I see them. They know me. We like you. You help us...."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-07",
+      "category": "4. Câu hỏi bằng tiếng Việt",
+      "query": "Làm thế nào để chào hỏi và tự giới thiệu bản thân một cách tự tin?",
+      "currentLessonId": 10,
+      "expectedLessonId": 10,
+      "isOutOfDomain": false,
+      "latencyMs": 345,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7168,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7168,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          },
+          {
+            "score": 0.7166,
+            "lessonId": 31,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          },
+          {
+            "score": 0.7069,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-08",
+      "category": "4. Câu hỏi bằng tiếng Việt",
+      "query": "Công thức Subject + am / is / are + Verb-ing là của cấu trúc nào?",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 345,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7282,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7857,
+            "lessonId": 18,
+            "lessonTitle": "HIện tại tiếp diễn",
+            "snippet": "HIện tại tiếp diễn Hello everyone! Today, we are exploring the Present Continuous Tense. We use the ..."
+          },
+          {
+            "score": 0.7282,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.6174,
+            "lessonId": 12,
+            "lessonTitle": "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
+            "snippet": "3. Các thì thời gian trong văn phong nói (Speaking Tenses) Hello everyone! Welcome back to our Engli..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-09",
+      "category": "5. Câu hỏi bằng tiếng Anh",
+      "query": "What are common greetings used when meeting someone for the first time?",
+      "currentLessonId": 10,
+      "expectedLessonId": 10,
+      "isOutOfDomain": false,
+      "latencyMs": 343,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.6358,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7145,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          },
+          {
+            "score": 0.6358,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          },
+          {
+            "score": 0.6219,
+            "lessonId": 31,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-10",
+      "category": "5. Câu hỏi bằng tiếng Anh",
+      "query": "How do I introduce my family members and describe relationships in English?",
+      "currentLessonId": 39,
+      "expectedLessonId": 39,
+      "isOutOfDomain": false,
+      "latencyMs": 359,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 39
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.6808,
+            "lessonId": 39,
+            "lessonTitle": "Meet My Family",
+            "snippet": "Meet My Family Hello everyone! Welcome back to our English Grammar lesson. Today, we are learning ab..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.6808,
+            "lessonId": 39,
+            "lessonTitle": "Meet My Family",
+            "snippet": "Meet My Family Hello everyone! Welcome back to our English Grammar lesson. Today, we are learning ab..."
+          },
+          {
+            "score": 0.638,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          },
+          {
+            "score": 0.6192,
+            "lessonId": 37,
+            "lessonTitle": "Talking About Yourself",
+            "snippet": "Talking About Yourself Hello everyone! Welcome back to our English Grammar lesson. Today, we are lea..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-11",
+      "category": "6. Query ngắn",
+      "query": "Passive Listening",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 331,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.6813,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.6813,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.4983,
+            "lessonId": 17,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          },
+          {
+            "score": 0.4983,
+            "lessonId": 19,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-12",
+      "category": "6. Query ngắn",
+      "query": "I see them",
+      "currentLessonId": 11,
+      "expectedLessonId": 11,
+      "isOutOfDomain": false,
+      "latencyMs": 344,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 11
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.5464,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "t and Object pronouns together!..."
+          },
+          {
+            "score": 0.5374,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome back to our English Gr..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.5881,
+            "lessonId": 13,
+            "lessonTitle": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
+            "snippet": "or prepositions. In the sentence 'I see them', 'them' is the object pronoun after the verb 'see'. In..."
+          },
+          {
+            "score": 0.5859,
+            "lessonId": 16,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": ". In the sentence 'I see them', 'them' is the object pronoun after the verb 'see'. In 'You help us',..."
+          },
+          {
+            "score": 0.5859,
+            "lessonId": 21,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": ". In the sentence 'I see them', 'them' is the object pronoun after the verb 'see'. In 'You help us',..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-13",
+      "category": "7. Query tự nhiên dài",
+      "query": "Thầy cô có thể hướng dẫn em chi tiết cách luyện tập nghe chép chính tả và nghe thụ động mỗi ngày sao cho hiệu quả không ạ?",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 341,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7795,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7795,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.6528,
+            "lessonId": 17,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          },
+          {
+            "score": 0.6528,
+            "lessonId": 19,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-14",
+      "category": "7. Query tự nhiên dài",
+      "query": "Khi giao tiếp lần đầu gặp đối tác hoặc bạn bè thì những mẫu câu chào hỏi thông dụng và lịch sự nhất là gì?",
+      "currentLessonId": 10,
+      "expectedLessonId": 10,
+      "isOutOfDomain": false,
+      "latencyMs": 339,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.699,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7273,
+            "lessonId": 31,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          },
+          {
+            "score": 0.7029,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          },
+          {
+            "score": 0.699,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-15",
+      "category": "8. Query không chứa tên chính xác của lesson",
+      "query": "Cách phân biệt và sử dụng đại từ them, me, us so với they, I, we",
+      "currentLessonId": 11,
+      "expectedLessonId": 11,
+      "isOutOfDomain": false,
+      "latencyMs": 345,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 11
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.7028,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome back to our English Gr..."
+          },
+          {
+            "score": 0.6152,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "t and Object pronouns together!..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.7774,
+            "lessonId": 33,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới I see them. They know me. We like you. You help us. He calls her. She loves him. It belo..."
+          },
+          {
+            "score": 0.764,
+            "lessonId": 16,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học I see them. They know me. We like you. You help us. He calls her. ..."
+          },
+          {
+            "score": 0.764,
+            "lessonId": 21,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học I see them. They know me. We like you. You help us. He calls her. ..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-16",
+      "category": "8. Query không chứa tên chính xác của lesson",
+      "query": "Các mốc thời gian chào Good morning, Good afternoon và Good evening",
+      "currentLessonId": 10,
+      "expectedLessonId": 10,
+      "isOutOfDomain": false,
+      "latencyMs": 347,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.6571,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.6571,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          },
+          {
+            "score": 0.644,
+            "lessonId": 35,
+            "lessonTitle": "First Meeting – Hello and Introductions",
+            "snippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complete Beginners! In this..."
+          },
+          {
+            "score": 0.6408,
+            "lessonId": 31,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-17",
+      "category": "9. Query không có kết quả",
+      "query": "Cách cấu hình Kubernetes cluster microservices và Docker trên AWS",
+      "currentLessonId": 10,
+      "expectedLessonId": null,
+      "isOutOfDomain": true,
+      "latencyMs": 351,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.4665,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.4825,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome back to our English Gr..."
+          },
+          {
+            "score": 0.4769,
+            "lessonId": 31,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          },
+          {
+            "score": 0.4754,
+            "lessonId": 1,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-18",
+      "category": "9. Query không có kết quả",
+      "query": "Giải thích thuật toán quy hoạch động Dynamic Programming bài toán balo Knapsack",
+      "currentLessonId": 14,
+      "expectedLessonId": null,
+      "isOutOfDomain": true,
+      "latencyMs": 362,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.5003,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.5195,
+            "lessonId": 40,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome back to our English Grammar lesson. Today,..."
+          },
+          {
+            "score": 0.5195,
+            "lessonId": 41,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome back to our English Grammar lesson. Today,..."
+          },
+          {
+            "score": 0.5183,
+            "lessonId": 16,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học I see them. They know me. We like you. You help us. He calls her. ..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-19",
+      "category": "10. Follow-up query (Conversational)",
+      "query": "Thế còn dạng câu phủ định và nghi vấn của cấu trúc này thì chia như thế nào?",
+      "currentLessonId": 14,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 354,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 14
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.5972,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.6626,
+            "lessonId": 13,
+            "lessonTitle": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
+            "snippet": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên I see them. They know me. We like you. You help us...."
+          },
+          {
+            "score": 0.6182,
+            "lessonId": 18,
+            "lessonTitle": "HIện tại tiếp diễn",
+            "snippet": "HIện tại tiếp diễn Hello everyone! Today, we are exploring the Present Continuous Tense. We use the ..."
+          },
+          {
+            "score": 0.5972,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-20",
+      "category": "10. Follow-up query (Conversational)",
+      "query": "Cho mình xin thêm 3 ví dụ đặt câu có chứa từ 'them' như câu mẫu vừa rồi",
+      "currentLessonId": 11,
+      "expectedLessonId": 11,
+      "isOutOfDomain": false,
+      "latencyMs": 357,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 11
+          }
+        },
+        "topK": 2,
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "mrr": 1,
+        "retrieved": [
+          {
+            "score": 0.6442,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome back to our English Gr..."
+          },
+          {
+            "score": 0.5672,
+            "lessonId": 11,
+            "lessonTitle": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+            "snippet": "t and Object pronouns together!..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.6998,
+            "lessonId": 33,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới I see them. They know me. We like you. You help us. He calls her. She loves him. It belo..."
+          },
+          {
+            "score": 0.695,
+            "lessonId": 13,
+            "lessonTitle": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
+            "snippet": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên I see them. They know me. We like you. You help us...."
+          },
+          {
+            "score": 0.6908,
+            "lessonId": 16,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học I see them. They know me. We like you. You help us. He calls her. ..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-21",
+      "category": "Course-wide Cross-Lesson (Limitation Test)",
+      "query": "Phương pháp nghe thụ động Passive Listening và nghe chép chính tả học ở đâu?",
+      "currentLessonId": 10,
+      "expectedLessonId": 14,
+      "isOutOfDomain": false,
+      "latencyMs": 312,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "mrr": 0,
+        "retrieved": [
+          {
+            "score": 0.5184,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 1,
+        "hitAt3": 1,
+        "topMatches": [
+          {
+            "score": 0.7561,
+            "lessonId": 14,
+            "lessonTitle": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+            "snippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello everyone! Today, we are ..."
+          },
+          {
+            "score": 0.5495,
+            "lessonId": 1,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome to 1. Chào mừng bạn đến với khóa học. In t..."
+          },
+          {
+            "score": 0.5452,
+            "lessonId": 17,
+            "lessonTitle": "Bài học mới",
+            "snippet": "Bài học mới Hello everyone! Welcome to Bài học mới. In this lesson, we will focus on essential daily..."
+          }
+        ]
+      }
+    },
+    {
+      "id": "TC-22",
+      "category": "Course-wide Cross-Lesson (Limitation Test)",
+      "query": "Khóa học này có bài nào dạy về Subject Pronouns và Object Pronouns không?",
+      "currentLessonId": 10,
+      "expectedLessonId": 11,
+      "isOutOfDomain": false,
+      "latencyMs": 354,
+      "productionMode": {
+        "filter": {
+          "lesson_id": {
+            "$eq": 10
+          }
+        },
+        "topK": 2,
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "mrr": 0,
+        "retrieved": [
+          {
+            "score": 0.5992,
+            "lessonId": 10,
+            "lessonTitle": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+            "snippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to English for Complet..."
+          }
+        ]
+      },
+      "unfilteredMode": {
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "topMatches": [
+          {
+            "score": 0.8252,
+            "lessonId": 40,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome back to our English Grammar lesson. Today,..."
+          },
+          {
+            "score": 0.8252,
+            "lessonId": 41,
+            "lessonTitle": "1. Chào mừng bạn đến với khóa học",
+            "snippet": "1. Chào mừng bạn đến với khóa học Hello everyone! Welcome back to our English Grammar lesson. Today,..."
+          },
+          {
+            "score": 0.7993,
+            "lessonId": 12,
+            "lessonTitle": "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
+            "snippet": "3. Các thì thời gian trong văn phong nói (Speaking Tenses) Hello everyone! Welcome back to our Engli..."
+          }
+        ]
+      }
+    }
+  ]
+}

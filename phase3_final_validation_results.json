@@ -1,0 +1,255 @@
+{
+  "timestamp": "2026-08-18T04:01:43.078Z",
+  "validation_1_cross_lesson_20": {
+    "v1_baseline": {
+      "count": 20,
+      "hit1": "0.0%",
+      "hit3": "0.0%",
+      "mrr": "0.000",
+      "avgLatencyMs": 574
+    },
+    "v2_course_aware": {
+      "count": 20,
+      "hit1": "75.0%",
+      "hit3": "85.0%",
+      "mrr": "0.824",
+      "avgLatencyMs": 574
+    }
+  },
+  "validation_2_concept_regression": {
+    "total_tests": 10,
+    "concept_hit_rate": "100.0%",
+    "details": [
+      {
+        "id": "CON-01",
+        "lessonId": 14,
+        "query": "Phương pháp nghe thụ động Passive Listening và nghe chép chính tả được giải thích như thế nào?",
+        "expectedConcepts": [
+          "Passive Listening",
+          "nghe chép chính tả",
+          "Present Continuous"
+        ],
+        "matchedConcepts": [
+          "Passive Listening",
+          "nghe chép chính tả",
+          "Present Continuous"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.7798,
+        "topSnippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello ever..."
+      },
+      {
+        "id": "CON-02",
+        "lessonId": 11,
+        "query": "Subject Pronouns và Object Pronouns khác nhau ra sao?",
+        "expectedConcepts": [
+          "Subject Pronouns",
+          "Object Pronouns",
+          "them",
+          "me"
+        ],
+        "matchedConcepts": [
+          "Subject Pronouns",
+          "Object Pronouns",
+          "them",
+          "me"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.8016,
+        "topSnippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome ba..."
+      },
+      {
+        "id": "CON-03",
+        "lessonId": 14,
+        "query": "Công thức thì hiện tại tiếp diễn với động từ thêm ing là gì?",
+        "expectedConcepts": [
+          "Present Continuous",
+          "am/is/are",
+          "V-ing"
+        ],
+        "matchedConcepts": [
+          "Present Continuous"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.7347,
+        "topSnippet": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả Hello ever..."
+      },
+      {
+        "id": "CON-04",
+        "lessonId": 10,
+        "query": "Các câu chào hỏi cơ bản khi mới gặp người khác là gì?",
+        "expectedConcepts": [
+          "Hello",
+          "Good morning",
+          "How are you"
+        ],
+        "matchedConcepts": [
+          "Hello",
+          "Good morning",
+          "How are you"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.693,
+        "topSnippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to..."
+      },
+      {
+        "id": "CON-05",
+        "lessonId": 11,
+        "query": "Cho ví dụ về câu có đại từ tân ngữ như 'I see them'?",
+        "expectedConcepts": [
+          "I see them",
+          "They know me",
+          "Subject"
+        ],
+        "matchedConcepts": [
+          "I see them",
+          "Subject"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.7133,
+        "topSnippet": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset) Hello everyone! Welcome ba..."
+      },
+      {
+        "id": "CON-06",
+        "lessonId": 10,
+        "query": "Làm thế nào để sử dụng trợ lý ảo AI Assistant hỗ trợ học tiếng Anh?",
+        "expectedConcepts": [
+          "AI Assistant",
+          "Hướng dẫn học tập",
+          "hiệu quả"
+        ],
+        "matchedConcepts": [
+          "AI Assistant",
+          "Hướng dẫn học tập",
+          "hiệu quả"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.772,
+        "topSnippet": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant Hello and welcome to..."
+      },
+      {
+        "id": "CON-07",
+        "lessonId": 35,
+        "query": "Mẫu câu Nice to meet you dùng trong hoàn cảnh nào?",
+        "expectedConcepts": [
+          "First Meeting",
+          "Introductions",
+          "Nice to meet you"
+        ],
+        "matchedConcepts": [
+          "First Meeting",
+          "Introductions"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.6707,
+        "topSnippet": "First Meeting – Hello and Introductions Hello and welcome to English for Complet..."
+      },
+      {
+        "id": "CON-08",
+        "lessonId": 39,
+        "query": "Cách giới thiệu các thành viên trong gia đình như cha mẹ, anh em?",
+        "expectedConcepts": [
+          "family",
+          "Meet My Family",
+          "English"
+        ],
+        "matchedConcepts": [
+          "family",
+          "Meet My Family",
+          "English"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.6762,
+        "topSnippet": "Meet My Family Hello everyone! Welcome back to our English Grammar lesson. Today..."
+      },
+      {
+        "id": "CON-09",
+        "lessonId": 37,
+        "query": "Cách nói về thông tin cá nhân và nghề nghiệp của bản thân?",
+        "expectedConcepts": [
+          "Talking About Yourself",
+          "Hello",
+          "English"
+        ],
+        "matchedConcepts": [
+          "Talking About Yourself",
+          "Hello",
+          "English"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.6294,
+        "topSnippet": "Talking About Yourself Hello everyone! Welcome back to our English Grammar lesso..."
+      },
+      {
+        "id": "CON-10",
+        "lessonId": 12,
+        "query": "Các thì thời gian thường dùng trong giao tiếp nói hằng ngày?",
+        "expectedConcepts": [
+          "Speaking Tenses",
+          "thì thời gian",
+          "văn phong nói"
+        ],
+        "matchedConcepts": [
+          "Speaking Tenses",
+          "thì thời gian",
+          "văn phong nói"
+        ],
+        "conceptHit": 1,
+        "topScore": 0.6612,
+        "topSnippet": "3. Các thì thời gian trong văn phong nói (Speaking Tenses) Hello everyone! Welco..."
+      }
+    ]
+  },
+  "validation_3_pinecone_status": {
+    "index_name": "elearning-rag",
+    "namespace": "default (\"\")",
+    "total_vectors_in_v2_store": 60,
+    "schema_version": "v2",
+    "production_query_mode": "Dual Scope: filter { lesson_id } cho bài học & filter { course_id } cho toàn khóa",
+    "role_of_rag_v2_vector_store_json": "High-Availability Snapshot, Offline Vector Backup & Independent Retrieval Store",
+    "rollback_strategy": "Rollback tức thì về V1 bằng cách chuyển cờ filter sang { lesson_id } hoặc purge namespace/schema_version"
+  },
+  "validation_4_vector_collision": {
+    "total_vectors": 60,
+    "unique_vectors": 60,
+    "has_collision": false
+  },
+  "validation_5_authorization": [
+    {
+      "scenario": "1. Enrolled Student (Khóa học miễn phí / Đã ghi danh)",
+      "expected": "200 Authorized",
+      "actual": "200 Authorized",
+      "passed": true
+    },
+    {
+      "scenario": "2. Non-enrolled Student on Paid Course (Học viên chưa mua khóa học có phí)",
+      "expected": "403 Forbidden",
+      "actual": "403 Forbidden",
+      "passed": true
+    },
+    {
+      "scenario": "3. Admin User (role_id = 1)",
+      "expected": "200 Authorized (Bypass)",
+      "actual": "200 Authorized (Bypass)",
+      "passed": true
+    },
+    {
+      "scenario": "4. Course Owner / Instructor (role_id = 2)",
+      "expected": "200 Authorized",
+      "actual": "200 Authorized",
+      "passed": true
+    },
+    {
+      "scenario": "5. Invalid Lesson ID (Không tồn tại)",
+      "expected": "404 Not Found",
+      "actual": "404 Not Found",
+      "passed": true
+    },
+    {
+      "scenario": "6. Tampered Lesson Access (ID âm / chuỗi rác)",
+      "expected": "404 Not Found",
+      "actual": "404 Not Found",
+      "passed": true
+    }
+  ]
+}

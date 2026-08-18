@@ -16,9 +16,168 @@ const getVietnamDateString = (date = new Date()) => {
 };
 
 /**
+ * Xác thực quyền truy cập bài học và khóa học dựa trên PostgreSQL làm Source of Truth
+ */
+const verifyLessonAndCourseAccess = async (userId, lessonId) => {
+  if (!lessonId || Number(lessonId) === 0) {
+    return { isGlobal: true, courseId: null, lesson: null, authorized: true };
+  }
+
+  const parsedLessonId = Number(lessonId);
+  if (isNaN(parsedLessonId) || parsedLessonId <= 0) {
+    const notFoundErr = new Error('Mã bài học không hợp lệ.');
+    notFoundErr.status = 404;
+    throw notFoundErr;
+  }
+
+  const hierarchyRes = await db.query(`
+    SELECT l.lesson_id, l.title as lesson_title, s.section_id, s.title as section_title, s.course_id, c.course_name, c.price, c.instructor_id
+    FROM lessons l
+    JOIN sections s ON l.section_id = s.section_id
+    JOIN courses c ON s.course_id = c.course_id
+    WHERE l.lesson_id = $1
+    LIMIT 1;
+  `, [parsedLessonId]);
+
+  if (hierarchyRes.rows.length === 0) {
+    const notFoundErr = new Error('Bài học không tồn tại trên hệ thống.');
+    notFoundErr.status = 404;
+    throw notFoundErr;
+  }
+
+  const lessonInfo = hierarchyRes.rows[0];
+  const courseId = Number(lessonInfo.course_id);
+  const coursePrice = Number(lessonInfo.price || 0);
+  const instructorId = Number(lessonInfo.instructor_id);
+
+  if (userId) {
+    const parsedUserId = Number(userId);
+    const userRes = await db.query('SELECT user_id, role_id FROM users WHERE user_id = $1', [parsedUserId]);
+    if (userRes.rows.length > 0) {
+      const roleId = Number(userRes.rows[0].role_id);
+      // 1. Admin (role 1) có toàn quyền
+      if (roleId === 1) {
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+      }
+      // 2. Giảng viên sở hữu khóa học
+      if (roleId === 2 && instructorId === parsedUserId) {
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+      }
+      // 3. Khóa học miễn phí (price = 0)
+      if (coursePrice === 0) {
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+      }
+      // 4. Học viên đã ghi danh / thanh toán thành công
+      const paymentRes = await db.query(
+        "SELECT 1 FROM payments WHERE student_id = $1 AND course_id = $2 AND status = 'completed' LIMIT 1",
+        [parsedUserId, courseId]
+      );
+      if (paymentRes.rows.length > 0) {
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+      }
+      // Chưa thanh toán khóa học có phí
+      const forbiddenErr = new Error('Bạn chưa ghi danh khóa học này để sử dụng trợ lý học tập AI.');
+      forbiddenErr.status = 403;
+      throw forbiddenErr;
+    }
+  }
+
+  // Khóa học miễn phí mặc định cho phép truy cập
+  if (coursePrice === 0) {
+    return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+  }
+
+  const forbiddenErr = new Error('Vui lòng đăng nhập và ghi danh khóa học để sử dụng trợ lý học tập AI.');
+  forbiddenErr.status = 403;
+  throw forbiddenErr;
+};
+
+/**
+ * Hàm tìm kiếm ngữ cảnh thống nhất (Hỗ trợ cả Current-Lesson QA và Course-Wide Search)
+ */
+const retrieveContext = async (lessonId, question, mode = 'current_lesson', verifiedCourseId = null) => {
+  const embeddingResult = await embeddingModel.embedContent({
+    content: { parts: [{ text: question }] },
+    outputDimensionality: 768
+  });
+  const queryVector = embeddingResult.embedding?.values;
+
+  if (!queryVector) {
+    throw new Error("Không thể tạo vector embedding từ câu hỏi.");
+  }
+
+  const queryOptions = {
+    vector: queryVector,
+    includeMetadata: true
+  };
+
+  const activeVersion = (process.env.ACTIVE_RAG_VERSION || 'v2').toLowerCase();
+  const isV2 = activeVersion === 'v2';
+
+  // 1. Phân giải Namespace tương ứng với phiên bản kích hoạt
+  const targetNamespace = isV2
+    ? (process.env.PINECONE_NAMESPACE_V2 || process.env.PINECONE_NAMESPACE || 'rag-v2')
+    : (process.env.PINECONE_NAMESPACE_V1 || '');
+
+  const targetIndex = (pineconeIndex && typeof pineconeIndex.namespace === 'function' && targetNamespace)
+    ? pineconeIndex.namespace(targetNamespace)
+    : pineconeIndex;
+
+  // 2. Thiết lập bộ lọc truy vấn tương thích chuẩn xác theo phiên bản
+  if (isV2) {
+    if (mode === 'course_wide' && verifiedCourseId) {
+      // V2 Course-Wide Retrieval: Lọc theo course_id VÀ schema_version = 'v2'
+      queryOptions.topK = 3;
+      queryOptions.filter = {
+        course_id: { $eq: Number(verifiedCourseId) },
+        schema_version: { $eq: 'v2' }
+      };
+    } else {
+      // V2 Current-Lesson Retrieval: Lọc theo lesson_id VÀ schema_version = 'v2'
+      queryOptions.topK = 2;
+      const parsedLessonId = Number(lessonId);
+      if (!isNaN(parsedLessonId) && parsedLessonId > 0) {
+        queryOptions.filter = {
+          lesson_id: { $eq: parsedLessonId },
+          schema_version: { $eq: 'v2' }
+        };
+      }
+    }
+  } else {
+    // V1 Rollback Mode: Truy vấn V1 namespace/index KHÔNG áp đặt schema_version = 'v2'
+    queryOptions.topK = 2;
+    const parsedLessonId = Number(lessonId);
+    if (!isNaN(parsedLessonId) && parsedLessonId > 0) {
+      queryOptions.filter = {
+        lesson_id: { $eq: parsedLessonId }
+      };
+    }
+  }
+
+  let matches = [];
+  try {
+    if (targetIndex) {
+      const queryResponse = await targetIndex.query(queryOptions);
+      matches = queryResponse.matches || [];
+    }
+  } catch (pcErr) {
+    console.warn(`[Pinecone Retrieval Warning] ${pcErr.message}`);
+  }
+
+  const contextText = matches
+    .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
+    .filter(Boolean)
+    .join("\n");
+
+  return { contextText, matches };
+};
+
+const { routeIntent, INTENTS } = require('./intentRouter.service');
+
+/**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
  */
-const handleRagChat = async (userId, lessonId, question) => {
+const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto') => {
   try {
     if (!question) {
       return { success: false, reply: "Vui lòng nhập câu hỏi." };
@@ -34,8 +193,10 @@ const handleRagChat = async (userId, lessonId, question) => {
       };
     }
 
-    const isGlobalChat = !lessonId || Number(lessonId) === 0;
+    const accessInfo = await verifyLessonAndCourseAccess(userId, lessonId);
+    const isGlobalChat = accessInfo.isGlobal;
     let contextText = "";
+    let detectedIntent = null;
 
     if (isGlobalChat) {
       // 1. Đối với Chatbot toàn cục: Lấy dữ liệu khóa học thật từ DB để AI trả lời đúng trọng tâm thông tin hệ thống
@@ -57,35 +218,31 @@ const handleRagChat = async (userId, lessonId, question) => {
         contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
       }
     } else {
-      // 2. Đối với AI Assistant trong bài học: Sử dụng RAG Pinecone để lấy ngữ cảnh từ transcript video bài giảng
-      const embeddingResult = await embeddingModel.embedContent({
-        content: { parts: [{ text: question }] },
-        outputDimensionality: 768
-      });
-      const queryVector = embeddingResult.embedding?.values;
+      // 2. Đối với AI Assistant trong bài học: Sử dụng Intent Router tự động phân giải phạm vi Retrieval
+      const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
+      let effectiveScope = 'current_lesson';
 
-      if (!queryVector) {
-        throw new Error("Không thể tạo vector embedding từ câu hỏi.");
+      if (isDevOrAdmin && (retrievalMode === 'force_course' || retrievalMode === 'course_wide')) {
+        effectiveScope = 'course_wide';
+        console.log(`[Intent Router Debug] Overridden to course_wide by ${accessInfo.isAdmin ? 'Admin' : 'Dev Environment'}`);
+      } else if (isDevOrAdmin && retrievalMode === 'force_lesson') {
+        effectiveScope = 'current_lesson';
+        console.log(`[Intent Router Debug] Overridden to current_lesson by ${accessInfo.isAdmin ? 'Admin' : 'Dev Environment'}`);
+      } else {
+        // Trong môi trường Production: Backend Intent Router là nguồn quyết định tuyệt đối
+        detectedIntent = await routeIntent(question, {
+          lessonId,
+          hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
+          courseId: accessInfo.courseId
+        });
+        effectiveScope = detectedIntent.scope;
+        console.log(`[Intent Router] Question: "${question.slice(0, 40)}..." -> Intent: ${detectedIntent.intent} | Scope: ${effectiveScope} (${detectedIntent.method})`);
       }
 
-      const queryOptions = {
-        vector: queryVector,
-        topK: 2,
-        includeMetadata: true
-      };
-
-      const parsedLessonId = Number(lessonId);
-      if (!isNaN(parsedLessonId)) {
-        queryOptions.filter = { lesson_id: { $eq: parsedLessonId } };
+      if (effectiveScope !== 'none') {
+        const retrievalRes = await retrieveContext(lessonId, question, effectiveScope, accessInfo.courseId);
+        contextText = retrievalRes.contextText;
       }
-
-      const queryResponse = await pineconeIndex.query(queryOptions);
-
-      const matches = queryResponse.matches || [];
-      contextText = matches
-        .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
-        .filter(Boolean)
-        .join("\n");
     }
 
     // 3. Tạo Prompt Engineering gửi cho Gemini (Đã tối ưu hóa tính tự nhiên)
@@ -122,18 +279,25 @@ CÂU HỎI CỦA HỌC VIÊN:
 "${question}"`;
 
     const result = await geminiModel.generateContent(systemPrompt);
+    const reply = result.response ? result.response.text() : (typeof result === 'string' ? result : "");
 
-    return { success: true, reply: result.response.text() };
+    return {
+      success: true,
+      reply: reply || "Tôi đã nhận được câu hỏi nhưng không thể phản hồi ngay lúc này."
+    };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChat:", error);
-    throw new Error("Hệ thống AI Assistant đang bận.");
+    return {
+      success: false,
+      reply: "Rất tiếc, đã có sự cố kết nối tới hệ thống AI Assistant. Vui lòng thử lại sau ít phút."
+    };
   }
 };
 
 /**
  * Xử lý RAG Chat dạng Stream (Trả về async generator / stream chunks từ Gemini)
  */
-const handleRagChatStream = async (userId, lessonId, question, onChunk) => {
+const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto') => {
   try {
     if (!question) {
       if (onChunk) onChunk("Vui lòng nhập câu hỏi.");
@@ -149,8 +313,10 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk) => {
       return safeReply;
     }
 
-    const isGlobalChat = !lessonId || Number(lessonId) === 0;
+    const accessInfo = await verifyLessonAndCourseAccess(userId, lessonId);
+    const isGlobalChat = accessInfo.isGlobal;
     let contextText = "";
+    let detectedIntent = null;
 
     if (isGlobalChat) {
       try {
@@ -171,30 +337,25 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk) => {
         contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
       }
     } else {
-      const embeddingResult = await embeddingModel.embedContent({
-        content: { parts: [{ text: question }] },
-        outputDimensionality: 768
-      });
-      const queryVector = embeddingResult.embedding?.values;
+      const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
+      let effectiveScope = 'current_lesson';
 
-      if (queryVector) {
-        const queryOptions = {
-          vector: queryVector,
-          topK: 2,
-          includeMetadata: true
-        };
+      if (isDevOrAdmin && (retrievalMode === 'force_course' || retrievalMode === 'course_wide')) {
+        effectiveScope = 'course_wide';
+      } else if (isDevOrAdmin && retrievalMode === 'force_lesson') {
+        effectiveScope = 'current_lesson';
+      } else {
+        detectedIntent = await routeIntent(question, {
+          lessonId,
+          hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
+          courseId: accessInfo.courseId
+        });
+        effectiveScope = detectedIntent.scope;
+      }
 
-        const parsedLessonId = Number(lessonId);
-        if (!isNaN(parsedLessonId)) {
-          queryOptions.filter = { lesson_id: { $eq: parsedLessonId } };
-        }
-
-        const queryResponse = await pineconeIndex.query(queryOptions);
-        const matches = queryResponse.matches || [];
-        contextText = matches
-          .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
-          .filter(Boolean)
-          .join("\n");
+      if (effectiveScope !== 'none') {
+        const retrievalRes = await retrieveContext(lessonId, question, effectiveScope, accessInfo.courseId);
+        contextText = retrievalRes.contextText;
       }
     }
 
@@ -249,9 +410,15 @@ CÂU HỎI CỦA HỌC VIÊN:
  * Đối tượng service tương thích với các API hiện tại
  */
 class ChatbotService {
-  async ask(question, lessonId, userId = null) {
+  async ask(question, lessonId, userId = null, scope = 'auto') {
     try {
-      const result = await handleRagChat(userId, lessonId, question);
+      let retrievalMode = 'auto';
+      if (scope === 'course' || scope === 'course_wide' || scope === 'force_course') {
+        retrievalMode = 'course_wide';
+      } else if (scope === 'force_lesson') {
+        retrievalMode = 'force_lesson';
+      }
+      const result = await handleRagChat(userId, lessonId, question, retrievalMode);
       return result.reply;
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.ask:", error);
@@ -263,9 +430,15 @@ class ChatbotService {
     }
   }
 
-  async askStream(question, lessonId, userId, onChunk) {
+  async askStream(question, lessonId, userId, onChunk, scope = 'auto') {
     try {
-      return await handleRagChatStream(userId, lessonId, question, onChunk);
+      let retrievalMode = 'auto';
+      if (scope === 'course' || scope === 'course_wide' || scope === 'force_course') {
+        retrievalMode = 'course_wide';
+      } else if (scope === 'force_lesson') {
+        retrievalMode = 'force_lesson';
+      }
+      return await handleRagChatStream(userId, lessonId, question, onChunk, retrievalMode);
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.askStream:", error);
       throw error;
@@ -729,14 +902,17 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
 const serviceInstance = new ChatbotService();
 
 module.exports = {
-  ask: (question, lessonId, userId) => serviceInstance.ask(question, lessonId, userId),
-  askStream: (question, lessonId, userId, onChunk) => serviceInstance.askStream(question, lessonId, userId, onChunk),
+  ask: (question, lessonId, userId, scope) => serviceInstance.ask(question, lessonId, userId, scope),
+  askStream: (question, lessonId, userId, onChunk, scope) => serviceInstance.askStream(question, lessonId, userId, onChunk, scope),
   generateQuiz: (lessonId) => serviceInstance.generateQuiz(lessonId),
   saveHistory: (userId, lessonId, question, answer) => serviceInstance.saveHistory(userId, lessonId, question, answer),
   getHistory: (userId, lessonId) => serviceInstance.getHistory(userId, lessonId),
   clearHistory: (userId, lessonId) => serviceInstance.clearHistory(userId, lessonId),
   evaluateAudio: (filePath, mimetype, targetText, isQA) => serviceInstance.evaluateAudio(filePath, mimetype, targetText, isQA),
   getTokenBalance: (userId) => serviceInstance.getTokenBalance(userId),
-  handleRagChat
+  handleRagChat,
+  handleRagChatStream,
+  verifyLessonAndCourseAccess,
+  retrieveContext
 };
 
