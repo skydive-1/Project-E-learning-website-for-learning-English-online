@@ -1,20 +1,21 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiPlayCircle, FiArrowRight, FiBookOpen, FiClock } from 'react-icons/fi';
+import { FiPlay, FiClock, FiArrowRight, FiBookOpen } from 'react-icons/fi';
 import './LessonCard.css';
 
 /**
- * LessonCard Component (Phase 8 - Timestamp Awareness & Click-to-Seek)
- * - Hiển thị thẻ bài học xác thực (Udemy-like UX)
- * - Hiển thị mốc thời gian phụ đề (startTime / endTime)
- * - Click-to-Seek: Tua trực tiếp video nếu đang ở cùng bài học, hoặc điều hướng kèm query ?seek= nếu ở bài khác
+ * LessonCard Component (Udemy AI Assistant direction)
+ * - Hiển thị thẻ bài học xác thực như một thẻ gợi ý nội dung chuyên nghiệp
+ * - Hiển thị mốc thời gian phụ đề chính xác (timestamp)
+ * - CTA rõ ràng: "Tua đến MM:SS" (cùng bài) hoặc "Mở bài học" (khác bài)
+ * - Không hiển thị điểm số kỹ thuật thô
  */
-const LessonCard = ({ 
-  source, 
-  action, 
-  currentLessonId = null, 
-  onSeekVideo = null, 
-  onNavigate = null 
+const LessonCard = ({
+  source,
+  action,
+  currentLessonId = null,
+  onSeekVideo = null,
+  onNavigate = null
 }) => {
   const navigate = useNavigate();
 
@@ -26,8 +27,8 @@ const LessonCard = ({
   const badgeText = source.badgeText || 'Bài học liên quan';
   const courseName = source.courseName;
 
-  const startTime = source.startTime !== undefined && source.startTime !== null 
-    ? Number(source.startTime) 
+  const startTime = source.startTime !== undefined && source.startTime !== null
+    ? Number(source.startTime)
     : (action?.startTime !== undefined && action?.startTime !== null ? Number(action.startTime) : null);
 
   const formattedTime = source.formattedTime || action?.formattedTime || (startTime !== null ? formatSecondsToMMSS(startTime) : null);
@@ -45,59 +46,66 @@ const LessonCard = ({
   const handleCardClick = (e) => {
     e.preventDefault();
     if (isCurrentLesson && startTime !== null && onSeekVideo) {
-      // Đang ở đúng bài học -> Tua trực tiếp video đến mốc thời gian
       onSeekVideo(startTime);
     } else if (onNavigate) {
       onNavigate(lessonId, startTime);
     } else if (lessonId) {
-      const targetUrl = startTime !== null 
-        ? `/lessons/${lessonId}?seek=${startTime}` 
+      const targetUrl = startTime !== null
+        ? `/lessons/${lessonId}?seek=${startTime}`
         : `/lessons/${lessonId}`;
       navigate(targetUrl);
     }
   };
 
   return (
-    <div className="ai-lesson-card animate-fade-in" onClick={handleCardClick}>
-      <div className="ai-lesson-card-header">
-        <span className="ai-lesson-card-badge">
-          <FiBookOpen className="badge-icon" />
-          {badgeText}
-        </span>
+    <div 
+      className={`ai-course-card ${isCurrentLesson ? 'is-current-lesson' : ''}`}
+      onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(e); }}
+    >
+      {/* Card Header: Badges */}
+      <div className="ai-course-card-header">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="ai-course-card-badge">
+            <FiBookOpen className="badge-icon" />
+            <span>{badgeText}</span>
+          </span>
+          {courseName && (
+            <span className="ai-course-card-course-tag" title={courseName}>
+              {courseName}
+            </span>
+          )}
+        </div>
+
         {formattedTime && (
-          <span className="ai-lesson-card-time-badge" title={`Thời điểm bắt đầu: ${formattedTime}`}>
+          <span className="ai-course-card-timestamp" title={`Mốc thời gian: ${formattedTime}`}>
             <FiClock className="time-icon" />
-            {formattedTime}
+            <span>{formattedTime}</span>
           </span>
-        )}
-        {courseName && (
-          <span className="ai-lesson-card-course">{courseName}</span>
         )}
       </div>
 
-      <div className="ai-lesson-card-body">
-        <div className="ai-lesson-card-icon-wrapper">
-          <FiPlayCircle className="play-icon" />
+      {/* Card Body: Lesson Title & Section */}
+      <div className="ai-course-card-body">
+        <div className="ai-course-card-play-icon">
+          <FiPlay className="play-symbol" />
         </div>
-        <div className="ai-lesson-card-info">
-          <h4 className="ai-lesson-card-title">{lessonTitle}</h4>
-          <p className="ai-lesson-card-section">{sectionTitle}</p>
+        <div className="ai-course-card-content">
+          <h4 className="ai-course-card-title">{lessonTitle}</h4>
+          <p className="ai-course-card-section">{sectionTitle}</p>
         </div>
       </div>
 
-      <div className="ai-lesson-card-footer">
-        <button 
-          type="button" 
-          className={`ai-lesson-card-btn ${isCurrentLesson && startTime !== null ? 'seek-btn' : ''}`}
-          onClick={handleCardClick}
-        >
-          <span>
-            {isCurrentLesson && startTime !== null 
-              ? `Tua đến ${formattedTime}` 
-              : (startTime !== null ? `Mở bài học (từ ${formattedTime})` : 'Mở bài học')}
-          </span>
-          <FiArrowRight className="arrow-icon" />
-        </button>
+      {/* Card Action Footer */}
+      <div className="ai-course-card-footer">
+        <span className="ai-course-card-action-text">
+          {isCurrentLesson && startTime !== null
+            ? `Tua video đến ${formattedTime}`
+            : (startTime !== null ? `Mở bài học (từ ${formattedTime})` : 'Xem bài học này')}
+        </span>
+        <FiArrowRight className="ai-course-card-arrow" />
       </div>
     </div>
   );

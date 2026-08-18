@@ -904,11 +904,11 @@ const LessonDetailPage = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-10 gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-              {/* Left Area - 70% — Wrapper bọc ngoài để transition mượt khi chuyển bài */}
+              {/* Left Area - 65%-70% (xl: 8 cols, lg: 7 cols) — Wrapper bọc ngoài để transition mượt khi chuyển bài */}
               <div
-                className="col-span-10 lg:col-span-7 flex flex-col space-y-6"
+                className="col-span-1 lg:col-span-7 xl:col-span-8 flex flex-col space-y-6"
                 style={{
                   opacity: isLessonLoading ? 0.6 : 1,
                   transition: 'opacity 0.2s ease',
@@ -916,7 +916,7 @@ const LessonDetailPage = () => {
                 }}
               >
                 {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
-                  <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                  <div className="w-full flex flex-col space-y-6">
                     <QuizContent
                       lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''}
                       onComplete={async (score, total) => {
@@ -933,7 +933,7 @@ const LessonDetailPage = () => {
                     />
                   </div>
                 ) : currentLesson?.type === 'speaking' ? (
-                  <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                  <div className="w-full flex flex-col space-y-6">
                     <SpeakingExercise
                       lessonId={currentLesson?.id ? currentLesson.id.replace('speaking-', '') : ''}
                       speakingSentences={currentLesson.speakingSentences}
@@ -951,7 +951,7 @@ const LessonDetailPage = () => {
                     />
                   </div>
                 ) : (
-                  <div className="col-span-10 lg:col-span-7 flex flex-col space-y-6">
+                  <div className="w-full flex flex-col space-y-6">
 
                     {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
                     <div
@@ -1253,8 +1253,8 @@ const LessonDetailPage = () => {
                 )}
               </div>{/* end left area opacity wrapper */}
 
-              {/* Right Sidebar Area - 30% */}
-              <div className="col-span-10 lg:col-span-3 flex flex-col h-[calc(100vh-140px)] lg:sticky lg:top-24 border rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
+              {/* Right Sidebar Area - 35%-40% (xl: 4 cols, lg: 5 cols, desktop width ~440-480px) */}
+              <div className="col-span-1 lg:col-span-5 xl:col-span-4 flex flex-col h-[calc(100vh-110px)] lg:sticky lg:top-20 border rounded-2xl overflow-hidden shadow-sm transition-all duration-300" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
 
                 {/* Sidebar Tabs Headers */}
                 <div className="flex border-b shrink-0" style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}>

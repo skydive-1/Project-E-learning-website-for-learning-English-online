@@ -1,63 +1,79 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiSend, FiCpu, FiMessageSquare, FiTrash2, FiMic, FiCheck, FiX } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { askChatbot, askChatbotStream, getChatHistory, saveChatHistory, askChatbotAudio, getTokenBalance, generateChatbotQuiz, clearChatHistory } from '../services/chatbot.service';
-import LessonCard from './LessonCard';
+import { 
+  askChatbotStream, 
+  getChatHistory, 
+  saveChatHistory, 
+  askChatbotAudio, 
+  getTokenBalance, 
+  generateChatbotQuiz, 
+  clearChatHistory 
+} from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 
-const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose = null }) => {
+import ChatHeader from './ChatHeader';
+import MessageList from './MessageList';
+import EmptyState from './EmptyState';
+import Composer from './Composer';
+
+/**
+ * ChatBox Component (Udemy-like AI Assistant Panel)
+ * - Đảm nhận toàn bộ điều phối luồng hội thoại RAG AI
+ * - Phân rã mô-đun hóa: ChatHeader, MessageList, EmptyState, Composer
+ * - Hỗ trợ Click-to-Seek video, trắc nghiệm tương tác, voice recording
+ */
+const ChatBox = ({ 
+  lessonId = 0, 
+  currentTime = null, 
+  onSeekVideo = null, 
+  onClose = null 
+}) => {
   const { user } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
+
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const [quizStates, setQuizStates] = useState({}); // Lưu trạng thái tương tác trắc nghiệm { [messageId]: { currentIdx, selectedOption, isAnswered, score } }
-  const [tokenBalance, setTokenBalance] = useState({
-    tokens_used: 0,
-    token_max_limit: 6000,
-    tokens_remaining: 6000
-  });
-  
+  const [quizStates, setQuizStates] = useState({});
+
   const messagesEndRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
   const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
 
-  const handleStartAudioRecording = async () => {
-    try {
-      await startRecording();
-      recordingTimeoutRef.current = setTimeout(() => {
-        handleStopAudioRecording();
-      }, 60000); // Tự động ngắt sau 60s
-    } catch (err) {
-      console.error("Ghi âm thất bại:", err);
-    }
-  };
-
-  // Helper gõ chữ từng từ từng câu với Skeleton Loading chuẩn cho TOÀN BỘ ROLE (Student, Instructor, Admin)
+  // Helper gõ chữ từng từ mượt mà
   const streamTextWordByWord = async (aiMessageId, fullText, extraProps = {}) => {
     if (!fullText) {
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: false, ...extraProps } : m));
       return;
     }
 
-    // Hiển thị Skeleton Loading trong 350ms để tạo cảm giác AI đang đọc/suy nghĩ
     setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: true, ...extraProps } : m));
-    await new Promise(r => setTimeout(r, 350));
+    await new Promise(r => setTimeout(r, 250));
 
     let currentAccumulated = '';
     const words = fullText.split(/(\s+)/);
     for (let i = 0; i < words.length; i++) {
       currentAccumulated += words[i];
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentAccumulated, isStreaming: true, ...extraProps } : m));
-      // Tốc độ nhịp gõ 15ms - 28ms tự nhiên chuẩn phản xạ
-      await new Promise(r => setTimeout(r, Math.random() * 13 + 15));
+      await new Promise(r => setTimeout(r, Math.random() * 12 + 14));
     }
 
     setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: fullText, isStreaming: false, ...extraProps } : m));
+  };
+
+  const handleStartAudioRecording = async () => {
+    try {
+      await startRecording();
+      recordingTimeoutRef.current = setTimeout(() => {
+        handleStopAudioRecording();
+      }, 60000);
+    } catch (err) {
+      console.error("Ghi âm thất bại:", err);
+    }
   };
 
   const handleStopAudioRecording = async () => {
@@ -71,7 +87,7 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
     const userAudioMessage = {
       id: audioMessageId,
       sender: "user",
-      text: "🎤 [Đoạn ghi âm]",
+      text: "🎤 [Ghi âm giọng nói]",
       timestamp: new Date()
     };
 
@@ -90,17 +106,16 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
     try {
       const result = await askChatbotAudio(audioBlob, lessonId);
       await streamTextWordByWord(aiMessageId, result.reply);
-      fetchBalance();
 
       if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
         saveChatHistory(user.userId, lessonId, "[Ghi âm giọng nói]", result.reply).catch(err => {
-          console.warn('⚠️ Lỗi tự động lưu hội thoại ngầm:', err.message);
+          console.warn('⚠️ Lỗi tự động lưu hội thoại:', err.message);
         });
       }
     } catch (error) {
       setMessages(prev => prev.map(m => m.id === aiMessageId ? {
         ...m,
-        text: "Không thể xử lý đoạn ghi âm. Hãy thử lại hoặc chuyển sang nhập văn bản.",
+        text: "Không thể nhận diện đoạn ghi âm. Vui lòng thử lại hoặc gõ câu hỏi.",
         isStreaming: false,
         isError: true
       } : m));
@@ -116,28 +131,12 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
     stopRecording();
   };
 
-  const fetchBalance = async () => {
-    if (!user?.userId) return;
-    try {
-      const balance = await getTokenBalance(user.userId);
-      if (balance) {
-        setTokenBalance(balance);
-      }
-    } catch (err) {
-      console.warn('⚠️ Cảnh báo kiểm tra số dư Token AI:', err.message);
-    }
-  };
-
-  useEffect(() => {
-    fetchBalance();
-  }, [user?.userId, user?.id]);
-
   // Cuộn xuống tin nhắn mới nhất
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Tải lịch sử chat cũ khi lessonId hoặc user thay đổi (Xử lý Race Conditions và Loading)
+  // Nạp lịch sử hội thoại
   useEffect(() => {
     let isCurrent = true;
     const fetchHistory = async () => {
@@ -145,7 +144,7 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
         setIsHistoryLoading(false);
         return;
       }
-      
+
       setIsHistoryLoading(true);
       try {
         const historyData = await getChatHistory(user.userId, lessonId);
@@ -162,9 +161,9 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
             setMessages(mappedMessages);
           } else {
             const welcomeText = (lessonId === 0 || lessonId === '0' || !lessonId)
-              ? "Hello! Tôi là Trợ lý học tiếng Anh AI của bạn. Tôi có thể hỗ trợ giải thích ngữ pháp, từ vựng, luyện viết hoặc chat tiếng Anh cùng bạn để nâng cao phản xạ. Hôm nay bạn muốn học gì nào?"
-              : "Hello! Tôi là Trợ lý ảo RAG AI học tập của bạn. Tôi đã đọc qua bài học này. Bạn có câu hỏi nào cần giải đáp về ngữ pháp, từ vựng hay muốn luyện phản xạ nói không?";
-            
+              ? "Xin chào! Tôi là Trợ lý học tiếng Anh AI của bạn. Tôi có thể hỗ trợ giải thích ngữ pháp, từ vựng, tra cứu khóa học hoặc tạo bài tập ôn luyện. Bạn muốn tìm hiểu gì hôm nay?"
+              : "Xin chào! Tôi là Trợ lý AI đồng hành cùng bạn trong bài học này. Bạn có câu hỏi nào về nội dung video, từ vựng hay cấu trúc câu cần giải thích không?";
+
             const welcomeMsgId = "msg-welcome";
             setMessages([
               {
@@ -231,16 +230,15 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
                             text.toLowerCase().includes("bài tập trắc nghiệm");
 
       if (isQuizRequest) {
-        const quizIntro = "Tôi đã tạo cho bạn 2 câu hỏi trắc nghiệm nhanh dưới đây để kiểm tra kiến thức về bài học này:";
+        const quizIntro = "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức:";
         const quizData = await generateChatbotQuiz(lessonId);
         await streamTextWordByWord(aiMessageId, quizIntro, { quizData });
-        fetchBalance();
       } else {
         let finalSources = [];
         let finalActions = [];
 
-        const validCurrentTime = (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0) 
-          ? Number(currentTime) 
+        const validCurrentTime = (currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0)
+          ? Number(currentTime)
           : null;
 
         const streamRes = await askChatbotStream(text, lessonId, (accumulatedText, eventPayload) => {
@@ -263,7 +261,6 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
           finalActions = streamRes.actions || [];
         }
 
-        // Kết thúc streaming thành công
         setMessages(prev => prev.map(m => m.id === aiMessageId ? {
           ...m,
           text: finalAnswerText,
@@ -271,7 +268,6 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
           sources: finalSources,
           actions: finalActions
         } : m));
-        fetchBalance();
 
         if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
           saveChatHistory(user.userId, lessonId, text, finalAnswerText, finalSources, finalActions).catch(err => {
@@ -282,7 +278,7 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
     } catch (error) {
       console.error('⚠️ Lỗi phản hồi chatbot:', error);
       let errorMsg = "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.";
-      
+
       if (error instanceof ReferenceError || error instanceof TypeError) {
         errorMsg = `Lỗi thực thi giao diện: ${error.message}`;
       } else if (error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"))) {
@@ -308,15 +304,12 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    handleSendMessage();
-  };
-
   const handleClearChat = async () => {
-    if (window.confirm("Bạn có muốn xóa cuộc hội thoại này không?")) {
+    if (window.confirm("Bạn có muốn xóa cuộc trò chuyện này để bắt đầu lại không?")) {
       try {
-        await clearChatHistory(lessonId);
+        if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
+          await clearChatHistory(user.userId, lessonId);
+        }
         const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
           ? "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn?"
           : "Cuộc hội thoại đã được đặt lại. Tôi có thể giúp gì thêm cho bạn trong bài học này?";
@@ -330,38 +323,33 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
         ]);
       } catch (err) {
         console.error('⚠️ Lỗi khi xóa lịch sử chat:', err);
-        alert("Không thể xóa lịch sử trò chuyện lúc này. Vui lòng thử lại sau.");
+        alert("Không thể xóa lịch sử lúc này. Vui lòng thử lại sau.");
       }
     }
   };
 
-  // Các gợi ý câu hỏi nhanh (Thay đổi động theo chế độ bài học hoặc toàn cục)
-  const quickPrompts = (lessonId === 0 || lessonId === '0' || !lessonId)
-    ? [
-        { label: "🌐 Giới thiệu ngắn về trang", text: "Cho tôi tóm tắt ngắn về trang E-Learn Academy và các chức năng chính." },
-        { label: "📚 Khóa học có sẵn", text: "Danh sách các khóa học hiện có; có khóa cho người mới bắt đầu không?" },
-        { label: "🧭 Lộ trình học", text: "Mô tả ngắn lộ trình học giao tiếp phù hợp cho người mới." }
-      ]
-    : [
-        { label: "Giải thích ngữ pháp", text: "Giải thích ngắn những điểm ngữ pháp chính trong bài này." },
-        { label: "Ví dụ từ vựng", text: "Cho 3 từ vựng quan trọng trong bài và ví dụ câu." },
-        { label: "Tạo bài tập", text: "Tạo 2 câu trắc nghiệm ngắn để ôn bài này." }
-      ];
+  const handleNavigateLesson = (targetLessonId, targetSeek) => {
+    const targetUrl = targetSeek !== null && targetSeek !== undefined
+      ? `/lessons/${targetLessonId}?seek=${targetSeek}`
+      : `/lessons/${targetLessonId}`;
+    navigate(targetUrl);
+    if (onClose) onClose();
+  };
 
-  // Trạng thái chưa đăng nhập: Hiển thị giao diện khóa sang trọng
+  // Chưa đăng nhập: Màn hình yêu cầu đăng nhập trang nhã
   if (!user) {
     return (
-      <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm relative justify-center items-center p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-smart-indigo/10 text-smart-indigo flex items-center justify-center mb-4 border border-smart-indigo/10 dark:border-smart-indigo/20">
-          <FiCpu className="text-3xl animate-pulse" />
+      <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs justify-center items-center p-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-smart-indigo dark:text-indigo-400 flex items-center justify-center mb-3.5 border border-indigo-100 dark:border-indigo-900/40">
+          <span className="text-2xl">✨</span>
         </div>
-        <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm mb-2">Trợ Lý Ảo AI</h3>
-        <p className="text-[11.5px] text-slate-500 dark:text-slate-400 max-w-[220px] leading-relaxed mb-6">
-          Vui lòng đăng nhập để bắt đầu trò chuyện cùng Trợ lý ảo và tự động lưu trữ tiến độ hội thoại theo bài học.
+        <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm mb-1.5">Trợ Lý AI Khóa Học</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[240px] leading-relaxed mb-5">
+          Vui lòng đăng nhập để trao đổi cùng trợ lý AI và lưu lại tiến độ học tập.
         </p>
         <button
           onClick={() => navigate('/login')}
-          className="px-5 py-2.5 bg-smart-indigo hover:bg-indigo-700 text-white font-semibold text-xs tracking-wider uppercase rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform active:scale-95 cursor-pointer"
+          className="px-5 py-2.5 bg-smart-indigo hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer"
         >
           Đăng nhập ngay
         </button>
@@ -370,377 +358,50 @@ const ChatBox = ({ lessonId = 0, currentTime = null, onSeekVideo = null, onClose
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm relative transition-colors duration-300">
-      {/* Chat Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-smart-indigo to-blue-600 text-white shadow-sm shrink-0">
-        <div className="flex items-center space-x-2">
-          <div className="relative">
-            <FiCpu className="text-xl animate-pulse" />
-            <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white"></span>
-          </div>
-          <div>
-            <h3 className="font-semibold text-sm tracking-wide">
-              {Number(lessonId) === 0 ? t('aiAssistantTitle') : "AI Assistant"}
-            </h3>
-            <span className="text-[10.5px] opacity-80">
-              {Number(lessonId) === 0 ? t('aiAssistantSub') : "RAG-powered Tutor"}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-1">
-          <button 
-            onClick={handleClearChat}
-            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-            title={t('clearChatHistory')}
-          >
-            <FiTrash2 className="text-sm" />
-          </button>
-          {onClose && (
-            <button 
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/90 hover:text-white"
-              title="Đóng cửa sổ chat"
-            >
-              <FiX className="text-sm" />
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700/80 rounded-2xl overflow-hidden shadow-sm relative transition-all duration-300">
+      {/* 1. Header Area */}
+      <ChatHeader
+        lessonId={lessonId}
+        onClearChat={handleClearChat}
+        onClose={onClose}
+        isLoading={isLoading}
+        t={t}
+      />
 
-      {/* Message Area with Custom Scrollbar */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/50">
-        {isHistoryLoading ? (
-          <div className="space-y-4">
-            {/* User skeleton message */}
-            <div className="flex justify-end">
-              <div className="w-[60%] h-10 bg-slate-200/80 dark:bg-slate-700/80 rounded-2xl rounded-tr-none animate-pulse"></div>
-            </div>
-            {/* AI skeleton message */}
-            <div className="flex justify-start items-start">
-              <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse mr-2"></div>
-              <div className="w-[70%] h-16 bg-slate-200/80 dark:bg-slate-700/80 rounded-2xl rounded-tl-none animate-pulse"></div>
-            </div>
-            {/* User skeleton message 2 */}
-            <div className="flex justify-end">
-              <div className="w-[45%] h-10 bg-slate-200/80 dark:bg-slate-700/80 rounded-2xl rounded-tr-none animate-pulse"></div>
-            </div>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div 
-              key={msg.id} 
-              className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`flex items-start max-w-[85%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                {/* AI Avatar */}
-                {msg.sender === 'ai' && (
-                  <div className="w-7 h-7 rounded-full bg-smart-indigo/10 dark:bg-smart-indigo/20 text-smart-indigo dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0 mr-2 border border-smart-indigo/10 dark:border-smart-indigo/20">
-                    AI
-                  </div>
-                )}
-                
-                {/* Message Bubble */}
-                <div 
-                  className={`px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-sm ${
-                    msg.sender === 'user' 
-                      ? 'bg-smart-indigo text-white rounded-tr-none whitespace-pre-wrap' 
-                      : msg.isError 
-                        ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900 rounded-tl-none whitespace-pre-wrap'
-                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-100 dark:border-slate-650 rounded-tl-none'
-                  }`}
-                >
-                  {msg.quizData ? (
-                    <div className="space-y-3 p-0.5 animate-fade" style={{ minWidth: '220px' }}>
-                      <p className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
-                        📝 Bài tập trắc nghiệm nhanh
-                      </p>
-                      
-                      {(() => {
-                        const qState = quizStates[msg.id] || { currentIdx: 0, selectedOption: null, isAnswered: false, score: 0 };
-                        const currentIdx = qState.currentIdx;
-                        const total = msg.quizData.length;
-                        
-                        if (currentIdx >= total) {
-                          return (
-                            <div className="text-center py-2 space-y-2">
-                              <p className="text-sm font-extrabold text-emerald-600 dark:text-emerald-450">
-                                🎉 Hoàn thành bài tập!
-                              </p>
-                              <p className="text-xs text-slate-600 dark:text-slate-350">
-                                Kết quả của bạn: <strong>{qState.score}/{total}</strong> câu đúng.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setQuizStates(prev => ({
-                                    ...prev,
-                                    [msg.id]: { currentIdx: 0, selectedOption: null, isAnswered: false, score: 0 }
-                                  }));
-                                }}
-                                className="mt-2 text-[10.5px] px-3 py-1.5 bg-smart-indigo hover:bg-indigo-650 text-white font-bold rounded-lg cursor-pointer transition-colors"
-                              >
-                                Làm lại
-                              </button>
-                            </div>
-                          );
-                        }
-                        
-                        const currentQuestion = msg.quizData[currentIdx];
-                        
-                        return (
-                          <div className="space-y-3">
-                            {/* Question progress */}
-                            <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                              <span>Câu hỏi {currentIdx + 1}/{total}</span>
-                              {qState.isAnswered && (
-                                <span className={qState.selectedOption === currentQuestion.correctAnswer ? 'text-emerald-500 font-extrabold' : 'text-red-500 font-extrabold'}>
-                                  {qState.selectedOption === currentQuestion.correctAnswer ? 'Chính xác!' : 'Chưa đúng!'}
-                                </span>
-                              )}
-                            </div>
-                            
-                            {/* Question text */}
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-relaxed whitespace-normal">
-                              {currentQuestion.question}
-                            </p>
-                            
-                            {/* Option buttons */}
-                            <div className="flex flex-col gap-1.5">
-                              {currentQuestion.options.map((opt, oIdx) => {
-                                let btnStyle = "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-300";
-                                
-                                if (qState.isAnswered) {
-                                  if (oIdx === currentQuestion.correctAnswer) {
-                                    btnStyle = "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-350 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 font-bold";
-                                  } else if (oIdx === qState.selectedOption) {
-                                    btnStyle = "bg-red-50 dark:bg-red-950/40 border-red-350 dark:border-red-800 text-red-700 dark:text-red-400";
-                                  } else {
-                                    btnStyle = "bg-slate-55 dark:bg-slate-800/20 border-slate-200 dark:border-slate-700/50 text-slate-400 dark:text-slate-500 opacity-60";
-                                  }
-                                }
-                                
-                                return (
-                                  <button
-                                    key={oIdx}
-                                    type="button"
-                                    disabled={qState.isAnswered}
-                                    onClick={() => {
-                                      const isCorrect = oIdx === currentQuestion.correctAnswer;
-                                      setQuizStates(prev => ({
-                                        ...prev,
-                                        [msg.id]: {
-                                          ...qState,
-                                          selectedOption: oIdx,
-                                          isAnswered: true,
-                                          score: qState.score + (isCorrect ? 1 : 0)
-                                        }
-                                      }));
-                                    }}
-                                    className={`text-left text-xs px-3.5 py-2.5 rounded-xl border transition-all ${btnStyle} ${!qState.isAnswered && 'cursor-pointer'}`}
-                                  >
-                                    <span className="font-bold mr-1.5">{['A', 'B', 'C', 'D'][oIdx]}.</span> {opt}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            
-                            {/* Explanation box */}
-                            {qState.isAnswered && (
-                              <div className="p-3 bg-slate-55 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl space-y-1.5 animate-fade">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Giải thích chi tiết:</p>
-                                <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-350 font-medium whitespace-normal">
-                                  {currentQuestion.explanation}
-                                </p>
-                                
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setQuizStates(prev => ({
-                                      ...prev,
-                                      [msg.id]: {
-                                        ...qState,
-                                        currentIdx: currentIdx + 1,
-                                        selectedOption: null,
-                                        isAnswered: false
-                                      }
-                                    }));
-                                  }}
-                                  className="w-full mt-2.5 py-2 bg-slate-200 hover:bg-slate-350 dark:bg-slate-750 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold rounded-lg text-xs cursor-pointer transition-colors text-center border-0"
-                                >
-                                  {currentIdx + 1 < total ? 'Câu tiếp theo' : 'Xem kết quả'}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ) : msg.isStreaming && !msg.text ? (
-                    <div className="flex items-center space-x-2 py-1 px-1 min-w-[140px]">
-                      <span className="text-xs text-slate-400 dark:text-slate-300 font-semibold animate-pulse flex items-center gap-1.5">
-                        <FiCpu className="text-smart-indigo dark:text-indigo-400 text-sm animate-spin" />
-                        <span>AI đang soạn câu trả lời...</span>
-                      </span>
-                      <span className="flex space-x-1 items-center ml-1.5">
-                        <span className="w-1.5 h-1.5 bg-smart-indigo dark:bg-indigo-400 rounded-full animate-ping"></span>
-                        <span className="w-1.5 h-1.5 bg-smart-indigo dark:bg-indigo-400 rounded-full animate-ping" style={{ animationDelay: '0.2s' }}></span>
-                        <span className="w-1.5 h-1.5 bg-smart-indigo dark:bg-indigo-400 rounded-full animate-ping" style={{ animationDelay: '0.4s' }}></span>
-                      </span>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="whitespace-pre-wrap">{msg.text}</span>
-                      {msg.isStreaming && (
-                        <span className="inline-block w-2 h-4 ml-1 bg-smart-indigo dark:bg-indigo-400 animate-pulse align-middle rounded-xs"></span>
-                      )}
-                      
-                      {/* Render Verified AI Lesson Cards (Phase 8 - Udemy-like UX & Click-to-Seek) */}
-                      {msg.sources && msg.sources.length > 0 && !msg.isStreaming && (
-                        <div className="ai-lesson-cards-container">
-                          {msg.sources.map((source, sIdx) => (
-                            <LessonCard
-                              key={`src-${msg.id}-${sIdx}-${source.lessonId}`}
-                              source={source}
-                              action={msg.actions?.[sIdx]}
-                              currentLessonId={lessonId}
-                              onSeekVideo={onSeekVideo}
-                              onNavigate={(targetLessonId, targetSeek) => {
-                                const targetUrl = targetSeek !== null && targetSeek !== undefined
-                                  ? `/lessons/${targetLessonId}?seek=${targetSeek}`
-                                  : `/lessons/${targetLessonId}`;
-                                navigate(targetUrl);
-                                if (onClose) onClose();
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Suggested Quick Prompts */}
-      {messages.length === 1 && !isLoading && (
-        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/80 shrink-0 border-t border-slate-100 dark:border-slate-750">
-          <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">Gợi ý nhanh cho bạn:</p>
-          <div className="flex flex-col space-y-1.5">
-            {quickPrompts.map((prompt, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSendMessage(prompt.text)}
-                className="text-left text-xs px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-smart-indigo dark:hover:border-indigo-400 hover:text-smart-indigo dark:hover:text-indigo-400 text-slate-600 dark:text-slate-300 rounded-xl transition-all shadow-sm truncate"
-              >
-                {prompt.label}
-              </button>
-            ))}
-          </div>
+      {/* 2. Main Conversation Area / Empty State */}
+      {messages.length === 1 && !isLoading && !isHistoryLoading ? (
+        <div className="flex-1 overflow-y-auto p-3 flex flex-col justify-center">
+          <EmptyState
+            lessonId={lessonId}
+            onSelectPrompt={(promptText) => handleSendMessage(promptText)}
+          />
         </div>
+      ) : (
+        <MessageList
+          messages={messages}
+          isHistoryLoading={isHistoryLoading}
+          quizStates={quizStates}
+          setQuizStates={setQuizStates}
+          onSeekVideo={onSeekVideo}
+          onNavigate={handleNavigateLesson}
+          lessonId={lessonId}
+          messagesEndRef={messagesEndRef}
+        />
       )}
 
-      {/* Token Balance Progress Bar */}
-      {user && (
-        <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-750 bg-slate-50/50 dark:bg-slate-900/30 shrink-0">
-          <div className="flex justify-between items-center mb-1 text-[11px] font-bold">
-            <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400">
-              <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
-              <span>{t('tokenLimitLabel')}</span>
-            </div>
-            <span className="text-indigo-650 dark:text-indigo-400">
-              {((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) || 0).toLocaleString()} / {(tokenBalance.token_max_limit || 6000).toLocaleString()} Tokens
-            </span>
-          </div>
-          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-indigo-500 to-blue-500 h-full transition-all duration-500 ease-out"
-              style={{ 
-                width: `${Math.min(100, Math.max(0, 
-                  (tokenBalance.token_max_limit || 6000) > 0 
-                    ? ((tokenBalance.tokens_remaining ?? (tokenBalance.token_max_limit - tokenBalance.tokens_used)) / (tokenBalance.token_max_limit || 6000)) * 100 
-                    : 0
-                ))}%` 
-              }}
-            ></div>
-          </div>
-        </div>
-      )}
-
-      {/* Input Bottom Form */}
-      <form 
-        onSubmit={handleSubmit}
-        className="px-3 py-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center space-x-2 shrink-0 animate-fade"
-      >
-        {isRecording ? (
-          <div className="flex-1 flex items-center space-x-3 bg-red-50 dark:bg-red-950/20 px-3.5 py-2 rounded-xl border border-red-100 dark:border-red-900">
-            <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping"></span>
-            <span className="text-xs font-semibold text-red-600 dark:text-red-400">
-              Đang thu âm... {recordingTime}s
-            </span>
-            <div className="flex-1 flex justify-center space-x-1">
-              <span className="w-1 h-3 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-              <span className="w-1 h-5 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-              <span className="w-1 h-2 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></span>
-              <span className="w-1 h-4 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
-              <span className="w-1 h-1.5 bg-red-400 rounded-full animate-bounce" style={{ animationDelay: '0.5s' }}></span>
-            </div>
-            <button
-              type="button"
-              onClick={handleStopAudioRecording}
-              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-            >
-              Gửi
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelAudioRecording}
-              className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 font-semibold"
-            >
-              Hủy
-            </button>
-          </div>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={handleStartAudioRecording}
-              disabled={isLoading}
-              className={`p-2.5 rounded-xl border transition-all ${
-                isLoading 
-                  ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 border-slate-100 dark:border-slate-750 cursor-not-allowed'
-                  : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:text-smart-indigo dark:hover:text-indigo-400 shadow-sm'
-              }`}
-              title="Ghi âm câu hỏi"
-            >
-              <FiMic className="text-sm" />
-            </button>
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder={t('askInputPlaceholder')}
-              className="flex-1 px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-smart-indigo focus:bg-white dark:focus:bg-slate-900 transition-all text-slate-800 dark:text-slate-100"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isLoading}
-              className={`p-2.5 rounded-xl transition-all ${
-                inputText.trim() && !isLoading
-                  ? 'bg-smart-indigo text-white hover:bg-smart-indigo-hover shadow-md hover:shadow-indigo-100'
-                  : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              <FiSend className="text-sm" />
-            </button>
-          </>
-        )}
-      </form>
+      {/* 3. Composer / Input Area */}
+      <Composer
+        inputText={inputText}
+        setInputText={setInputText}
+        onSubmit={() => handleSendMessage()}
+        isLoading={isLoading}
+        isRecording={isRecording}
+        recordingTime={recordingTime}
+        onStartRecord={handleStartAudioRecording}
+        onStopRecord={handleStopAudioRecording}
+        onCancelRecord={handleCancelAudioRecording}
+        placeholder={Number(lessonId) === 0 ? "Đặt câu hỏi cho Trợ lý AI..." : "Hỏi trợ lý AI về bài học này..."}
+      />
     </div>
   );
 };
