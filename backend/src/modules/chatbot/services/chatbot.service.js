@@ -123,17 +123,46 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     ? pineconeIndex.namespace(targetNamespace)
     : pineconeIndex;
 
-  // 2. Thiết lập bộ lọc truy vấn tương thích chuẩn xác theo phiên bản
-  if (isV2) {
-    if (mode === 'course_wide' && verifiedCourseId) {
-      // V2 Course-Wide Retrieval: Lọc theo course_id VÀ schema_version = 'v2'
-      queryOptions.topK = 3;
-      queryOptions.filter = {
-        course_id: { $eq: Number(verifiedCourseId) },
-        schema_version: { $eq: 'v2' }
-      };
-    } else {
-      // V2 Current-Lesson Retrieval: Lọc theo lesson_id VÀ schema_version = 'v2'
+const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch.service');
+
+  let matches = [];
+  let rankedLessons = [];
+  let contextText = "";
+
+  if (isV2 && mode === 'course_wide' && verifiedCourseId) {
+    // 2.A. V2 Hybrid Retrieval (Course-Wide): Pinecone Semantic Search (topK=8) + PostgreSQL Lexical Search + Grouping & Rerank
+    queryOptions.topK = 8;
+    queryOptions.filter = {
+      course_id: { $eq: Number(verifiedCourseId) },
+      schema_version: { $eq: 'v2' }
+    };
+
+    let vectorMatches = [];
+    let lexicalMatches = [];
+
+    // Chạy song song Semantic Vector Search và PostgreSQL Lexical Search
+    try {
+      const [pcRes, lexRes] = await Promise.all([
+        targetIndex ? targetIndex.query(queryOptions) : Promise.resolve({ matches: [] }),
+        searchPostgreSQLLexical(question, Number(verifiedCourseId))
+      ]);
+      vectorMatches = pcRes.matches || [];
+      lexicalMatches = lexRes || [];
+    } catch (searchErr) {
+      console.warn(`[Hybrid Retrieval Warning] ${searchErr.message}`);
+    }
+
+    // Hợp nhất, Gom nhóm theo bài học (Lesson Grouping) và Tái xếp hạng (Deterministic Reranking)
+    rankedLessons = mergeGroupAndRerank(vectorMatches, lexicalMatches, question, { topK: 3 });
+
+    matches = rankedLessons;
+    contextText = rankedLessons.map(l => {
+      const chunkSnippet = l.chunks && l.chunks.length > 0 ? l.chunks.join("\n") : "(Tài liệu bài học)";
+      return `[Bài học: "${l.lessonTitle}" - Chương: "${l.sectionTitle}" (Lesson ID: ${l.lessonId}) - Độ tin cậy: ${(l.rerankScore * 100).toFixed(1)}%]\n${chunkSnippet}`;
+    }).join("\n\n");
+  } else {
+    // 2.B. Current-Lesson Retrieval hoặc V1 Rollback Mode: Giữ nguyên truy xuất độc lập theo lesson_id
+    if (isV2) {
       queryOptions.topK = 2;
       const parsedLessonId = Number(lessonId);
       if (!isNaN(parsedLessonId) && parsedLessonId > 0) {
@@ -142,37 +171,36 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
           schema_version: { $eq: 'v2' }
         };
       }
+    } else {
+      queryOptions.topK = 2;
+      const parsedLessonId = Number(lessonId);
+      if (!isNaN(parsedLessonId) && parsedLessonId > 0) {
+        queryOptions.filter = {
+          lesson_id: { $eq: parsedLessonId }
+        };
+      }
     }
-  } else {
-    // V1 Rollback Mode: Truy vấn V1 namespace/index KHÔNG áp đặt schema_version = 'v2'
-    queryOptions.topK = 2;
-    const parsedLessonId = Number(lessonId);
-    if (!isNaN(parsedLessonId) && parsedLessonId > 0) {
-      queryOptions.filter = {
-        lesson_id: { $eq: parsedLessonId }
-      };
+
+    try {
+      if (targetIndex) {
+        const queryResponse = await targetIndex.query(queryOptions);
+        matches = queryResponse.matches || [];
+      }
+    } catch (pcErr) {
+      console.warn(`[Pinecone Retrieval Warning] ${pcErr.message}`);
     }
+
+    contextText = matches
+      .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
+      .filter(Boolean)
+      .join("\n");
   }
 
-  let matches = [];
-  try {
-    if (targetIndex) {
-      const queryResponse = await targetIndex.query(queryOptions);
-      matches = queryResponse.matches || [];
-    }
-  } catch (pcErr) {
-    console.warn(`[Pinecone Retrieval Warning] ${pcErr.message}`);
-  }
-
-  const contextText = matches
-    .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
-    .filter(Boolean)
-    .join("\n");
-
-  return { contextText, matches };
+  return { contextText, matches, rankedLessons };
 };
 
 const { routeIntent, INTENTS } = require('./intentRouter.service');
+const { contextualizeQuery, getRecentConversationHistory } = require('./queryRewriter.service');
 
 /**
  * Xử lý logic RAG Chat: tạo vector embedding, tìm kiếm ngữ cảnh với bộ lọc lesson_id, và sinh câu trả lời bằng Gemini
@@ -197,6 +225,13 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
     const isGlobalChat = accessInfo.isGlobal;
     let contextText = "";
     let detectedIntent = null;
+    let retrievalQuery = question;
+    let rewriteInfo = null;
+    let conversationHistory = [];
+
+    if (userId) {
+      conversationHistory = await getRecentConversationHistory(userId, lessonId, 6);
+    }
 
     if (isGlobalChat) {
       // 1. Đối với Chatbot toàn cục: Lấy dữ liệu khóa học thật từ DB để AI trả lời đúng trọng tâm thông tin hệ thống
@@ -240,12 +275,27 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto')
       }
 
       if (effectiveScope !== 'none') {
-        const retrievalRes = await retrieveContext(lessonId, question, effectiveScope, accessInfo.courseId);
+        // 2.2. Conversational Query Rewriting: Tách biệt Original Query và Retrieval Query
+        rewriteInfo = await contextualizeQuery(question, conversationHistory, {
+          userId,
+          lessonId,
+          courseId: accessInfo.courseId
+        });
+        retrievalQuery = rewriteInfo.retrievalQuery;
+        if (rewriteInfo.rewritten) {
+          console.log(`[Query Rewriter] Rewrote: "${question}" -> "${retrievalQuery}" (${rewriteInfo.method}, ${rewriteInfo.latencyMs}ms)`);
+        }
+
+        const retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
       }
     }
 
-    // 3. Tạo Prompt Engineering gửi cho Gemini (Đã tối ưu hóa tính tự nhiên)
+    // 3. Tạo Prompt Engineering gửi cho Gemini (Sử dụng Original Question và Context)
+    const historySnippet = conversationHistory.length > 0
+      ? `\nLỊCH SỬ HỘI THOẠI GẦN NHẤT:\n${conversationHistory.map(h => `${h.role}: ${h.content}`).join('\n')}\n`
+      : "";
+
     const systemPrompt = isGlobalChat
       ? `Bạn là Trợ lý ảo học tiếng Anh của E-Learn Academy. E-Learn Academy là một nền tảng học tiếng Anh trực tuyến thông minh với các tính năng chính: Học từ vựng, ngữ pháp, luyện nghe qua video bảo mật, luyện phát âm/nói (Speaking) chấm điểm bằng AI, và làm bài trắc nghiệm (Quiz).
   
@@ -260,7 +310,7 @@ tùy biến riêng cho mục đích học tiếng Anh, rồi khéo léo dẫn d�
 Luôn trả lời bằng đúng ngôn ngữ mà người dùng đang sử dụng để hỏi.
 NGỮ CẢNH HỆ THỐNG:
 ${contextText}
-
+${historySnippet}
 CÂU HỎI CỦA HỌC VIÊN:
 "${question}"`
       : `Bạn là một Trợ lý ảo học tiếng Anh thân thiện và nhiệt tình. Hãy đóng vai một giáo viên hướng dẫn tiếng Anh để trả lời câu hỏi của học viên một cách tự nhiên, sinh động và dễ hiểu.
@@ -274,7 +324,7 @@ HƯỚNG DẪN TRẢ LỜI:
 
 NGỮ CẢNH BÀI HỌC (Nếu có):
 ${contextText || "(Không có tài liệu bổ trợ cụ thể)"}
-
+${historySnippet}
 CÂU HỎI CỦA HỌC VIÊN:
 "${question}"`;
 
@@ -317,6 +367,13 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     const isGlobalChat = accessInfo.isGlobal;
     let contextText = "";
     let detectedIntent = null;
+    let retrievalQuery = question;
+    let rewriteInfo = null;
+    let conversationHistory = [];
+
+    if (userId) {
+      conversationHistory = await getRecentConversationHistory(userId, lessonId, 6);
+    }
 
     if (isGlobalChat) {
       try {
@@ -354,7 +411,14 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       }
 
       if (effectiveScope !== 'none') {
-        const retrievalRes = await retrieveContext(lessonId, question, effectiveScope, accessInfo.courseId);
+        rewriteInfo = await contextualizeQuery(question, conversationHistory, {
+          userId,
+          lessonId,
+          courseId: accessInfo.courseId
+        });
+        retrievalQuery = rewriteInfo.retrievalQuery;
+
+        const retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
       }
     }

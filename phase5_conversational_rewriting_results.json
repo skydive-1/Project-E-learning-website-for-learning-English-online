@@ -1,0 +1,650 @@
+{
+  "total_test_cases": 32,
+  "rewrite_decision_accuracy": "96.9%",
+  "coreference_resolution_accuracy": "93.8%",
+  "bypass_rate": "34.4%",
+  "rewritten_rate": "65.6%",
+  "avg_latency_ms": 731,
+  "p95_latency_ms": 1915,
+  "retrieval_comparison": {
+    "evaluated_cases": 22,
+    "raw_query": {
+      "hit1": "22.7%",
+      "hit3": "40.9%",
+      "mrr": "0.295"
+    },
+    "rewritten_query": {
+      "hit1": "81.8%",
+      "hit3": "90.9%",
+      "mrr": "0.856"
+    }
+  },
+  "test_details": [
+    {
+      "id": "CONV-01",
+      "category": "A. Pronoun Resolution",
+      "originalQuery": "Bài nào nói về nó?",
+      "retrievalQuery": "Bài nào nói về Thì Hiện Tại Tiếp Diễn Present Continuous?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1055,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-02",
+      "category": "A. Pronoun Resolution",
+      "originalQuery": "Nó được dạy ở bài mấy trong khóa học?",
+      "retrievalQuery": "Passive Listening được dạy ở bài mấy trong khóa học?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 911,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-03",
+      "category": "A. Pronoun Resolution",
+      "originalQuery": "Which lesson covers it in this course?",
+      "retrievalQuery": "Which lesson covers the English Mindset reflex concept in this course?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 821,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": true,
+          "rank": 3
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-04",
+      "category": "B. Ellipsis",
+      "originalQuery": "Còn Object Pronouns thì sao?",
+      "retrievalQuery": "Giải thích Object Pronouns trong tiếng Anh",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 929,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": true,
+          "rank": 3
+        },
+        "rewritten": {
+          "hit1": false,
+          "hit3": true,
+          "rank": 3
+        }
+      }
+    },
+    {
+      "id": "CONV-05",
+      "category": "B. Ellipsis",
+      "originalQuery": "Thế còn Speaking Tenses?",
+      "retrievalQuery": "Speaking Tenses",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1140,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-06",
+      "category": "C. Previous Example Reference",
+      "originalQuery": "Cho thêm 2 câu tương tự ví dụ vừa rồi.",
+      "retrievalQuery": "Cho thêm 2 câu ví dụ sử dụng đại từ tân ngữ them tương tự 'I see them every day at school'.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 949,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": true,
+          "rank": 3
+        },
+        "rewritten": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        }
+      }
+    },
+    {
+      "id": "CONV-07",
+      "category": "D. Lesson Reference",
+      "originalQuery": "Có bài nào nên học trước bài đó không?",
+      "retrievalQuery": "Có bài nào nên học trước bài Passive Listening hoặc nghe chép chính tả không?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 827,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-08",
+      "category": "D. Lesson Reference",
+      "originalQuery": "Mở bài đó giúp tôi.",
+      "retrievalQuery": "Mở bài học về First Meeting và giới thiệu bản thân giúp tôi.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1052,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-09",
+      "category": "E. Vietnamese Markers",
+      "originalQuery": "Cấu trúc này áp dụng như thế nào?",
+      "retrievalQuery": "Cấu trúc của Speaking Tenses trong văn phong nói áp dụng như thế nào?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1051,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": false,
+          "hit3": true,
+          "rank": 2
+        }
+      }
+    },
+    {
+      "id": "CONV-10",
+      "category": "E. Vietnamese Markers",
+      "originalQuery": "Bài đó nằm ở đâu trong khóa học?",
+      "retrievalQuery": "Bài học Meet My Family nằm ở đâu trong khóa học?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 914,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-11",
+      "category": "E. Vietnamese Markers",
+      "originalQuery": "Tại sao ở đây lại cần cài đặt cái này?",
+      "retrievalQuery": "Tại sao lại cần cài đặt mindset?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1067,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-12",
+      "category": "E. Vietnamese Markers",
+      "originalQuery": "Dẫn tôi tới phần đó.",
+      "retrievalQuery": "Dẫn tôi tới phần Talking About Yourself.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 930,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-13",
+      "category": "F. English Markers",
+      "originalQuery": "Where is that tense taught in this course?",
+      "retrievalQuery": "Where is Present Continuous tense taught in this course?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1031,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-14",
+      "category": "F. English Markers",
+      "originalQuery": "What should I learn before it?",
+      "retrievalQuery": "What should I learn before Passive Listening dictation?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 919,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-15",
+      "category": "F. English Markers",
+      "originalQuery": "Take me to that lesson please.",
+      "retrievalQuery": "Take me to the lesson about Meeting People and Introductions.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1915,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-16",
+      "category": "F. English Markers",
+      "originalQuery": "Give me more examples of that structure.",
+      "retrievalQuery": "Give me more examples of how Subject Pronouns work.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 2486,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        }
+      }
+    },
+    {
+      "id": "CONV-17",
+      "category": "G. No-History Ambiguity",
+      "originalQuery": "Bài nào nói về nó?",
+      "retrievalQuery": "Bài nào nói về nó?",
+      "rewritten": false,
+      "method": "no_history_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-18",
+      "category": "G. No-History Ambiguity",
+      "originalQuery": "Cái này học ở đâu?",
+      "retrievalQuery": "Cái này học ở đâu?",
+      "rewritten": false,
+      "method": "no_history_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-19",
+      "category": "G. No-History Ambiguity",
+      "originalQuery": "Where is it taught?",
+      "retrievalQuery": "Where is it taught?",
+      "rewritten": false,
+      "method": "no_history_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-20",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Thì Hiện Tại Tiếp Diễn Present Continuous là gì?",
+      "retrievalQuery": "Thì Hiện Tại Tiếp Diễn Present Continuous là gì?",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-21",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Bài nào trong khóa học dạy về Passive Listening?",
+      "retrievalQuery": "Bài nào trong khóa học dạy về Passive Listening?",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-22",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Tóm tắt nội dung bài học số 11",
+      "retrievalQuery": "Tóm tắt nội dung bài học số 11",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-23",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Từ 'comfortable' phát âm như thế nào?",
+      "retrievalQuery": "Từ 'comfortable' phát âm như thế nào?",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-24",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Mở bài học Meet My Family",
+      "retrievalQuery": "Mở bài học Meet My Family",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-25",
+      "category": "A. Pronoun Resolution",
+      "originalQuery": "Bài nào dạy nó trong khóa tiếng Anh cho người mới bắt đầu?",
+      "retrievalQuery": "Bài nào dạy các câu chào hỏi khi mới gặp gỡ trong khóa tiếng Anh cho người mới bắt đầu?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1512,
+      "rewriteDecisionPass": true,
+      "entityPass": false,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-26",
+      "category": "B. Ellipsis",
+      "originalQuery": "Còn bài English Mindset thì học gì?",
+      "retrievalQuery": "Còn bài English Mindset thì học gì?",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": false,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-27",
+      "category": "E. Vietnamese Markers",
+      "originalQuery": "Chuyển sang bài đó cho tôi.",
+      "retrievalQuery": "Chuyển sang bài học hướng dẫn Speaking Tenses về thì Hiện tại đơn và Quá khứ đơn cho tôi.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1050,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-28",
+      "category": "F. English Markers",
+      "originalQuery": "What lesson is that topic covered in?",
+      "retrievalQuery": "What lesson is Family vocabulary covered in?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 907,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-29",
+      "category": "C. Previous Example Reference",
+      "originalQuery": "Đặt thêm 3 câu tương tự cấu trúc này.",
+      "retrievalQuery": "Đặt thêm 3 câu tương tự cấu trúc câu 'I am studying English right now'.",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 917,
+      "rewriteDecisionPass": true,
+      "entityPass": false,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": true,
+          "rank": 2
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-30",
+      "category": "D. Lesson Reference",
+      "originalQuery": "Sau bài đó nên học tiếp bài nào?",
+      "retrievalQuery": "Sau bài học số 12 về Speaking Tenses nên học tiếp bài nào?",
+      "rewritten": true,
+      "method": "llm_rewritten",
+      "latencyMs": 1023,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": {
+        "raw": {
+          "hit1": false,
+          "hit3": false,
+          "rank": 0
+        },
+        "rewritten": {
+          "hit1": true,
+          "hit3": true,
+          "rank": 1
+        }
+      }
+    },
+    {
+      "id": "CONV-31",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Trong khóa học này có bao nhiêu bài giảng tất cả?",
+      "retrievalQuery": "Trong khóa học này có bao nhiêu bài giảng tất cả?",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    },
+    {
+      "id": "CONV-32",
+      "category": "H. Self-Contained (Bypass)",
+      "originalQuery": "Hôm nay tôi muốn luyện tập phát âm tiếng Anh",
+      "retrievalQuery": "Hôm nay tôi muốn luyện tập phát âm tiếng Anh",
+      "rewritten": false,
+      "method": "fast_bypass",
+      "latencyMs": 0,
+      "rewriteDecisionPass": true,
+      "entityPass": true,
+      "retrievalComparison": null
+    }
+  ]
+}

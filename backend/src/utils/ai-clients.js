@@ -75,8 +75,8 @@ function normalizeRequest(request) {
  * Helper gọi generateContent có fallback tự động giữa các model Flash
  */
 async function executeGenerate(client, contents, config) {
-  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.7-flash";
-  const fallbackModels = [preferredModel, "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  const fallbackModels = [preferredModel, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"];
   const triedModels = new Set();
   let lastError = null;
 
@@ -92,7 +92,18 @@ async function executeGenerate(client, contents, config) {
       return response;
     } catch (err) {
       lastError = err;
-      if (err.message && (err.message.includes("not found") || err.message.includes("no longer available") || err.message.includes("503") || err.status === 404 || err.status === 503)) {
+      const errMsg = err.message || "";
+      if (
+        errMsg.includes("not found") ||
+        errMsg.includes("no longer available") ||
+        errMsg.includes("503") ||
+        errMsg.includes("429") ||
+        errMsg.includes("RESOURCE_EXHAUSTED") ||
+        errMsg.includes("Quota exceeded") ||
+        err.status === 404 ||
+        err.status === 503 ||
+        err.status === 429
+      ) {
         continue;
       }
       throw err;
@@ -105,8 +116,8 @@ async function executeGenerate(client, contents, config) {
  * Helper gọi generateContentStream có fallback tự động
  */
 async function executeGenerateStream(client, contents, config) {
-  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.7-flash";
-  const fallbackModels = [preferredModel, "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash"];
+  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  const fallbackModels = [preferredModel, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"];
   const triedModels = new Set();
   let lastError = null;
 
@@ -122,7 +133,18 @@ async function executeGenerateStream(client, contents, config) {
       return responseStream;
     } catch (err) {
       lastError = err;
-      if (err.message && (err.message.includes("not found") || err.message.includes("no longer available") || err.message.includes("503") || err.status === 404 || err.status === 503)) {
+      const errMsg = err.message || "";
+      if (
+        errMsg.includes("not found") ||
+        errMsg.includes("no longer available") ||
+        errMsg.includes("503") ||
+        errMsg.includes("429") ||
+        errMsg.includes("RESOURCE_EXHAUSTED") ||
+        errMsg.includes("Quota exceeded") ||
+        err.status === 404 ||
+        err.status === 503 ||
+        err.status === 429
+      ) {
         continue;
       }
       throw err;

@@ -1,0 +1,36 @@
+{
+  "relevant_cases": 20,
+  "ood_cases": 5,
+  "comparison": {
+    "modeA_semantic_only": {
+      "hit1": "80.0%",
+      "hit3": "100.0%",
+      "mrr": "0.892"
+    },
+    "modeB_hybrid_no_group": {
+      "hit1": "80.0%",
+      "hit3": "100.0%",
+      "mrr": "0.892"
+    },
+    "modeC_hybrid_grouping": {
+      "hit1": "80.0%",
+      "hit3": "100.0%",
+      "mrr": "0.900"
+    },
+    "modeD_hybrid_grouping_reranking": {
+      "hit1": "80.0%",
+      "hit3": "100.0%",
+      "mrr": "0.900"
+    }
+  },
+  "ood_metrics": {
+    "rejection_rate": "100.0%",
+    "false_positive_rate": "0.0%"
+  },
+  "latency": {
+    "pinecone_ms": 396,
+    "postgresql_ms": 299,
+    "merge_rerank_ms": 0,
+    "total_ms": 695
+  }
+}

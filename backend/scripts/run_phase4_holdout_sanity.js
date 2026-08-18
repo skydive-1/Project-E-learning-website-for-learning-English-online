@@ -131,10 +131,10 @@ async function runHoldoutSanityCheck() {
 
   // ==================== 2. KIỂM CHỨNG SAFE FAILURE BEHAVIOR ====================
   console.log("🛡️ KIỂM CHỨNG SAFE FAILURE BEHAVIOR (KHI GẶP LỖI/MALFORMED/TIMEOUT):");
-  // Test safe fallback với câu hỏi rỗng hoặc lỗi
-  const safeFallbackTest = await classifyWithLLM("$$$### malformed input test");
+  // Test safe fallback với context-aware lesson
+  const safeFallbackTest = await classifyWithLLM("$$$### malformed input test", { lessonId: 14, hasValidLesson: true });
   console.log(`  -> Fallback Output: Intent: ${safeFallbackTest.intent} | Scope: ${safeFallbackTest.scope} (${safeFallbackTest.method})`);
-  console.log(`  -> Safe Failure Behavior: ${safeFallbackTest.scope === 'current_lesson' ? "✅ PASS (Mặc định an toàn current_lesson, không đổ về course_wide)" : "❌ FAIL"}\n`);
+  console.log(`  -> Safe Failure Behavior: ${safeFallbackTest.scope === 'current_lesson' ? "✅ PASS (Mặc định an toàn current_lesson khi có bài học, không đổ về course_wide)" : "❌ FAIL"}\n`);
 
   // ==================== 3. CHẠY REGRESSION SUBSET PHASE 3 ====================
   console.log("🧪 CHẠY REGRESSION SUBSET PHASE 3 (5 CURRENT-LESSON + 5 COURSE-WIDE):");
@@ -153,7 +153,7 @@ async function runHoldoutSanityCheck() {
 
   let regPass = 0;
   for (const reg of regressionSubset) {
-    const r = await routeIntent(reg.query);
+    const r = await routeIntent(reg.query, { lessonId: 14, hasValidLesson: true });
     const pass = r.scope === reg.expectedScope;
     if (pass) regPass++;
     console.log(`  [${reg.type}] "${reg.query.slice(0, 35)}..." -> Scope: ${r.scope} | ${pass ? "✅ PASS" : "❌ FAIL"}`);
