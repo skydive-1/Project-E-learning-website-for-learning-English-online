@@ -221,7 +221,7 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
 
     let baseScore = 0;
     if (sem > 0 && lex > 0) {
-      baseScore = (0.55 * sem) + (0.45 * lex);
+      baseScore = (0.60 * sem) + (0.40 * lex);
     } else if (sem > 0) {
       baseScore = sem;
     } else {
