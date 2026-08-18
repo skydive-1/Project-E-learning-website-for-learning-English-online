@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      injectRegister: null,
       includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png', 'robots.txt'],
       manifest: {
         name: 'E-Learn Academy',
@@ -106,8 +106,7 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true,
-        type: 'module'
+        enabled: false
       }
     })
   ],
