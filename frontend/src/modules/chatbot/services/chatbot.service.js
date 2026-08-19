@@ -197,57 +197,88 @@ export const clearChatHistory = async (lessonId = null) => {
  * Gửi file ghi âm của học viên lên API để giải mã hoặc chấm điểm phát âm
  * @param {Blob} audioBlob - Tệp âm thanh ghi âm từ client
  * @param {string|number} lessonId - ID của bài học
- * @param {string|null} targetText - Câu mẫu cần đối chiếu (nếu là bài tập phát âm)
+/**
+ * Gửi Audio lên Backend để nhận diện / đánh giá phát âm
+ * Hỗ trợ 2 kiểu gọi:
+ * 1. (Mới - Speaking V2): askChatbotAudio({ audioBlob, lessonId, mode, targetText, questionText, questionId })
+ * 2. (Legacy - ChatBox & cũ): askChatbotAudio(audioBlob, lessonId, targetText, isQA)
  */
-export const askChatbotAudio = async (audioBlob, lessonId, targetText = null, isQA = false) => {
-  try {
-    const formData = new FormData();
-    // Tạo file từ Blob với đuôi mở rộng phù hợp
-    const fileExt = audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
-    const audioFile = new File([audioBlob], `recording-${Date.now()}.${fileExt}`, {
-      type: audioBlob.type
-    });
-    
-    formData.append('audio', audioFile);
-    formData.append('lessonId', String(lessonId));
-    if (targetText) {
-      formData.append('targetText', targetText);
-    }
-    if (isQA) {
-      formData.append('isQA', 'true');
-    }
+export const askChatbotAudio = async (arg1, arg2, arg3 = null, arg4 = false) => {
+  let audioBlob, lessonId, mode, targetText, questionText, questionId;
 
+  if (arg1 && typeof arg1 === 'object' && !(arg1 instanceof Blob)) {
+    // Kiểu gọi object V2
+    audioBlob = arg1.audioBlob;
+    lessonId = arg1.lessonId;
+    mode = arg1.mode || (arg1.targetText ? 'read_aloud' : (arg1.questionText ? 'qa' : 'chat'));
+    targetText = arg1.targetText || null;
+    questionText = arg1.questionText || null;
+    questionId = arg1.questionId || null;
+  } else {
+    // Kiểu gọi positional legacy
+    audioBlob = arg1;
+    lessonId = arg2;
+    targetText = arg3;
+    const isQA = Boolean(arg4);
+
+    if (targetText && targetText.trim()) {
+      mode = 'read_aloud';
+    } else if (isQA) {
+      mode = 'qa';
+      questionText = targetText || null;
+    } else {
+      mode = 'chat';
+    }
+  }
+
+  if (!audioBlob) {
+    throw new Error('Không có dữ liệu âm thanh để gửi lên máy chủ.');
+  }
+
+  const formData = new FormData();
+  const fileExt = (audioBlob.type && audioBlob.type.includes('ogg')) ? 'ogg' : 'webm';
+  const audioFile = new File([audioBlob], `recording-${Date.now()}.${fileExt}`, {
+    type: audioBlob.type || 'audio/webm'
+  });
+
+  formData.append('audio', audioFile);
+  if (lessonId !== null && lessonId !== undefined) {
+    formData.append('lessonId', String(lessonId));
+  }
+  if (mode) {
+    formData.append('mode', mode);
+  }
+  if (targetText) {
+    formData.append('targetText', targetText);
+  }
+  if (questionText) {
+    formData.append('questionText', questionText);
+  }
+  if (questionId) {
+    formData.append('questionId', String(questionId));
+  }
+
+  try {
     const response = await apiClient.post('/chatbot/audio', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     });
 
-    if (response.data && response.data.success) {
+    if (response.data && response.data.success && response.data.data) {
       return response.data.data;
     }
-    throw new Error('API response invalid structure');
+    if (response.data && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error('Cấu trúc phản hồi từ máy chủ không hợp lệ.');
   } catch (error) {
     console.error('⚠️ Lỗi kết nối tới API Chatbot Audio:', error.message);
-    const words = targetText ? targetText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").split(/\s+/).filter(Boolean).map(w => ({
-      word: w,
-      correct: false,
-      feedback: "Không thể kết nối máy chủ để chấm điểm."
-    })) : [];
-
-    return {
-      success: false,
-      score: 0,
-      pronunciation_accuracy: "0%",
-      transcription: "Không nhận diện được giọng nói",
-      grammarFeedback: "Không thể kết nối tới máy chủ AI để chấm điểm.",
-      pronunciationFeedback: "Không thể kết nối tới máy chủ AI để chấm điểm. Vui lòng kiểm tra lại đường truyền mạng.",
-      detailed_feedback: "Đã xảy ra lỗi khi kết nối máy chủ AI để chấm điểm bài nói. Vui lòng thử lại sau.",
-      reply: "Đã xảy ra lỗi khi kết nối máy chủ AI để chấm điểm bài nói. Vui lòng thử lại sau.",
-      suggestion: targetText || "",
-      words: words,
-      errors: ["Lỗi kết nối máy chủ AI"]
-    };
+    const backendMsg = error.response?.data?.message || error.message || 'Lỗi kết nối máy chủ AI để chấm điểm.';
+    const enhancedErr = new Error(backendMsg);
+    enhancedErr.status = error.response?.status || 500;
+    enhancedErr.originalError = error;
+    throw enhancedErr;
   }
 };
 

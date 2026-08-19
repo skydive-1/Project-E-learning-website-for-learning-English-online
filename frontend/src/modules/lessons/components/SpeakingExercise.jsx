@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { 
   FiVolume2, FiMic, FiSquare, FiCheckCircle, 
   FiAlertCircle, FiInfo, FiCpu, FiMessageSquare, 
-  FiChevronRight, FiCheck, FiBookOpen 
+  FiCheck, FiRefreshCw 
 } from 'react-icons/fi';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 import AudioVisualizer from '../../../components/ui/AudioVisualizer';
@@ -133,13 +133,15 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   const [showTranslation, setShowTranslation] = useState({});
   const [results, setResults] = useState({});
   const [loadingStates, setLoadingStates] = useState({});
+  const [errorStates, setErrorStates] = useState({});
   const [activeWordFeedback, setActiveWordFeedback] = useState({});
 
   // States cho Phân hệ 2: Phản xạ Q&A (Conversational)
   const [activeQAIdx, setActiveQAIdx] = useState(null);
   const [showQATranslation, setShowQATranslation] = useState({});
-  const [qaResults, setQaResults] = useState({}); // { [questionId]: { transcription, grammarFeedback, pronunciationFeedback, suggestion, reply } }
+  const [qaResults, setQaResults] = useState({});
   const [qaLoadingStates, setQaLoadingStates] = useState({});
+  const [qaErrorStates, setQaErrorStates] = useState({});
   const [showTextMap, setShowTextMap] = useState({});
 
   // Hook ghi âm chung
@@ -176,31 +178,36 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     const currentDuration = recordingTime;
     const audioBlob = await stopRecording();
     setActiveIdx(null);
-    if (!audioBlob) return;
-
-    // Kiểm tra thời lượng thu âm tối thiểu và kích thước audio
-    if (currentDuration < 1 || audioBlob.size < 1500) {
-      alert("Thời gian ghi âm quá ngắn (dưới 1 giây). Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.");
+    // Kiểm tra kích thước audio tối thiểu
+    if (audioBlob.size < 500) {
+      alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.");
       return;
     }
 
     setLoadingStates(prev => ({ ...prev, [sentenceId]: true }));
+    setErrorStates(prev => ({ ...prev, [sentenceId]: null }));
     setActiveWordFeedback(prev => ({ ...prev, [sentenceId]: null }));
 
     try {
-      const evaluation = await askChatbotAudio(audioBlob, lessonId, text, false);
+      const evaluation = await askChatbotAudio({
+        audioBlob,
+        lessonId,
+        mode: 'read_aloud',
+        targetText: text
+      });
+
       if (evaluation) {
         setResults(prev => ({
           ...prev,
-          [sentenceId]: {
-            score: evaluation.score !== undefined ? Number(evaluation.score) : 0,
-            words: evaluation.words || [],
-            reply: evaluation.reply || evaluation.detailed_feedback || "Đã đánh giá phát âm."
-          }
+          [sentenceId]: evaluation
         }));
       }
     } catch (error) {
       console.error("Lỗi đánh giá phát âm:", error);
+      setErrorStates(prev => ({
+        ...prev,
+        [sentenceId]: error.message || "Lỗi kết nối máy chủ AI để chấm điểm. Vui lòng thử lại."
+      }));
     } finally {
       setLoadingStates(prev => ({ ...prev, [sentenceId]: false }));
     }
@@ -220,36 +227,43 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
 
   const handleStopQARecord = async (questionId, e) => {
     e.stopPropagation();
-    const currentDuration = recordingTime;
     const audioBlob = await stopRecording();
     setActiveQAIdx(null);
     if (!audioBlob) return;
 
-    // Kiểm tra thời lượng thu âm tối thiểu và kích thước audio
-    if (currentDuration < 1 || audioBlob.size < 1500) {
-      alert("Thời gian ghi âm quá ngắn (dưới 1 giây). Vui lòng phát âm đầy đủ câu trả lời rồi nhấn Dừng & Nộp.");
+    // Kiểm tra kích thước audio tối thiểu
+    if (audioBlob.size < 500) {
+      alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu trả lời rồi nhấn Dừng & Nộp.");
       return;
     }
 
     setQaLoadingStates(prev => ({ ...prev, [questionId]: true }));
+    setQaErrorStates(prev => ({ ...prev, [questionId]: null }));
+
+    const questionItem = qaQuestions.find(q => q.id === questionId);
+    const questionText = questionItem ? questionItem.text : null;
 
     try {
-      const evaluation = await askChatbotAudio(audioBlob, lessonId, null, true);
+      const evaluation = await askChatbotAudio({
+        audioBlob,
+        lessonId,
+        mode: 'qa',
+        questionText,
+        questionId
+      });
+
       if (evaluation) {
         setQaResults(prev => ({
           ...prev,
-          [questionId]: {
-            score: evaluation.score !== undefined ? Number(evaluation.score) : 0,
-            transcription: evaluation.transcription || "Không nhận diện được giọng nói",
-            grammarFeedback: evaluation.grammarFeedback,
-            pronunciationFeedback: evaluation.pronunciationFeedback,
-            suggestion: evaluation.suggestion,
-            reply: evaluation.reply || evaluation.detailed_feedback
-          }
+          [questionId]: evaluation
         }));
       }
     } catch (error) {
       console.error("Lỗi đánh giá phản xạ giao tiếp Q&A:", error);
+      setQaErrorStates(prev => ({
+        ...prev,
+        [questionId]: error.message || "Lỗi kết nối máy chủ AI để chấm điểm. Vui lòng thử lại."
+      }));
     } finally {
       setQaLoadingStates(prev => ({ ...prev, [questionId]: false }));
     }
@@ -306,7 +320,9 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
             const isCurrentRecording = activeIdx === index && isRecording;
             const isLoading = !!loadingStates[item.id];
             const result = results[item.id];
+            const errorMsg = errorStates[item.id];
             const translationVisible = !!showTranslation[item.id];
+            const overallScore = result ? (result.overallScore !== undefined ? result.overallScore : result.score || 0) : 0;
 
             return (
               <div 
@@ -314,13 +330,15 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                 className={`border p-5 rounded-2xl transition-all duration-300 relative shadow-sm hover:shadow-md ${
                   isCurrentRecording 
                     ? 'border-red-300 bg-red-50/10 dark:bg-red-950/5 ring-1 ring-red-200' 
-                    : result 
-                      ? 'border-emerald-250 dark:border-emerald-900 bg-emerald-50/5 dark:bg-emerald-950/5'
-                      : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-800'
+                    : errorMsg
+                      ? 'border-red-200 bg-red-50/10 dark:bg-red-950/10'
+                      : result 
+                        ? 'border-emerald-250 dark:border-emerald-900 bg-emerald-50/5 dark:bg-emerald-950/5'
+                        : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-800'
                 }`}
               >
                 {/* Header buttons */}
-                <div className="flex justify-between items-start mb-3 gap-2">
+                <div className="flex justify-between items-start mb-3 gap-2 flex-wrap">
                   <div className="flex items-center space-x-2">
                     <button
                       type="button"
@@ -343,50 +361,61 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   </div>
 
                   {result && !isLoading && (
-                    <div className={`flex items-center space-x-2 px-3 py-1 rounded-xl border ${
-                      result.score === 0 
+                    <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl border shadow-xs ${
+                      overallScore === 0 
                         ? 'bg-red-50 dark:bg-red-950/40 border-red-200/50' 
-                        : result.score >= 80 
+                        : overallScore >= 80 
                           ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200/50' 
                           : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200/50'
                     }`}>
-                      <span className={`text-xs font-bold ${
-                        result.score === 0 ? 'text-red-600 dark:text-red-400' : result.score >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                      <span className={`text-[11px] font-bold ${
+                        overallScore === 0 ? 'text-red-600 dark:text-red-400' : overallScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                       }`}>
-                        {result.score === 0 ? "Chưa đạt:" : "Độ chính xác:"}
+                        Điểm AI tham khảo:
                       </span>
                       <span className={`text-sm font-extrabold ${
-                        result.score === 0 ? 'text-red-600 dark:text-red-400' : result.score >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'
+                        overallScore === 0 ? 'text-red-600 dark:text-red-400' : overallScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'
                       }`}>
-                        {result.score}%
+                        {overallScore}%
                       </span>
                     </div>
                   )}
                 </div>
 
-                {/* English Text Display */}
+                {/* English Text Display / Token Highlights */}
                 <div className="my-3">
-                  {result && !isLoading ? (
+                  {result && result.words && result.words.length > 0 && !isLoading ? (
                     <div className="flex flex-wrap items-center gap-1.5 py-1">
-                      {result.words.map((wordObj, wIdx) => (
-                        <span
-                          key={wIdx}
-                          onClick={() => {
-                            setActiveWordFeedback(prev => ({
-                              ...prev,
-                              [item.id]: wordObj.correct ? "Từ phát âm chính xác!" : (wordObj.feedback || "Phát âm chưa chính xác hoặc chưa rõ âm.")
-                            }));
-                          }}
-                          style={{
-                            backgroundColor: wordObj.correct ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                            color: wordObj.correct ? '#10b981' : '#ef4444',
-                            borderColor: wordObj.correct ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-                          }}
-                          className="px-2.5 py-1 text-sm font-semibold rounded-lg border cursor-pointer hover:opacity-85 transition-all flex items-center gap-1"
-                        >
-                          {wordObj.word}
-                        </span>
-                      ))}
+                      {result.words.map((wordObj, wIdx) => {
+                        const isCorrect = wordObj.textMatch === 'correct_text' && wordObj.acousticStatus === 'correct';
+                        const isMispronounced = wordObj.acousticStatus === 'mispronounced';
+                        const isMissing = wordObj.textMatch === 'missing';
+                        const isExtra = wordObj.textMatch === 'extra';
+
+                        let badgeStyle = "bg-emerald-500/10 text-emerald-600 border-emerald-500/30";
+                        if (isMispronounced) {
+                          badgeStyle = "bg-amber-500/10 text-amber-600 border-amber-500/40 font-bold";
+                        } else if (isMissing) {
+                          badgeStyle = "bg-red-500/10 text-red-500 border-dashed border-red-300 line-through opacity-70";
+                        } else if (isExtra) {
+                          badgeStyle = "bg-purple-500/10 text-purple-600 border-purple-300 italic";
+                        }
+
+                        return (
+                          <span
+                            key={wIdx}
+                            onClick={() => {
+                              setActiveWordFeedback(prev => ({
+                                ...prev,
+                                [item.id]: wordObj.feedback || (isCorrect ? "Từ phát âm chính xác!" : "Phát âm chưa chuẩn âm vị.")
+                              }));
+                            }}
+                            className={`px-2.5 py-1 text-sm font-semibold rounded-lg border cursor-pointer hover:opacity-85 transition-all flex items-center gap-1 ${badgeStyle}`}
+                          >
+                            {wordObj.word}
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-base font-bold text-slate-800 dark:text-slate-100 tracking-wide leading-relaxed">
@@ -411,28 +440,71 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   </div>
                 )}
 
+                {/* Component Scores for Read Aloud */}
+                {result && result.components && !isLoading && (
+                  <div className="my-3 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/50 space-y-2.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-450">Điểm thành phần (Rubric):</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10.5px] text-slate-500">Phát âm (35%)</div>
+                        <div className="text-sm font-extrabold text-smart-indigo">{result.components.pronunciation || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10.5px] text-slate-500">Khớp nội dung (30%)</div>
+                        <div className="text-sm font-extrabold text-blue-600">{result.components.contentAccuracy || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10.5px] text-slate-500">Độ trôi chảy (20%)</div>
+                        <div className="text-sm font-extrabold text-emerald-600">{result.components.fluency || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10.5px] text-slate-500">Hoàn thành (15%)</div>
+                        <div className="text-sm font-extrabold text-purple-600">{result.components.completeness || 0}%</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Banner if API fails */}
+                {errorMsg && !isLoading && (
+                  <div className="mt-3 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-xs flex items-center justify-between animate-fade">
+                    <div className="flex items-center space-x-2 text-red-700 dark:text-red-300">
+                      <FiAlertCircle className="text-base shrink-0" />
+                      <span className="font-semibold">{errorMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleStartRecord(index, e)}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <FiRefreshCw className="text-xs" />
+                      <span>Thử lại</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* General feedback paragraph */}
                 {result && !isLoading && (
                   <div className={`mt-4 p-4 rounded-xl border flex items-start space-x-3 text-xs animate-fade ${
-                    result.score === 0 
+                    overallScore === 0 
                       ? 'bg-red-50/50 dark:bg-red-950/20 border-red-200/60' 
-                      : result.score >= 80 
+                      : overallScore >= 80 
                         ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-100/50' 
                         : 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-100/50'
                   }`}>
-                    {result.score === 0 ? (
+                    {overallScore === 0 ? (
                       <FiAlertCircle className="text-red-500 text-base mt-0.5 shrink-0" />
                     ) : (
                       <FiCheckCircle className="text-emerald-500 text-base mt-0.5 shrink-0" />
                     )}
                     <div className="space-y-1">
                       <p className={`font-bold ${
-                        result.score === 0 ? 'text-red-800 dark:text-red-300' : result.score >= 80 ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'
+                        overallScore === 0 ? 'text-red-800 dark:text-red-300' : overallScore >= 80 ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'
                       }`}>
-                        {result.score === 0 ? "Thông báo từ Trợ lý ảo:" : "Nhận xét chi tiết từ Trợ lý ảo:"}
+                        {overallScore === 0 ? "Thông báo từ Trợ lý ảo:" : "Nhận xét chi tiết từ Trợ lý ảo:"}
                       </p>
                       <p className="text-slate-600 dark:text-slate-300 leading-relaxed font-medium whitespace-pre-wrap">
-                        {result.reply}
+                        {result.feedback?.general || result.feedback?.pronunciation || result.reply || "Bạn đã hoàn thành bài luyện đọc!"}
                       </p>
                     </div>
                   </div>
@@ -522,8 +594,10 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
             const isCurrentRecording = activeQAIdx === index && isRecording;
             const isLoading = !!qaLoadingStates[item.id];
             const result = qaResults[item.id];
+            const errorMsg = qaErrorStates[item.id];
             const translationVisible = !!showQATranslation[item.id];
             const showText = !!showTextMap[item.id];
+            const overallScore = result ? (result.overallScore !== undefined ? result.overallScore : result.score || 0) : 0;
 
             return (
               <div 
@@ -531,9 +605,11 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                 className={`border p-5 rounded-2xl transition-all duration-300 relative shadow-sm hover:shadow-md ${
                   isCurrentRecording 
                     ? 'border-red-300 bg-red-50/10 dark:bg-red-950/5 ring-1 ring-red-200' 
-                    : result 
-                      ? 'border-blue-200 dark:border-blue-900 bg-blue-50/5 dark:bg-slate-800'
-                      : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-800'
+                    : errorMsg
+                      ? 'border-red-200 bg-red-50/10 dark:bg-red-950/10'
+                      : result 
+                        ? 'border-blue-200 dark:border-blue-900 bg-blue-50/5 dark:bg-slate-800'
+                        : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-800'
                 }`}
               >
                 {/* Header actions */}
@@ -573,10 +649,10 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   </div>
 
                   {result && !isLoading && (
-                    <div className="flex items-center space-x-2 bg-blue-50 dark:bg-blue-950/40 px-3 py-1 rounded-xl border border-blue-200/50">
-                      <span className="text-xs font-bold text-blue-600 dark:text-blue-400">Điểm phản xạ:</span>
-                      <span className={`text-sm font-extrabold ${result.score >= 85 ? 'text-emerald-600 dark:text-emerald-400' : result.score >= 70 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-500'}`}>
-                        {result.score}%
+                    <div className="flex items-center space-x-2 bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 rounded-xl border border-blue-200/50 shadow-xs">
+                      <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">Điểm AI tham khảo:</span>
+                      <span className={`text-sm font-extrabold ${overallScore >= 80 ? 'text-emerald-600 dark:text-emerald-400' : overallScore >= 60 ? 'text-blue-600 dark:text-blue-400' : 'text-amber-500'}`}>
+                        {overallScore}%
                       </span>
                     </div>
                   )}
@@ -603,6 +679,63 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   )}
                 </div>
 
+                {/* Score Cap Callout if applied */}
+                {result && result.scoreCapApplied && !isLoading && (
+                  <div className="my-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-xs flex items-start space-x-2 text-amber-800 dark:text-amber-300 animate-fade">
+                    <FiAlertCircle className="text-base shrink-0 mt-0.5" />
+                    <div className="font-semibold">
+                      {result.scoreCapReason || "Điểm tổng bị giới hạn do câu trả lời chưa bám sát trọng tâm câu hỏi."}
+                    </div>
+                  </div>
+                )}
+
+                {/* Component Scores for Q&A */}
+                {result && result.components && !isLoading && (
+                  <div className="my-3 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/50 space-y-2.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-450">Điểm thành phần Q&A:</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10px] text-slate-500">Trọng tâm (20%)</div>
+                        <div className="text-xs font-extrabold text-smart-indigo">{result.components.relevance || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10px] text-slate-500">Ngữ pháp (20%)</div>
+                        <div className="text-xs font-extrabold text-blue-600">{result.components.grammar || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10px] text-slate-500">Từ vựng (15%)</div>
+                        <div className="text-xs font-extrabold text-emerald-600">{result.components.vocabulary || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10px] text-slate-500">Phát âm (25%)</div>
+                        <div className="text-xs font-extrabold text-purple-600">{result.components.pronunciation || 0}%</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                        <div className="text-[10px] text-slate-500">Trôi chảy (20%)</div>
+                        <div className="text-xs font-extrabold text-pink-600">{result.components.fluency || 0}%</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Banner if API fails */}
+                {errorMsg && !isLoading && (
+                  <div className="mt-3 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-xs flex items-center justify-between animate-fade">
+                    <div className="flex items-center space-x-2 text-red-700 dark:text-red-300">
+                      <FiAlertCircle className="text-base shrink-0" />
+                      <span className="font-semibold">{errorMsg}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleStartQARecord(index, e)}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <FiRefreshCw className="text-xs" />
+                      <span>Thử lại</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* AI Evaluation result for Q&A */}
                 {result && !isLoading && (
                   <div className="mt-4 space-y-3.5 border-t border-slate-100 dark:border-slate-700/60 pt-4 animate-fade">
@@ -610,19 +743,30 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                     <div className="space-y-1">
                       <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-450 dark:text-slate-500">Giọng nói của bạn (AI nhận diện):</span>
                       <p className="text-sm font-semibold italic text-slate-700 dark:text-slate-350 bg-slate-50 dark:bg-slate-900/45 px-3 py-2.5 rounded-xl border border-slate-200/45 dark:border-slate-700/60">
-                        "{result.transcription}"
+                        "{result.transcription || 'Không có âm thanh nhận diện'}"
                       </p>
                     </div>
 
                     {/* AI Feedback block */}
                     <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-150 dark:border-slate-700/50 space-y-3">
-                      {/* Grammar Evaluation */}
+                      {/* Relevance & Grammar Evaluation */}
+                      {result.feedback?.relevance && (
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-smart-indigo flex items-center gap-1.5">
+                            <FiInfo className="text-sm" /> Độ liên quan câu hỏi:
+                          </p>
+                          <p className="text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-350 font-medium pl-5">
+                            {result.feedback.relevance}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-1">
                         <p className="text-xs font-bold text-amber-600 dark:text-amber-450 flex items-center gap-1.5">
                           <FiAlertCircle className="text-sm" /> Nhận xét ngữ pháp & từ vựng:
                         </p>
                         <p className="text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-350 font-medium pl-5">
-                          {result.grammarFeedback}
+                          {result.feedback?.grammar || result.grammarFeedback || "Cấu trúc câu hoàn chỉnh."}
                         </p>
                       </div>
 
@@ -632,31 +776,33 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                           <FiVolume2 className="text-sm" /> Nhận xét phát âm & ngữ điệu:
                         </p>
                         <p className="text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-350 font-medium pl-5">
-                          {result.pronunciationFeedback}
+                          {result.feedback?.pronunciation || result.pronunciationFeedback || "Phát âm rõ ràng."}
                         </p>
                       </div>
                     </div>
 
                     {/* AI suggestion */}
-                    <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/50 space-y-2">
-                      <div className="flex justify-between items-center">
-                        <p className="text-xs font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
-                          <FiCheck className="text-emerald-500 text-sm font-bold border border-emerald-400 rounded-full p-0.5" /> 
-                          Gợi ý câu trả lời tự nhiên hơn:
+                    {(result.suggestion || result.improvedAnswer) && (
+                      <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/50 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <p className="text-xs font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                            <FiCheck className="text-emerald-500 text-sm font-bold border border-emerald-400 rounded-full p-0.5" /> 
+                            Gợi ý câu trả lời tự nhiên hơn:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={(e) => handlePlayTTS(result.suggestion || result.improvedAnswer, e)}
+                            className="p-1 bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                            title="Nghe câu gợi ý mẫu"
+                          >
+                            <FiVolume2 className="text-xs" />
+                          </button>
+                        </div>
+                        <p className="text-sm font-bold text-blue-900 dark:text-blue-300 pl-5 leading-relaxed tracking-wide">
+                          "{result.suggestion || result.improvedAnswer}"
                         </p>
-                        <button
-                          type="button"
-                          onClick={(e) => handlePlayTTS(result.suggestion, e)}
-                          className="p-1 bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
-                          title="Nghe câu gợi ý mẫu"
-                        >
-                          <FiVolume2 className="text-xs" />
-                        </button>
                       </div>
-                      <p className="text-sm font-bold text-blue-900 dark:text-blue-300 pl-5 leading-relaxed tracking-wide">
-                        "{result.suggestion}"
-                      </p>
-                    </div>
+                    )}
                   </div>
                 )}
 

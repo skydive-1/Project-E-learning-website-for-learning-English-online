@@ -91,7 +91,14 @@ export const useAudioRecorder = () => {
       setIsRecording(true);
 
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
+        setRecordingTime((prev) => {
+          if (prev >= 119) {
+            // Đạt ngưỡng tối đa 120 giây (đồng bộ giới hạn 10MB)
+            stopRecording();
+            return 120;
+          }
+          return prev + 1;
+        });
       }, 1000);
 
     } catch (error) {

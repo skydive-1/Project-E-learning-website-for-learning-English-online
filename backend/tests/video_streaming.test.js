@@ -123,4 +123,11 @@ describe('🎬 Video Streaming & Security Test Suite', () => {
     const localRes = await generateSignedUrl('/uploads/courses/videos/sample.mp4', 'videos');
     assert.strictEqual(localRes, null, 'Local /uploads/ path must return null from generateSignedUrl');
   });
+
+  after(async () => {
+    try {
+      const db = require('../src/config/database');
+      if (db.pool) await db.pool.end();
+    } catch (e) {}
+  });
 });

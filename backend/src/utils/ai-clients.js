@@ -389,13 +389,44 @@ Hãy trả lời một cách tự nhiên, dễ hiểu, định dạng markdown �
   }
 };
 
+const geminiSpeakingModel = {
+  async evaluateSpeaking({ contents, responseMimeType = "application/json" }) {
+    const client = getAiClient();
+    const model = process.env.GEMINI_SPEAKING_MODEL || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    const config = {
+      temperature: 0,
+      responseMimeType
+    };
+
+    try {
+      const response = await client.models.generateContent({
+        model,
+        contents,
+        config
+      });
+
+      const responseText = response.text || "";
+      return {
+        text: () => responseText,
+        responseText,
+        modelUsed: model
+      };
+    } catch (error) {
+      console.error(`[Gemini Speaking Model Error] (${model}):`, error.message);
+      throw error;
+    }
+  }
+};
+
 module.exports = {
   ai,
   getAiClient,
   geminiModel,
+  geminiSpeakingModel,
   embeddingModel,
   pc,
   pineconeIndex,
   pineconeClient,
   geminiClient
 };
+

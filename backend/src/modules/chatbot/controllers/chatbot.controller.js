@@ -133,25 +133,79 @@ exports.processAudio = async (req, res, next) => {
 
     const audioSource = req.file.buffer || req.file.path;
     const mimetype = req.file.mimetype;
-    const targetText = req.body.targetText || null;
+    const { targetText, questionText, questionId, lessonId } = req.body;
     const isQA = req.body.isQA === 'true';
 
-    const evaluation = await chatbotService.evaluateAudio(audioSource, mimetype, targetText, isQA);
+    // Phân giải mode theo ma trận tương thích
+    let mode;
+    if (req.body.mode) {
+      const validModes = ['chat', 'read_aloud', 'qa'];
+      if (!validModes.includes(req.body.mode)) {
+        const err = new Error("Chế độ đánh giá mode không hợp lệ. Cho phép: chat, read_aloud, qa");
+        err.status = 400;
+        throw err;
+      }
+      mode = req.body.mode;
+      if (mode === 'read_aloud' && (!targetText || !targetText.trim())) {
+        const err = new Error("Thiếu targetText cho bài tập Read Aloud");
+        err.status = 400;
+        throw err;
+      }
+      if (mode === 'qa' && (!questionText || !questionText.trim())) {
+        const err = new Error("Thiếu questionText cho bài tập Q&A");
+        err.status = 400;
+        throw err;
+      }
+    } else {
+      // Legacy mapping
+      if (targetText && targetText.trim()) {
+        mode = 'read_aloud';
+      } else if (isQA) {
+        if (!questionText || !questionText.trim()) {
+          const err = new Error("Thiếu questionText cho bài tập Q&A");
+          err.status = 400;
+          throw err;
+        }
+        mode = 'qa';
+      } else {
+        // Request từ ChatBox không gửi targetText, không gửi isQA, không gửi mode
+        mode = 'chat';
+      }
+    }
 
-    // Xóa file tạm sau khi đã đánh giá xong bằng AI nếu là disk storage
+    const result = await chatbotService.processAudio(audioSource, mimetype, {
+      mode,
+      targetText: targetText || null,
+      questionText: questionText || null,
+      questionId: questionId || null,
+      lessonId: lessonId || null,
+      userId: req.user?.id || req.user?.userId || null
+    });
+
+    // Xóa file tạm sau khi đã xử lý xong nếu là disk storage
     if (req.file.path) {
       const fs = require('fs');
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (e) { /* ignore cleanup error */ }
     }
 
     res.status(200).json({
       success: true,
-      message: "Đánh giá phát âm thành công",
-      data: evaluation
+      message: mode === 'chat' ? "Nhận diện giọng nói thành công" : "Đánh giá phát âm thành công",
+      data: result
     });
   } catch (error) {
+    if (req.file && req.file.path) {
+      const fs = require('fs');
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (e) { /* ignore cleanup error */ }
+    }
     next(error);
   }
 };
