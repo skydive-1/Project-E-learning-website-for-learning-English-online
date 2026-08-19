@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node --test tests/auth_middleware.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js",
-    "test:auth": "node --test tests/auth_middleware.test.js"
+"test": "node --test tests/auth_middleware.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js",
+"test:auth": "node --test tests/auth_middleware.test.js"
   },
   "keywords": [],
   "author": "",
