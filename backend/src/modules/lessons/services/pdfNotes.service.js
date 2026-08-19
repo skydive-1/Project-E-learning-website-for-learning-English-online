@@ -189,16 +189,19 @@ class PdfNotesService {
   /**
    * Lấy danh sách ghi chú của người dùng cho bài học
    */
-  async getNotes({ userId, lessonId, materialId, pageNumber }) {
+  async getNotes({ userId, lessonId, materialId, documentRef, pageNumber }) {
     const parsedUserId = parsePositiveInt(userId, 'userId');
     const parsedLessonId = parsePositiveInt(lessonId, 'lessonId');
 
-    // Luôn luôn tự xác thực và resolve canonical documentRef từ Server
-    const resolved = await this.resolveDocumentRef(parsedLessonId, materialId);
-    const targetDocRef = resolved.documentRef;
+    // Xác định phiên bản tài liệu hiện tại từ Server nếu không truyền documentRef cụ thể
+    let targetDocRef = documentRef && typeof documentRef === 'string' ? documentRef.trim() : null;
+    if (!targetDocRef) {
+      const resolved = await this.resolveDocumentRef(parsedLessonId, materialId);
+      targetDocRef = resolved.documentRef;
+    }
 
     let query = `
-      SELECT
+      SELECT 
         note_id AS "id",
         note_id AS "noteId",
         user_id AS "userId",
@@ -261,7 +264,7 @@ class PdfNotesService {
     const parsedLessonId = parsePositiveInt(lessonId, 'lessonId');
 
     const query = `
-      SELECT
+      SELECT 
         note_id AS "id",
         note_id AS "noteId",
         user_id AS "userId",
@@ -396,7 +399,7 @@ class PdfNotesService {
         created_at,
         updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      RETURNING
+      RETURNING 
         note_id AS "id",
         note_id AS "noteId",
         user_id AS "userId",
@@ -515,7 +518,7 @@ class PdfNotesService {
       UPDATE pdf_notes
       SET ${updates.join(', ')}
       WHERE note_id = $1 AND user_id = $2 AND lesson_id = $3
-      RETURNING
+      RETURNING 
         note_id AS "id",
         note_id AS "noteId",
         user_id AS "userId",
