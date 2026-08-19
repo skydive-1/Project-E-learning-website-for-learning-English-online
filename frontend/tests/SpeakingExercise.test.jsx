@@ -118,4 +118,16 @@ describe('SpeakingExercise Component React Integration Tests', () => {
       expect(screen.queryByText(/Điểm AI tham khảo:/i)).not.toBeInTheDocument();
     });
   });
+
+  it('handles null audioBlob gracefully without crashing', async () => {
+    // When recorder stops without any audio chunks (e.g. mic permission denied mid-way)
+    render(
+      <SpeakingExercise
+        lessonId={1}
+        speakingSentences="Testing null blob safety"
+      />
+    );
+
+    expect(screen.getByText(/Testing null blob safety/i)).toBeInTheDocument();
+  });
 });

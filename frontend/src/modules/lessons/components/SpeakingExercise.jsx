@@ -144,40 +144,8 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   const [qaErrorStates, setQaErrorStates] = useState({});
   const [showTextMap, setShowTextMap] = useState({});
 
-  // Hook ghi âm chung
-  const { isRecording, recordingTime, startRecording, stopRecording, analyserRef } = useAudioRecorder();
-
-  // Đọc âm thanh mẫu (TTS)
-  const handlePlayTTS = (text, e) => {
-    e.stopPropagation();
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 0.85;
-      window.speechSynthesis.speak(utterance);
-    } else {
-      alert("Trình duyệt của bạn không hỗ trợ công cụ Đọc tự động.");
-    }
-  };
-
-  // ----- HANDLERS CHO LUỒNG LUYỆN PHÁT ÂM (READ ALOUD) -----
-  const handleStartRecord = async (index, e) => {
-    e.stopPropagation();
-    if (isRecording) return;
-    setActiveIdx(index);
-    try {
-      await startRecording();
-    } catch (err) {
-      setActiveIdx(null);
-    }
-  };
-
-  const handleStopRecord = async (sentenceId, text, e) => {
-    if (e && e.stopPropagation) e.stopPropagation();
-    const audioBlob = await stopRecording();
-    setActiveIdx(null);
-
+  // Hàm gửi đánh giá Read Aloud
+  const submitEvaluation = async (sentenceId, text, audioBlob) => {
     if (!audioBlob) {
       setErrorStates(prev => ({
         ...prev,
@@ -186,7 +154,6 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
       return;
     }
 
-    // Kiểm tra kích thước audio tối thiểu
     if (audioBlob.size < 500) {
       alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.");
       return;
@@ -221,23 +188,8 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     }
   };
 
-  // ----- HANDLERS CHO LUỒNG HỎI ĐÁP PHẢN XẠ (Q&A) -----
-  const handleStartQARecord = async (index, e) => {
-    if (e && e.stopPropagation) e.stopPropagation();
-    if (isRecording) return;
-    setActiveQAIdx(index);
-    try {
-      await startRecording();
-    } catch (err) {
-      setActiveQAIdx(null);
-    }
-  };
-
-  const handleStopQARecord = async (questionId, e) => {
-    if (e && e.stopPropagation) e.stopPropagation();
-    const audioBlob = await stopRecording();
-    setActiveQAIdx(null);
-
+  // Hàm gửi đánh giá Q&A
+  const submitQAEvaluation = async (questionId, questionText, audioBlob) => {
     if (!audioBlob) {
       setQaErrorStates(prev => ({
         ...prev,
@@ -246,7 +198,6 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
       return;
     }
 
-    // Kiểm tra kích thước audio tối thiểu
     if (audioBlob.size < 500) {
       alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu trả lời rồi nhấn Dừng & Nộp.");
       return;
@@ -254,9 +205,6 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
 
     setQaLoadingStates(prev => ({ ...prev, [questionId]: true }));
     setQaErrorStates(prev => ({ ...prev, [questionId]: null }));
-
-    const questionItem = qaQuestions.find(q => q.id === questionId);
-    const questionText = questionItem ? questionItem.text : null;
 
     try {
       const evaluation = await askChatbotAudio({
@@ -282,6 +230,81 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     } finally {
       setQaLoadingStates(prev => ({ ...prev, [questionId]: false }));
     }
+  };
+
+  // Callback tự động xử lý khi đạt giới hạn 120s
+  const handleAutoStopCallback = async (blob) => {
+    if (activeIdx !== null && sentences[activeIdx]) {
+      const currentSentence = sentences[activeIdx];
+      setActiveIdx(null);
+      alert("Đã đạt giới hạn 120 giây. Hệ thống đang tự động nộp bài đọc của bạn để chấm điểm.");
+      await submitEvaluation(currentSentence.id, currentSentence.text, blob);
+    } else if (activeQAIdx !== null && qaQuestions[activeQAIdx]) {
+      const currentQuestion = qaQuestions[activeQAIdx];
+      setActiveQAIdx(null);
+      alert("Đã đạt giới hạn 120 giây. Hệ thống đang tự động nộp câu trả lời Q&A của bạn để chấm điểm.");
+      await submitQAEvaluation(currentQuestion.id, currentQuestion.text, blob);
+    }
+  };
+
+  // Hook ghi âm chung với Auto-stop callback
+  const { isRecording, recordingTime, startRecording, stopRecording, analyserRef } = useAudioRecorder({
+    onAutoStop: handleAutoStopCallback
+  });
+
+  // Đọc âm thanh mẫu (TTS)
+  const handlePlayTTS = (text, e) => {
+    e.stopPropagation();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.85;
+      window.speechSynthesis.speak(utterance);
+    } else {
+      alert("Trình duyệt của bạn không hỗ trợ công cụ Đọc tự động.");
+    }
+  };
+
+  // ----- HANDLERS CHO LUỒNG LUYỆN PHÁT ÂM (READ ALOUD) -----
+  const handleStartRecord = async (index, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (isRecording) return;
+    setActiveIdx(index);
+    try {
+      await startRecording();
+    } catch (err) {
+      setActiveIdx(null);
+    }
+  };
+
+  const handleStopRecord = async (sentenceId, text, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const audioBlob = await stopRecording();
+    setActiveIdx(null);
+    await submitEvaluation(sentenceId, text, audioBlob);
+  };
+
+  // ----- HANDLERS CHO LUỒNG HỎI ĐÁP PHẢN XẠ (Q&A) -----
+  const handleStartQARecord = async (index, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (isRecording) return;
+    setActiveQAIdx(index);
+    try {
+      await startRecording();
+    } catch (err) {
+      setActiveQAIdx(null);
+    }
+  };
+
+  const handleStopQARecord = async (questionId, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const audioBlob = await stopRecording();
+    setActiveQAIdx(null);
+
+    const questionItem = qaQuestions.find(q => q.id === questionId);
+    const questionText = questionItem ? questionItem.text : null;
+    await submitQAEvaluation(questionId, questionText, audioBlob);
   };
 
   return (

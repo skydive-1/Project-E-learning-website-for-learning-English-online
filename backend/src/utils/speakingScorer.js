@@ -1,15 +1,13 @@
 /**
- * Speaking Assessment Scorer & Token Alignment Engine (Hotfix Version)
- * - Chuẩn hóa văn bản, xử lý Contractions hai chiều, dấu câu, chữ hoa/thường.
+ * Speaking Assessment Scorer & Token Alignment Engine (Hotfix-R2 Version)
+ * - Xử lý Contractions hai chiều và giữ nguyên cấu trúc từ (không tách don't thành don và t).
  * - Thuật toán Token Alignment (Dynamic Programming / Levenshtein Distance / WER).
- * - Phân loại trạng thái từng từ theo schema phân tách (textMatch & acousticStatus).
- * - Xử lý wordAssessments với occurrenceIndex, tuyệt đối không suy đoán correct khi không có bằng chứng.
+ * - Đếm occurrenceIndex cho MỌI lần xuất hiện của từ mục tiêu (correct, missing, substituted)
+ * - Tuyệt đối không suy đoán correct khi thiếu bằng chứng âm học (mặc định not_assessed).
  * - Tính toán điểm số Read Aloud và Q&A Speaking theo rubric và cơ chế Score Cap.
- * 
- * Phụ trách:
- * - NGUYỄN THANH LIÊM (Backend & Security Developer)
- * - LÊ ĐÌNH CHƯƠNG (Database Administrator & Infrastructure Specialist)
- * - NGUYỄN DŨNG QUỐC ANH (Frontend & AI UI Integration Developer)
+ *
+ * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
+ * Hỗ trợ triển khai và kiểm thử mã nguồn: AI Agent
  */
 
 // Bảng ánh xạ Contractions tiếng Anh thông dụng
@@ -65,17 +63,19 @@ function normalizeAndTokenize(text, expandContractions = false) {
 
   if (expandContractions) {
     for (const [contraction, expansion] of Object.entries(CONTRACTIONS_MAP)) {
-      const regex = new RegExp(`\\b${contraction.replace("'", "['’]")}\\b`, 'gi');
+      const regex = new RegExp(`\\b${contraction.replace("'", "['’]?")}\\b`, 'gi');
       normalized = normalized.replace(regex, expansion);
     }
   }
 
-  // Loại bỏ toàn bộ dấu câu ngoại trừ ký tự chữ và số
-  normalized = normalized.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'\[\]<>@|\\]/g, " ");
+  // Loại bỏ các dấu câu thông thường nhưng giữ nguyên từ vựng
+  normalized = normalized.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"\[\]<>@|\\]/g, " ");
 
   // Tách từ theo khoảng trắng
-  const tokens = normalized.split(/\s+/).filter(t => t.length > 0);
-  return tokens;
+  const rawTokens = normalized.split(/\s+/).filter(t => t.length > 0);
+
+  // Clean tokens (bỏ dấu nháy lẻ nếu nằm ở đầu hoặc cuối từ)
+  return rawTokens.map(t => t.replace(/^'+|'+$/g, '')).filter(t => t.length > 0);
 }
 
 /**
@@ -103,6 +103,16 @@ function levenshteinDistance(s1, s2) {
     }
   }
   return dp[m][n];
+}
+
+/**
+ * Kiểm tra xem 2 từ có tương đương nhau qua contraction hay không
+ */
+function isContractionEquivalent(w1, w2) {
+  if (w1 === w2) return true;
+  const exp1 = CONTRACTIONS_MAP[w1] || w1;
+  const exp2 = CONTRACTIONS_MAP[w2] || w2;
+  return exp1 === exp2;
 }
 
 /**
@@ -158,7 +168,7 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
       const hWord = transcriptTokens[j - 1];
 
       let matchCost = 0;
-      if (tWord === hWord) {
+      if (tWord === hWord || isContractionEquivalent(tWord, hWord)) {
         matchCost = 0;
       } else {
         const lev = levenshteinDistance(tWord, hWord);
@@ -242,7 +252,8 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
 
 /**
  * Phân loại trạng thái từng từ theo Schema phân tách (textMatch & acousticStatus)
- * Xử lý occurrenceIndex và không suy đoán phát âm đúng khi thiếu bằng chứng
+ * - Tăng occurrenceIndex cho MỌI lần xuất hiện của từ trong câu mục tiêu (correct, missing, substituted)
+ * - Tuyệt đối không suy đoán phát âm đúng khi thiếu bằng chứng
  * @param {string} targetText - Câu mẫu gốc
  * @param {string} transcription - Transcript nhận diện từ audio
  * @param {Array} wordAssessments - Danh sách đánh giá âm học từ AI [{ word, occurrenceIndex, status, feedback }]
@@ -251,7 +262,6 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
 function buildWordLevelFeedback(targetText, transcription, wordAssessments = []) {
   if (!targetText || typeof targetText !== 'string') return [];
 
-  // Để hiển thị đẹp và khớp token, thực hiện alignment trên tokens chuẩn hóa (không expand cho visual alignment)
   const targetTokens = normalizeAndTokenize(targetText, false);
   const transcriptTokens = normalizeAndTokenize(transcription, false);
 
@@ -274,13 +284,22 @@ function buildWordLevelFeedback(targetText, transcription, wordAssessments = [])
   }
 
   const resultWords = [];
-  const wordOccurrences = new Map();
+  // Đếm occurrenceIndex cho target words
+  const targetOccurrences = new Map();
 
   for (const align of alignments) {
     const word = align.targetWord || align.transcriptWord;
     const textMatch = align.op; // 'correct_text' | 'missing' | 'extra' | 'substituted'
     let acousticStatus = 'not_assessed';
     let feedback = null;
+
+    let currentOcc = 0;
+    if (align.targetWord) {
+      const cleanTarget = align.targetWord.toLowerCase();
+      currentOcc = targetOccurrences.get(cleanTarget) || 0;
+      // Tăng occurrenceIndex cho MỌI lần xuất hiện của target word trong câu
+      targetOccurrences.set(cleanTarget, currentOcc + 1);
+    }
 
     if (textMatch === 'missing') {
       acousticStatus = 'not_assessed';
@@ -293,10 +312,8 @@ function buildWordLevelFeedback(targetText, transcription, wordAssessments = [])
       feedback = `Đọc sai/thay thế bằng từ "${align.transcriptWord}".`;
     } else if (textMatch === 'correct_text') {
       const cleanW = align.targetWord.toLowerCase();
-      const currentOcc = wordOccurrences.get(cleanW) || 0;
-      wordOccurrences.set(cleanW, currentOcc + 1);
-
       const assessKey = `${cleanW}#${currentOcc}`;
+
       if (aiAssessMap.has(assessKey)) {
         const aiInfo = aiAssessMap.get(assessKey);
         if (aiInfo.status === 'correct') {
@@ -330,10 +347,8 @@ function buildWordLevelFeedback(targetText, transcription, wordAssessments = [])
 /**
  * Tính toán điểm Read Aloud theo công thức chuẩn:
  * Overall = Pronunciation * 0.35 + ContentAccuracy * 0.30 + Fluency * 0.20 + Completeness * 0.15
- * Áp dụng Contraction Normalization hai chiều cho cả targetText và transcription
  */
 function calculateReadAloudScore({ targetText, transcription, pronunciationScore = 0, fluencyScore = 0, wordAssessments = [] }) {
-  // Áp dụng Contraction Expansion khi tính WER / Accuracy / Completeness
   const targetTokensExpanded = normalizeAndTokenize(targetText, true);
   const transcriptTokensExpanded = normalizeAndTokenize(transcription, true);
 
@@ -449,6 +464,7 @@ module.exports = {
   CONTRACTIONS_MAP,
   normalizeAndTokenize,
   levenshteinDistance,
+  isContractionEquivalent,
   computeTokenAlignment,
   buildWordLevelFeedback,
   calculateReadAloudScore,

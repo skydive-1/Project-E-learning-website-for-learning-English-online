@@ -1,4 +1,4 @@
-const { geminiModel, geminiSpeakingModel, embeddingModel, pineconeIndex } = require("../../../utils/ai-clients");
+const { geminiModel, geminiSpeakingModel, getSpeakingModelName, embeddingModel, pineconeIndex } = require("../../../utils/ai-clients");
 const speakingScorer = require("../../../utils/speakingScorer");
 const speakingValidator = require("../../../utils/speakingValidator");
 const db = require("../../../config/database");
@@ -1638,7 +1638,7 @@ Format response as strict JSON object with keys:
           responseMimeType: "application/json"
         });
 
-        actualModelUsed = aiResult.modelUsed || process.env.GEMINI_SPEAKING_MODEL || 'gemini-3.5-flash-lite';
+        actualModelUsed = aiResult.modelUsed || getSpeakingModelName();
 
         let rawText = (aiResult.responseText || "").trim();
         if (rawText.includes("```")) {
@@ -1660,7 +1660,10 @@ Format response as strict JSON object with keys:
 
     if (!validated) {
       console.error("Lỗi xác thực dữ liệu từ Speaking Model sau retry:", lastError?.message);
-      throw new Error(`Dịch vụ AI phản hồi không hợp lệ: ${lastError?.message || 'Lỗi cấu trúc phản hồi'}`);
+      const err = new Error(`Dịch vụ AI phản hồi dữ liệu không hợp lệ: ${lastError?.message || 'Lỗi cấu trúc phản hồi'}`);
+      err.status = 503;
+      err.code = 'AI_RESPONSE_INVALID';
+      throw err;
     }
 
     const hasSpeech = validated.hasSpeech && Boolean(validated.transcription && validated.transcription.trim());
