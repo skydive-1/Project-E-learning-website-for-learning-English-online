@@ -90,11 +90,12 @@ const authenticate = async (req, res, next) => {
     next();
   } catch (error) {
     const status = error.status || 500;
+    const isServerError = status >= 500;
     return res.status(status).json({
       success: false,
       code: error.code || 'INTERNAL_ERROR',
       error: error.name || 'ServerError',
-      message: error.message || 'Lỗi xử lý xác thực trên máy chủ'
+      message: isServerError ? 'Lỗi xử lý xác thực trên máy chủ' : (error.message || 'Lỗi xác thực')
     });
   }
 };

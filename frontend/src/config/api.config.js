@@ -17,12 +17,22 @@ const apiClient = axios.create({
   },
 });
 
-// Single-flight guard: đảm bảo nhiều request 401 đồng thời chỉ phát 1 sự kiện logout duy nhất
+// Single-flight guard: đảm bảo nhiều request 401 đồng thời hoặc đến trễ chỉ phát 1 sự kiện logout duy nhất
 let isLoggingOut = false;
 
 export const resetAuthLogoutGuard = () => {
   isLoggingOut = false;
 };
+
+// Danh sách các mã lỗi xác thực nghiêm trọng (chỉ các mã này mới kích hoạt xóa JWT và logout)
+const CRITICAL_AUTH_CODES = [
+  'TOKEN_EXPIRED',
+  'TOKEN_INVALID',
+  'USER_DELETED',
+  'TokenExpiredError',
+  'TokenInvalidError',
+  'UserDeleted'
+];
 
 // Interceptor tự động chèn JWT token vào Request Headers
 apiClient.interceptors.request.use(
@@ -56,9 +66,7 @@ apiClient.interceptors.response.use(
 
     if (status === 401 && hasAuthHeader && !isPublicAuthRoute) {
       const errorCode = data?.code || data?.error;
-      const criticalAuthCodes = ['TOKEN_EXPIRED', 'TOKEN_INVALID', 'USER_DELETED', 'TokenExpiredError', 'TokenInvalidError', 'UserDeleted'];
-
-      const isCriticalAuthError = criticalAuthCodes.includes(errorCode) || !errorCode;
+      const isCriticalAuthError = Boolean(errorCode && CRITICAL_AUTH_CODES.includes(errorCode));
 
       if (isCriticalAuthError && !isLoggingOut) {
         isLoggingOut = true;
@@ -70,11 +78,6 @@ apiClient.interceptors.response.use(
             detail: { code: errorCode, message: data?.message || 'Phiên đăng nhập đã hết hạn.' }
           }));
         }
-
-        // Tự động reset cờ guard sau 3 giây để sẵn sàng cho các lần đăng nhập tiếp theo
-        setTimeout(() => {
-          isLoggingOut = false;
-        }, 3000);
       }
     }
 

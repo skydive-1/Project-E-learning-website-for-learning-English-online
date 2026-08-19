@@ -8,7 +8,8 @@
  * 4. Token sai định dạng / chữ ký không khớp -> 401 TOKEN_INVALID
  * 5. User không tồn tại trong CSDL -> 401 USER_DELETED
  * 6. Thiếu JWT_SECRET -> 500 AUTH_CONFIG_ERROR
- * 7. Token hợp lệ -> 200 OK
+ * 7. Lỗi Database query -> 500 INTERNAL_ERROR (không bị nhầm thành 401, không rò rỉ SQL)
+ * 8. Token hợp lệ -> 200 OK
  */
 
 const { describe, it, before, after } = require('node:test');
@@ -25,6 +26,7 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
   let baseUrl;
   let originalQuery;
   let originalJwtSecret;
+  let simulateDbError = false;
 
   const mockUsers = [
     { user_id: 1, email: 'student@example.com', username: 'student', full_name: 'Student One', role_id: 3 }
@@ -36,6 +38,11 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
     process.env.JWT_SECRET = 'test-secret-key-123456';
 
     db.query = async (sqlText, params = []) => {
+      if (simulateDbError) {
+        const dbErr = new Error('Database connection pool exhausted: server deadlocked SELECT * FROM secret_table');
+        dbErr.code = '57P01';
+        throw dbErr;
+      }
       const cleanSql = sqlText.trim();
       if (cleanSql.includes('FROM users WHERE user_id = $1 OR email = $2')) {
         const [userId, email] = params;
@@ -151,7 +158,27 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
     assert.strictEqual(data.code, 'AUTH_CONFIG_ERROR');
   });
 
-  it('7. should return 200 OK and attach user data when token is valid', async () => {
+  it('7. should return 500 INTERNAL_ERROR and NOT leak raw SQL details when database fails', async () => {
+    simulateDbError = true;
+    const validToken = jwt.sign(
+      { id: 1, email: 'student@example.com' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/protected`, {
+      headers: { Authorization: `Bearer ${validToken}` }
+    });
+    const data = await res.json();
+    simulateDbError = false;
+
+    assert.strictEqual(res.status, 500);
+    assert.strictEqual(data.code, '57P01');
+    assert.strictEqual(data.message, 'Lỗi xử lý xác thực trên máy chủ');
+    assert.strictEqual(JSON.stringify(data).includes('SELECT * FROM secret_table'), false);
+  });
+
+  it('8. should return 200 OK and attach user data when token is valid', async () => {
     const validToken = jwt.sign(
       { id: 1, email: 'student@example.com', roleId: 3 },
       process.env.JWT_SECRET,
