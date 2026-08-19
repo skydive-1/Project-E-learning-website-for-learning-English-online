@@ -21,6 +21,7 @@ import {
 
 import PdfHighlightOverlay from './PdfHighlightOverlay';
 import PdfSelectionPopover from './PdfSelectionPopover';
+import { mergePdfSelectionRects } from '../utils/pdfSelectionRects';
 
 // Cấu hình Bundled Worker cục bộ tương thích hoàn toàn với Vite và không phụ thuộc CDN bên ngoài
 if (typeof window !== 'undefined') {
@@ -382,24 +383,16 @@ export default function PdfStudyViewer({
       return;
     }
 
-    const normalizedRects = clientRects.map((r) => {
-      let x = Math.max(0, Math.min(1, (r.left - pageRect.left) / pageRect.width));
-      let y = Math.max(0, Math.min(1, (r.top - pageRect.top) / pageRect.height));
-      let width = Math.max(0.001, (r.width / pageRect.width));
-      let height = Math.max(0.001, (r.height / pageRect.height));
-
-      if (x + width > 1.0) width = Math.max(0.001, 1.0 - x);
-      if (y + height > 1.0) height = Math.max(0.001, 1.0 - y);
-
-      return {
-        x: Number(x.toFixed(4)),
-        y: Number(y.toFixed(4)),
-        width: Number(width.toFixed(4)),
-        height: Number(height.toFixed(4))
-      };
-    }).filter((r) => r.width > 0 && r.height > 0);
+    // Gộp các rect theo dòng hiển thị và chuẩn hóa tọa độ theo tỷ lệ trang [0.0 - 1.0]
+    const normalizedRects = mergePdfSelectionRects(clientRects, pageRect);
 
     if (normalizedRects.length === 0) return;
+
+    // Guard bảo vệ: Nếu sau khi gộp vẫn vượt quá 50 rects (vùng chọn quá dài)
+    if (normalizedRects.length > 50) {
+      alert('Đoạn được chọn quá dài. Vui lòng chia thành các ghi chú nhỏ hơn.');
+      return;
+    }
 
     setSelectionState({
       selectionType: 'text',
