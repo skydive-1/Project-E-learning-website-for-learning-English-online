@@ -233,3 +233,24 @@ CREATE TABLE IF NOT EXISTS lesson_materials (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_lesson_materials_lesson_id ON lesson_materials(lesson_id);
+
+-- 19. Tạo bảng Ghi chú & Highlight PDF Cá nhân (pdf_notes) - TASK-PDF-SMART-NOTES-01
+CREATE TABLE IF NOT EXISTS pdf_notes (
+  note_id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  lesson_id INTEGER NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+  material_id INTEGER NULL REFERENCES lesson_materials(material_id) ON DELETE CASCADE,
+  document_ref VARCHAR(255) NOT NULL,
+  page_number INTEGER NOT NULL CHECK (page_number >= 1),
+  selected_text TEXT NOT NULL,
+  note_text TEXT NOT NULL DEFAULT '',
+  category VARCHAR(30) NOT NULL CHECK (category IN ('important', 'not_understood', 'review', 'vocabulary')),
+  color VARCHAR(20) NOT NULL CHECK (color IN ('yellow', 'green', 'blue', 'pink')),
+  rects JSONB NOT NULL,
+  context_before TEXT DEFAULT '',
+  context_after TEXT DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_doc ON pdf_notes(user_id, lesson_id, document_ref);
+CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, lesson_id, page_number);

@@ -5,7 +5,7 @@ import {
   FiArrowLeft, FiChevronDown, FiChevronUp, FiAward,
   FiBookOpen, FiDownload, FiCpu, FiClock, FiMic, FiGlobe
 } from 'react-icons/fi';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
@@ -15,8 +15,16 @@ import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import CaptionOverlay from '../components/CaptionOverlay';
 import InteractiveTranscript from '../components/InteractiveTranscript';
+import PdfStudyViewer from '../components/PdfStudyViewer';
+import PdfNotesPanel from '../components/PdfNotesPanel';
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
 import { subtitlesService } from '../services/subtitles.service';
+import {
+  fetchPdfNotes,
+  createPdfNote,
+  updatePdfNote,
+  deletePdfNote
+} from '../services/pdfNotes.service';
 import shaka from 'shaka-player';
 import {
   getCourseDetails,
@@ -563,6 +571,131 @@ const LessonDetailPage = () => {
 
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
+  // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01)
+  const pdfDocumentRef = currentLesson ? `lesson:${currentLesson.id}:primary` : '';
+  const [activePdfPage, setActivePdfPage] = useState(1);
+  const [selectedPdfNoteId, setSelectedPdfNoteId] = useState(null);
+  const [activeGlowNoteId, setActiveGlowNoteId] = useState(null);
+
+  // Tự động chuyển từ tab transcript sang tab notes nếu bài học hiện tại là PDF
+  useEffect(() => {
+    if (isPdfLesson && activeRightTab === 'transcript') {
+      setActiveRightTab('notes');
+    }
+  }, [isPdfLesson, activeRightTab]);
+
+  // TanStack Query for PDF Notes
+  const {
+    data: pdfNotes = [],
+    isLoading: isPdfNotesLoading
+  } = useQuery({
+    queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+    queryFn: () => fetchPdfNotes(currentLesson?.id, pdfDocumentRef),
+    enabled: !!currentLesson?.id && isPdfLesson && !!currentUserId,
+    staleTime: 1000 * 60 * 5
+  });
+
+  // Create note mutation with Optimistic Update
+  const createPdfNoteMutation = useMutation({
+    mutationFn: (newNote) => createPdfNote(currentLesson?.id, { ...newNote, documentRef: pdfDocumentRef }),
+    onMutate: async (newNote) => {
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
+      const tempId = 'temp-' + Date.now();
+      const optimisticNote = {
+        id: tempId,
+        noteId: tempId,
+        userId: currentUserId,
+        lessonId: currentLesson?.id,
+        documentRef: pdfDocumentRef,
+        pageNumber: newNote.pageNumber,
+        selectedText: newNote.selectedText,
+        noteText: newNote.noteText || '',
+        category: newNote.category,
+        color: newNote.color,
+        rects: newNote.rects,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], [...previousNotes, optimisticNote]);
+      return { previousNotes };
+    },
+    onError: (err, newNote, context) => {
+      if (context?.previousNotes) {
+        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
+      }
+      alert('Không thể tạo ghi chú: ' + (err?.response?.data?.message || err.message));
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+    }
+  });
+
+  // Update note mutation
+  const updatePdfNoteMutation = useMutation({
+    mutationFn: ({ noteId, updateData }) => updatePdfNote(currentLesson?.id, noteId, updateData),
+    onMutate: async ({ noteId, updateData }) => {
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
+      queryClient.setQueryData(
+        ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+        previousNotes.map((n) => (String(n.id || n.noteId) === String(noteId) ? { ...n, ...updateData } : n))
+      );
+      return { previousNotes };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousNotes) {
+        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+    }
+  });
+
+  // Delete note mutation
+  const deletePdfNoteMutation = useMutation({
+    mutationFn: (noteId) => deletePdfNote(currentLesson?.id, noteId),
+    onMutate: async (noteId) => {
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
+      queryClient.setQueryData(
+        ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+        previousNotes.filter((n) => String(n.id || n.noteId) !== String(noteId))
+      );
+      return { previousNotes };
+    },
+    onError: (err, noteId, context) => {
+      if (context?.previousNotes) {
+        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+    }
+  });
+
+  const handleCreatePdfNote = async (noteData) => {
+    return createPdfNoteMutation.mutateAsync(noteData);
+  };
+
+  const handleUpdatePdfNote = async (noteId, updateData) => {
+    return updatePdfNoteMutation.mutateAsync({ noteId, updateData });
+  };
+
+  const handleDeletePdfNote = async (noteId) => {
+    return deletePdfNoteMutation.mutateAsync(noteId);
+  };
+
+  const handleNavigateToPdfNote = (note) => {
+    setActivePdfPage(Number(note.pageNumber));
+    setSelectedPdfNoteId(note.id || note.noteId);
+    setActiveGlowNoteId(note.id || note.noteId);
+    setTimeout(() => {
+      setActiveGlowNoteId(null);
+    }, 1500);
+  };
+
   // Tự động tải phụ đề khi đổi bài học (Đặt sau khi currentLesson đã được khai báo an toàn)
   useEffect(() => {
     if (!currentLesson?.id) return;
@@ -1024,30 +1157,19 @@ const LessonDetailPage = () => {
                         className="w-full h-full relative"
                       >
                         {currentLesson?.type === 'pdf' ? (
-                          <div className="w-full h-full relative" onContextMenu={(e) => e.preventDefault()}>
-                            {/* PDF Security Watermark Badge */}
-                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-20 select-none font-mono text-[9px] sm:text-[10px] text-slate-800 bg-white/80 border border-slate-300 px-2.5 py-0.5 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
-                              <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
-                              <span className="text-slate-400">•</span>
-                              <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>
-                            </div>
-
-                            {/* PDF Diagonal Subtle Background Watermark */}
-                            <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-10 select-none rotate-[-25deg]">
-                              <span className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-widest whitespace-nowrap">
-                                {user?.email || 'Unknown User'} • E-LEARN ACADEMY COPYRIGHT
-                              </span>
-                            </div>
-
-                            {/* PDF Embedded Document Viewer - Cho phép cuộn trang và tương tác đọc bài học */}
-                            <iframe
-                              key={currentLesson?.id || 'pdf'}
-                              src={`${currentLesson.pdfUrl}#toolbar=0&navpanes=0`}
-                              className="w-full h-full border-none bg-white pointer-events-auto"
-                              title={currentLesson.title}
-                              onContextMenu={(e) => e.preventDefault()}
-                            />
-                          </div>
+                          <PdfStudyViewer
+                            key={currentLesson?.id || 'pdf-viewer'}
+                            pdfUrl={currentLesson.pdfUrl}
+                            title={currentLesson.title}
+                            user={user}
+                            notes={pdfNotes}
+                            selectedNoteId={selectedPdfNoteId}
+                            activeGlowNoteId={activeGlowNoteId}
+                            activePage={activePdfPage}
+                            onPageChange={(p) => setActivePdfPage(p)}
+                            onCreateNote={handleCreatePdfNote}
+                            onSelectNote={handleNavigateToPdfNote}
+                          />
                         ) : currentLesson?.videoUrl ? (
                           <>
                             {videoError ? (
@@ -1344,19 +1466,40 @@ const LessonDetailPage = () => {
                     <span>Bài học</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setActiveRightTab("transcript")}
-                    style={{
-                      borderBottomColor: activeRightTab === "transcript" ? "#14b8a6" : "transparent",
-                      color: activeRightTab === "transcript" ? "#14b8a6" : "var(--text-light)",
-                      backgroundColor: activeRightTab === "transcript" ? "var(--card-bg)" : "var(--bg-color)",
-                    }}
-                    className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
-                  >
-                    <FiGlobe className="text-[12px]" />
-                    <span>Phụ đề AI</span>
-                  </button>
+                  {isPdfLesson ? (
+                    <button
+                      type="button"
+                      onClick={() => setActiveRightTab("notes")}
+                      style={{
+                        borderBottomColor: activeRightTab === "notes" ? "#f59e0b" : "transparent",
+                        color: activeRightTab === "notes" ? "#f59e0b" : "var(--text-light)",
+                        backgroundColor: activeRightTab === "notes" ? "var(--card-bg)" : "var(--bg-color)",
+                      }}
+                      className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
+                    >
+                      <FiFileText className="text-[12px]" />
+                      <span>Ghi chú</span>
+                      {pdfNotes.length > 0 && (
+                        <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9.5px] bg-amber-500/20 text-amber-600 dark:text-amber-300 font-black">
+                          {pdfNotes.length}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setActiveRightTab("transcript")}
+                      style={{
+                        borderBottomColor: activeRightTab === "transcript" ? "#14b8a6" : "transparent",
+                        color: activeRightTab === "transcript" ? "#14b8a6" : "var(--text-light)",
+                        backgroundColor: activeRightTab === "transcript" ? "var(--card-bg)" : "var(--bg-color)",
+                      }}
+                      className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
+                    >
+                      <FiGlobe className="text-[12px]" />
+                      <span>Phụ đề AI</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1418,24 +1561,40 @@ const LessonDetailPage = () => {
                                     >
                                       {/* Completion Checkbox */}
                                       <button
+                                        type="button"
                                         onClick={(e) => handleToggleComplete(e, lesson.id)}
-                                        className="mr-2.5 mt-0.5 text-slate-400 hover:text-emerald-500 transition-colors shrink-0"
+                                        className="mr-3 text-slate-400 hover:text-smart-indigo transition-colors flex-shrink-0 cursor-pointer pt-0.5"
+                                        title={lesson.completed ? "Đã hoàn thành (Bấm để hủy)" : "Chưa hoàn thành (Bấm để đánh dấu)"}
                                       >
                                         {lesson.completed ? (
-                                          <FiCheckSquare className="text-[14.5px] text-emerald-500" />
+                                          <FiCheckSquare className="text-emerald-500 text-lg" />
                                         ) : (
-                                          <FiSquare className="text-[14.5px]" />
+                                          <FiSquare className="text-slate-400 hover:text-slate-600 text-lg" />
                                         )}
                                       </button>
 
-                                      {/* Lesson Info */}
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-[12.5px] font-medium leading-relaxed mb-1 truncate-2-lines" style={{ color: isActive ? '#3b82f6' : 'var(--text-color)', fontWeight: isActive ? '700' : '500' }}>
-                                          {lesson.title}
-                                        </p>
-                                        <div className="flex items-center text-[10px] text-slate-400 space-x-2">
-                                          {isQuiz ? <FiCheckSquare /> : (isSpeaking ? <FiMic /> : <FiClock />)}
-                                          <span>{lesson.duration}</span>
+                                      <div className="flex-grow min-w-0 pr-2">
+                                        <div className="flex items-center space-x-2">
+                                          <span
+                                            className={`text-xs font-semibold leading-tight line-clamp-2 ${isActive ? 'text-smart-indigo font-bold' : ''
+                                              }`}
+                                            style={{ color: isActive ? '#3b82f6' : 'var(--text-color)' }}
+                                          >
+                                            {lesson.title}
+                                          </span>
+                                        </div>
+
+                                        <div className="flex items-center space-x-3 mt-1.5 text-[11px] opacity-70">
+                                          <span className="flex items-center space-x-1">
+                                            {lesson.type === 'speaking' ? (
+                                              <FiMic className="text-smart-indigo" />
+                                            ) : lesson.type === 'pdf' ? (
+                                              <FiFileText className="text-amber-500" />
+                                            ) : (
+                                              <FiPlay className="text-emerald-500" />
+                                            )}
+                                            <span>{lesson.duration}</span>
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
@@ -1449,8 +1608,22 @@ const LessonDetailPage = () => {
                     </div>
                   )}
 
+                  {/* PDF Notes View */}
+                  {activeRightTab === "notes" && isPdfLesson && (
+                    <div className="h-full">
+                      <PdfNotesPanel
+                        notes={pdfNotes}
+                        isLoading={isPdfNotesLoading}
+                        selectedNoteId={selectedPdfNoteId}
+                        onNavigateToNote={handleNavigateToPdfNote}
+                        onUpdateNote={handleUpdatePdfNote}
+                        onDeleteNote={handleDeletePdfNote}
+                      />
+                    </div>
+                  )}
+
                   {/* Smart AI Interactive Transcript View */}
-                  {activeRightTab === "transcript" && (
+                  {activeRightTab === "transcript" && !isPdfLesson && (
                     <div className="h-full p-2">
                       <InteractiveTranscript
                         cues={subtitleData?.cues || []}
