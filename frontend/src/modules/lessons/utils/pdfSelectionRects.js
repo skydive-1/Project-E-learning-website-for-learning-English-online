@@ -146,8 +146,8 @@ export function mergePdfSelectionRects(clientRects, pageRect) {
     let normH = line.height / pageRect.height;
 
     // Giới hạn trong khoảng [0, 1]
-    normX = Math.max(0, Math.min(1, normX));
-    normY = Math.max(0, Math.min(1, normY));
+    normX = Math.max(0, Math.min(0.999, normX));
+    normY = Math.max(0, Math.min(0.999, normY));
     normW = Math.max(0.001, Math.min(1 - normX, normW));
     normH = Math.max(0.001, Math.min(1 - normY, normH));
 
