@@ -19,7 +19,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 
 const db = require('../src/config/database');
-const { authenticate } = require('../src/middleware/auth.middleware');
+const { authenticate, authenticateVideoToken } = require('../src/middleware/auth.middleware');
 
 describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () => {
   let server;
@@ -55,6 +55,9 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
     const app = express();
     app.use(express.json());
     app.get('/api/protected', authenticate, (req, res) => {
+      res.status(200).json({ success: true, user: req.user });
+    });
+    app.get('/api/video/:lessonId', authenticateVideoToken, (req, res) => {
       res.status(200).json({ success: true, user: req.user });
     });
 
@@ -193,5 +196,76 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
     assert.strictEqual(data.success, true);
     assert.strictEqual(data.user.id, 1);
     assert.strictEqual(data.user.email, 'student@example.com');
+  });
+
+  it('9. should return 401 TOKEN_INVALID when token ID mismatches database user ID', async () => {
+    const invalidIdToken = jwt.sign(
+      { id: 99, email: 'student@example.com', roleId: 3 }, // id 99 will fetch student@example.com (user_id: 1) from DB, causing mismatch
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/protected`, {
+      headers: { Authorization: `Bearer ${invalidIdToken}` }
+    });
+    const data = await res.json();
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(data.code, 'TOKEN_INVALID');
+  });
+
+  it('10. should return 401 TOKEN_INVALID when token email mismatches database user email', async () => {
+    const invalidEmailToken = jwt.sign(
+      { id: 1, email: 'mismatch@example.com', roleId: 3 }, // id 1 will fetch student@example.com, causing email mismatch
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/protected`, {
+      headers: { Authorization: `Bearer ${invalidEmailToken}` }
+    });
+    const data = await res.json();
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(data.code, 'TOKEN_INVALID');
+  });
+
+  it('11. should return 403 TOKEN_INVALID in authenticateVideoToken when type is not video_stream_ticket', async () => {
+    const regularToken = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3 }, // No type 'video_stream_ticket'
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/video/12?ticket=${regularToken}`);
+    const data = await res.json();
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(data.code, 'TOKEN_INVALID');
+    assert.match(data.message, /không đúng loại vé xem video/);
+  });
+
+  it('12. should return 403 TOKEN_INVALID in authenticateVideoToken when lessonId mismatches requested URL', async () => {
+    const mismatchedLessonTicket = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3, type: 'video_stream_ticket', lessonId: 99 },
+      process.env.JWT_SECRET,
+      { expiresIn: '60s' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/video/12?ticket=${mismatchedLessonTicket}`);
+    const data = await res.json();
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(data.code, 'TOKEN_INVALID');
+    assert.match(data.message, /không khớp với bài học yêu cầu/);
+  });
+
+  it('13. should return 200 OK in authenticateVideoToken when ticket is fully valid and matches lessonId', async () => {
+    const validTicket = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3, type: 'video_stream_ticket', lessonId: 12 },
+      process.env.JWT_SECRET,
+      { expiresIn: '60s' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/video/12?ticket=${validTicket}`);
+    const data = await res.json();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(data.success, true);
   });
 });

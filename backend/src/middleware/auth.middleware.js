@@ -77,6 +77,24 @@ const authenticate = async (req, res, next) => {
 
     const dbUser = userRes.rows[0];
 
+    // Bảo vệ logic: Đảm bảo thông tin trong token khớp chính xác với CSDL để tránh các lỗ hổng logic OR
+    if (decoded.id && dbUser.user_id !== decoded.id) {
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        error: 'TokenInvalidError',
+        message: 'Thông tin mã xác thực không hợp lệ. Vui lòng đăng nhập lại.'
+      });
+    }
+    if (decoded.email && dbUser.email.toLowerCase() !== decoded.email.toLowerCase()) {
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        error: 'TokenInvalidError',
+        message: 'Thông tin mã xác thực không hợp lệ. Vui lòng đăng nhập lại.'
+      });
+    }
+
     // Gán thông tin thực tế mới nhất từ CSDL vào req.user (đảm bảo lấy role_id mới nhất từ DB)
     req.user = {
       ...decoded,
@@ -130,6 +148,17 @@ const optionalAuthenticate = async (req, res, next) => {
     }
 
     const dbUser = userRes.rows[0];
+
+    // Bảo vệ logic: Đảm bảo thông tin trong token khớp chính xác với CSDL
+    if (decoded.id && dbUser.user_id !== decoded.id) {
+      req.user = null;
+      return next();
+    }
+    if (decoded.email && dbUser.email.toLowerCase() !== decoded.email.toLowerCase()) {
+      req.user = null;
+      return next();
+    }
+
     req.user = {
       ...decoded,
       id: dbUser.user_id,
@@ -233,9 +262,35 @@ const authenticateVideoToken = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Kiểm tra loại token để đảm bảo đây là video ticket hợp lệ, chứ không phải session token dài hạn
+    if (decoded.type !== 'video_stream_ticket') {
+      return res.status(403).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        message: 'Mã xác thực không đúng loại vé xem video'
+      });
+    }
+
+    // Kiểm tra tính nhất quán của lessonId giữa URL và Token
+    if (req.params.lessonId && String(decoded.lessonId) !== String(req.params.lessonId)) {
+      return res.status(403).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        message: 'Vé xem video không khớp với bài học yêu cầu'
+      });
+    }
+
     req.user = decoded;
     next();
   } catch (error) {
+    if (error.status === 403) {
+      return res.status(403).json({
+        success: false,
+        code: error.code || 'TOKEN_INVALID',
+        message: error.message
+      });
+    }
     return res.status(401).json({
       success: false,
       code: 'TOKEN_INVALID',

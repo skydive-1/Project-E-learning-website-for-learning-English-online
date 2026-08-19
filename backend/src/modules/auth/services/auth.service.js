@@ -539,7 +539,8 @@ class AuthService {
       const tempPayload = {
         email,
         fullName,
-        profilePictureUrl
+        profilePictureUrl,
+        type: 'google_temp_role_confirm'
       };
 
       const secretKey = process.env.JWT_SECRET || 'your-super-secret-key-change-this';
@@ -564,7 +565,13 @@ class AuthService {
       let decoded;
       try {
         decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+        if (decoded.type !== 'google_temp_role_confirm') {
+          const error = new Error('Liên kết chọn vai trò không hợp lệ');
+          error.status = 400;
+          throw error;
+        }
       } catch (err) {
+        if (err.status === 400) throw err;
         const error = new Error('Liên kết chọn vai trò đã hết hạn hoặc không hợp lệ');
         error.status = 400;
         throw error;
@@ -724,7 +731,13 @@ class AuthService {
       let decoded;
       try {
         decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
+        if (decoded.type !== 'reset_password') {
+          const error = new Error('Mã xác thực không hợp lệ cho yêu cầu đặt lại mật khẩu');
+          error.status = 400;
+          throw error;
+        }
       } catch (err) {
+        if (err.status === 400) throw err;
         // Fallback thử với Supabase client nếu là token Supabase
         if (supabaseClient && supabaseAdmin) {
           const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
