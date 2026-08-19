@@ -1,98 +1,207 @@
+/**
+ * Database Configuration
+ * - Thiết lập kết nối PostgreSQL sử dụng pg Pool
+ */
+
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Cấu hình kết nối PostgreSQL hỗ trợ đa môi trường
-const isProduction = process.env.NODE_ENV === 'production';
+let rawDbUrl = process.env.DATABASE_URL;
+if (rawDbUrl && rawDbUrl.includes('southeast-2.pooler')) {
+  rawDbUrl = rawDbUrl.replace(/(southeast-2\.pooler\.)+/g, 'southeast-2.pooler.');
+}
+const dbConnectionString = rawDbUrl;
+
+const isRemoteDb = Boolean(
+  dbConnectionString || 
+  (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1')
+);
+
+const sslConfig = (process.env.DB_SSL === 'false') ? false : { rejectUnauthorized: false };
+
+const poolConfig = dbConnectionString
+  ? {
+    connectionString: dbConnectionString,
+    ssl: sslConfig
+  }
+  : {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432', 10),
+    database: process.env.DB_NAME || 'postgres',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+    ssl: isRemoteDb ? sslConfig : (process.env.DB_SSL === 'true' ? sslConfig : false)
+  };
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: isProduction || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('supabase.co'))
-    ? { rejectUnauthorized: false }
-    : false,
+  ...poolConfig,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
 });
 
-pool.on('connect', () => {
-  console.log('✅ Đã kết nối cơ sở dữ liệu PostgreSQL');
-});
-
+// Lắng nghe sự kiện lỗi trên các client nhàn rỗi trong pool
 pool.on('error', (err) => {
-  console.error('❌ Lỗi kết nối cơ sở dữ liệu bất ngờ:', err.message);
+  console.error('❌ Lỗi bất ngờ trên client PostgreSQL nhàn rỗi:', err);
 });
 
-// Helper function chạy query
-const query = (text, params) => pool.query(text, params);
-
-// Hàm kiểm tra kết nối & tự động khởi tạo cấu trúc nếu thiếu
-const checkConnection = async () => {
+// Hàm kiểm tra kết nối tới Database và khởi tạo bảng nếu cần
+const testConnection = async () => {
   try {
     const client = await pool.connect();
-    console.log('📡 Kiểm tra kết nối Database thành công');
+    console.log('✅ Kết nối thành công tới cơ sở dữ liệu PostgreSQL!');
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng users có cột bio
+    // Chỉ chạy kiểm thử kết nối đơn giản để tránh deadlock khi boot app
+    const res = await client.query('SELECT 1 + 1 AS result');
+    console.log(`✅ DB Health Check: Connection verified successfully (1 + 1 = ${res.rows[0].result})`);
+
+    // Tự động đồng bộ cấu trúc: Đảm bảo cột supabase_uid và longest_streak tồn tại trong bảng users
     try {
-      await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;");
-      console.log('✅ Tự động đồng bộ: Cột users.bio đã sẵn sàng');
+      await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS supabase_uid UUID UNIQUE;');
+      await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS longest_streak INTEGER DEFAULT 0;');
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột supabase_uid và longest_streak tồn tại trong bảng users');
     } catch (migErr) {
-      console.warn('⚠️ Cảnh báo tự động thêm cột users.bio:', migErr.message);
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột bảng users:', migErr.message);
     }
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng lessons có các cột Speaking
     try {
-      await client.query("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS speaking_sentences TEXT;");
-      await client.query("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS speaking_questions TEXT;");
-      console.log('✅ Tự động đồng bộ: Cột speaking_sentences và speaking_questions đã sẵn sàng');
+      await client.query('ALTER TABLE quiz_attempts ADD COLUMN IF NOT EXISTS nickname VARCHAR(100);');
+      await client.query('ALTER TABLE quiz_attempts ALTER COLUMN user_id DROP NOT NULL;');
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột nickname tồn tại và user_id cho phép NULL trong quiz_attempts');
     } catch (migErr) {
-      console.warn('⚠️ Cảnh báo tự động thêm cột lessons Speaking:', migErr.message);
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột nickname:', migErr.message);
     }
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng study_sessions tồn tại
+    try {
+      await client.query("ALTER TABLE questions ADD COLUMN IF NOT EXISTS question_type VARCHAR(50) DEFAULT 'multiple_choice';");
+      await client.query("ALTER TABLE questions ALTER COLUMN correct_answer TYPE TEXT;");
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột question_type tồn tại và correct_answer có kiểu TEXT trong bảng questions');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột questions:', migErr.message);
+    }
+
+    try {
+      await client.query("ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT FALSE;");
+      await client.query("ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS pin_code VARCHAR(20) DEFAULT NULL;");
+      console.log('✅ Tự động đồng bộ: Đảm bảo cột is_private và pin_code tồn tại trong bảng quizzes');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động đồng bộ cột quizzes:', migErr.message);
+    }
+
+    try {
+      await client.query("CREATE INDEX IF NOT EXISTS idx_quizzes_course_id ON quizzes(course_id);");
+      await client.query("CREATE INDEX IF NOT EXISTS idx_questions_quiz_id ON questions(quiz_id);");
+      await client.query("CREATE INDEX IF NOT EXISTS idx_user_progress_user_id ON user_progress(user_id);");
+      await client.query("CREATE INDEX IF NOT EXISTS idx_ai_chat_student_id ON ai_chat(student_id);");
+      console.log('✅ Tự động đồng bộ: Đã tạo các chỉ mục Index tối ưu hiệu năng truy vấn Database');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo index database:', migErr.message);
+    }
+
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng user_token_limits tồn tại để tránh lỗi Token Limit
     try {
       await client.query(`
-        CREATE TABLE IF NOT EXISTS study_sessions (
-          session_id BIGSERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-          lesson_id INTEGER NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
-          session_date DATE NOT NULL DEFAULT CURRENT_DATE,
-          duration_seconds INTEGER NOT NULL DEFAULT 0 CHECK (duration_seconds >= 0),
-          last_heartbeat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT unique_user_lesson_date UNIQUE (user_id, lesson_id, session_date)
+        CREATE TABLE IF NOT EXISTS user_token_limits (
+          token_limit_id SERIAL PRIMARY KEY,
+          user_id INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+          max_tokens INT NOT NULL CHECK (max_tokens >= 0) DEFAULT 6000,
+          used_tokens INT NOT NULL CHECK (used_tokens >= 0) DEFAULT 0,
+          remaining_tokens INT GENERATED ALWAYS AS (max_tokens - used_tokens) STORED,
+          reset_date DATE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_study_sessions_user_date ON study_sessions(user_id, session_date);`);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_study_sessions_lesson ON study_sessions(lesson_id);`);
-      console.log('✅ Tự động đồng bộ: Đảm bảo bảng study_sessions tồn tại thành công');
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng user_token_limits tồn tại thành công');
     } catch (migErr) {
-      console.warn('⚠️ Cảnh báo tự động tạo bảng study_sessions:', migErr.message);
+      console.warn('⚠️ Cảnh báo tự động tạo bảng user_token_limits:', migErr.message);
     }
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng ai_conversations tồn tại
+    // Tự động đồng bộ cấu trúc: Đảm bảo các bảng lesson_comments và comment_upvotes tồn tại
     try {
       await client.query(`
-        CREATE TABLE IF NOT EXISTS ai_conversations (
-          conversation_id BIGSERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-          lesson_id INTEGER NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
-          role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-          message_type VARCHAR(20) NOT NULL DEFAULT 'text' CHECK (message_type IN ('text', 'audio', 'evaluation')),
+        CREATE TABLE IF NOT EXISTS lesson_comments (
+          comment_id SERIAL PRIMARY KEY,
+          lesson_id INT NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          parent_id INT REFERENCES lesson_comments(comment_id) ON DELETE CASCADE,
           content TEXT NOT NULL,
-          audio_url TEXT NULL,
-          audio_duration_seconds REAL NULL,
-          evaluation_score JSONB NULL,
+          is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS comment_upvotes (
+          comment_id INT NOT NULL REFERENCES lesson_comments(comment_id) ON DELETE CASCADE,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          PRIMARY KEY (comment_id, user_id),
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_lesson ON ai_conversations(user_id, lesson_id, created_at);`);
-      console.log('✅ Tự động đồng bộ: Đảm bảo bảng ai_conversations tồn tại thành công');
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_comments_lesson_id ON lesson_comments(lesson_id);`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_comments_parent_id ON lesson_comments(parent_id);`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo các bảng lesson_comments và comment_upvotes tồn tại thành công');
     } catch (migErr) {
-      console.warn('⚠️ Cảnh báo tự động tạo bảng ai_conversations:', migErr.message);
+      console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_comments & comment_upvotes:', migErr.message);
     }
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng lesson_materials tồn tại
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng instructor_policy_agreements tồn tại
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS instructor_policy_agreements (
+          agreement_id SERIAL PRIMARY KEY,
+          instructor_id INT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
+          ip_address VARCHAR(45) NOT NULL,
+          signature TEXT NOT NULL,
+          accepted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng instructor_policy_agreements tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng instructor_policy_agreements:', migErr.message);
+    }
+
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng learning_ss tồn tại cho Gamification & Analytics
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS learning_ss (
+          learning_ss_id SERIAL PRIMARY KEY,
+          user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          lesson_id INT REFERENCES lessons(lesson_id) ON DELETE SET NULL,
+          start_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          end_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_learning_ss_user_id ON learning_ss(user_id);`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng learning_ss tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng learning_ss:', migErr.message);
+    }
+
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng lesson_subtitles tồn tại cho Smart AI Subtitles & Interactive Transcript
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS lesson_subtitles (
+          subtitle_id SERIAL PRIMARY KEY,
+          lesson_id INT NOT NULL UNIQUE REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+          en_vtt TEXT,
+          vi_vtt TEXT,
+          bilingual_vtt TEXT,
+          cues JSONB NOT NULL DEFAULT '[]',
+          is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_subtitles_lesson_id ON lesson_subtitles(lesson_id);`);
+      await client.query(`ALTER TABLE lesson_subtitles ADD COLUMN IF NOT EXISTS is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE;`);
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng lesson_subtitles và cột is_auto_generated_fallback tồn tại thành công');
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_subtitles:', migErr.message);
+    }
+
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng lesson_materials tồn tại cho tài liệu đính kèm (PDF/Resources)
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS lesson_materials (
@@ -102,7 +211,6 @@ const checkConnection = async () => {
           file_url TEXT NOT NULL,
           file_type VARCHAR(50) DEFAULT 'application/pdf',
           file_size_kb INT DEFAULT 0,
-          pdf_version INT NOT NULL DEFAULT 1 CHECK (pdf_version >= 1),
           uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -114,12 +222,10 @@ const checkConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_materials:', migErr.message);
     }
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng pdf_notes tồn tại cho PDF Highlight & Smart Notes (TASK-PDF-SMART-NOTES-01, 02 & 03)
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng pdf_notes tồn tại cho PDF Highlight & Smart Notes (TASK-PDF-SMART-NOTES-01 & 02)
     try {
-      await client.query("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS pdf_version INT NOT NULL DEFAULT 1;");
-      await client.query("UPDATE lessons SET pdf_version = 1 WHERE pdf_version IS NULL OR pdf_version < 1;");
-      await client.query("ALTER TABLE lesson_materials ADD COLUMN IF NOT EXISTS pdf_version INT NOT NULL DEFAULT 1;");
-      await client.query("UPDATE lesson_materials SET pdf_version = 1 WHERE pdf_version IS NULL OR pdf_version < 1;");
+      await client.query("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS pdf_version INT DEFAULT 1;");
+      await client.query("ALTER TABLE lesson_materials ADD COLUMN IF NOT EXISTS pdf_version INT DEFAULT 1;");
 
       await client.query(`
         CREATE TABLE IF NOT EXISTS pdf_notes (
@@ -143,16 +249,6 @@ const checkConnection = async () => {
       `);
       await client.query("ALTER TABLE pdf_notes ADD COLUMN IF NOT EXISTS selection_type VARCHAR(20) NOT NULL DEFAULT 'text';");
       await client.query("ALTER TABLE pdf_notes ALTER COLUMN selected_text DROP NOT NULL;");
-      await client.query(`
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM pg_constraint WHERE conname = 'chk_pdf_notes_selection_type'
-          ) THEN
-            ALTER TABLE pdf_notes ADD CONSTRAINT chk_pdf_notes_selection_type CHECK (selection_type IN ('text', 'area'));
-          END IF;
-        END $$;
-      `);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_doc ON pdf_notes(user_id, lesson_id, document_ref);`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, lesson_id, page_number);`);
       console.log('✅ Tự động đồng bộ: Đảm bảo bảng pdf_notes, selection_type và pdf_version tồn tại thành công');
@@ -163,13 +259,13 @@ const checkConnection = async () => {
     client.release();
     return true;
   } catch (error) {
-    console.error('❌ Kết nối Database thất bại:', error.message);
+    console.error('❌ Không thể kết nối hoặc thực thi Health Check PostgreSQL:', error.message);
     return false;
   }
 };
 
 module.exports = {
+  query: (text, params) => pool.query(text, params),
   pool,
-  query,
-  checkConnection
+  testConnection
 };

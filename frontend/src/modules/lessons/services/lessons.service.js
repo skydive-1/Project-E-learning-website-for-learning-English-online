@@ -18,8 +18,8 @@ const mockCourseData = {
           duration: "03:15",
           videoUrl: "https://vjs.zencdn.net/v/oceans.mp4",
           description: "Trong bài học này, bạn sẽ làm quen với lộ trình học và cách tương tác hiệu quả với Trợ lý ảo AI Chatbot ở thanh bên phải để sửa lỗi phát âm và ngữ pháp.",
-          content: `Chào mừng bạn đến với khóa học English for Communication!
-
+          content: `Chào mừng bạn đến với khóa học English for Communication! 
+          
 Trong bài đầu tiên này, chúng ta sẽ tìm hiểu:
 - Cách thiết lập mục tiêu học tiếng Anh giao tiếp hàng ngày.
 - Cách tận dụng Trợ lý AI (AI Assistant) bên cạnh video để đặt câu hỏi trực tiếp khi gặp cấu trúc ngữ pháp khó.
@@ -220,7 +220,7 @@ export const getCourseDetails = async (courseId = 1) => {
             }
           }
           const isSpeakingType = l.content_type === 'speaking';
-
+          
           const lessonObj = {
             id: String(l.lesson_id),
             title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
@@ -228,7 +228,6 @@ export const getCourseDetails = async (courseId = 1) => {
             type: l.content_type || 'video',
             videoUrl: l.content_type === 'video' ? resolvedUrl : null,
             pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
-            pdfVersion: Number(l.pdf_version || l.pdfVersion || 1),
             description: description,
             content: content,
             resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
@@ -242,7 +241,7 @@ export const getCourseDetails = async (courseId = 1) => {
           // Check if lesson has speaking exercises configured
           const speakingDbIds = ['1', '2', '3', '4', '5', '10', '11', '12', '13', '14', '25', '26', '27', '28', '29', '30'];
           const hasSpeaking = !isSpeakingType && (
-                              (l.speaking_sentences && l.speaking_sentences.trim()) ||
+                              (l.speaking_sentences && l.speaking_sentences.trim()) || 
                               (l.speaking_questions && l.speaking_questions.trim()) ||
                               speakingDbIds.includes(String(l.lesson_id))
           );
@@ -330,7 +329,7 @@ export const toggleLessonCompletion = async (lessonId) => {
     const progressResponse = await apiClient.get(`/progress/${userId}`);
     const progressList = progressResponse.data.progress || [];
     const currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
-
+    
     const newCompletedState = currentProgress ? !currentProgress.is_completed : true;
 
     // Gửi cập nhật lên backend
@@ -463,7 +462,7 @@ export const getLessonById = async (lessonId) => {
     }
 
     const isSpeakingType = l.content_type === 'speaking';
-
+    
     // Map danh sách tài liệu đính kèm thực tế từ bảng lesson_materials
     let resolvedResources = [];
     if (l.materials && Array.isArray(l.materials)) {
@@ -491,7 +490,6 @@ export const getLessonById = async (lessonId) => {
       videoUrl: l.content_type === 'video' ? resolvedUrl : null,
       isDrmProtected: l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd')),
       pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
-      pdfVersion: Number(l.pdf_version || l.pdfVersion || 1),
       description: description,
       content: content,
       resources: resolvedResources,

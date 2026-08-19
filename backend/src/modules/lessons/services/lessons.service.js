@@ -13,31 +13,32 @@ class LessonsService {
           FROM lessons l
           JOIN sections s ON l.section_id = s.section_id
           WHERE s.course_id = $1
-          ORDER BY s.order_index ASC, l.order_index ASC
+          ORDER BY s.order_index, l.order_index
         `;
         const result = await db.query(queryText, [parseInt(courseId, 10)]);
-        return result.rows;
+        return result.rows || [];
       } else if (sectionId) {
         const queryText = `
           SELECT * FROM lessons 
-          WHERE section_id = $1
-          ORDER BY order_index ASC
+          WHERE section_id = $1 
+          ORDER BY order_index
         `;
         const result = await db.query(queryText, [parseInt(sectionId, 10)]);
-        return result.rows;
+        return result.rows || [];
       }
       return [];
     } catch (error) {
-      handleServiceError(error, 'Lỗi lấy danh sách bài giảng');
+      handleServiceError(error, 'Lỗi truy vấn danh sách bài học');
     }
   }
 
   /**
-   * Tạo bài học mới trong một chương học (section)
+   * Tạo bài học mới
    */
-  async createLesson(sectionId, lessonData) {
+  async createLesson(lessonData) {
     try {
       const { 
+        sectionId, section_id, 
         title, 
         contentType, content_type, 
         contentUrl, content_url, 
@@ -46,22 +47,45 @@ class LessonsService {
         speakingQuestions, speaking_questions
       } = lessonData;
       
-      const type = contentType || content_type || 'video';
-      const url = contentUrl || content_url || '';
-      const order = orderIndex || order_index || 1;
-      const sentences = speakingSentences || speaking_sentences || '';
-      const questions = speakingQuestions || speaking_questions || '';
+      const finalSectionId = parseInt(sectionId || section_id, 10);
+      const finalTitle = title;
+      const finalContentType = contentType || content_type || 'video';
+      const finalContentUrl = contentUrl || content_url || '';
+      const finalOrderIndex = parseInt(orderIndex || order_index, 10) || 1;
+      const finalSpeakingSentences = speakingSentences || speaking_sentences || '';
+      const finalSpeakingQuestions = speakingQuestions || speaking_questions || '';
+
+      if (!finalSectionId || !finalTitle) {
+        const error = new Error('Thiếu thông tin section_id hoặc tiêu đề bài học');
+        error.status = 400;
+        throw error;
+      }
+
+      // Kiểm tra xem section/chương học có tồn tại không
+      const sectionRes = await db.query('SELECT section_id, course_id FROM sections WHERE section_id = $1', [finalSectionId]);
+      if (sectionRes.rows.length === 0) {
+        const error = new Error('Chương học (section_id) không tồn tại');
+        error.status = 400;
+        throw error;
+      }
 
       const queryText = `
-        INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions, pdf_version)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
+        INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
       `;
-      const values = [parseInt(sectionId, 10), title, type, url, parseInt(order, 10), sentences, questions];
-      const result = await db.query(queryText, values);
+      const result = await db.query(queryText, [
+        finalSectionId, 
+        finalTitle, 
+        finalContentType, 
+        finalContentUrl, 
+        finalOrderIndex, 
+        finalSpeakingSentences, 
+        finalSpeakingQuestions
+      ]);
       return result.rows[0];
     } catch (error) {
-      handleServiceError(error, 'Lỗi tạo bài giảng');
+      handleServiceError(error, 'Lỗi tạo bài giảng mới');
     }
   }
 
@@ -70,18 +94,6 @@ class LessonsService {
    */
   async updateLesson(lessonId, lessonData) {
     try {
-      const parsedLessonId = parseInt(lessonId, 10);
-      const existingRes = await db.query(
-        'SELECT lesson_id, content_type, content_url, COALESCE(pdf_version, 1) AS pdf_version FROM lessons WHERE lesson_id = $1',
-        [parsedLessonId]
-      );
-      if (existingRes.rows.length === 0) {
-        const error = new Error('Bài học không tồn tại');
-        error.status = 404;
-        throw error;
-      }
-      const existing = existingRes.rows[0];
-
       const { 
         title, 
         contentType, content_type, 
@@ -96,37 +108,17 @@ class LessonsService {
       const values = [];
       let paramIndex = 1;
 
-      const rawNewContentType = contentType !== undefined ? contentType : content_type;
-      const rawNewContentUrl = contentUrl !== undefined ? contentUrl : content_url;
-
-      // Xác định xem có thay đổi tài liệu PDF để tăng pdf_version không
-      let shouldIncrementPdfVersion = false;
-      const oldType = existing.content_type;
-      const oldUrl = existing.content_url;
-      const effectiveType = rawNewContentType !== undefined ? rawNewContentType : oldType;
-
-      if (rawNewContentType !== undefined || rawNewContentUrl !== undefined) {
-        const urlChanged = rawNewContentUrl !== undefined && String(oldUrl || '').trim() !== String(rawNewContentUrl || '').trim();
-        const typeChanged = rawNewContentType !== undefined && String(oldType || '').trim() !== String(rawNewContentType || '').trim();
-
-        if (urlChanged && (oldType === 'pdf' || effectiveType === 'pdf')) {
-          shouldIncrementPdfVersion = true;
-        } else if (typeChanged && (oldType === 'pdf' || effectiveType === 'pdf')) {
-          shouldIncrementPdfVersion = true;
-        }
-      }
-
       if (title !== undefined) {
         updates.push(`title = $${paramIndex++}`);
         values.push(title);
       }
-      if (rawNewContentType !== undefined) {
+      if (contentType !== undefined || content_type !== undefined) {
         updates.push(`content_type = $${paramIndex++}`);
-        values.push(rawNewContentType);
+        values.push(contentType || content_type);
       }
-      if (rawNewContentUrl !== undefined) {
+      if (contentUrl !== undefined || content_url !== undefined) {
         updates.push(`content_url = $${paramIndex++}`);
-        values.push(rawNewContentUrl);
+        values.push(contentUrl !== undefined ? contentUrl : content_url);
       }
       if (orderIndex !== undefined || order_index !== undefined) {
         updates.push(`order_index = $${paramIndex++}`);
@@ -153,16 +145,12 @@ class LessonsService {
         values.push(finalSectionId);
       }
 
-      if (shouldIncrementPdfVersion) {
-        updates.push(`pdf_version = COALESCE(pdf_version, 1) + 1`);
-      }
-
       if (updates.length === 0) {
-        const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [parsedLessonId]);
+        const result = await db.query('SELECT * FROM lessons WHERE lesson_id = $1', [lessonId]);
         return result.rows[0];
       }
 
-      values.push(parsedLessonId);
+      values.push(parseInt(lessonId, 10));
       const queryText = `
         UPDATE lessons
         SET ${updates.join(', ')}
@@ -229,9 +217,9 @@ class LessonsService {
 
       // 1. Lưu thông tin tài liệu vào CSDL
       const insertQuery = `
-        INSERT INTO lesson_materials (lesson_id, file_name, file_url, file_type, file_size_kb, uploaded_by, pdf_version)
-        VALUES ($1, $2, $3, $4, $5, $6, 1)
-        RETURNING material_id, lesson_id, file_name, file_url, file_type, file_size_kb, pdf_version, created_at
+        INSERT INTO lesson_materials (lesson_id, file_name, file_url, file_type, file_size_kb, uploaded_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING material_id, lesson_id, file_name, file_url, file_type, file_size_kb, created_at
       `;
       const result = await db.query(insertQuery, [
         cleanLessonId,
@@ -269,7 +257,7 @@ class LessonsService {
     try {
       const cleanLessonId = parseInt(lessonId, 10);
       const query = `
-        SELECT material_id, lesson_id, file_name, file_url, file_type, file_size_kb, pdf_version, created_at
+        SELECT material_id, lesson_id, file_name, file_url, file_type, file_size_kb, created_at
         FROM lesson_materials
         WHERE lesson_id = $1
         ORDER BY material_id ASC
@@ -352,7 +340,7 @@ class LessonsService {
 
       // Lấy danh sách tài liệu đính kèm từ bảng lesson_materials
       const materialsRes = await db.query(
-        'SELECT material_id, file_name, file_url, file_type, file_size_kb, pdf_version, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',
+        'SELECT material_id, file_name, file_url, file_type, file_size_kb, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',
         [cleanLessonId]
       );
 

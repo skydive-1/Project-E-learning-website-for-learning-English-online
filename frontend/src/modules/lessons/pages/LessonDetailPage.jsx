@@ -149,12 +149,12 @@ const LessonDetailPage = () => {
 
   /**
    * ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
-   *
+   * 
    * [PHẠM VI BẢO VỆ]:
    * - Ngăn chặn 100% các thao tác chụp màn hình từ bàn phím (PrintScreen, Win+Shift+S, Alt+PrtScn)
    * - Ngăn chặn chia sẻ màn hình qua getDisplayMedia của trình duyệt
    * - Tự động che đen khi người dùng chuyển tab (visibilitychange) hoặc mất focus (window blur)
-   *
+   * 
    * [GIỚI HẠN KỸ THUẬT CLIENT-SIDE JAVASCRIPT]:
    * - Không thể phát hiện OBS Studio / Bandicam chạy chế độ Display Capture (Toàn màn hình) khi Tab vẫn giữ active focus
    *   (do hạn chế bảo mật Sandbox của trình duyệt web không thể can thiệp quét tiến trình hệ điều hành).
@@ -571,8 +571,8 @@ const LessonDetailPage = () => {
 
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
-  // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01, 02 & 03)
-  const pdfVersion = currentLesson?.pdfVersion || 1;
+  // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01 & 02)
+  const pdfDocumentRef = currentLesson?.documentRef || (currentLesson ? `lesson:${currentLesson.id}:primary:v${currentLesson.pdfVersion || 1}` : '');
   const [activePdfPage, setActivePdfPage] = useState(1);
   const [selectedPdfNoteId, setSelectedPdfNoteId] = useState(null);
   const [activeGlowNoteId, setActiveGlowNoteId] = useState(null);
@@ -599,35 +599,32 @@ const LessonDetailPage = () => {
     }
   }, [isPdfLesson, activeRightTab]);
 
-  // TanStack Query for PDF Notes (Tự động cập nhật khi pdfVersion thay đổi)
+  // TanStack Query for PDF Notes
   const {
     data: pdfNotes = [],
     isLoading: isPdfNotesLoading
   } = useQuery({
-    queryKey: ['pdf-notes', currentLesson?.id, null, pdfVersion],
-    queryFn: () => fetchPdfNotes(currentLesson?.id, null),
+    queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+    queryFn: () => fetchPdfNotes(currentLesson?.id, pdfDocumentRef),
     enabled: !!currentLesson?.id && isPdfLesson && !!currentUserId,
     staleTime: 1000 * 60 * 5
   });
 
-  // Create note mutation with Optimistic Update (Hỗ trợ cả text note và area note)
+  // Create note mutation with Optimistic Update
   const createPdfNoteMutation = useMutation({
-    mutationFn: (newNote) => createPdfNote(currentLesson?.id, newNote),
+    mutationFn: (newNote) => createPdfNote(currentLesson?.id, { ...newNote, documentRef: pdfDocumentRef }),
     onMutate: async (newNote) => {
-      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, null, pdfVersion] });
-      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, null, pdfVersion]) || [];
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
       const tempId = 'temp-' + Date.now();
-      const isArea = newNote.selectionType === 'area';
       const optimisticNote = {
         id: tempId,
         noteId: tempId,
         userId: currentUserId,
         lessonId: currentLesson?.id,
-        materialId: null,
-        documentRef: `lesson:${currentLesson?.id}:primary:v${pdfVersion}`,
+        documentRef: pdfDocumentRef,
         pageNumber: newNote.pageNumber,
-        selectionType: newNote.selectionType || 'text',
-        selectedText: isArea ? null : newNote.selectedText,
+        selectedText: newNote.selectedText,
         noteText: newNote.noteText || '',
         category: newNote.category,
         color: newNote.color,
@@ -635,40 +632,39 @@ const LessonDetailPage = () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      queryClient.setQueryData(['pdf-notes', currentLesson?.id, null, pdfVersion], [...previousNotes, optimisticNote]);
+      queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], [...previousNotes, optimisticNote]);
       return { previousNotes };
     },
     onError: (err, newNote, context) => {
       if (context?.previousNotes) {
-        queryClient.setQueryData(['pdf-notes', currentLesson?.id, null, pdfVersion], context.previousNotes);
+        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
       }
       alert('Không thể tạo ghi chú: ' + (err?.response?.data?.message || err.message));
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, null, pdfVersion] });
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
     }
   });
 
   // Update note mutation
   const updatePdfNoteMutation = useMutation({
-    mutationFn: ({ noteId, ...updateData }) => updatePdfNote(currentLesson?.id, noteId, updateData),
-    onMutate: async ({ noteId, ...updateData }) => {
-      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, null, pdfVersion] });
-      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, null, pdfVersion]) || [];
+    mutationFn: ({ noteId, updateData }) => updatePdfNote(currentLesson?.id, noteId, updateData),
+    onMutate: async ({ noteId, updateData }) => {
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
       queryClient.setQueryData(
-        ['pdf-notes', currentLesson?.id, null, pdfVersion],
-        previousNotes.map((n) => (n.id === noteId || n.noteId === noteId ? { ...n, ...updateData, updatedAt: new Date().toISOString() } : n))
+        ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+        previousNotes.map((n) => (String(n.id || n.noteId) === String(noteId) ? { ...n, ...updateData } : n))
       );
       return { previousNotes };
     },
     onError: (err, variables, context) => {
       if (context?.previousNotes) {
-        queryClient.setQueryData(['pdf-notes', currentLesson?.id, null, pdfVersion], context.previousNotes);
+        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
       }
-      alert('Không thể cập nhật ghi chú: ' + (err?.response?.data?.message || err.message));
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, null, pdfVersion] });
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
     }
   });
 
@@ -676,11 +672,11 @@ const LessonDetailPage = () => {
   const deletePdfNoteMutation = useMutation({
     mutationFn: (noteId) => deletePdfNote(currentLesson?.id, noteId),
     onMutate: async (noteId) => {
-      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, null, pdfVersion] });
-      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, null, pdfVersion]) || [];
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
       queryClient.setQueryData(
-        ['pdf-notes', currentLesson?.id, null, pdfVersion],
-        previousNotes.filter((n) => n.id !== noteId && n.noteId !== noteId)
+        ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+        previousNotes.filter((n) => String(n.id || n.noteId) !== String(noteId))
       );
       return { previousNotes };
     },
@@ -1684,11 +1680,11 @@ const LessonDetailPage = () => {
                   {activeRightTab === "ai" && (
                     <div className="h-full p-2">
                       <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
-                        <ChatBox
-                          lessonId={targetLessonId || currentLesson?.id}
+                        <ChatBox 
+                          lessonId={targetLessonId || currentLesson?.id} 
                           lessonTitle={currentLesson?.title || ''}
-                          currentTime={videoCurrentTime}
-                          onSeekVideo={handleSeekVideo}
+                          currentTime={videoCurrentTime} 
+                          onSeekVideo={handleSeekVideo} 
                         />
                       </ErrorBoundary>
                     </div>
