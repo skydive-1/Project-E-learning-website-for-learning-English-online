@@ -2,8 +2,15 @@ const express = require('express');
 const router = express.Router();
 const lessonsController = require('./controllers/lessons.controller');
 const subtitlesController = require('./controllers/subtitles.controller');
+const pdfNotesController = require('./controllers/pdfNotes.controller');
 const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
+
+// Ghi chú & Highlight PDF Cá nhân (TASK-PDF-SMART-NOTES-01)
+router.get('/:lessonId/pdf-notes', authenticate, pdfNotesController.getNotes);
+router.post('/:lessonId/pdf-notes', authenticate, pdfNotesController.createNote);
+router.put('/:lessonId/pdf-notes/:noteId', authenticate, pdfNotesController.updateNote);
+router.delete('/:lessonId/pdf-notes/:noteId', authenticate, pdfNotesController.deleteNote);
 
 // GET /api/lessons/video/ticket/:lessonId - Lấy Video Ticket thời hạn ngắn 60s (Chống tải lậu)
 router.get('/video/ticket/:lessonId', authenticate, lessonsController.getVideoTicket);

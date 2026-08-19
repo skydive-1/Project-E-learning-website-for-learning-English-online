@@ -1,0 +1,64 @@
+{
+  "task": "TASK-PDF-SMART-NOTES-01",
+  "baseCommitSha": "75b80653005f6f7fcccdf4c1b3f0b7dcbd762e6c",
+  "branch": "feature/pdf-smart-notes",
+  "workingTreeDirty": true,
+  "taskOwner": "NGUYỄN DŨNG QUỐC ANH",
+  "support": "AI Agent",
+  "database": {
+    "table": "pdf_notes",
+    "migrationStatus": "SYNCHRONIZED",
+    "indexes": [
+      "idx_pdf_notes_user_lesson_doc",
+      "idx_pdf_notes_user_lesson_page"
+    ]
+  },
+  "automatedTests": {
+    "backend": {
+      "status": "PASS",
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm test",
+      "breakdown": {
+        "pdfNotes": 9,
+        "aiSpeaking": 19,
+        "videoStreaming": 5
+      }
+    },
+    "frontend": {
+      "status": "PASS",
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm run test:speaking",
+      "breakdown": {
+        "pdfNotes": 13,
+        "speakingExercise": 5,
+        "useAudioRecorder": 4,
+        "chatbotAudioService": 5
+      }
+    },
+    "build": {
+      "status": "PASS",
+      "command": "npm run build",
+      "details": "1792 modules transformed, built in 11.69s (0 errors)"
+    },
+    "lint": {
+      "status": "NOT_RUN",
+      "reason": "no lint script configured"
+    }
+  },
+  "liveVerification": {
+    "railway": {
+      "status": "NOT_VERIFIED",
+      "note": "Cần kiểm tra sau khi deploy Railway"
+    },
+    "vercel": {
+      "status": "NOT_VERIFIED",
+      "note": "Cần kiểm tra giao diện và worker PDF trên Vercel sau khi deploy"
+    }
+  }
+}
