@@ -17,6 +17,23 @@ const apiClient = axios.create({
   },
 });
 
+// Single-flight guard: đảm bảo nhiều request 401 đồng thời hoặc đến trễ chỉ phát 1 sự kiện logout duy nhất
+let isLoggingOut = false;
+
+export const resetAuthLogoutGuard = () => {
+  isLoggingOut = false;
+};
+
+// Danh sách các mã lỗi xác thực nghiêm trọng (chỉ các mã này mới kích hoạt xóa JWT và logout)
+const CRITICAL_AUTH_CODES = [
+  'TOKEN_EXPIRED',
+  'TOKEN_INVALID',
+  'USER_DELETED',
+  'TokenExpiredError',
+  'TokenInvalidError',
+  'UserDeleted'
+];
+
 // Interceptor tự động chèn JWT token vào Request Headers
 apiClient.interceptors.request.use(
   (config) => {
@@ -35,14 +52,35 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Nếu API trả về 401 (Unauthorized) do token hết hạn, tự động logout mềm và chuyển về trang login
-    if (error.response && error.response.status === 401) {
-      localStorage.removeItem('token');
-      // Tránh lặp lại nếu đang ở trang login
-      if (!window.location.pathname.includes('/login')) {
-        window.dispatchEvent(new CustomEvent('auth-logout'));
+    const status = error?.response?.status;
+    const data = error?.response?.data;
+    const url = error?.config?.url || '';
+    const hasAuthHeader = Boolean(error?.config?.headers?.Authorization);
+
+    // Không xử lý logout nếu là các endpoint auth công khai (login, register, forgot-password, reset-password, google)
+    const isPublicAuthRoute = url.includes('/auth/login') ||
+                              url.includes('/auth/register') ||
+                              url.includes('/auth/forgot-password') ||
+                              url.includes('/auth/reset-password') ||
+                              url.includes('/auth/google');
+
+    if (status === 401 && hasAuthHeader && !isPublicAuthRoute) {
+      const errorCode = data?.code || data?.error;
+      const isCriticalAuthError = Boolean(errorCode && CRITICAL_AUTH_CODES.includes(errorCode));
+
+      if (isCriticalAuthError && !isLoggingOut) {
+        isLoggingOut = true;
+        localStorage.removeItem('token');
+
+        // Phát sự kiện đăng xuất mềm nếu chưa ở trang login
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.dispatchEvent(new CustomEvent('auth-logout', {
+            detail: { code: errorCode, message: data?.message || 'Phiên đăng nhập đã hết hạn.' }
+          }));
+        }
       }
     }
+
     return Promise.reject(error);
   }
 );

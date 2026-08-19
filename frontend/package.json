@@ -39,6 +39,7 @@
     "start": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:auth": "vitest run tests/authSession.test.jsx",
     "test:speaking": "vitest run tests"
   },
   "eslintConfig": {

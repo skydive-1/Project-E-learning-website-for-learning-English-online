@@ -1,5 +1,6 @@
 /**
  * Auth Middleware - Xác thực JWT Token và Phân quyền (Kiểm tra CSDL thực tế)
+ * TASK-AUTH-SESSION-HOTFIX-01
  */
 
 const jwt = require('jsonwebtoken');
@@ -14,22 +15,51 @@ const authenticate = async (req, res, next) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
-        error: 'AuthError',
+        code: 'AUTH_REQUIRED',
+        error: 'AuthRequiredError',
         message: 'Không có token xác thực, quyền truy cập bị từ chối'
       });
     }
 
     const token = authHeader.split(' ')[1];
-    
-    if (!process.env.JWT_SECRET) {
-      const error = new Error('JWT_SECRET chưa được cấu hình trên hệ thống');
-      error.name = 'AuthError';
-      error.status = 500;
-      throw error;
+    if (!token || token.trim() === '') {
+      return res.status(401).json({
+        success: false,
+        code: 'AUTH_REQUIRED',
+        error: 'AuthRequiredError',
+        message: 'Không có token xác thực, quyền truy cập bị từ chối'
+      });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        code: 'AUTH_CONFIG_ERROR',
+        error: 'AuthConfigError',
+        message: 'Lỗi cấu hình hệ thống xác thực máy chủ'
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtErr) {
+      if (jwtErr.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          success: false,
+          code: 'TOKEN_EXPIRED',
+          error: 'TokenExpiredError',
+          message: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+        });
+      }
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        error: 'TokenInvalidError',
+        message: 'Mã xác thực không hợp lệ. Vui lòng đăng nhập lại.'
+      });
+    }
+
     // Kiểm tra trực tiếp dữ liệu từ CSDL Postgres để đảm bảo tài khoản còn tồn tại và lấy role mới nhất
     const userRes = await db.query(
       'SELECT user_id, email, username, full_name, role_id FROM users WHERE user_id = $1 OR email = $2',
@@ -39,6 +69,7 @@ const authenticate = async (req, res, next) => {
     if (userRes.rows.length === 0) {
       return res.status(401).json({
         success: false,
+        code: 'USER_DELETED',
         error: 'UserDeleted',
         message: 'Tài khoản này đã bị xóa hoặc không còn tồn tại trên hệ thống. Vui lòng đăng nhập lại.'
       });
@@ -58,11 +89,13 @@ const authenticate = async (req, res, next) => {
 
     next();
   } catch (error) {
-    const status = error.status || 401;
+    const status = error.status || 500;
+    const isServerError = status >= 500;
     return res.status(status).json({
       success: false,
-      error: 'AuthError',
-      message: error.message || 'Token không hợp lệ hoặc đã hết hạn'
+      code: error.code || 'INTERNAL_ERROR',
+      error: error.name || 'ServerError',
+      message: isServerError ? 'Lỗi xử lý xác thực trên máy chủ' : (error.message || 'Lỗi xác thực')
     });
   }
 };
@@ -80,7 +113,7 @@ const optionalAuthenticate = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    if (!process.env.JWT_SECRET) {
+    if (!token || !process.env.JWT_SECRET) {
       req.user = null;
       return next();
     }
@@ -113,12 +146,12 @@ const optionalAuthenticate = async (req, res, next) => {
   }
 };
 
-
 const authorize = (roles = []) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
+        code: 'AUTH_REQUIRED',
         message: 'Người dùng chưa được xác thực'
       });
     }
@@ -132,6 +165,7 @@ const authorize = (roles = []) => {
     if (!roles.includes(userRole)) {
       return res.status(403).json({
         success: false,
+        code: 'FORBIDDEN',
         error: 'PermissionError',
         message: 'Bạn không có quyền thực hiện hành động này'
       });
@@ -158,6 +192,7 @@ const authenticateVideoToken = (req, res, next) => {
     ) {
       return res.status(403).json({
         success: false,
+        code: 'FORBIDDEN',
         message: 'Forbidden: Automated download managers are strictly prohibited.'
       });
     }
@@ -173,6 +208,7 @@ const authenticateVideoToken = (req, res, next) => {
       if (!isAllowed) {
         return res.status(403).json({
           success: false,
+          code: 'FORBIDDEN',
           message: 'Hotlink Protection: Yêu cầu truy cập tài nguyên bị từ chối do không thuộc tên miền chính thức.'
         });
       }
@@ -183,14 +219,17 @@ const authenticateVideoToken = (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         success: false,
+        code: 'AUTH_REQUIRED',
         message: 'Không có token xác thực, quyền truy cập video bị từ chối'
       });
     }
 
     if (!process.env.JWT_SECRET) {
-      const error = new Error('JWT_SECRET chưa được cấu hình trên hệ thống');
-      error.status = 500;
-      throw error;
+      return res.status(500).json({
+        success: false,
+        code: 'AUTH_CONFIG_ERROR',
+        message: 'JWT_SECRET chưa được cấu hình trên hệ thống'
+      });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -199,6 +238,7 @@ const authenticateVideoToken = (req, res, next) => {
   } catch (error) {
     return res.status(401).json({
       success: false,
+      code: 'TOKEN_INVALID',
       message: 'Token/Ticket video đã hết hạn hoặc không hợp lệ (Short-lived 60s Token)'
     });
   }
