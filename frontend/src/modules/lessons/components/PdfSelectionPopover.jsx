@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { FiCheck, FiX, FiTag, FiEdit3 } from 'react-icons/fi';
+import { FiCheck, FiX, FiTag, FiEdit3, FiCrop, FiAlertCircle } from 'react-icons/fi';
 
 const CATEGORIES = [
   { id: 'important', label: 'Quan trọng', badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300' },
@@ -18,7 +18,9 @@ const COLORS = [
 
 export default function PdfSelectionPopover({
   clientRect, // Bounding client rect { top, left, width, height, bottom, right } in viewport
-  selectedText,
+  selectionType = 'text',
+  pageNumber = 1,
+  selectedText = '',
   initialDraft = '',
   onSave,
   onCancel
@@ -27,6 +29,7 @@ export default function PdfSelectionPopover({
   const [color, setColor] = useState('yellow');
   const [noteText, setNoteText] = useState(initialDraft);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const popoverRef = useRef(null);
 
   // Tính toán vị trí fixed thông minh bám theo viewport
@@ -36,7 +39,7 @@ export default function PdfSelectionPopover({
     }
 
     const POPOVER_WIDTH = 320;
-    const POPOVER_HEIGHT = 280;
+    const POPOVER_HEIGHT = 300;
     const GAP = 10;
 
     let top = clientRect.bottom + GAP;
@@ -109,13 +112,23 @@ export default function PdfSelectionPopover({
     e.preventDefault();
     if (isSubmitting) return;
 
+    const trimmedText = noteText.trim();
+    if (selectionType === 'area' && !trimmedText) {
+      setErrorMessage('Vui lòng nhập nội dung ghi chú cho vùng đã chọn.');
+      return;
+    }
+
+    setErrorMessage(null);
     try {
       setIsSubmitting(true);
       await onSave({
         category,
         color,
-        noteText: noteText.trim()
+        noteText: trimmedText,
+        selectionType
       });
+    } catch (err) {
+      setErrorMessage(err?.message || 'Không thể lưu ghi chú. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -131,8 +144,8 @@ export default function PdfSelectionPopover({
       {/* Header */}
       <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-1.5 font-bold text-smart-indigo dark:text-indigo-400">
-          <FiEdit3 className="text-sm" />
-          <span>Tạo ghi chú PDF</span>
+          {selectionType === 'area' ? <FiCrop className="text-sm" /> : <FiEdit3 className="text-sm" />}
+          <span>{selectionType === 'area' ? 'Tạo ghi chú vùng' : 'Tạo ghi chú PDF'}</span>
         </div>
         <button
           type="button"
@@ -144,10 +157,24 @@ export default function PdfSelectionPopover({
         </button>
       </div>
 
-      {/* Selected Text Preview */}
-      <div className="mb-3 p-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/60 dark:border-slate-700/60 max-h-16 overflow-y-auto text-[11px] italic text-slate-600 dark:text-slate-300">
-        "{selectedText}"
-      </div>
+      {/* Selected Preview */}
+      {selectionType === 'area' ? (
+        <div className="mb-3 px-3 py-2 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/60 dark:border-indigo-800/60 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
+          <FiCrop className="text-indigo-500" />
+          <span>Vùng đã chọn • Trang {pageNumber}</span>
+        </div>
+      ) : (
+        <div className="mb-3 p-2 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200/60 dark:border-slate-700/60 max-h-16 overflow-y-auto text-[11px] italic text-slate-600 dark:text-slate-300">
+          "{selectedText}"
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="mb-2 p-2 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-600 dark:text-rose-300 text-[10.5px] flex items-center gap-1.5">
+          <FiAlertCircle className="shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* Color Picker */}
@@ -202,14 +229,18 @@ export default function PdfSelectionPopover({
 
         {/* Note Textarea */}
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-            Ý kiến / Ghi chú của bạn:
+          <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center justify-between">
+            <span>Ý kiến / Ghi chú của bạn:</span>
+            {selectionType === 'area' && <span className="text-rose-500 font-bold">*</span>}
           </label>
           <textarea
             rows={2}
             value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            placeholder="Nhập giải thích, câu hỏi hoặc từ mới..."
+            onChange={(e) => {
+              setNoteText(e.target.value);
+              if (errorMessage) setErrorMessage(null);
+            }}
+            placeholder={selectionType === 'area' ? "Nhập ghi chú cho vùng vừa khoanh..." : "Nhập giải thích, câu hỏi hoặc từ mới..."}
             className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-smart-indigo/40 transition-all resize-none text-slate-800 dark:text-slate-100 placeholder-slate-400"
             maxLength={2000}
             autoFocus

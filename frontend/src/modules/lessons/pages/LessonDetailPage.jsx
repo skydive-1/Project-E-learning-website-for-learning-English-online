@@ -571,17 +571,19 @@ const LessonDetailPage = () => {
 
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
-  // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01)
+  // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01 & 02)
   const pdfDocumentRef = currentLesson?.documentRef || (currentLesson ? `lesson:${currentLesson.id}:primary:v${currentLesson.pdfVersion || 1}` : '');
   const [activePdfPage, setActivePdfPage] = useState(1);
   const [selectedPdfNoteId, setSelectedPdfNoteId] = useState(null);
   const [activeGlowNoteId, setActiveGlowNoteId] = useState(null);
+  const [isAreaSelectionMode, setIsAreaSelectionMode] = useState(false);
 
   // Reset trang và highlight state khi đổi bài học
   useEffect(() => {
     setActivePdfPage(1);
     setSelectedPdfNoteId(null);
     setActiveGlowNoteId(null);
+    setIsAreaSelectionMode(false);
   }, [currentLesson?.id]);
 
   // Đồng bộ sidebar tab 2 chiều khi chuyển đổi giữa PDF và Video (TASK-PDF-SMART-NOTES-01-R1)
@@ -1191,6 +1193,8 @@ const LessonDetailPage = () => {
                               selectedNoteId={selectedPdfNoteId}
                               activeGlowNoteId={activeGlowNoteId}
                               activePage={activePdfPage}
+                              isAreaSelectionMode={isAreaSelectionMode}
+                              onToggleAreaSelection={(val) => setIsAreaSelectionMode(val)}
                               onPageChange={(p) => setActivePdfPage(p)}
                               onCreateNote={handleCreatePdfNote}
                               onSelectNote={handleNavigateToPdfNote}
@@ -1648,6 +1652,8 @@ const LessonDetailPage = () => {
                           notes={pdfNotes}
                           isLoading={isPdfNotesLoading}
                           selectedNoteId={selectedPdfNoteId}
+                          isAreaSelectionMode={isAreaSelectionMode}
+                          onTriggerAreaSelection={() => setIsAreaSelectionMode((prev) => !prev)}
                           onNavigateToNote={handleNavigateToPdfNote}
                           onUpdateNote={handleUpdatePdfNote}
                           onDeleteNote={handleDeletePdfNote}

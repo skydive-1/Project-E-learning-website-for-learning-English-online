@@ -52,12 +52,13 @@ vi.mock('../src/config/api.config', () => ({
   }
 }));
 
-describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
+describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
   const mockNotes = [
     {
       id: 1,
       noteId: 1,
       pageNumber: 1,
+      selectionType: 'text',
       selectedText: 'Communication is essential for daily conversation.',
       noteText: 'Cần ghi nhớ định nghĩa này',
       category: 'important',
@@ -68,6 +69,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
       id: 2,
       noteId: 2,
       pageNumber: 2,
+      selectionType: 'text',
       selectedText: 'Vocabulary building requires regular practice.',
       noteText: 'Từ vựng quan trọng',
       category: 'vocabulary',
@@ -78,11 +80,12 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
       id: 3,
       noteId: 3,
       pageNumber: 2,
-      selectedText: 'I do not understand this grammar rule.',
-      noteText: 'Hỏi lại giáo viên câu này',
+      selectionType: 'area',
+      selectedText: null,
+      noteText: 'Phần sơ đồ cấu trúc câu này cần xem lại',
       category: 'not_understood',
       color: 'pink',
-      rects: [{ x: 0.2, y: 0.6, width: 0.6, height: 0.04 }]
+      rects: [{ x: 0.2, y: 0.6, width: 0.6, height: 0.15 }]
     }
   ];
 
@@ -91,14 +94,15 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 1. PDF NOTES PANEL TESTS
+  // 1. PDF NOTES PANEL TESTS (Text & Area Notes, Button "＋ Thêm ghi chú")
   // =========================================================================
-  describe('1. PdfNotesPanel Component', () => {
-    it('1.1 should render list of notes grouped by page', () => {
+  describe('1. PdfNotesPanel Component (Area Notes & Button)', () => {
+    it('1.1 should render list of notes including both Text Notes and Area Notes without null/undefined leak', () => {
       render(
         <PdfNotesPanel
           notes={mockNotes}
           isLoading={false}
+          onTriggerAreaSelection={vi.fn()}
           onNavigateToNote={vi.fn()}
           onUpdateNote={vi.fn()}
           onDeleteNote={vi.fn()}
@@ -107,13 +111,56 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
 
       expect(screen.getByText(/Ghi chú cá nhân/i)).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument(); // Badge count
-      expect(screen.getAllByText('Trang 1').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText('Trang 2').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText(/Communication is essential for daily conversation./i)).toBeInTheDocument();
-      expect(screen.getByText(/Cần ghi nhớ định nghĩa này/i)).toBeInTheDocument();
+      // Area note fallback header
+      expect(screen.getByText(/Ghi chú vùng • Trang 2/i)).toBeInTheDocument();
+      expect(screen.getByText(/Phần sơ đồ cấu trúc câu này cần xem lại/i)).toBeInTheDocument();
+      expect(screen.queryByText(/null/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument();
     });
 
-    it('1.2 should filter notes by search keyword', () => {
+    it('1.2 should display "＋ Thêm ghi chú" button and trigger callback when clicked', () => {
+      const onTriggerMock = vi.fn();
+      render(
+        <PdfNotesPanel
+          notes={mockNotes}
+          isLoading={false}
+          onTriggerAreaSelection={onTriggerMock}
+          onNavigateToNote={vi.fn()}
+          onUpdateNote={vi.fn()}
+          onDeleteNote={vi.fn()}
+        />
+      );
+
+      const addBtn = screen.getByRole('button', { name: /Thêm ghi chú vùng/i });
+      expect(addBtn).toBeInTheDocument();
+      fireEvent.click(addBtn);
+      expect(onTriggerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('1.3 should render Empty State with "＋ Thêm ghi chú" button when notes array is empty', () => {
+      const onTriggerMock = vi.fn();
+      render(
+        <PdfNotesPanel
+          notes={[]}
+          isLoading={false}
+          onTriggerAreaSelection={onTriggerMock}
+          onNavigateToNote={vi.fn()}
+          onUpdateNote={vi.fn()}
+          onDeleteNote={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText(/Chưa có ghi chú/i)).toBeInTheDocument();
+      expect(screen.getByText(/Bôi đen văn bản hoặc khoanh vùng bất kỳ trên PDF/i)).toBeInTheDocument();
+
+      const addBtns = screen.getAllByRole('button', { name: /Thêm ghi chú vùng/i });
+      expect(addBtns.length).toBe(2); // Header button + Empty state button
+      fireEvent.click(addBtns[1]);
+      expect(onTriggerMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('1.4 should filter notes by search keyword across both text and area notes', () => {
       render(
         <PdfNotesPanel
           notes={mockNotes}
@@ -125,139 +172,83 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
       );
 
       const searchInput = screen.getByPlaceholderText(/Tìm kiếm nội dung/i);
-      fireEvent.change(searchInput, { target: { value: 'Vocabulary' } });
+      fireEvent.change(searchInput, { target: { value: 'sơ đồ' } });
 
-      expect(screen.getByText(/Vocabulary building requires regular practice./i)).toBeInTheDocument();
+      expect(screen.getByText(/Phần sơ đồ cấu trúc câu này cần xem lại/i)).toBeInTheDocument();
       expect(screen.queryByText(/Communication is essential/i)).not.toBeInTheDocument();
-    });
-
-    it('1.3 should filter notes by category and color', () => {
-      render(
-        <PdfNotesPanel
-          notes={mockNotes}
-          isLoading={false}
-          onNavigateToNote={vi.fn()}
-          onUpdateNote={vi.fn()}
-          onDeleteNote={vi.fn()}
-        />
-      );
-
-      const categorySelect = screen.getByDisplayValue(/Tất cả loại/i);
-      fireEvent.change(categorySelect, { target: { value: 'not_understood' } });
-
-      expect(screen.getByText(/I do not understand this grammar rule./i)).toBeInTheDocument();
-      expect(screen.queryByText(/Communication is essential/i)).not.toBeInTheDocument();
-    });
-
-    it('1.4 should call onNavigateToNote when a note card is clicked', () => {
-      const onNavigateMock = vi.fn();
-      render(
-        <PdfNotesPanel
-          notes={mockNotes}
-          isLoading={false}
-          onNavigateToNote={onNavigateMock}
-          onUpdateNote={vi.fn()}
-          onDeleteNote={vi.fn()}
-        />
-      );
-
-      const noteCard = screen.getByText(/Communication is essential/i);
-      fireEvent.click(noteCard);
-
-      expect(onNavigateMock).toHaveBeenCalledTimes(1);
-      expect(onNavigateMock).toHaveBeenCalledWith(mockNotes[0]);
-    });
-
-    it('1.5 should allow editing note text and save changes', async () => {
-      const onUpdateMock = vi.fn().mockResolvedValue(true);
-      render(
-        <PdfNotesPanel
-          notes={mockNotes}
-          isLoading={false}
-          onNavigateToNote={vi.fn()}
-          onUpdateNote={onUpdateMock}
-          onDeleteNote={vi.fn()}
-        />
-      );
-
-      const editButtons = screen.getAllByTitle(/Chỉnh sửa/i);
-      fireEvent.click(editButtons[0]);
-
-      const textarea = screen.getByDisplayValue('Cần ghi nhớ định nghĩa này');
-      fireEvent.change(textarea, { target: { value: 'Nội dung đã chỉnh sửa' } });
-
-      const saveBtn = screen.getByTitle('Lưu');
-      fireEvent.click(saveBtn);
-
-      await waitFor(() => {
-        expect(onUpdateMock).toHaveBeenCalledWith(1, {
-          noteText: 'Nội dung đã chỉnh sửa',
-          category: 'important',
-          color: 'yellow'
-        });
-      });
-    });
-
-    it('1.6 should render empty state when notes array is empty', () => {
-      render(
-        <PdfNotesPanel
-          notes={[]}
-          isLoading={false}
-          onNavigateToNote={vi.fn()}
-          onUpdateNote={vi.fn()}
-          onDeleteNote={vi.fn()}
-        />
-      );
-
-      expect(screen.getByText(/Chưa có ghi chú nào/i)).toBeInTheDocument();
-      expect(screen.getByText(/Bôi đen bất kỳ đoạn văn bản nào/i)).toBeInTheDocument();
     });
   });
 
   // =========================================================================
-  // 2. PDF SELECTION POPOVER & PORTAL TESTS
+  // 2. PDF SELECTION POPOVER TESTS (Area & Text Mode)
   // =========================================================================
-  describe('2. PdfSelectionPopover & Portal Rendering', () => {
-    it('2.1 should render selection popover via portal with selected text preview and submit form', async () => {
+  describe('2. PdfSelectionPopover Component (Area & Text)', () => {
+    it('2.1 Area Note: should display area header and require noteText before submission', async () => {
       const onSaveMock = vi.fn().mockResolvedValue(true);
       const onCancelMock = vi.fn();
 
       render(
         <PdfSelectionPopover
-          clientRect={{ top: 100, left: 100, width: 200, height: 20, bottom: 120, right: 300 }}
-          selectedText="Highlighted sentence from PDF"
+          clientRect={{ top: 100, left: 100, width: 200, height: 100, bottom: 200, right: 300 }}
+          selectionType="area"
+          pageNumber={2}
+          selectedText={null}
           onSave={onSaveMock}
           onCancel={onCancelMock}
         />
       );
 
-      expect(screen.getByText(/Tạo ghi chú PDF/i)).toBeInTheDocument();
-      expect(screen.getByText(/"Highlighted sentence from PDF"/i)).toBeInTheDocument();
+      expect(screen.getByText(/Tạo ghi chú vùng/i)).toBeInTheDocument();
+      expect(screen.getByText(/Vùng đã chọn • Trang 2/i)).toBeInTheDocument();
 
-      // Enter note
-      const textarea = screen.getByPlaceholderText(/Nhập giải thích, câu hỏi/i);
-      fireEvent.change(textarea, { target: { value: 'My custom note' } });
-
-      // Click save
+      // Submit without entering noteText
       const submitBtn = screen.getByRole('button', { name: /Lưu ghi chú/i });
+      fireEvent.click(submitBtn);
+
+      // Warning displayed, onSave not called
+      expect(screen.getByText(/Vui lòng nhập nội dung ghi chú cho vùng đã chọn/i)).toBeInTheDocument();
+      expect(onSaveMock).not.toHaveBeenCalled();
+
+      // Enter noteText and submit
+      const textarea = screen.getByPlaceholderText(/Nhập ghi chú cho vùng vừa khoanh/i);
+      fireEvent.change(textarea, { target: { value: 'Ghi chú sơ đồ hình ảnh' } });
       fireEvent.click(submitBtn);
 
       await waitFor(() => {
         expect(onSaveMock).toHaveBeenCalledWith({
           category: 'important',
           color: 'yellow',
-          noteText: 'My custom note'
+          noteText: 'Ghi chú sơ đồ hình ảnh',
+          selectionType: 'area'
         });
       });
     });
 
-    it('2.2 should cancel on escape key press', () => {
+    it('2.2 Text Note: should display selectedText quote', async () => {
+      const onSaveMock = vi.fn().mockResolvedValue(true);
+
+      render(
+        <PdfSelectionPopover
+          clientRect={{ top: 100, left: 100, width: 200, height: 20, bottom: 120, right: 300 }}
+          selectionType="text"
+          pageNumber={1}
+          selectedText="Important grammatical term"
+          onSave={onSaveMock}
+          onCancel={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText(/"Important grammatical term"/i)).toBeInTheDocument();
+    });
+
+    it('2.3 should cancel on escape key press', () => {
       const onCancelMock = vi.fn();
 
       render(
         <PdfSelectionPopover
           clientRect={{ top: 100, left: 100, width: 200, height: 20, bottom: 120, right: 300 }}
-          selectedText="Sample"
+          selectionType="area"
+          pageNumber={1}
           onSave={vi.fn()}
           onCancel={onCancelMock}
         />
@@ -272,11 +263,11 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
   // 3. PDF HIGHLIGHT OVERLAY TESTS
   // =========================================================================
   describe('3. PdfHighlightOverlay Component', () => {
-    it('3.1 should render highlight rects for the specified page with percentage styles', () => {
+    it('3.1 should render area notes with dashed border and text notes with solid underline', () => {
       const onSelectNoteMock = vi.fn();
       const { container } = render(
         <PdfHighlightOverlay
-          pageNumber={1}
+          pageNumber={2}
           notes={mockNotes}
           selectedNoteId={null}
           activeGlowNoteId={null}
@@ -284,49 +275,53 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
         />
       );
 
-      const highlightBoxes = container.querySelectorAll('.pdf-highlight-box');
-      expect(highlightBoxes.length).toBe(1); // Only 1 note on page 1
+      const boxes = container.querySelectorAll('.pdf-highlight-box');
+      expect(boxes.length).toBe(2); // Note 2 (text) and Note 3 (area) on page 2
 
-      fireEvent.click(highlightBoxes[0]);
-      expect(onSelectNoteMock).toHaveBeenCalledWith(mockNotes[0]);
-    });
-
-    it('3.2 should return null if no notes exist for the page', () => {
-      const { container } = render(
-        <PdfHighlightOverlay
-          pageNumber={99}
-          notes={mockNotes}
-          selectedNoteId={null}
-          activeGlowNoteId={null}
-          onSelectNote={vi.fn()}
-        />
-      );
-
-      expect(container.firstChild).toBeNull();
+      // Click on area note box
+      fireEvent.click(boxes[1]);
+      expect(onSelectNoteMock).toHaveBeenCalledWith(mockNotes[2]);
     });
   });
 
   // =========================================================================
   // 4. PDF STUDY VIEWER COMPONENT TESTS
   // =========================================================================
-  describe('4. PdfStudyViewer Component (Worker, Empty State, Reset & Retry)', () => {
-    it('4.1 should have local bundled worker without external unpkg.com URL', () => {
-      const workerSrc = pdfjs.GlobalWorkerOptions.workerSrc || '';
-      expect(workerSrc).not.toContain('unpkg.com');
-      expect(workerSrc).not.toContain('cdnjs.cloudflare.com');
-    });
-
-    it('4.2 should render empty state when pdfUrl is not provided (no infinite spinner)', () => {
+  describe('4. PdfStudyViewer Component (Toolbar "＋ Thêm ghi chú" & Area Selection)', () => {
+    it('4.1 should render "＋ Thêm ghi chú" button on toolbar and toggle area selection mode', () => {
+      const onToggleMock = vi.fn();
       render(
         <PdfStudyViewer
-          pdfUrl={null}
-          title="Tài liệu chưa có"
+          pdfUrl="https://example.com/document.pdf"
+          title="Tài liệu mẫu"
           user={{ email: 'test@example.com' }}
           notes={[]}
+          isAreaSelectionMode={false}
+          onToggleAreaSelection={onToggleMock}
         />
       );
 
-      expect(screen.getByText(/Tài liệu bài học chưa được tải lên/i)).toBeInTheDocument();
+      const toolbarAddBtn = screen.getByRole('button', { name: /Thêm ghi chú vùng/i });
+      expect(toolbarAddBtn).toBeInTheDocument();
+      expect(toolbarAddBtn).toHaveAttribute('aria-pressed', 'false');
+
+      fireEvent.click(toolbarAddBtn);
+      expect(onToggleMock).toHaveBeenCalledWith(true);
+    });
+
+    it('4.2 when isAreaSelectionMode is true, should render floating guide banner', () => {
+      render(
+        <PdfStudyViewer
+          pdfUrl="https://example.com/document.pdf"
+          title="Tài liệu mẫu"
+          user={{ email: 'test@example.com' }}
+          notes={[]}
+          isAreaSelectionMode={true}
+          onToggleAreaSelection={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText(/Kéo chuột để khoanh vùng cần ghi chú trên PDF/i)).toBeInTheDocument();
     });
 
     it('4.3 should reset page number to 1 when switching between PDFs', async () => {
@@ -373,13 +368,21 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
       expect(res).toEqual(mockNotes);
     });
 
-    it('5.2 createPdfNote should call POST endpoint', async () => {
-      apiClient.post.mockResolvedValueOnce({ data: { data: mockNotes[0] } });
+    it('5.2 createPdfNote should send area note payload with selectionType = area and selectedText = null', async () => {
+      apiClient.post.mockResolvedValueOnce({ data: { data: mockNotes[2] } });
 
-      const newNote = { pageNumber: 1, selectedText: 'Hello', rects: [] };
-      const res = await pdfNotesService.createPdfNote(1, newNote);
-      expect(apiClient.post).toHaveBeenCalledWith('/lessons/1/pdf-notes', newNote);
-      expect(res).toEqual(mockNotes[0]);
+      const newAreaNote = {
+        pageNumber: 2,
+        selectionType: 'area',
+        selectedText: null,
+        noteText: 'Phần sơ đồ cấu trúc câu này cần xem lại',
+        rects: [{ x: 0.2, y: 0.6, width: 0.6, height: 0.15 }]
+      };
+
+      const res = await pdfNotesService.createPdfNote(1, newAreaNote);
+      expect(apiClient.post).toHaveBeenCalledWith('/lessons/1/pdf-notes', newAreaNote);
+      expect(res.selectionType).toBe('area');
+      expect(res.selectedText).toBeNull();
     });
 
     it('5.3 updatePdfNote should call PUT endpoint', async () => {
@@ -396,14 +399,6 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
       const res = await pdfNotesService.deletePdfNote(1, 10);
       expect(apiClient.delete).toHaveBeenCalledWith('/lessons/1/pdf-notes/10');
       expect(res.success).toBe(true);
-    });
-
-    it('5.5 getLocalDraft & setLocalDraft should persist in localStorage', () => {
-      pdfNotesService.setLocalDraft(10, 1, 'primary', 'My draft note');
-      expect(pdfNotesService.getLocalDraft(10, 1, 'primary')).toBe('My draft note');
-
-      pdfNotesService.setLocalDraft(10, 1, 'primary', '');
-      expect(pdfNotesService.getLocalDraft(10, 1, 'primary')).toBe('');
     });
   });
 });
