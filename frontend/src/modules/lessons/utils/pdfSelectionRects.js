@@ -148,8 +148,8 @@ export function mergePdfSelectionRects(clientRects, pageRect) {
     // Giới hạn trong khoảng [0, 1]
     normX = Math.max(0, Math.min(1, normX));
     normY = Math.max(0, Math.min(1, normY));
-    normW = Math.max(0.0001, Math.min(1 - normX, normW));
-    normH = Math.max(0.0001, Math.min(1 - normY, normH));
+    normW = Math.max(0.001, Math.min(1 - normX, normW));
+    normH = Math.max(0.001, Math.min(1 - normY, normH));
 
     // Làm tròn 4 chữ số thập phân
     let finalX = Number(normX.toFixed(4));
@@ -159,10 +159,10 @@ export function mergePdfSelectionRects(clientRects, pageRect) {
 
     // Đảm bảo không tràn viền: x + width <= 1 và y + height <= 1
     if (finalX + finalW > 1.0) {
-      finalW = Number(Math.max(0.0001, 1.0 - finalX).toFixed(4));
+      finalW = Number(Math.max(0.001, 1.0 - finalX).toFixed(4));
     }
     if (finalY + finalH > 1.0) {
-      finalH = Number(Math.max(0.0001, 1.0 - finalY).toFixed(4));
+      finalH = Number(Math.max(0.001, 1.0 - finalY).toFixed(4));
     }
 
     if (
