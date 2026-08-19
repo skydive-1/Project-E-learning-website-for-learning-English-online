@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import reportWebVitals from './reportWebVitals';
+
 // Tự động đăng ký và quản lý Service Worker cho PWA Offline Shell (khi chạy production)
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   import('virtual:pwa-register')

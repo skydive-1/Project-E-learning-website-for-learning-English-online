@@ -98,11 +98,25 @@ exports.deleteLesson = async (req, res, next) => {
   }
 };
 
+const coursesService = require('../../courses/services/courses.service');
+const { generateSignedUrl } = require('../../../utils/supabaseStorage');
+
 exports.streamLessonVideo = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
-    const lesson = await lessonsService.getLessonById(lessonId);
-    
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.roleId || req.user?.role || 3;
+
+    // 🔒 1. Kiểm tra phân quyền truy cập bài học (Owner / Admin / Published / Enrolled)
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, userRole);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Quyền truy cập bị từ chối: Bạn không có quyền xem video bài học này.'
+      });
+    }
+
+    const lesson = await coursesService.getLessonById(lessonId);
     if (!lesson) {
       return res.status(404).json({
         success: false,
@@ -117,7 +131,7 @@ exports.streamLessonVideo = async (req, res, next) => {
       });
     }
 
-    // 🔒 1. Chặn các công cụ download tự động bên ngoài (IDM, FDM, Curl, Wget, Downloader)
+    // 🔒 2. Chặn các công cụ download tự động bên ngoài
     const userAgent = (req.headers['user-agent'] || '').toLowerCase();
     const isAutomatedDownloader = userAgent.includes('idm') || 
                                  userAgent.includes('internet download manager') ||
@@ -133,41 +147,52 @@ exports.streamLessonVideo = async (req, res, next) => {
       });
     }
 
-    // 🔒 2. Thiết lập Anti-Sniffing & Security Headers
+    // 🔒 3. Thiết lập Security Headers
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', 'inline; filename="encrypted_stream.dat"');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
 
     const contentUrl = lesson.content_url;
 
-    // Nếu là link video bên ngoài (Supabase signed URL hoặc external) -> Redirect trực tiếp đến CDN để client stream với tốc độ tối đa
+    // A. Nếu là link trực tiếp CDN / External
     if (contentUrl.startsWith('http://') || contentUrl.startsWith('https://')) {
       return res.redirect(contentUrl);
     }
 
-    // Đường dẫn file video cục bộ
+    // B. Nếu là Supabase Storage Key (courses/...)
+    if (!contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('uploads/')) {
+      const signedPlaybackUrl = await generateSignedUrl(contentUrl, 'videos', 3600);
+      if (signedPlaybackUrl) {
+        return res.redirect(signedPlaybackUrl);
+      }
+    }
+
+    // C. Nếu là file video cục bộ (Legacy local file)
     const filePath = path.resolve(__dirname, '../../../../', contentUrl.replace(/^\//, ''));
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
-        message: 'Tệp video không tồn tại trên hệ thống'
+        message: 'Tệp video không tồn tại trên hệ thống hoặc đã bị xóa.'
       });
     }
+
+    const isDashManifest = filePath.endsWith('.mpd');
+    const contentType = isDashManifest ? 'application/dash+xml' : 'video/mp4';
 
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
     const range = req.headers.range;
 
-    if (range) {
+    if (range && !isDashManifest) {
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
       let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
 
       if (isNaN(start) || start >= fileSize || (parts[1] && isNaN(end))) {
         res.writeHead(416, {
-          'Content-Range': `bytes */${fileSize}`
+          'Content-Range': `bytes */${fileSize}`,
+          'Content-Type': contentType
         });
         return res.end();
       }
@@ -182,9 +207,9 @@ exports.streamLessonVideo = async (req, res, next) => {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
-        'Content-Type': 'video/mp4',
+        'Content-Type': contentType,
         'X-Content-Type-Options': 'nosniff',
-        'Content-Disposition': 'inline; filename="encrypted_stream.dat"',
+        'Content-Disposition': 'inline; filename="video_stream.mp4"',
         'Cache-Control': 'no-store, no-cache, must-revalidate, private'
       };
 
@@ -194,9 +219,9 @@ exports.streamLessonVideo = async (req, res, next) => {
       const head = {
         'Accept-Ranges': 'bytes',
         'Content-Length': fileSize,
-        'Content-Type': 'video/mp4',
+        'Content-Type': contentType,
         'X-Content-Type-Options': 'nosniff',
-        'Content-Disposition': 'inline; filename="encrypted_stream.dat"',
+        'Content-Disposition': isDashManifest ? 'inline; filename="manifest.mpd"' : 'inline; filename="video_stream.mp4"',
         'Cache-Control': 'no-store, no-cache, must-revalidate, private'
       };
       res.writeHead(200, head);

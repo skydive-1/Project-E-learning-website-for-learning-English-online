@@ -233,28 +233,6 @@ class CoursesService {
         }
       });
 
-      const allLessons = [];
-      for (let section of course.sections) {
-        if (section.lessons && section.lessons.length > 0) {
-          allLessons.push(...section.lessons);
-        }
-      }
-
-      if (allLessons.length > 0) {
-        const { generateSignedUrl } = require('../../../utils/supabaseStorage');
-        await Promise.all(
-          allLessons
-            .filter(lesson => lesson.content_type === 'video' && lesson.content_url)
-            .map(async (lesson) => {
-              try {
-                lesson.content_url = await generateSignedUrl(lesson.content_url, 'videos', 3600);
-              } catch (e) {
-                console.error('Failed to generate signed url for lesson', lesson.lesson_id, e);
-              }
-            })
-        );
-      }
-
       return course;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin chi tiết khóa học');

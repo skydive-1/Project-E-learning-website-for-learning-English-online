@@ -1,0 +1,224 @@
+{
+  "executedAt": "2026-08-19T02:40:04.499Z",
+  "mode": "APPLY",
+  "summary": {
+    "total": 19,
+    "supabaseExists": 0,
+    "localMp4Migrated": 10,
+    "externalUrl": 0,
+    "missingSource": 9,
+    "failed": 0
+  },
+  "lessons": [
+    {
+      "lessonId": 10,
+      "courseId": 5,
+      "title": "1. Chào mừng & Hướng dẫn học tập hiệu quả cùng AI Assistant",
+      "originalUrl": "/uploads/courses/videos/Hello_and_Introductions-1786632893289-417948909.mp4",
+      "newUrl": "/uploads/courses/videos/Hello_and_Introductions-1786632893289-417948909.mp4",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp video MP4 cục bộ không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\Hello_and_Introductions-1786632893289-417948909.mp4)."
+    },
+    {
+      "lessonId": 11,
+      "courseId": 5,
+      "title": "2. Cài đặt tư duy phản xạ tiếng Anh (English Mindset)",
+      "originalUrl": "/uploads/courses/videos/First_Conversation-1786632936208-662268121.mp4",
+      "newUrl": "/uploads/courses/videos/First_Conversation-1786632936208-662268121.mp4",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp video MP4 cục bộ không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\First_Conversation-1786632936208-662268121.mp4)."
+    },
+    {
+      "lessonId": 12,
+      "courseId": 5,
+      "title": "3. Các thì thời gian trong văn phong nói (Speaking Tenses)",
+      "originalUrl": "/uploads/courses/videos/Meet_My_Family-1786633009416-291803778.mp4",
+      "newUrl": "/uploads/courses/videos/Meet_My_Family-1786633009416-291803778.mp4",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp video MP4 cục bộ không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\Meet_My_Family-1786633009416-291803778.mp4)."
+    },
+    {
+      "lessonId": 13,
+      "courseId": 5,
+      "title": "4. Cấu trúc câu hỏi đuôi & Câu nghi vấn tự nhiên",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1782182982059-794809055.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1782182982059-794809055.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (88.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 92607316,
+      "targetStorageKey": "courses/migrated/5/1ad93b00-9ae7-43a8-a2da-537d2bee961a/HuyenBe_Grammar14_Les3_Sec1-1782182982059-794809055_mp4"
+    },
+    {
+      "lessonId": 14,
+      "courseId": 5,
+      "title": "5. Phương pháp nghe thụ động (Passive Listening) & nghe chép chính tả",
+      "originalUrl": "/uploads/courses/videos/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782791919011-104039874.mp4",
+      "newUrl": "/uploads/courses/videos/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782791919011-104039874.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (79.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 83174406,
+      "targetStorageKey": "courses/migrated/5/91c10981-fd8e-43cc-aca0-8b33545f4d79/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782791919011-104039874_mp4"
+    },
+    {
+      "lessonId": 16,
+      "courseId": 14,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1782182982059-794809055.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1782182982059-794809055.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (88.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 92607316,
+      "targetStorageKey": "courses/migrated/14/0e36992f-0d60-4118-bd06-ec330475e6e2/HuyenBe_Grammar14_Les3_Sec1-1782182982059-794809055_mp4"
+    },
+    {
+      "lessonId": 18,
+      "courseId": 15,
+      "title": "HIện tại tiếp diễn",
+      "originalUrl": "/uploads/courses/videos/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782791919011-104039874.mp4",
+      "newUrl": "/uploads/courses/videos/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782791919011-104039874.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (79.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 83174406,
+      "targetStorageKey": "courses/migrated/15/b0bca03c-0124-48b3-905e-7fa1fd318fe3/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782791919011-104039874_mp4"
+    },
+    {
+      "lessonId": 21,
+      "courseId": 16,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "/uploads/courses/videos/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782872923893-392205751.mp4",
+      "newUrl": "/uploads/courses/videos/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782872923893-392205751.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (79.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 83174406,
+      "targetStorageKey": "courses/migrated/16/19234611-9d31-4962-9043-9ad833676f99/Huyen_Be___Grammar_14___Lesson_6___Section_2___Present_Continuous-1782872923893-392205751_mp4"
+    },
+    {
+      "lessonId": 25,
+      "courseId": 18,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783306722938-705588741.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783306722938-705588741.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (88.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 92607316,
+      "targetStorageKey": "courses/migrated/18/4affe390-af9e-440a-9408-fde64a283df4/HuyenBe_Grammar14_Les3_Sec1-1783306722938-705588741_mp4"
+    },
+    {
+      "lessonId": 27,
+      "courseId": 19,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783478966130-703284249.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783478966130-703284249.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (88.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 92607316,
+      "targetStorageKey": "courses/migrated/19/4e06d2eb-e177-4dbe-9eb4-642dfa8ed494/HuyenBe_Grammar14_Les3_Sec1-1783478966130-703284249_mp4"
+    },
+    {
+      "lessonId": 28,
+      "courseId": 19,
+      "title": "Bài học mới",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Less5_Sec2-1783478976395-409991298.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Less5_Sec2-1783478976395-409991298.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (56.38 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 59118789,
+      "targetStorageKey": "courses/migrated/19/481f597a-03ce-41b1-a9a7-00e419662494/HuyenBe_Grammar14_Less5_Sec2-1783478976395-409991298_mp4"
+    },
+    {
+      "lessonId": 30,
+      "courseId": 20,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783565749004-576599358.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783565749004-576599358.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (88.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 92607316,
+      "targetStorageKey": "courses/migrated/20/079a24c9-613a-4b05-8bcc-fd0f1f8a407c/HuyenBe_Grammar14_Les3_Sec1-1783565749004-576599358_mp4"
+    },
+    {
+      "lessonId": 33,
+      "courseId": 21,
+      "title": "Bài học mới",
+      "originalUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783651319663-943656757.mp4",
+      "newUrl": "/uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783651319663-943656757.mp4",
+      "status": "LOCAL_MP4_EXISTS",
+      "action": "KEEP_LOCAL_RANGE_STREAM",
+      "reason": "Tệp MP4 tồn tại trên đĩa cục bộ (88.32 MB). Được phát trực tiếp qua Local Stream Range 206.",
+      "fileSize": 92607316,
+      "targetStorageKey": "courses/migrated/21/8d237b65-037f-4811-96ab-63a0ad7764f7/HuyenBe_Grammar14_Les3_Sec1-1783651319663-943656757_mp4"
+    },
+    {
+      "lessonId": 35,
+      "courseId": 22,
+      "title": "First Meeting – Hello and Introductions",
+      "originalUrl": "/uploads/courses/videos/Hello_and_Introductions-1786632893289-417948909.mp4",
+      "newUrl": "/uploads/courses/videos/Hello_and_Introductions-1786632893289-417948909.mp4",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp video MP4 cục bộ không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\Hello_and_Introductions-1786632893289-417948909.mp4)."
+    },
+    {
+      "lessonId": 37,
+      "courseId": 22,
+      "title": "Talking About Yourself",
+      "originalUrl": "/uploads/courses/videos/First_Conversation-1786632936208-662268121.mp4",
+      "newUrl": "/uploads/courses/videos/First_Conversation-1786632936208-662268121.mp4",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp video MP4 cục bộ không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\First_Conversation-1786632936208-662268121.mp4)."
+    },
+    {
+      "lessonId": 39,
+      "courseId": 22,
+      "title": "Meet My Family",
+      "originalUrl": "/uploads/courses/videos/Meet_My_Family-1786633009416-291803778.mp4",
+      "newUrl": "/uploads/courses/videos/Meet_My_Family-1786633009416-291803778.mp4",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp video MP4 cục bộ không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\Meet_My_Family-1786633009416-291803778.mp4)."
+    },
+    {
+      "lessonId": 40,
+      "courseId": 23,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "",
+      "newUrl": "",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Đường dẫn content_url trong CSDL đang rỗng."
+    },
+    {
+      "lessonId": 41,
+      "courseId": 24,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "",
+      "newUrl": "",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Đường dẫn content_url trong CSDL đang rỗng."
+    },
+    {
+      "lessonId": 43,
+      "courseId": 25,
+      "title": "1. Chào mừng bạn đến với khóa học",
+      "originalUrl": "/uploads/courses/videos/L__m_Ch____Ti___ng_Anh_C___B___n-1787102461188-140658951_drm.mpd",
+      "newUrl": "/uploads/courses/videos/L__m_Ch____Ti___ng_Anh_C___B___n-1787102461188-140658951_drm.mpd",
+      "status": "MISSING_SOURCE",
+      "action": "REQUIRE_REUPLOAD",
+      "reason": "Tệp DASH Manifest và tệp MP4 gốc tương ứng không tồn tại trên đĩa (E:\\Project-E-learning-website-for-learning-English-online\\backend\\uploads\\courses\\videos\\L__m_Ch____Ti___ng_Anh_C___B___n-1787102461188-140658951_drm.mpd)."
+    }
+  ]
+}

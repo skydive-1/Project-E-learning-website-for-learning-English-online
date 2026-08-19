@@ -65,6 +65,8 @@ const LessonDetailPage = () => {
 
   // Video & Screen Recording Protection States
   const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState(null);
+  const [retryKey, setReloadKey] = useState(0);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
   const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
   // Smart AI Subtitles & Interactive Bilingual Transcript States
@@ -73,6 +75,7 @@ const LessonDetailPage = () => {
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
+
 
   // Forensic Dynamic Watermark State
   const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
@@ -592,11 +595,57 @@ const LessonDetailPage = () => {
     }
   };
 
+  const sanitizeUrl = (url) => {
+    if (!url) return '';
+    try {
+      const u = new URL(url, window.location.origin);
+      u.searchParams.delete('token');
+      u.searchParams.delete('ticket');
+      return u.toString();
+    } catch {
+      return String(url).split('?')[0];
+    }
+  };
+
+  const handleVideoError = (e) => {
+    setVideoLoading(false);
+    setIsVideoPlaying(false);
+    const mediaError = e?.target?.error;
+    const code = mediaError?.code;
+    const message = mediaError?.message || '';
+    const networkState = e?.target?.networkState;
+    const readyState = e?.target?.readyState;
+    const rawUrl = currentLesson?.videoUrl || blobVideoUrl || '';
+    const cleanUrl = sanitizeUrl(rawUrl);
+
+    console.warn('⚠️ [Video Player Error]:', {
+      code,
+      message,
+      networkState,
+      readyState,
+      url: cleanUrl
+    });
+
+    setVideoError({
+      code,
+      message: 'Không thể tải hoặc giải mã video. Nguồn video có thể chưa được tải lên hoặc đường dẫn không còn tồn tại.',
+      sanitizedUrl: cleanUrl
+    });
+  };
+
+  const handleRetryVideo = () => {
+    setVideoError(null);
+    setVideoLoading(true);
+    setReloadKey(prev => prev + 1);
+  };
+
   // Video loading state — browser tự stream qua HTTP Range Requests, không cần tải trước
-  // 🛡️ BỘ NẠP VIDEO BẢO MẬT CHỐNG IDM & DOWNLOAD MANAGERS (Blob RAM Memory Masking & W3C ClearKey DRM)
+  // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Blob RAM Memory Masking & W3C ClearKey DRM)
   useEffect(() => {
     const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
     const rawVideoUrl = currentLesson?.videoUrl;
+
+    setVideoError(null);
 
     if (!rawVideoUrl) {
       setBlobVideoUrl(null);
@@ -605,11 +654,10 @@ const LessonDetailPage = () => {
     }
 
     let active = true;
+    const isDash = currentLesson?.playbackType === 'dash' || (rawVideoUrl.includes('.mpd') && currentLesson?.isDrmProtected);
 
-    const isDashOrHls = rawVideoUrl.includes('.mpd') || rawVideoUrl.includes('.m3u8');
-
-    // 1. Đối với luồng MPEG-DASH / HLS: Nạp qua Shaka Player với W3C ClearKey DRM
-    if (isDashOrHls) {
+    // 1. Đối với luồng MPEG-DASH: Nạp qua Shaka Player với W3C ClearKey DRM
+    if (isDash) {
       if (shaka.Player && shaka.Player.isBrowserSupported() && videoRef.current) {
         if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
           shakaPlayerRef.current.destroy().catch(() => {});
@@ -654,17 +702,18 @@ const LessonDetailPage = () => {
       return;
     }
 
-    // Nếu không phải luồng DASH/HLS DRM -> Hủy Shaka Player
+    // Nếu không phải luồng DASH DRM -> Hủy Shaka Player
     if (shakaPlayerRef.current) {
       shakaPlayerRef.current.destroy().catch(() => {});
       shakaPlayerRef.current = null;
       shakaAttachedToRef.current = null;
     }
 
-    // 2. Đối với Video MP4 thông thường (nhánh không phải DASH/HLS): Gán trực tiếp URL để trình duyệt tự stream qua HTTP Range Requests
+    // 2. Đối với Video MP4 thông thường: Gán trực tiếp URL để trình duyệt tự stream qua HTTP Range Requests
     setBlobVideoUrl(rawVideoUrl);
     setVideoLoading(false);
-  }, [currentLesson?.videoUrl, lessonId]);
+  }, [currentLesson?.videoUrl, currentLesson?.playbackType, lessonId, retryKey]);
+
 
   // Cleanup Shaka Player khi component unmount
   useEffect(() => {
@@ -1001,124 +1050,147 @@ const LessonDetailPage = () => {
                           </div>
                         ) : currentLesson?.videoUrl ? (
                           <>
-                            {videoLoading && (
-                              <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4 pointer-events-none">
-                                <div className="w-10 h-10 border-4 border-slate-700 border-t-teal-400 rounded-full animate-spin"></div>
-                                <span className="text-xs font-semibold text-teal-300 tracking-wider">Đang tải video...</span>
-                              </div>
-                            )}
-
-                            {/* Floating Smart Subtitle [CC] Pill on Video Player */}
-                            <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 pointer-events-auto">
-                              <div className="relative">
+                            {videoError ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-200 p-6 text-center select-none">
+                                <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-4 text-2xl shadow-lg">
+                                  ⚠️
+                                </div>
+                                <h3 className="text-base sm:text-lg font-bold text-white mb-2">
+                                  Không thể phát video bài học
+                                </h3>
+                                <p className="text-xs sm:text-sm text-slate-400 max-w-md mb-5 leading-relaxed">
+                                  {videoError.message || 'Tệp video nguồn có thể chưa được tải lên hoặc đường dẫn không còn tồn tại.'}
+                                </p>
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsCaptionMenuOpen(!isCaptionMenuOpen);
-                                  }}
-                                  title="Tùy chọn Phụ đề Song ngữ (Captions)"
-                                  className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border transition-all cursor-pointer shadow-lg ${
-                                    captionMode !== 'off'
-                                      ? 'bg-teal-500/80 hover:bg-teal-500 text-white border-teal-400/40 shadow-teal-500/20'
-                                      : 'bg-black/60 hover:bg-black/80 text-slate-300 border-white/10'
-                                  }`}
+                                  onClick={handleRetryVideo}
+                                  className="px-5 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
                                 >
-                                  <FiGlobe className="text-xs" />
-                                  <span>CC {captionMode === 'bilingual' ? 'Song ngữ' : captionMode === 'en' ? 'EN' : captionMode === 'vi' ? 'VI' : 'Tắt'}</span>
+                                  <span>🔄 Thử tải lại video</span>
                                 </button>
-
-                                {isCaptionMenuOpen && (
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 mt-1.5 w-48 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 animate-fade-in"
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => { setCaptionMode('bilingual'); setIsCaptionMenuOpen(false); }}
-                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
-                                        captionMode === 'bilingual' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
-                                      }`}
-                                    >
-                                      <span>✨ Song ngữ (EN - VI)</span>
-                                      {captionMode === 'bilingual' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setCaptionMode('en'); setIsCaptionMenuOpen(false); }}
-                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
-                                        captionMode === 'en' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
-                                      }`}
-                                    >
-                                      <span>🇬🇧 Tiếng Anh (English)</span>
-                                      {captionMode === 'en' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setCaptionMode('vi'); setIsCaptionMenuOpen(false); }}
-                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
-                                        captionMode === 'vi' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
-                                      }`}
-                                    >
-                                      <span>🇻🇳 Tiếng Việt</span>
-                                      {captionMode === 'vi' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setCaptionMode('off'); setIsCaptionMenuOpen(false); }}
-                                      className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
-                                        captionMode === 'off' ? 'bg-rose-500/20 text-rose-300 font-bold' : 'text-slate-400 hover:bg-slate-800'
-                                      }`}
-                                    >
-                                      <span>🚫 Tắt phụ đề</span>
-                                      {captionMode === 'off' && <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>}
-                                    </button>
+                              </div>
+                            ) : (
+                              <>
+                                {videoLoading && (
+                                  <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4 pointer-events-none">
+                                    <div className="w-10 h-10 border-4 border-slate-700 border-t-teal-400 rounded-full animate-spin"></div>
+                                    <span className="text-xs font-semibold text-teal-300 tracking-wider">Đang tải video...</span>
                                   </div>
                                 )}
-                              </div>
-                            </div>
 
-                            <video
-                              ref={videoRef}
-                              src={blobVideoUrl || undefined}
-                              controls
-                              autoPlay
-                              preload="auto"
-                              controlsList="nodownload noremoteplayback nofullscreen"
-                              disablePictureInPicture
-                              disableRemotePlayback
-                              onClick={toggleVideoPlayPause}
-                              onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
-                              onContextMenu={(e) => e.preventDefault()}
-                              onDragStart={(e) => e.preventDefault()}
-                              onPlay={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
-                              onPlaying={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
-                              onPause={() => setIsVideoPlaying(false)}
-                              onEnded={() => setIsVideoPlaying(false)}
-                              onLoadedData={() => setVideoLoading(false)}
-                              onLoadedMetadata={() => setVideoLoading(false)}
-                              onCanPlay={() => setVideoLoading(false)}
-                              onWaiting={() => setVideoLoading(true)}
-                              onError={() => { setVideoLoading(false); setIsVideoPlaying(false); }}
-                              className="w-full h-full object-contain pointer-events-auto cursor-pointer"
-                              data-no-download="true"
-                            />
+                                {/* Floating Smart Subtitle [CC] Pill on Video Player */}
+                                <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 pointer-events-auto">
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsCaptionMenuOpen(!isCaptionMenuOpen);
+                                      }}
+                                      title="Tùy chọn Phụ đề Song ngữ (Captions)"
+                                      className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border transition-all cursor-pointer shadow-lg ${
+                                        captionMode !== 'off'
+                                          ? 'bg-teal-500/80 hover:bg-teal-500 text-white border-teal-400/40 shadow-teal-500/20'
+                                          : 'bg-black/60 hover:bg-black/80 text-slate-300 border-white/10'
+                                      }`}
+                                    >
+                                      <FiGlobe className="text-xs" />
+                                      <span>CC {captionMode === 'bilingual' ? 'Song ngữ' : captionMode === 'en' ? 'EN' : captionMode === 'vi' ? 'VI' : 'Tắt'}</span>
+                                    </button>
 
-                            {/* Dynamic Video Forensic Security Watermark Badge */}
-                            <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-20 select-none font-mono text-[9px] sm:text-[10px] text-white bg-black/60 border border-white/20 px-2 py-0.5 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
-                              <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
-                              <span className="text-white/40">•</span>
-                              <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>
-                              <span className="text-white/40">•</span>
-                              <span className="text-emerald-300 font-bold">[{formatWatermarkTimestamp(videoCurrentTime)}]</span>
-                            </div>
+                                    {isCaptionMenuOpen && (
+                                      <div
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="absolute right-0 mt-1.5 w-48 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 animate-fade-in"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => { setCaptionMode('bilingual'); setIsCaptionMenuOpen(false); }}
+                                          className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                            captionMode === 'bilingual' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                                          }`}
+                                        >
+                                          <span>✨ Song ngữ (EN - VI)</span>
+                                          {captionMode === 'bilingual' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => { setCaptionMode('en'); setIsCaptionMenuOpen(false); }}
+                                          className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                            captionMode === 'en' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                                          }`}
+                                        >
+                                          <span>🇬🇧 Tiếng Anh (English)</span>
+                                          {captionMode === 'en' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => { setCaptionMode('vi'); setIsCaptionMenuOpen(false); }}
+                                          className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                            captionMode === 'vi' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
+                                          }`}
+                                        >
+                                          <span>🇻🇳 Tiếng Việt</span>
+                                          {captionMode === 'vi' && <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => { setCaptionMode('off'); setIsCaptionMenuOpen(false); }}
+                                          className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
+                                            captionMode === 'off' ? 'bg-rose-500/20 text-rose-300 font-bold' : 'text-slate-400 hover:bg-slate-800'
+                                          }`}
+                                        >
+                                          <span>🚫 Tắt phụ đề</span>
+                                          {captionMode === 'off' && <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
 
-                            {/* Smart AI Bilingual Caption Overlay */}
-                            <CaptionOverlay
-                              cues={subtitleData?.cues || []}
-                              currentTime={videoCurrentTime}
-                              mode={captionMode}
-                            />
+                                <video
+                                  ref={videoRef}
+                                  src={blobVideoUrl || undefined}
+                                  controls
+                                  autoPlay
+                                  preload="auto"
+                                  controlsList="nodownload noremoteplayback nofullscreen"
+                                  disablePictureInPicture
+                                  disableRemotePlayback
+                                  onClick={toggleVideoPlayPause}
+                                  onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
+                                  onContextMenu={(e) => e.preventDefault()}
+                                  onDragStart={(e) => e.preventDefault()}
+                                  onPlay={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
+                                  onPlaying={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
+                                  onPause={() => setIsVideoPlaying(false)}
+                                  onEnded={() => setIsVideoPlaying(false)}
+                                  onLoadedData={() => setVideoLoading(false)}
+                                  onLoadedMetadata={() => setVideoLoading(false)}
+                                  onCanPlay={() => setVideoLoading(false)}
+                                  onWaiting={() => setVideoLoading(true)}
+                                  onError={handleVideoError}
+                                  className="w-full h-full object-contain pointer-events-auto cursor-pointer"
+                                  data-no-download="true"
+                                />
+
+                                {/* Dynamic Video Forensic Security Watermark Badge */}
+                                <div className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-20 select-none font-mono text-[9px] sm:text-[10px] text-white bg-black/60 border border-white/20 px-2 py-0.5 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}>
+                                  <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
+                                  <span className="text-white/40">•</span>
+                                  <span>ID: {user?.id || user?.userId || currentUserId || 'N/A'}</span>
+                                  <span className="text-white/40">•</span>
+                                  <span className="text-emerald-300 font-bold">[{formatWatermarkTimestamp(videoCurrentTime)}]</span>
+                                </div>
+
+                                {/* Smart AI Bilingual Caption Overlay */}
+                                <CaptionOverlay
+                                  cues={subtitleData?.cues || []}
+                                  currentTime={videoCurrentTime}
+                                  mode={captionMode}
+                                />
+                              </>
+                            )}
                           </>
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-900">
