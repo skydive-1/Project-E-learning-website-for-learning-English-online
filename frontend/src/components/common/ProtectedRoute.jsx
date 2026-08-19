@@ -6,16 +6,18 @@ import { FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
 /**
  * ProtectedRoute Component
  * - Kiểm tra phiên đăng nhập qua AuthContext.
- * - 'checking': Hiển thị màn hình chờ.
- * - 'temporarily_unavailable': Hiển thị thông báo mất kết nối kèm nút Thử lại (KHÔNG tự chuyển về /login).
+ * - Chỉ hiển thị màn hình loading chờ khi LẦN ĐẦU khởi động app và chưa có user trong state.
+ * - Khi user đã tồn tại trong state: render ngay lập tức, không block UI để tránh flash loading giữa các trang/bài học.
+ * - 'temporarily_unavailable' khi chưa có user: Hiển thị thông báo mất kết nối kèm nút Thử lại (KHÔNG tự chuyển về /login).
  * - 'unauthenticated': Chuyển hướng về trang /login.
  * - 'authenticated': Kiểm tra vai trò allowedRoles và hiển thị nội dung được bảo vệ.
  */
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading, authStatus, authError, retryAuth } = useAuth();
 
-  // 1. Khi đang kiểm tra phiên đăng nhập lần đầu
-  if (loading || authStatus === 'checking') {
+  // 1. Chỉ hiển thị loading toàn màn hình khi LẦN ĐẦU khởi động app và chưa có user trong state
+  // Nếu user đã tồn tại trong state → render ngay, không block để tránh dính màn hình loading khi chuyển bài học/trang
+  if ((loading || authStatus === 'checking') && !user) {
     return (
       <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-900" style={{ fontFamily: 'sans-serif' }}>
         <div style={{
@@ -40,7 +42,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   // 2. Khi máy chủ tạm thời không phản hồi hoặc mất mạng (KHÔNG xóa token, KHÔNG redirect về /login)
-  if (authStatus === 'temporarily_unavailable') {
+  // Chỉ hiển thị màn hình lỗi khi CHƯA có user đã nạp thành công
+  if (authStatus === 'temporarily_unavailable' && !user) {
     return (
       <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-900 px-4">
         <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 text-center border border-slate-100 dark:border-slate-700">

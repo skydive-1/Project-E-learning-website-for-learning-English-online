@@ -370,5 +370,36 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Session & Interceptor Test Suite
       expect(localStorageStore['token']).toBeUndefined();
       expect(screen.getByTestId('auth-status').textContent).toBe('unauthenticated');
     });
+
+    it('14. ProtectedRoute renders children immediately without loading spinner when user already exists in state', async () => {
+      localStorageStore['token'] = 'valid-token';
+      vi.spyOn(authService, 'getProfile').mockResolvedValueOnce({
+        data: { userId: 1, email: 'student@example.com', roleId: 3 }
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/lessons/1']}>
+          <AuthProvider>
+            <Routes>
+              <Route
+                path="/lessons/1"
+                element={
+                  <ProtectedRoute>
+                    <div data-testid="lesson-1">Lesson 1 Content</div>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('lesson-1')).toBeInTheDocument();
+      });
+
+      // Kiểm tra spinner không xuất hiện một khi user đã có
+      expect(screen.queryByText(/Đang kiểm tra quyền truy cập/i)).not.toBeInTheDocument();
+    });
   });
 });
