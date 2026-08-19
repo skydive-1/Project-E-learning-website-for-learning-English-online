@@ -174,10 +174,18 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   };
 
   const handleStopRecord = async (sentenceId, text, e) => {
-    e.stopPropagation();
-    const currentDuration = recordingTime;
+    if (e && e.stopPropagation) e.stopPropagation();
     const audioBlob = await stopRecording();
     setActiveIdx(null);
+
+    if (!audioBlob) {
+      setErrorStates(prev => ({
+        ...prev,
+        [sentenceId]: "Không ghi nhận được âm thanh. Vui lòng thử lại."
+      }));
+      return;
+    }
+
     // Kiểm tra kích thước audio tối thiểu
     if (audioBlob.size < 500) {
       alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.");
@@ -215,7 +223,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
 
   // ----- HANDLERS CHO LUỒNG HỎI ĐÁP PHẢN XẠ (Q&A) -----
   const handleStartQARecord = async (index, e) => {
-    e.stopPropagation();
+    if (e && e.stopPropagation) e.stopPropagation();
     if (isRecording) return;
     setActiveQAIdx(index);
     try {
@@ -226,10 +234,17 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
   };
 
   const handleStopQARecord = async (questionId, e) => {
-    e.stopPropagation();
+    if (e && e.stopPropagation) e.stopPropagation();
     const audioBlob = await stopRecording();
     setActiveQAIdx(null);
-    if (!audioBlob) return;
+
+    if (!audioBlob) {
+      setQaErrorStates(prev => ({
+        ...prev,
+        [questionId]: "Không ghi nhận được âm thanh. Vui lòng thử lại."
+      }));
+      return;
+    }
 
     // Kiểm tra kích thước audio tối thiểu
     if (audioBlob.size < 500) {

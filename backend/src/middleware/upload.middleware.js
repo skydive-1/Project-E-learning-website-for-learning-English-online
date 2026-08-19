@@ -127,6 +127,45 @@ const uploadMaterialPdf = multer({
   }
 });
 
+// Cấu hình upload chuyên biệt cho Audio (Speaking & Voice Chatbot)
+const audioMimeTypes = [
+  'audio/webm',
+  'audio/ogg',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/wave',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/aac'
+];
+const audioExtensions = ['.webm', '.ogg', '.wav', '.mp3', '.m4a', '.mp4', '.aac'];
+
+const audioFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isAudioMime = audioMimeTypes.includes(file.mimetype) || file.mimetype.startsWith('audio/');
+  const isAudioExt = audioExtensions.includes(ext) || !ext; // Nhiều trường hợp WebM blob gửi từ trình duyệt không có đuôi mở rộng
+
+  if (isAudioMime || isAudioExt) {
+    cb(null, true);
+  } else {
+    const err = new Error('Định dạng tệp không được hỗ trợ. Chỉ chấp nhận các định dạng âm thanh (WebM, WAV, MP3, OGG, M4A).');
+    err.code = 'UNSUPPORTED_AUDIO_TYPE';
+    err.status = 400;
+    cb(err, false);
+  }
+};
+
+const uploadAudioMemory = multer({
+  storage: memoryStorage,
+  fileFilter: audioFileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10 MB limit
+  }
+});
+
+upload.audioMemory = uploadAudioMemory;
 upload.materialPdf = uploadMaterialPdf;
 
 module.exports = upload;

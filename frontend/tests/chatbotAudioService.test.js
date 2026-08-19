@@ -95,6 +95,29 @@ describe('Frontend Chatbot Audio Service (askChatbotAudio)', () => {
     expect(res.reply).toBe('Lesson 1 introduces basic conversation skills.');
   });
 
+  it('LEGACY OVERLOAD: askChatbotAudio(blob, lessonId, "What did you do last week?", true) should prioritize mode=qa', async () => {
+    apiClient.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          version: 'speaking-v2',
+          mode: 'qa',
+          overallScore: 88,
+          components: { relevance: 90, grammar: 85, vocabulary: 85, pronunciation: 90, fluency: 90 }
+        }
+      }
+    });
+
+    const mockBlob = new Blob(['audio content'], { type: 'audio/webm' });
+    const res = await askChatbotAudio(mockBlob, 1, "What did you do last week?", true);
+
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    const [, formData] = apiClient.post.mock.calls[0];
+    expect(formData.get('mode')).toBe('qa');
+    expect(formData.get('questionText')).toBe('What did you do last week?');
+    expect(res.overallScore).toBe(88);
+  });
+
   it('should throw an error on API network failure rather than returning score 0', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Network Error: Failed to fetch'));
 

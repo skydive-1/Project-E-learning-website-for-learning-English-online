@@ -1,13 +1,15 @@
 /**
- * Speaking Assessment Scorer & Token Alignment Engine
- * - Chuẩn hóa văn bản, xử lý Contractions, dấu câu, chữ hoa/thường.
- * - Thuật toán Token Alignment (Sequence Matcher / Levenshtein Distance / WER).
+ * Speaking Assessment Scorer & Token Alignment Engine (Hotfix Version)
+ * - Chuẩn hóa văn bản, xử lý Contractions hai chiều, dấu câu, chữ hoa/thường.
+ * - Thuật toán Token Alignment (Dynamic Programming / Levenshtein Distance / WER).
  * - Phân loại trạng thái từng từ theo schema phân tách (textMatch & acousticStatus).
+ * - Xử lý wordAssessments với occurrenceIndex, tuyệt đối không suy đoán correct khi không có bằng chứng.
  * - Tính toán điểm số Read Aloud và Q&A Speaking theo rubric và cơ chế Score Cap.
  * 
  * Phụ trách:
  * - NGUYỄN THANH LIÊM (Backend & Security Developer)
  * - LÊ ĐÌNH CHƯƠNG (Database Administrator & Infrastructure Specialist)
+ * - NGUYỄN DŨNG QUỐC ANH (Frontend & AI UI Integration Developer)
  */
 
 // Bảng ánh xạ Contractions tiếng Anh thông dụng
@@ -63,7 +65,7 @@ function normalizeAndTokenize(text, expandContractions = false) {
 
   if (expandContractions) {
     for (const [contraction, expansion] of Object.entries(CONTRACTIONS_MAP)) {
-      const regex = new RegExp(`\\b${contraction}\\b`, 'gi');
+      const regex = new RegExp(`\\b${contraction.replace("'", "['’]")}\\b`, 'gi');
       normalized = normalized.replace(regex, expansion);
     }
   }
@@ -114,7 +116,7 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
   const M = transcriptTokens.length;
 
   if (N === 0 && M === 0) {
-    return { wer: 0, substitutions: 0, deletions: 0, insertions: 0, alignments: [] };
+    return { wer: 0, substitutions: 0, deletions: 0, insertions: 0, correctMatches: 0, alignments: [] };
   }
   if (N === 0) {
     return {
@@ -122,6 +124,7 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
       substitutions: 0,
       deletions: 0,
       insertions: M,
+      correctMatches: 0,
       alignments: transcriptTokens.map(w => ({ targetWord: null, transcriptWord: w, op: 'extra' }))
     };
   }
@@ -131,6 +134,7 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
       substitutions: 0,
       deletions: N,
       insertions: 0,
+      correctMatches: 0,
       alignments: targetTokens.map(w => ({ targetWord: w, transcriptWord: null, op: 'missing' }))
     };
   }
@@ -157,7 +161,6 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
       if (tWord === hWord) {
         matchCost = 0;
       } else {
-        // Nếu khác biệt 1 ký tự (do lỗi typo nhỏ), cost = 0.8
         const lev = levenshteinDistance(tWord, hWord);
         matchCost = (lev <= 1 && Math.max(tWord.length, hWord.length) >= 4) ? 0.75 : 1.0;
       }
@@ -239,33 +242,39 @@ function computeTokenAlignment(targetTokens, transcriptTokens) {
 
 /**
  * Phân loại trạng thái từng từ theo Schema phân tách (textMatch & acousticStatus)
+ * Xử lý occurrenceIndex và không suy đoán phát âm đúng khi thiếu bằng chứng
  * @param {string} targetText - Câu mẫu gốc
  * @param {string} transcription - Transcript nhận diện từ audio
- * @param {Array} aiMispronouncedList - Danh sách từ phát âm sai do AI phát hiện (từ audio)
+ * @param {Array} wordAssessments - Danh sách đánh giá âm học từ AI [{ word, occurrenceIndex, status, feedback }]
  * @returns {Array} Danh sách word items
  */
-function buildWordLevelFeedback(targetText, transcription, aiMispronouncedList = []) {
+function buildWordLevelFeedback(targetText, transcription, wordAssessments = []) {
   if (!targetText || typeof targetText !== 'string') return [];
 
-  const targetTokens = normalizeAndTokenize(targetText);
-  const transcriptTokens = normalizeAndTokenize(transcription);
+  // Để hiển thị đẹp và khớp token, thực hiện alignment trên tokens chuẩn hóa (không expand cho visual alignment)
+  const targetTokens = normalizeAndTokenize(targetText, false);
+  const transcriptTokens = normalizeAndTokenize(transcription, false);
 
   const { alignments } = computeTokenAlignment(targetTokens, transcriptTokens);
 
-  // Tạo map tra cứu từ AI acoustic feedback
-  const aiFeedbackMap = new Map();
-  if (Array.isArray(aiMispronouncedList)) {
-    for (const item of aiMispronouncedList) {
+  // Tạo map tra cứu theo `${word}#${occurrenceIndex}`
+  const aiAssessMap = new Map();
+  if (Array.isArray(wordAssessments)) {
+    for (const item of wordAssessments) {
       if (item && typeof item === 'object' && item.word) {
         const cleanW = String(item.word).toLowerCase().trim();
-        aiFeedbackMap.set(cleanW, item.feedback || item.error || "Phát âm chưa chuẩn âm vị hoặc trọng âm.");
-      } else if (typeof item === 'string') {
-        aiFeedbackMap.set(item.toLowerCase().trim(), "Phát âm chưa rõ ràng hoặc sai âm tiết.");
+        const occIdx = Number.isInteger(item.occurrenceIndex) ? item.occurrenceIndex : 0;
+        const key = `${cleanW}#${occIdx}`;
+        aiAssessMap.set(key, {
+          status: item.status || 'uncertain',
+          feedback: item.feedback || null
+        });
       }
     }
   }
 
   const resultWords = [];
+  const wordOccurrences = new Map();
 
   for (const align of alignments) {
     const word = align.targetWord || align.transcriptWord;
@@ -284,12 +293,26 @@ function buildWordLevelFeedback(targetText, transcription, aiMispronouncedList =
       feedback = `Đọc sai/thay thế bằng từ "${align.transcriptWord}".`;
     } else if (textMatch === 'correct_text') {
       const cleanW = align.targetWord.toLowerCase();
-      if (aiFeedbackMap.has(cleanW)) {
-        acousticStatus = 'mispronounced';
-        feedback = aiFeedbackMap.get(cleanW);
+      const currentOcc = wordOccurrences.get(cleanW) || 0;
+      wordOccurrences.set(cleanW, currentOcc + 1);
+
+      const assessKey = `${cleanW}#${currentOcc}`;
+      if (aiAssessMap.has(assessKey)) {
+        const aiInfo = aiAssessMap.get(assessKey);
+        if (aiInfo.status === 'correct') {
+          acousticStatus = 'correct';
+          feedback = aiInfo.feedback || 'Phát âm chuẩn xác.';
+        } else if (aiInfo.status === 'mispronounced') {
+          acousticStatus = 'mispronounced';
+          feedback = aiInfo.feedback || 'Phát âm chưa chuẩn âm vị hoặc trọng âm.';
+        } else {
+          acousticStatus = 'uncertain';
+          feedback = aiInfo.feedback || 'Chưa đủ dữ liệu âm học rõ ràng.';
+        }
       } else {
-        acousticStatus = 'correct';
-        feedback = null;
+        // Bắt buộc: Không có bằng chứng âm học thì là not_assessed, KHÔNG được mặc định correct
+        acousticStatus = 'not_assessed';
+        feedback = 'Chưa đủ dữ liệu âm học để đánh giá âm vị từng từ.';
       }
     }
 
@@ -307,12 +330,14 @@ function buildWordLevelFeedback(targetText, transcription, aiMispronouncedList =
 /**
  * Tính toán điểm Read Aloud theo công thức chuẩn:
  * Overall = Pronunciation * 0.35 + ContentAccuracy * 0.30 + Fluency * 0.20 + Completeness * 0.15
+ * Áp dụng Contraction Normalization hai chiều cho cả targetText và transcription
  */
-function calculateReadAloudScore({ targetText, transcription, pronunciationScore = 0, fluencyScore = 0, aiMispronounced = [] }) {
-  const targetTokens = normalizeAndTokenize(targetText);
-  const transcriptTokens = normalizeAndTokenize(transcription);
+function calculateReadAloudScore({ targetText, transcription, pronunciationScore = 0, fluencyScore = 0, wordAssessments = [] }) {
+  // Áp dụng Contraction Expansion khi tính WER / Accuracy / Completeness
+  const targetTokensExpanded = normalizeAndTokenize(targetText, true);
+  const transcriptTokensExpanded = normalizeAndTokenize(transcription, true);
 
-  if (targetTokens.length === 0) {
+  if (targetTokensExpanded.length === 0) {
     return {
       overallScore: 0,
       components: { pronunciation: 0, contentAccuracy: 0, fluency: 0, completeness: 0 },
@@ -320,8 +345,9 @@ function calculateReadAloudScore({ targetText, transcription, pronunciationScore
     };
   }
 
-  if (transcriptTokens.length === 0) {
-    const emptyWords = targetTokens.map(w => ({
+  if (transcriptTokensExpanded.length === 0) {
+    const rawTokens = normalizeAndTokenize(targetText, false);
+    const emptyWords = rawTokens.map(w => ({
       word: w,
       textMatch: 'missing',
       acousticStatus: 'not_assessed',
@@ -339,13 +365,13 @@ function calculateReadAloudScore({ targetText, transcription, pronunciationScore
     };
   }
 
-  const { wer, correctMatches } = computeTokenAlignment(targetTokens, transcriptTokens);
+  const { wer, correctMatches } = computeTokenAlignment(targetTokensExpanded, transcriptTokensExpanded);
 
   // Clamping contentAccuracy trong khoảng [0, 100]
   const contentAccuracy = Math.max(0, Math.min(100, Math.round((1 - Math.min(wer, 1.0)) * 100)));
 
   // Completeness = matched / total
-  const completeness = Math.max(0, Math.min(100, Math.round((correctMatches / targetTokens.length) * 100)));
+  const completeness = Math.max(0, Math.min(100, Math.round((correctMatches / targetTokensExpanded.length) * 100)));
 
   const pScore = Math.max(0, Math.min(100, Number(pronunciationScore) || 0));
   const fScore = Math.max(0, Math.min(100, Number(fluencyScore) || 0));
@@ -354,7 +380,7 @@ function calculateReadAloudScore({ targetText, transcription, pronunciationScore
   const rawOverall = (pScore * 0.35) + (contentAccuracy * 0.30) + (fScore * 0.20) + (completeness * 0.15);
   const overallScore = Math.max(0, Math.min(100, Math.round(rawOverall)));
 
-  const words = buildWordLevelFeedback(targetText, transcription, aiMispronounced);
+  const words = buildWordLevelFeedback(targetText, transcription, wordAssessments);
 
   return {
     overallScore,

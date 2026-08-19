@@ -1,5 +1,6 @@
 const { geminiModel, geminiSpeakingModel, embeddingModel, pineconeIndex } = require("../../../utils/ai-clients");
 const speakingScorer = require("../../../utils/speakingScorer");
+const speakingValidator = require("../../../utils/speakingValidator");
 const db = require("../../../config/database");
 const { execFile } = require("child_process");
 const os = require("os");
@@ -1386,6 +1387,22 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
 
     const durationInfo = await extractAudioDurationSafely(audioBuffer, mimetype ? mimetype.split('/')[1] : 'webm');
 
+    // Thực thi giới hạn thời lượng âm thanh 1-120s
+    if (durationInfo.checked && durationInfo.duration !== null) {
+      if (durationInfo.duration < 1.0) {
+        const err = new Error("Đoạn âm thanh quá ngắn (dưới 1 giây). Vui lòng phát âm đầy đủ câu rồi nhấn hoàn thành.");
+        err.status = 422;
+        err.code = "AUDIO_TOO_SHORT";
+        throw err;
+      }
+      if (durationInfo.duration > 120.0) {
+        const err = new Error("Đoạn âm thanh vượt quá giới hạn 120 giây. Vui lòng ghi âm câu trả lời ngắn gọn hơn.");
+        err.status = 422;
+        err.code = "AUDIO_TOO_LONG";
+        throw err;
+      }
+    }
+
     // 1. Phân hệ 1: Voice Chatbot RAG (mode === 'chat')
     if (mode === 'chat') {
       if (!audioBuffer || audioBuffer.length < 1000) {
@@ -1450,7 +1467,7 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
           transcription: '',
           pronunciationScore: 0,
           fluencyScore: 0,
-          aiMispronounced: []
+          wordAssessments: []
         });
 
         return {
@@ -1474,7 +1491,7 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
             warning: 'Không phát hiện giọng nói hoặc âm lượng quá nhỏ.'
           },
           calibrationVersion: 'v1',
-          modelUsed: 'gemini-2.5-flash',
+          modelUsed: null,
           duration: durationInfo.duration,
           durationChecked: durationInfo.checked
         };
@@ -1511,7 +1528,7 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
             warning: 'Không phát hiện giọng nói hoặc âm lượng quá nhỏ.'
           },
           calibrationVersion: 'v1',
-          modelUsed: 'gemini-2.5-flash',
+          modelUsed: null,
           duration: durationInfo.duration,
           durationChecked: durationInfo.checked
         };
@@ -1533,22 +1550,28 @@ Rules:
    - "transcription": ""
    - "pronunciationScore": 0
    - "fluencyScore": 0
-   - "mispronouncedWords": []
+   - "wordAssessments": []
+   - "quality": "no_speech"
+   - "noiseLevel": "unknown"
+   - "warning": "Không phát hiện giọng nói rõ ràng."
    - "pronunciationFeedback": "Không phát hiện giọng nói rõ ràng."
    - "fluencyFeedback": "Không ghi nhận giọng nói."
    - "generalFeedback": "Vui lòng kiểm tra micro và phát âm to hơn."
 2. If speech detected:
    - "hasSpeech": true
    - "transcription": (exact English words spoken by user)
-   - "pronunciationScore": (number 0-100 evaluating acoustic phonemes, word stress, and ending sounds from audio)
-   - "fluencyScore": (number 0-100 evaluating speaking pace, rhythm, pauses from audio)
-   - "mispronouncedWords": (array of objects [{"word": "string", "feedback": "specific phoneme/stress issue"}] for words with acoustic pronunciation errors)
+   - "pronunciationScore": (finite integer 0-100 evaluating acoustic phonemes, word stress, and ending sounds from audio)
+   - "fluencyScore": (finite integer 0-100 evaluating speaking pace, rhythm, pauses from audio)
+   - "wordAssessments": (array of objects for target words with acoustic evidence: [{"word": "example", "occurrenceIndex": 0, "status": "correct"|"mispronounced"|"uncertain", "confidence": 0.9, "feedback": "specific phoneme/stress issue or good"}])
+   - "quality": ("good"|"poor"|"uncertain"|"no_speech")
+   - "noiseLevel": ("low"|"medium"|"high"|"unknown")
+   - "warning": (string warning or null)
    - "pronunciationFeedback": (actionable Vietnamese feedback on pronunciation)
    - "fluencyFeedback": (actionable Vietnamese feedback on fluency and rhythm)
    - "generalFeedback": (encouraging Vietnamese feedback)
 
 Format response as strict JSON object with keys:
-"hasSpeech", "transcription", "pronunciationScore", "fluencyScore", "mispronouncedWords", "pronunciationFeedback", "fluencyFeedback", "generalFeedback"`;
+"hasSpeech", "transcription", "pronunciationScore", "fluencyScore", "wordAssessments", "quality", "noiseLevel", "warning", "pronunciationFeedback", "fluencyFeedback", "generalFeedback"`;
     } else {
       // mode === 'qa'
       prompt = `You are a strict, professional English conversational speaking assessor.
@@ -1564,6 +1587,9 @@ Rules:
    - "vocabularyScore": 0
    - "pronunciationScore": 0
    - "fluencyScore": 0
+   - "quality": "no_speech"
+   - "noiseLevel": "unknown"
+   - "warning": "Không phát hiện giọng nói."
    - "relevanceFeedback": "Chưa ghi nhận câu trả lời."
    - "grammarFeedback": "Chưa ghi nhận cấu trúc câu."
    - "vocabularyFeedback": "Chưa ghi nhận từ vựng."
@@ -1573,11 +1599,14 @@ Rules:
 2. If speech detected:
    - "hasSpeech": true
    - "transcription": (exact English words spoken by user)
-   - "relevanceScore": (number 0-100: How directly and appropriately does the answer address the question? Severe penalty (<30) if off-topic or answering an unrelated topic. Do not penalize if short answer is contextually appropriate)
-   - "grammarScore": (number 0-100 based on transcript tenses, syntax, and subject-verb agreement)
-   - "vocabularyScore": (number 0-100 based on word diversity and appropriateness)
-   - "pronunciationScore": (number 0-100 based on acoustic phonemes and stress from audio)
-   - "fluencyScore": (number 0-100 based on pace and flow from audio)
+   - "relevanceScore": (finite integer 0-100: How directly and appropriately does the answer address the question? Severe penalty (<30) if off-topic or answering an unrelated topic)
+   - "grammarScore": (finite integer 0-100 based on transcript tenses, syntax, and subject-verb agreement)
+   - "vocabularyScore": (finite integer 0-100 based on word diversity and appropriateness)
+   - "pronunciationScore": (finite integer 0-100 based on acoustic phonemes and stress from audio)
+   - "fluencyScore": (finite integer 0-100 based on pace and flow from audio)
+   - "quality": ("good"|"poor"|"uncertain"|"no_speech")
+   - "noiseLevel": ("low"|"medium"|"high"|"unknown")
+   - "warning": (string warning or null)
    - "relevanceFeedback": (Vietnamese feedback regarding relevance to the prompt)
    - "grammarFeedback": (Vietnamese feedback regarding grammar)
    - "vocabularyFeedback": (Vietnamese feedback regarding vocabulary)
@@ -1586,37 +1615,55 @@ Rules:
    - "improvedAnswer": (a native, natural alternative response in English)
 
 Format response as strict JSON object with keys:
-"hasSpeech", "transcription", "relevanceScore", "grammarScore", "vocabularyScore", "pronunciationScore", "fluencyScore", "relevanceFeedback", "grammarFeedback", "vocabularyFeedback", "pronunciationFeedback", "fluencyFeedback", "improvedAnswer"`;
+"hasSpeech", "transcription", "relevanceScore", "grammarScore", "vocabularyScore", "pronunciationScore", "fluencyScore", "quality", "noiseLevel", "warning", "relevanceFeedback", "grammarFeedback", "vocabularyFeedback", "pronunciationFeedback", "fluencyFeedback", "improvedAnswer"`;
     }
 
-    const aiResult = await geminiSpeakingModel.evaluateSpeaking({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { data: audioBase64, mimeType: mimetype || "audio/webm" } }
-          ]
+    let validated = null;
+    let lastError = null;
+    let actualModelUsed = null;
+
+    // Retry tối đa 1 lần nếu AI trả malformed JSON
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const aiResult = await geminiSpeakingModel.evaluateSpeaking({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: prompt },
+                { inlineData: { data: audioBase64, mimeType: mimetype || "audio/webm" } }
+              ]
+            }
+          ],
+          responseMimeType: "application/json"
+        });
+
+        actualModelUsed = aiResult.modelUsed || process.env.GEMINI_SPEAKING_MODEL || 'gemini-3.5-flash-lite';
+
+        let rawText = (aiResult.responseText || "").trim();
+        if (rawText.includes("```")) {
+          rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
         }
-      ],
-      responseMimeType: "application/json"
-    });
 
-    let rawText = aiResult.responseText || "";
-    if (rawText.includes("```")) {
-      rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsedJson = JSON.parse(rawText);
+        if (mode === 'read_aloud') {
+          validated = speakingValidator.validateReadAloudResponse(parsedJson);
+        } else {
+          validated = speakingValidator.validateQAResponse(parsedJson);
+        }
+        break; // Validation thành công
+      } catch (err) {
+        lastError = err;
+        console.warn(`[Speaking Assessment Attempt ${attempt + 1} Failed]:`, err.message);
+      }
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch (parseErr) {
-      console.error("Lỗi parse JSON từ Speaking Model:", parseErr.message, "Raw:", rawText);
-      throw new Error("Mô hình AI trả kết quả không đúng cấu trúc JSON.");
+    if (!validated) {
+      console.error("Lỗi xác thực dữ liệu từ Speaking Model sau retry:", lastError?.message);
+      throw new Error(`Dịch vụ AI phản hồi không hợp lệ: ${lastError?.message || 'Lỗi cấu trúc phản hồi'}`);
     }
 
-    const hasSpeech = Boolean(parsed.hasSpeech) && Boolean(parsed.transcription && parsed.transcription.trim());
-    const modelUsed = aiResult.modelUsed || process.env.GEMINI_SPEAKING_MODEL || 'gemini-2.5-flash';
+    const hasSpeech = validated.hasSpeech && Boolean(validated.transcription && validated.transcription.trim());
 
     if (mode === 'read_aloud') {
       if (!hasSpeech) {
@@ -1625,7 +1672,7 @@ Format response as strict JSON object with keys:
           transcription: '',
           pronunciationScore: 0,
           fluencyScore: 0,
-          aiMispronounced: []
+          wordAssessments: []
         });
 
         return {
@@ -1636,20 +1683,16 @@ Format response as strict JSON object with keys:
           overallScore: 0,
           components: scorerRes.components,
           feedback: {
-            pronunciation: parsed.pronunciationFeedback || 'Không phát hiện giọng nói rõ ràng.',
-            fluency: parsed.fluencyFeedback || 'Chưa ghi nhận giọng nói.',
+            pronunciation: validated.feedback.pronunciation || 'Không phát hiện giọng nói rõ ràng.',
+            fluency: validated.feedback.fluency || 'Chưa ghi nhận giọng nói.',
             contentAccuracy: 'Chưa ghi nhận nội dung câu đọc.',
             completeness: 'Chưa hoàn thành câu đọc.'
           },
           suggestion: targetText || '',
           words: scorerRes.words,
-          audioQuality: {
-            hasSpeech: false,
-            quality: 'no_speech',
-            warning: 'Không phát hiện giọng nói hoặc âm lượng quá nhỏ.'
-          },
+          audioQuality: validated.audioQuality,
           calibrationVersion: 'v1',
-          modelUsed,
+          modelUsed: actualModelUsed,
           duration: durationInfo.duration,
           durationChecked: durationInfo.checked
         };
@@ -1657,35 +1700,31 @@ Format response as strict JSON object with keys:
 
       const scorerRes = speakingScorer.calculateReadAloudScore({
         targetText: targetText || '',
-        transcription: parsed.transcription || '',
-        pronunciationScore: parsed.pronunciationScore || 0,
-        fluencyScore: parsed.fluencyScore || 0,
-        aiMispronounced: parsed.mispronouncedWords || []
+        transcription: validated.transcription,
+        pronunciationScore: validated.pronunciationScore,
+        fluencyScore: validated.fluencyScore,
+        wordAssessments: validated.wordAssessments || []
       });
 
       return {
         success: true,
         version: 'speaking-v2',
         mode: 'read_aloud',
-        transcription: parsed.transcription,
+        transcription: validated.transcription,
         overallScore: scorerRes.overallScore,
         components: scorerRes.components,
         feedback: {
-          pronunciation: parsed.pronunciationFeedback || 'Phát âm tương đối rõ ràng.',
-          fluency: parsed.fluencyFeedback || 'Nhịp điệu nói đều đặn.',
+          pronunciation: validated.feedback.pronunciation || 'Phát âm tương đối rõ ràng.',
+          fluency: validated.feedback.fluency || 'Nhịp điệu nói đều đặn.',
           contentAccuracy: `Độ chính xác nội dung đạt ${scorerRes.components.contentAccuracy}%.`,
           completeness: `Mức độ hoàn thành câu đạt ${scorerRes.components.completeness}%.`,
-          general: parsed.generalFeedback || 'Bạn đã hoàn thành bài đọc!'
+          general: validated.feedback.general || 'Bạn đã hoàn thành bài đọc!'
         },
         suggestion: targetText || '',
         words: scorerRes.words,
-        audioQuality: {
-          hasSpeech: true,
-          quality: 'good',
-          warning: null
-        },
+        audioQuality: validated.audioQuality,
         calibrationVersion: 'v1',
-        modelUsed,
+        modelUsed: actualModelUsed,
         duration: durationInfo.duration,
         durationChecked: durationInfo.checked
       };
@@ -1708,33 +1747,23 @@ Format response as strict JSON object with keys:
           transcription: '',
           overallScore: 0,
           components: scorerRes.components,
-          feedback: {
-            relevance: parsed.relevanceFeedback || 'Chưa ghi nhận câu trả lời.',
-            grammar: parsed.grammarFeedback || 'Chưa ghi nhận cấu trúc câu.',
-            vocabulary: parsed.vocabularyFeedback || 'Chưa ghi nhận từ vựng.',
-            pronunciation: parsed.pronunciationFeedback || 'Không phát hiện giọng nói.',
-            fluency: parsed.fluencyFeedback || 'Chưa ghi nhận giọng nói.'
-          },
-          suggestion: parsed.improvedAnswer || 'Please speak clearly into your microphone.',
+          feedback: validated.feedback,
+          suggestion: validated.improvedAnswer || 'Please speak clearly into your microphone.',
           words: [],
-          audioQuality: {
-            hasSpeech: false,
-            quality: 'no_speech',
-            warning: 'Không phát hiện giọng nói hoặc âm lượng quá nhỏ.'
-          },
+          audioQuality: validated.audioQuality,
           calibrationVersion: 'v1',
-          modelUsed,
+          modelUsed: actualModelUsed,
           duration: durationInfo.duration,
           durationChecked: durationInfo.checked
         };
       }
 
       const scorerRes = speakingScorer.calculateQAScore({
-        relevance: parsed.relevanceScore || 0,
-        grammar: parsed.grammarScore || 0,
-        vocabulary: parsed.vocabularyScore || 0,
-        pronunciation: parsed.pronunciationScore || 0,
-        fluency: parsed.fluencyScore || 0
+        relevance: validated.scores.relevance,
+        grammar: validated.scores.grammar,
+        vocabulary: validated.scores.vocabulary,
+        pronunciation: validated.scores.pronunciation,
+        fluency: validated.scores.fluency
       });
 
       return {
@@ -1742,27 +1771,17 @@ Format response as strict JSON object with keys:
         version: 'speaking-v2',
         mode: 'qa',
         questionId: questionId || null,
-        transcription: parsed.transcription,
+        transcription: validated.transcription,
         overallScore: scorerRes.overallScore,
         scoreCapApplied: scorerRes.scoreCapApplied,
         scoreCapReason: scorerRes.scoreCapReason,
         components: scorerRes.components,
-        feedback: {
-          relevance: parsed.relevanceFeedback || 'Câu trả lời phù hợp với câu hỏi.',
-          grammar: parsed.grammarFeedback || 'Cấu trúc ngữ pháp tương đối chuẩn xác.',
-          vocabulary: parsed.vocabularyFeedback || 'Từ vựng lựa chọn phù hợp.',
-          pronunciation: parsed.pronunciationFeedback || 'Phát âm rõ ràng.',
-          fluency: parsed.fluencyFeedback || 'Độ trôi chảy tốt.'
-        },
-        suggestion: parsed.improvedAnswer || '',
+        feedback: validated.feedback,
+        suggestion: validated.improvedAnswer || '',
         words: [],
-        audioQuality: {
-          hasSpeech: true,
-          quality: 'good',
-          warning: null
-        },
+        audioQuality: validated.audioQuality,
         calibrationVersion: 'v1',
-        modelUsed,
+        modelUsed: actualModelUsed,
         duration: durationInfo.duration,
         durationChecked: durationInfo.checked
       };

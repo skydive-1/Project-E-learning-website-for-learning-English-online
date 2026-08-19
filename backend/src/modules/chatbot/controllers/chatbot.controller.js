@@ -138,6 +138,9 @@ exports.processAudio = async (req, res, next) => {
 
     // Phân giải mode theo ma trận tương thích
     let mode;
+    let effectiveTargetText = targetText || null;
+    let effectiveQuestionText = questionText || null;
+
     if (req.body.mode) {
       const validModes = ['chat', 'read_aloud', 'qa'];
       if (!validModes.includes(req.body.mode)) {
@@ -146,27 +149,31 @@ exports.processAudio = async (req, res, next) => {
         throw err;
       }
       mode = req.body.mode;
-      if (mode === 'read_aloud' && (!targetText || !targetText.trim())) {
+      if (mode === 'read_aloud' && (!effectiveTargetText || !effectiveTargetText.trim())) {
         const err = new Error("Thiếu targetText cho bài tập Read Aloud");
         err.status = 400;
         throw err;
       }
-      if (mode === 'qa' && (!questionText || !questionText.trim())) {
+      if (mode === 'qa' && (!effectiveQuestionText || !effectiveQuestionText.trim())) {
         const err = new Error("Thiếu questionText cho bài tập Q&A");
         err.status = 400;
         throw err;
       }
     } else {
-      // Legacy mapping
-      if (targetText && targetText.trim()) {
-        mode = 'read_aloud';
-      } else if (isQA) {
-        if (!questionText || !questionText.trim()) {
-          const err = new Error("Thiếu questionText cho bài tập Q&A");
-          err.status = 400;
-          throw err;
-        }
+      // Legacy mapping: Ưu tiên isQA trước targetText
+      if (isQA) {
         mode = 'qa';
+        if (!effectiveQuestionText || !effectiveQuestionText.trim()) {
+          if (effectiveTargetText && effectiveTargetText.trim()) {
+            effectiveQuestionText = effectiveTargetText;
+          } else {
+            const err = new Error("Thiếu questionText cho bài tập Q&A");
+            err.status = 400;
+            throw err;
+          }
+        }
+      } else if (effectiveTargetText && effectiveTargetText.trim()) {
+        mode = 'read_aloud';
       } else {
         // Request từ ChatBox không gửi targetText, không gửi isQA, không gửi mode
         mode = 'chat';
@@ -175,8 +182,8 @@ exports.processAudio = async (req, res, next) => {
 
     const result = await chatbotService.processAudio(audioSource, mimetype, {
       mode,
-      targetText: targetText || null,
-      questionText: questionText || null,
+      targetText: effectiveTargetText,
+      questionText: effectiveQuestionText,
       questionId: questionId || null,
       lessonId: lessonId || null,
       userId: req.user?.id || req.user?.userId || null

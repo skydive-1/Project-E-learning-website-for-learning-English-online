@@ -221,11 +221,12 @@ export const askChatbotAudio = async (arg1, arg2, arg3 = null, arg4 = false) => 
     targetText = arg3;
     const isQA = Boolean(arg4);
 
-    if (targetText && targetText.trim()) {
-      mode = 'read_aloud';
-    } else if (isQA) {
+    if (isQA) {
       mode = 'qa';
       questionText = targetText || null;
+      targetText = null;
+    } else if (targetText && targetText.trim()) {
+      mode = 'read_aloud';
     } else {
       mode = 'chat';
     }
