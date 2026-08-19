@@ -10,7 +10,8 @@ import {
   FiTag,
   FiClock,
   FiCornerDownRight,
-  FiPlusCircle
+  FiPlusCircle,
+  FiCrop
 } from 'react-icons/fi';
 
 const CATEGORY_META = {
@@ -31,6 +32,8 @@ export default function PdfNotesPanel({
   notes = [],
   isLoading = false,
   selectedNoteId,
+  isAreaSelectionMode = false,
+  onTriggerAreaSelection,
   onNavigateToNote,
   onUpdateNote,
   onDeleteNote
@@ -119,8 +122,6 @@ export default function PdfNotesPanel({
         color: editColor
       });
       setEditingNoteId(null);
-    } catch (err) {
-      console.error('Lỗi cập nhật note:', err);
     } finally {
       setIsSaving(false);
     }
@@ -128,125 +129,152 @@ export default function PdfNotesPanel({
 
   const handleDelete = async (noteId, e) => {
     e.stopPropagation();
-    if (!onDeleteNote) return;
-    if (window.confirm('Bạn có chắc chắn muốn xóa ghi chú này?')) {
+    if (onDeleteNote) {
       await onDeleteNote(noteId);
     }
   };
 
   return (
-    <div className="pdf-notes-panel h-full flex flex-col font-sans select-none text-slate-800 dark:text-slate-100" style={{ backgroundColor: 'var(--card-bg)' }}>
-      {/* 1. Header & Quick Instructions */}
-      <div className="px-4 py-3 border-b flex items-center justify-between shrink-0" style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-color)' }}>
-        <div className="flex items-center gap-2">
-          <span className="font-extrabold text-xs tracking-wider uppercase text-smart-indigo dark:text-indigo-400">
-            Ghi chú cá nhân
-          </span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-smart-indigo/10 text-smart-indigo dark:bg-indigo-900/40 dark:text-indigo-300">
-            {filteredNotes.length}
-          </span>
+    <div className="pdf-notes-panel h-full flex flex-col bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 select-none text-slate-800 dark:text-slate-100">
+      {/* 1. Header with Stats & "＋ Thêm ghi chú" Action */}
+      <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-20">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-smart-indigo/10 border border-smart-indigo/30 flex items-center justify-center text-smart-indigo dark:text-indigo-400 font-bold">
+              <FiBookOpen />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Ghi chú cá nhân</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-smart-indigo text-white shadow-xs">
+                  {notes.length}
+                </span>
+              </h3>
+            </div>
+          </div>
+
+          {/* Quick Action Button: "＋ Thêm ghi chú" */}
+          {onTriggerAreaSelection && (
+            <button
+              type="button"
+              onClick={onTriggerAreaSelection}
+              aria-label="Thêm ghi chú vùng"
+              aria-pressed={isAreaSelectionMode}
+              title="Khoanh vùng trên PDF để tạo ghi chú"
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                isAreaSelectionMode
+                  ? 'bg-rose-500 text-white ring-2 ring-rose-400 scale-105 animate-pulse'
+                  : 'bg-smart-indigo hover:bg-indigo-600 active:scale-95 text-white'
+              }`}
+            >
+              <FiPlusCircle className="text-sm" />
+              <span>{isAreaSelectionMode ? 'Đang chọn vùng...' : '＋ Thêm ghi chú'}</span>
+            </button>
+          )}
         </div>
 
-        <div className="text-[11px] text-slate-400 italic flex items-center gap-1">
-          <FiPlusCircle className="text-smart-indigo" />
-          <span>Bôi đen chữ trên PDF để tạo</span>
-        </div>
-      </div>
-
-      {/* 2. Search & Filters Bar */}
-      <div className="p-3 border-b space-y-2 shrink-0" style={{ borderColor: 'var(--border-color)' }}>
-        {/* Search Input */}
-        <div className="relative">
+        {/* Search Bar */}
+        <div className="relative mb-2.5">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm kiếm nội dung ghi chú..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none focus:ring-1 focus:ring-smart-indigo"
-            style={{ borderColor: 'var(--border-color)' }}
+            placeholder="Tìm kiếm nội dung hoặc trích dẫn..."
+            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-smart-indigo/30 text-slate-900 dark:text-slate-100 placeholder-slate-400"
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
             >
               <FiX className="text-xs" />
             </button>
           )}
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[10.5px]">
+        {/* Filter Dropdowns */}
+        <div className="grid grid-cols-3 gap-1.5 text-[10.5px]">
           {/* Category Filter */}
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg font-medium text-slate-600 dark:text-slate-300 focus:outline-none"
-            style={{ borderColor: 'var(--border-color)' }}
+            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
           >
             <option value="all">Tất cả loại</option>
-            <option value="important">⭐ Quan trọng</option>
-            <option value="not_understood">❓ Chưa hiểu</option>
-            <option value="review">🔄 Cần xem lại</option>
-            <option value="vocabulary">📖 Từ vựng</option>
+            <option value="important">Quan trọng</option>
+            <option value="not_understood">Chưa hiểu</option>
+            <option value="review">Cần xem lại</option>
+            <option value="vocabulary">Từ vựng</option>
           </select>
 
           {/* Color Filter */}
           <select
             value={selectedColor}
             onChange={(e) => setSelectedColor(e.target.value)}
-            className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg font-medium text-slate-600 dark:text-slate-300 focus:outline-none"
-            style={{ borderColor: 'var(--border-color)' }}
+            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
           >
             <option value="all">Tất cả màu</option>
-            <option value="yellow">🟡 Vàng</option>
-            <option value="green">🟢 Xanh lá</option>
-            <option value="blue">🔵 Xanh dương</option>
-            <option value="pink">🌸 Hồng</option>
+            <option value="yellow">Vàng</option>
+            <option value="green">Xanh lá</option>
+            <option value="blue">Xanh dương</option>
+            <option value="pink">Hồng</option>
           </select>
 
           {/* Page Filter */}
-          {availablePages.length > 0 && (
-            <select
-              value={selectedPageFilter}
-              onChange={(e) => setSelectedPageFilter(e.target.value)}
-              className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border rounded-lg font-medium text-slate-600 dark:text-slate-300 focus:outline-none"
-              style={{ borderColor: 'var(--border-color)' }}
-            >
-              <option value="all">Mọi trang</option>
-              {availablePages.map((p) => (
-                <option key={p} value={p}>
-                  Trang {p}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            value={selectedPageFilter}
+            onChange={(e) => setSelectedPageFilter(e.target.value)}
+            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+          >
+            <option value="all">Tất cả trang</option>
+            {availablePages.map((p) => (
+              <option key={`page_opt_${p}`} value={p}>
+                Trang {p}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* 3. Notes List grouped by Page */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      {/* 2. Notes List Scroll Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-8 gap-3">
-            <div className="w-8 h-8 border-3 border-smart-indigo border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-xs text-slate-400 font-medium">Đang tải ghi chú...</span>
+          <div className="flex flex-col items-center justify-center p-8 text-center gap-3">
+            <div className="w-8 h-8 border-3 border-slate-300 dark:border-slate-700 border-t-smart-indigo rounded-full animate-spin"></div>
+            <span className="text-xs text-slate-400">Đang đồng bộ ghi chú...</span>
           </div>
         ) : filteredNotes.length === 0 ? (
-          <div className="text-center py-12 px-4 space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-smart-indigo/10 border border-smart-indigo/20 flex items-center justify-center text-smart-indigo text-2xl mx-auto">
+          /* Empty State */
+          <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl text-center space-y-3 shadow-sm my-auto">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-smart-indigo dark:text-indigo-400 text-2xl shadow-inner">
               <FiBookOpen />
             </div>
-            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">
-              {searchQuery || selectedCategory !== 'all' || selectedColor !== 'all'
-                ? 'Không tìm thấy ghi chú phù hợp'
-                : 'Chưa có ghi chú nào'}
-            </h4>
-            <p className="text-[11px] text-slate-400 max-w-xs mx-auto leading-relaxed">
-              {searchQuery || selectedCategory !== 'all' || selectedColor !== 'all'
-                ? 'Hãy thử xóa bộ lọc hoặc tìm kiếm bằng từ khóa khác.'
-                : 'Bôi đen bất kỳ đoạn văn bản nào trên tài liệu PDF để đánh dấu highlight và lưu ghi chú cá nhân của bạn.'}
-            </p>
+            <div>
+              <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-1">
+                {searchQuery || selectedCategory !== 'all' || selectedColor !== 'all' || selectedPageFilter !== 'all'
+                  ? 'Không tìm thấy ghi chú phù hợp'
+                  : 'Chưa có ghi chú'}
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs">
+                {searchQuery || selectedCategory !== 'all' || selectedColor !== 'all' || selectedPageFilter !== 'all'
+                  ? 'Thử điều chỉnh lại từ khóa tìm kiếm hoặc bộ lọc.'
+                  : 'Bôi đen văn bản hoặc khoanh vùng bất kỳ trên PDF để lưu lại nội dung quan trọng.'}
+              </p>
+            </div>
+            {onTriggerAreaSelection && (
+              <button
+                type="button"
+                onClick={onTriggerAreaSelection}
+                aria-label="Thêm ghi chú vùng"
+                title="Khoanh vùng trên PDF để tạo ghi chú"
+                className="px-4 py-2 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer mt-1"
+              >
+                <FiPlusCircle className="text-sm" />
+                <span>＋ Thêm ghi chú</span>
+              </button>
+            )}
           </div>
         ) : (
           Object.keys(groupedNotes)
@@ -267,6 +295,7 @@ export default function PdfNotesPanel({
                     const noteId = note.id || note.noteId;
                     const isSelected = selectedNoteId && String(noteId) === String(selectedNoteId);
                     const isEditing = editingNoteId === noteId;
+                    const isArea = note.selectionType === 'area' || !note.selectedText;
                     const catMeta = CATEGORY_META[note.category] || CATEGORY_META.important;
                     const dotClass = COLOR_DOTS[note.color] || COLOR_DOTS.yellow;
 
@@ -291,7 +320,7 @@ export default function PdfNotesPanel({
                                   type="button"
                                   onClick={(e) => handleSaveEdit(noteId, e)}
                                   disabled={isSaving}
-                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-md"
+                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-md cursor-pointer"
                                   title="Lưu"
                                 >
                                   <FiCheck />
@@ -299,7 +328,7 @@ export default function PdfNotesPanel({
                                 <button
                                   type="button"
                                   onClick={cancelEdit}
-                                  className="p-1 text-slate-400 hover:bg-slate-100 rounded-md"
+                                  className="p-1 text-slate-400 hover:bg-slate-100 rounded-md cursor-pointer"
                                   title="Hủy"
                                 >
                                   <FiX />
@@ -319,7 +348,7 @@ export default function PdfNotesPanel({
                               <select
                                 value={editCategory}
                                 onChange={(e) => setEditCategory(e.target.value)}
-                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-800 border rounded-lg"
+                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-800 border rounded-lg cursor-pointer"
                               >
                                 <option value="important">Quan trọng</option>
                                 <option value="not_understood">Chưa hiểu</option>
@@ -330,7 +359,7 @@ export default function PdfNotesPanel({
                               <select
                                 value={editColor}
                                 onChange={(e) => setEditColor(e.target.value)}
-                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-800 border rounded-lg"
+                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-800 border rounded-lg cursor-pointer"
                               >
                                 <option value="yellow">Vàng</option>
                                 <option value="green">Xanh lá</option>
@@ -355,7 +384,7 @@ export default function PdfNotesPanel({
                                 <button
                                   type="button"
                                   onClick={(e) => startEdit(note, e)}
-                                  className="p-1 text-slate-400 hover:text-smart-indigo hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                  className="p-1 text-slate-400 hover:text-smart-indigo hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                                   title="Chỉnh sửa"
                                 >
                                   <FiEdit2 className="text-xs" />
@@ -363,7 +392,7 @@ export default function PdfNotesPanel({
                                 <button
                                   type="button"
                                   onClick={(e) => handleDelete(noteId, e)}
-                                  className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                  className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                                   title="Xóa ghi chú"
                                 >
                                   <FiTrash2 className="text-xs" />
@@ -371,10 +400,17 @@ export default function PdfNotesPanel({
                               </div>
                             </div>
 
-                            {/* Highlighted Quote */}
-                            <div className="p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-[11px] italic text-slate-700 dark:text-slate-300 line-clamp-3 mb-2">
-                              "{note.selectedText}"
-                            </div>
+                            {/* Highlighted Quote or Area Note Header */}
+                            {isArea ? (
+                              <div className="p-2 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/50 dark:border-indigo-800/50 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5 mb-2">
+                                <FiCrop className="text-indigo-500 shrink-0" />
+                                <span>Ghi chú vùng • Trang {note.pageNumber || pageNum}</span>
+                              </div>
+                            ) : (
+                              <div className="p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-[11px] italic text-slate-700 dark:text-slate-300 line-clamp-3 mb-2">
+                                "{note.selectedText}"
+                              </div>
+                            )}
 
                             {/* Personal Explanation Note */}
                             {note.noteText && (

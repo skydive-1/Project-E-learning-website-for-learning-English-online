@@ -1,7 +1,10 @@
 /**
- * PDF Highlight & Personal Notes Service (TASK-PDF-SMART-NOTES-01-R1)
+ * PDF Highlight & Personal Notes Service (TASK-PDF-SMART-NOTES-01-R1 & TASK-PDF-SMART-NOTES-02)
  *
  * Quản lý ghi chú cá nhân và highlight trên tài liệu PDF:
+ * - Hỗ trợ cả 2 chế độ:
+ *   1. selection_type = 'text': Bôi đen văn bản trên PDF có text layer.
+ *   2. selection_type = 'area': Khoanh vùng ảnh/nội dung trên PDF scan/infographic.
  * - Lưu trữ tọa độ chuẩn hóa (Normalized Rects 0-1) chống lệch khi zoom/responsive.
  * - Cô lập dữ liệu cá nhân nghiêm ngặt (user_id + lesson_id + note_id).
  * - Xác thực định danh tài liệu do Server quản lý và phiên bản tài liệu (documentRef v1, v2...).
@@ -15,6 +18,7 @@ const db = require('../../../config/database');
 
 const ALLOWED_CATEGORIES = ['important', 'not_understood', 'review', 'vocabulary'];
 const ALLOWED_COLORS = ['yellow', 'green', 'blue', 'pink'];
+const ALLOWED_SELECTION_TYPES = ['text', 'area'];
 
 /**
  * Kiểm tra và chuyển đổi số nguyên dương nghiêm ngặt (không chấp nhận '1abc', <= 0, NaN)
@@ -99,6 +103,14 @@ function validateNormalizedRects(rects) {
 
     if (width <= 0 || height <= 0) {
       const err = new Error(`Kích thước width và height tại rect ${i} phải lớn hơn 0.`);
+      err.status = 400;
+      err.code = 'INVALID_RECTS';
+      throw err;
+    }
+
+    // Kiểm tra kích thước tối thiểu để loại bỏ click vô tình
+    if (width < 0.001 || height < 0.001) {
+      const err = new Error(`Vùng chọn rect ${i} quá nhỏ, vui lòng khoanh vùng rõ ràng hơn.`);
       err.status = 400;
       err.code = 'INVALID_RECTS';
       throw err;
@@ -197,6 +209,7 @@ class PdfNotesService {
         material_id AS "materialId",
         document_ref AS "documentRef",
         page_number AS "pageNumber",
+        selection_type AS "selectionType",
         selected_text AS "selectedText",
         note_text AS "noteText",
         category,
@@ -259,6 +272,7 @@ class PdfNotesService {
         material_id AS "materialId",
         document_ref AS "documentRef",
         page_number AS "pageNumber",
+        selection_type AS "selectionType",
         selected_text AS "selectedText",
         note_text AS "noteText",
         category,
@@ -277,7 +291,7 @@ class PdfNotesService {
   }
 
   /**
-   * Tạo mới một ghi chú & highlight PDF
+   * Tạo mới một ghi chú & highlight PDF (hỗ trợ text & area)
    */
   async createNote({
     userId,
@@ -285,7 +299,8 @@ class PdfNotesService {
     materialId = null,
     documentRef,
     pageNumber,
-    selectedText,
+    selectionType = 'text',
+    selectedText = null,
     noteText = '',
     category = 'important',
     color = 'yellow',
@@ -297,23 +312,19 @@ class PdfNotesService {
     const parsedLessonId = parsePositiveInt(lessonId, 'lessonId');
     const parsedPageNumber = parsePositiveInt(pageNumber, 'pageNumber');
 
+    // Xác thực selectionType
+    const cleanSelectionType = String(selectionType || 'text').toLowerCase().trim();
+    if (!ALLOWED_SELECTION_TYPES.includes(cleanSelectionType)) {
+      const err = new Error(`selectionType không hợp lệ. Phải thuộc: ${ALLOWED_SELECTION_TYPES.join(', ')}.`);
+      err.status = 400;
+      err.code = 'INVALID_SELECTION_TYPE';
+      throw err;
+    }
+
     // Xác thực tài liệu và sinh documentRef an toàn từ server
     const resolvedDoc = await this.resolveDocumentRef(parsedLessonId, materialId);
     const serverDocRef = resolvedDoc.documentRef;
     const resolvedMaterialId = resolvedDoc.materialId;
-
-    if (!selectedText || typeof selectedText !== 'string' || !selectedText.trim()) {
-      const err = new Error('selectedText không được để trống.');
-      err.status = 400;
-      err.code = 'INVALID_TEXT';
-      throw err;
-    }
-    if (selectedText.length > 5000) {
-      const err = new Error('selectedText vượt quá độ dài tối đa 5000 ký tự.');
-      err.status = 400;
-      err.code = 'TEXT_TOO_LONG';
-      throw err;
-    }
 
     const cleanNoteText = typeof noteText === 'string' ? noteText.trim() : '';
     if (cleanNoteText.length > 2000) {
@@ -321,6 +332,34 @@ class PdfNotesService {
       err.status = 400;
       err.code = 'NOTE_TOO_LONG';
       throw err;
+    }
+
+    let finalSelectedText = null;
+
+    if (cleanSelectionType === 'text') {
+      if (!selectedText || typeof selectedText !== 'string' || !selectedText.trim()) {
+        const err = new Error('selectedText không được để trống đối với ghi chú văn bản.');
+        err.status = 400;
+        err.code = 'INVALID_TEXT';
+        throw err;
+      }
+      if (selectedText.length > 5000) {
+        const err = new Error('selectedText vượt quá độ dài tối đa 5000 ký tự.');
+        err.status = 400;
+        err.code = 'TEXT_TOO_LONG';
+        throw err;
+      }
+      finalSelectedText = selectedText.trim();
+    } else {
+      // selectionType === 'area'
+      if (!cleanNoteText) {
+        const err = new Error('noteText không được để trống đối với ghi chú vùng (area note).');
+        err.status = 400;
+        err.code = 'INVALID_NOTE_TEXT';
+        throw err;
+      }
+      // Với area note, selectedText có thể là null hoặc chuỗi tóm tắt nếu có
+      finalSelectedText = selectedText && typeof selectedText === 'string' && selectedText.trim() ? selectedText.trim() : null;
     }
 
     const cleanCategory = String(category).toLowerCase().trim();
@@ -349,6 +388,7 @@ class PdfNotesService {
         material_id,
         document_ref,
         page_number,
+        selection_type,
         selected_text,
         note_text,
         category,
@@ -358,7 +398,7 @@ class PdfNotesService {
         context_after,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING 
         note_id AS "id",
         note_id AS "noteId",
@@ -367,6 +407,7 @@ class PdfNotesService {
         material_id AS "materialId",
         document_ref AS "documentRef",
         page_number AS "pageNumber",
+        selection_type AS "selectionType",
         selected_text AS "selectedText",
         note_text AS "noteText",
         category,
@@ -384,7 +425,8 @@ class PdfNotesService {
       resolvedMaterialId,
       serverDocRef,
       parsedPageNumber,
-      selectedText.trim(),
+      cleanSelectionType,
+      finalSelectedText,
       cleanNoteText,
       cleanCategory,
       cleanColor,
@@ -429,6 +471,12 @@ class PdfNotesService {
         err.code = 'NOTE_TOO_LONG';
         throw err;
       }
+      if (existing.selectionType === 'area' && !noteText.trim()) {
+        const err = new Error('noteText không được để trống đối với ghi chú vùng (area note).');
+        err.status = 400;
+        err.code = 'INVALID_NOTE_TEXT';
+        throw err;
+      }
       updates.push(`note_text = $${paramIndex}`);
       params.push(noteText.trim());
       paramIndex++;
@@ -464,7 +512,7 @@ class PdfNotesService {
       return existing;
     }
 
-    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    updates.push('updated_at = CURRENT_TIMESTAMP');
 
     const query = `
       UPDATE pdf_notes
@@ -478,6 +526,7 @@ class PdfNotesService {
         material_id AS "materialId",
         document_ref AS "documentRef",
         page_number AS "pageNumber",
+        selection_type AS "selectionType",
         selected_text AS "selectedText",
         note_text AS "noteText",
         category,
@@ -494,9 +543,10 @@ class PdfNotesService {
   }
 
   /**
-   * Xóa ghi chú (Lọc đồng thời note_id + user_id + lesson_id)
+   * Xóa một ghi chú PDF
+   * Bắt buộc kiểm tra đồng thời noteId + userId + lessonId
    */
-  async deleteNote({ noteId, userId, lessonId }) {
+  async deleteNote(noteId, userId, lessonId) {
     const parsedNoteId = parsePositiveInt(noteId, 'noteId');
     const parsedUserId = parsePositiveInt(userId, 'userId');
     const parsedLessonId = parsePositiveInt(lessonId, 'lessonId');

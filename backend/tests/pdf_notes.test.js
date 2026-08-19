@@ -1,5 +1,5 @@
 /**
- * Automated Test Suite for PDF Highlight & Smart Notes Engine (TASK-PDF-SMART-NOTES-01-R1)
+ * Automated Test Suite for PDF Highlight & Smart Notes Engine (TASK-PDF-SMART-NOTES-01 & TASK-PDF-SMART-NOTES-02)
  *
  * Kiểm tra toàn diện trên production service:
  * 1. PUT / DELETE không có token -> 401 UNAUTHORIZED
@@ -11,6 +11,9 @@
  * 7. Rect có x + width > 1 hoặc y + height > 1 -> 400 INVALID_RECTS
  * 8. Database error -> trả HTTP 500 an toàn, không leak raw SQL error
  * 9. PDF version mới (v2) không trả note của version cũ (v1)
+ * 10. Area note: cho phép selectedText = null, bắt buộc noteText (TASK-PDF-SMART-NOTES-02)
+ * 11. Text note: bắt buộc selectedText (TASK-PDF-SMART-NOTES-02)
+ * 12. Từ chối selectionType không hợp lệ (TASK-PDF-SMART-NOTES-02)
  *
  * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
  * Hỗ trợ triển khai & kiểm thử: AI Agent
@@ -27,7 +30,7 @@ const pdfNotesController = require('../src/modules/lessons/controllers/pdfNotes.
 const coursesService = require('../src/modules/courses/services/courses.service');
 const errorHandler = require('../src/middleware/error.middleware');
 
-describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
+describe('=== TASK-PDF-SMART-NOTES-02 AUTOMATED TEST SUITE ===', () => {
   let server;
   let baseUrl;
   let currentAuthToken = 'user_10_token';
@@ -151,7 +154,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
         const row = dbStore.pdf_notes.find(
           (n) => n.note_id === Number(noteId) && n.user_id === Number(userId) && n.lesson_id === Number(lessonId)
         );
-        return { rows: row ? [{ ...row, id: row.note_id, noteId: row.note_id, userId: row.user_id, lessonId: row.lesson_id }] : [] };
+        return { rows: row ? [{ ...row, id: row.note_id, noteId: row.note_id, userId: row.user_id, lessonId: row.lesson_id, selectionType: row.selection_type || 'text' }] : [] };
       }
 
       // 4. SELECT list from pdf_notes with filters
@@ -186,6 +189,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
           materialId: r.material_id,
           documentRef: r.document_ref,
           pageNumber: r.page_number,
+          selectionType: r.selection_type || 'text',
           selectedText: r.selected_text,
           noteText: r.note_text,
           contextBefore: r.context_before,
@@ -207,13 +211,14 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
           material_id: params[2] ? Number(params[2]) : null,
           document_ref: params[3],
           page_number: Number(params[4]),
-          selected_text: params[5],
-          note_text: params[6] || '',
-          category: params[7],
-          color: params[8],
-          rects: JSON.parse(params[9]),
-          context_before: params[10] || '',
-          context_after: params[11] || '',
+          selection_type: params[5] || 'text',
+          selected_text: params[6],
+          note_text: params[7] || '',
+          category: params[8],
+          color: params[9],
+          rects: JSON.parse(params[10]),
+          context_before: params[11] || '',
+          context_after: params[12] || '',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -230,6 +235,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
               materialId: newNote.material_id,
               documentRef: newNote.document_ref,
               pageNumber: newNote.page_number,
+              selectionType: newNote.selection_type,
               selectedText: newNote.selected_text,
               noteText: newNote.note_text,
               contextBefore: newNote.context_before,
@@ -280,6 +286,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
               materialId: note.material_id,
               documentRef: note.document_ref,
               pageNumber: note.page_number,
+              selectionType: note.selection_type || 'text',
               selectedText: note.selected_text,
               noteText: note.note_text,
               contextBefore: note.context_before,
@@ -436,11 +443,116 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 3. MATERIAL & DOCUMENT VERSIONING VERIFICATION
+  // 3. TASK-PDF-SMART-NOTES-02: AREA NOTES VS TEXT NOTES
   // =========================================================================
-  describe('3. Material & Document Versioning Verification', () => {
-    it('3.1 materialId belonging to another lesson should be REJECTED (HTTP 400 INVALID_MATERIAL)', async () => {
-      // materialId 201 belongs to lesson 2, but client attempts to create note under lesson 1
+  describe('3. Area Notes vs Text Notes (TASK-PDF-SMART-NOTES-02)', () => {
+    it('3.1 should successfully create an Area Note with selectedText = null and noteText provided', async () => {
+      const areaPayload = {
+        pageNumber: 2,
+        selectionType: 'area',
+        selectedText: null,
+        noteText: 'Phần công thức trong hình ảnh này tôi chưa hiểu',
+        category: 'review',
+        color: 'pink',
+        rects: [{ x: 0.15, y: 0.30, width: 0.25, height: 0.10 }]
+      };
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify(areaPayload)
+      });
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 201);
+      assert.strictEqual(data.success, true);
+      assert.strictEqual(data.data.selectionType, 'area');
+      assert.strictEqual(data.data.selectedText, null);
+      assert.strictEqual(data.data.noteText, 'Phần công thức trong hình ảnh này tôi chưa hiểu');
+      assert.strictEqual(data.data.rects[0].x, 0.15);
+    });
+
+    it('3.2 should REJECT Area Note when noteText is empty (HTTP 400)', async () => {
+      const invalidAreaPayload = {
+        pageNumber: 2,
+        selectionType: 'area',
+        selectedText: null,
+        noteText: '', // Empty noteText for area note is rejected
+        category: 'important',
+        color: 'yellow',
+        rects: [{ x: 0.2, y: 0.2, width: 0.3, height: 0.1 }]
+      };
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify(invalidAreaPayload)
+      });
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 400);
+      assert.match(data.message, /bắt buộc phải có nội dung noteText/i);
+    });
+
+    it('3.3 should REJECT Text Note when selectedText is missing (HTTP 400)', async () => {
+      const invalidTextPayload = {
+        pageNumber: 1,
+        selectionType: 'text',
+        selectedText: '',
+        noteText: 'Some note text',
+        category: 'vocabulary',
+        color: 'green',
+        rects: [{ x: 0.1, y: 0.1, width: 0.4, height: 0.04 }]
+      };
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify(invalidTextPayload)
+      });
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 400);
+      assert.match(data.message, /bắt buộc phải có selectedText/i);
+    });
+
+    it('3.4 should REJECT invalid selectionType (HTTP 400 INVALID_SELECTION_TYPE)', async () => {
+      const invalidTypePayload = {
+        pageNumber: 1,
+        selectionType: 'invalid_type_xyz',
+        selectedText: 'Text',
+        noteText: 'Note',
+        rects: [{ x: 0.1, y: 0.1, width: 0.4, height: 0.04 }]
+      };
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify(invalidTypePayload)
+      });
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 400);
+    });
+  });
+
+  // =========================================================================
+  // 4. MATERIAL & DOCUMENT VERSIONING VERIFICATION
+  // =========================================================================
+  describe('4. Material & Document Versioning Verification', () => {
+    it('4.1 materialId belonging to another lesson should be REJECTED (HTTP 400 INVALID_MATERIAL)', async () => {
       const payload = {
         materialId: 201,
         pageNumber: 1,
@@ -465,7 +577,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
       assert.match(data.message, /không thuộc bài học này/i);
     });
 
-    it('3.2 documentRef forged by client is verified and overridden by Server Document Version', async () => {
+    it('4.2 documentRef forged by client is verified and overridden by Server Document Version', async () => {
       const payload = {
         documentRef: 'forged:random:document:ref',
         pageNumber: 1,
@@ -486,11 +598,10 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
 
       const data = await res.json();
       assert.strictEqual(res.status, 201);
-      // Server must have resolved to lesson:1:primary:v1 instead of forged string
       assert.strictEqual(data.data.documentRef, 'lesson:1:primary:v1');
     });
 
-    it('3.3 New PDF version (v2) does NOT return notes from old version (v1)', async () => {
+    it('4.3 New PDF version (v2) does NOT return notes from old version (v1)', async () => {
       // Create Note for version 1 directly in dbStore
       dbStore.pdf_notes.push({
         note_id: nextNoteId++,
@@ -499,6 +610,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
         material_id: null,
         document_ref: 'lesson:2:primary:v1',
         page_number: 1,
+        selection_type: 'text',
         selected_text: 'Old Version 1 Text',
         note_text: '',
         category: 'important',
@@ -518,8 +630,9 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
         material_id: null,
         document_ref: 'lesson:2:primary:v2',
         page_number: 1,
-        selected_text: 'New Version 2 Text',
-        note_text: '',
+        selection_type: 'area',
+        selected_text: null,
+        note_text: 'New Version 2 Area Note',
         category: 'vocabulary',
         color: 'green',
         rects: [{ x: 0.2, y: 0.2, width: 0.5, height: 0.05 }],
@@ -529,7 +642,6 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
         updated_at: new Date().toISOString()
       });
 
-      // Lesson 2 is currently configured as pdf_version = 2 in dbStore.lessons
       const res = await fetch(`${baseUrl}/api/lessons/2/pdf-notes`, {
         headers: { Authorization: 'Bearer user_10_token' }
       });
@@ -537,16 +649,16 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
 
       assert.strictEqual(res.status, 200);
       assert.strictEqual(data.data.length, 1);
-      assert.strictEqual(data.data[0].selectedText, 'New Version 2 Text');
+      assert.strictEqual(data.data[0].noteText, 'New Version 2 Area Note');
       assert.strictEqual(data.data[0].documentRef, 'lesson:2:primary:v2');
     });
   });
 
   // =========================================================================
-  // 4. RECT COORDINATE BOUNDARIES & ERROR HANDLING
+  // 5. RECT COORDINATE BOUNDARIES & ERROR HANDLING
   // =========================================================================
-  describe('4. Rect Coordinate Boundaries & Error Handling', () => {
-    it('4.1 should REJECT rect with x + width > 1.0 (HTTP 400 INVALID_RECTS)', async () => {
+  describe('5. Rect Coordinate Boundaries & Error Handling', () => {
+    it('5.1 should REJECT rect with x + width > 1.0 (HTTP 400 INVALID_RECTS)', async () => {
       const payload = {
         pageNumber: 1,
         selectedText: 'Out of bounds text',
@@ -570,7 +682,7 @@ describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
       assert.match(data.message, /vượt quá giới hạn/i);
     });
 
-    it('4.2 Database error should forward to Error Middleware and return safe HTTP 500 without leaking raw SQL', async () => {
+    it('5.2 Database error should forward to Error Middleware and return safe HTTP 500 without leaking raw SQL', async () => {
       simulateDbError = true;
 
       const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {

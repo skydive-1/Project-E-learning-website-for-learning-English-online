@@ -222,7 +222,7 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tự động tạo bảng lesson_materials:', migErr.message);
     }
 
-    // Tự động đồng bộ cấu trúc: Đảm bảo bảng pdf_notes tồn tại cho PDF Highlight & Smart Notes (TASK-PDF-SMART-NOTES-01)
+    // Tự động đồng bộ cấu trúc: Đảm bảo bảng pdf_notes tồn tại cho PDF Highlight & Smart Notes (TASK-PDF-SMART-NOTES-01 & 02)
     try {
       await client.query("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS pdf_version INT DEFAULT 1;");
       await client.query("ALTER TABLE lesson_materials ADD COLUMN IF NOT EXISTS pdf_version INT DEFAULT 1;");
@@ -235,7 +235,8 @@ const testConnection = async () => {
           material_id INTEGER NULL REFERENCES lesson_materials(material_id) ON DELETE CASCADE,
           document_ref VARCHAR(255) NOT NULL,
           page_number INTEGER NOT NULL CHECK (page_number >= 1),
-          selected_text TEXT NOT NULL,
+          selection_type VARCHAR(20) NOT NULL DEFAULT 'text',
+          selected_text TEXT NULL,
           note_text TEXT NOT NULL DEFAULT '',
           category VARCHAR(30) NOT NULL CHECK (category IN ('important', 'not_understood', 'review', 'vocabulary')),
           color VARCHAR(20) NOT NULL CHECK (color IN ('yellow', 'green', 'blue', 'pink')),
@@ -246,9 +247,11 @@ const testConnection = async () => {
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
       `);
+      await client.query("ALTER TABLE pdf_notes ADD COLUMN IF NOT EXISTS selection_type VARCHAR(20) NOT NULL DEFAULT 'text';");
+      await client.query("ALTER TABLE pdf_notes ALTER COLUMN selected_text DROP NOT NULL;");
       await client.query(`CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_doc ON pdf_notes(user_id, lesson_id, document_ref);`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, lesson_id, page_number);`);
-      console.log('✅ Tự động đồng bộ: Đảm bảo bảng pdf_notes và pdf_version tồn tại thành công');
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng pdf_notes, selection_type và pdf_version tồn tại thành công');
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tự động tạo bảng pdf_notes:', migErr.message);
     }

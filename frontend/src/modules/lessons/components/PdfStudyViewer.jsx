@@ -13,7 +13,10 @@ import {
   FiAlertTriangle,
   FiFileText,
   FiLayers,
-  FiInfo
+  FiInfo,
+  FiCrop,
+  FiPlusCircle,
+  FiX
 } from 'react-icons/fi';
 
 import PdfHighlightOverlay from './PdfHighlightOverlay';
@@ -48,6 +51,8 @@ export default function PdfStudyViewer({
   selectedNoteId,
   activeGlowNoteId,
   activePage = 1,
+  isAreaSelectionMode = false,
+  onToggleAreaSelection,
   onPageChange,
   onCreateNote,
   onSelectNote
@@ -61,9 +66,25 @@ export default function PdfStudyViewer({
   const [documentRetryKey, setDocumentRetryKey] = useState(0);
   const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
 
+  // Local Area Selection Mode state if not controlled from parent
+  const [localAreaMode, setLocalAreaMode] = useState(false);
+  const isAreaModeActive = isAreaSelectionMode !== undefined ? isAreaSelectionMode : localAreaMode;
+
+  const toggleAreaMode = useCallback(() => {
+    if (onToggleAreaSelection) {
+      onToggleAreaSelection(!isAreaModeActive);
+    } else {
+      setLocalAreaMode((prev) => !prev);
+    }
+  }, [onToggleAreaSelection, isAreaModeActive]);
+
+  // Live Dragging Rectangle State for Area Selection
+  const [dragState, setDragState] = useState(null);
+  // dragState = { pageNumber, startX, startY, currentX, currentY, pageRect }
+
   // Selection Popover State
   const [selectionState, setSelectionState] = useState(null);
-  // selectionState = { pageNumber, selectedText, rects, clientRect }
+  // selectionState = { selectionType: 'text' | 'area', pageNumber, selectedText, rects, clientRect }
 
   const containerRef = useRef(null);
   const pageRefs = useRef({});
@@ -73,6 +94,7 @@ export default function PdfStudyViewer({
     setCurrentPage(1);
     setNumPages(null);
     setSelectionState(null);
+    setDragState(null);
     if (pdfUrl) {
       setLoading(true);
       setError(null);
@@ -90,7 +112,7 @@ export default function PdfStudyViewer({
     return () => clearInterval(timer);
   }, []);
 
-  // 3. Đồng bộ trang khi có trigger chuyển trang từ bên ngoài (ví dụ nhấp note ở sidebar)
+  // 3. Đồng bộ trang khi có trigger chuyển trang từ bên ngoài
   useEffect(() => {
     if (activePage && activePage !== currentPage && numPages && activePage <= numPages) {
       setCurrentPage(activePage);
@@ -100,7 +122,7 @@ export default function PdfStudyViewer({
     }
   }, [activePage, numPages, viewMode]);
 
-  // 4. Continuous Mode IntersectionObserver để theo dõi trang người dùng đang cuộn tới
+  // 4. Continuous Mode IntersectionObserver
   useEffect(() => {
     if (viewMode !== 'continuous' || !numPages) return;
 
@@ -126,11 +148,26 @@ export default function PdfStudyViewer({
     return () => observer.disconnect();
   }, [viewMode, numPages, currentPage, onPageChange]);
 
+  // 5. Lắng nghe phím Escape để hủy Area Selection Mode hoặc Popover
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (dragState) setDragState(null);
+        if (selectionState) setSelectionState(null);
+        if (isAreaModeActive) {
+          if (onToggleAreaSelection) onToggleAreaSelection(false);
+          else setLocalAreaMode(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dragState, selectionState, isAreaModeActive, onToggleAreaSelection]);
+
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
     setLoading(false);
     setError(null);
-    // Clamp trang hợp lệ trong khoảng 1..numPages
     setCurrentPage((prev) => Math.min(Math.max(1, prev), numPages));
   };
 
@@ -140,8 +177,14 @@ export default function PdfStudyViewer({
     setError(err?.message || 'Không thể hiển thị tài liệu PDF. Vui lòng kiểm tra lại đường dẫn tệp.');
   };
 
-  const handleZoomIn = () => setScale((prev) => Math.min(2.0, Number((prev + 0.15).toFixed(2))));
-  const handleZoomOut = () => setScale((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))));
+  const handleZoomIn = () => {
+    setScale((prev) => Math.min(2.0, Number((prev + 0.15).toFixed(2))));
+    setSelectionState(null);
+  };
+  const handleZoomOut = () => {
+    setScale((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))));
+    setSelectionState(null);
+  };
   const handleFitWidth = () => {
     if (containerRef.current) {
       const containerWidth = containerRef.current.clientWidth;
@@ -150,12 +193,14 @@ export default function PdfStudyViewer({
     } else {
       setScale(1.0);
     }
+    setSelectionState(null);
   };
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
       const p = currentPage - 1;
       setCurrentPage(p);
+      setSelectionState(null);
       if (onPageChange) onPageChange(p);
     }
   };
@@ -164,6 +209,7 @@ export default function PdfStudyViewer({
     if (numPages && currentPage < numPages) {
       const p = currentPage + 1;
       setCurrentPage(p);
+      setSelectionState(null);
       if (onPageChange) onPageChange(p);
     }
   };
@@ -175,9 +221,135 @@ export default function PdfStudyViewer({
   };
 
   /**
-   * Bắt sự kiện chọn văn bản trong PDF (Text Selection)
+   * =========================================================================
+   * AREA SELECTION HANDLERS (Pointer / Mouse Dragging on PDF Pages)
+   * =========================================================================
+   */
+  const handlePagePointerDown = (pageNum, e) => {
+    if (!isAreaModeActive) return;
+
+    // Chỉ bắt chuột trái (button === 0) hoặc touch
+    if (e.button !== undefined && e.button !== 0) return;
+
+    const pageElement = pageRefs.current[pageNum];
+    if (!pageElement) return;
+
+    const pageRect = pageElement.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0]?.clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0]?.clientY);
+
+    if (clientX === undefined || clientY === undefined) return;
+
+    // Bắt đầu vẽ khoanh vùng
+    setDragState({
+      pageNumber: pageNum,
+      startX: clientX,
+      startY: clientY,
+      currentX: clientX,
+      currentY: clientY,
+      pageRect
+    });
+    setSelectionState(null);
+  };
+
+  const handlePointerMove = useCallback((e) => {
+    if (!dragState) return;
+
+    const clientX = e.clientX || (e.touches && e.touches[0]?.clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0]?.clientY);
+
+    if (clientX === undefined || clientY === undefined) return;
+
+    setDragState((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        currentX: clientX,
+        currentY: clientY
+      };
+    });
+  }, [dragState]);
+
+  const handlePointerUp = useCallback(() => {
+    if (!dragState) return;
+
+    const { pageNumber, startX, startY, currentX, currentY, pageRect } = dragState;
+    setDragState(null);
+
+    const minX = Math.min(startX, currentX);
+    const maxX = Math.max(startX, currentX);
+    const minY = Math.min(startY, currentY);
+    const maxY = Math.max(startY, currentY);
+
+    const pixelWidth = maxX - minX;
+    const pixelHeight = maxY - minY;
+
+    // Bỏ qua nếu vùng kéo quá nhỏ (< 8x8 px)
+    if (pixelWidth < 8 || pixelHeight < 8) {
+      return;
+    }
+
+    // Tính toán tọa độ chuẩn hóa [0.0 - 1.0] tương đối theo trang PDF
+    let normX = Math.max(0, Math.min(1, (minX - pageRect.left) / pageRect.width));
+    let normY = Math.max(0, Math.min(1, (minY - pageRect.top) / pageRect.height));
+    let normW = Math.max(0.001, pixelWidth / pageRect.width);
+    let normH = Math.max(0.001, pixelHeight / pageRect.height);
+
+    // Đảm bảo không vượt quá giới hạn trang
+    if (normX + normW > 1.0) normW = Math.max(0.001, 1.0 - normX);
+    if (normY + normH > 1.0) normH = Math.max(0.001, 1.0 - normY);
+
+    const normalizedRects = [
+      {
+        x: Number(normX.toFixed(4)),
+        y: Number(normY.toFixed(4)),
+        width: Number(normW.toFixed(4)),
+        height: Number(normH.toFixed(4))
+      }
+    ];
+
+    setSelectionState({
+      selectionType: 'area',
+      pageNumber,
+      selectedText: null,
+      rects: normalizedRects,
+      clientRect: {
+        top: minY,
+        left: minX,
+        width: pixelWidth,
+        height: pixelHeight,
+        bottom: maxY,
+        right: maxX
+      }
+    });
+
+    // Tắt area mode sau khi khoanh vùng thành công để hiển thị popover nhập ghi chú
+    if (onToggleAreaSelection) onToggleAreaSelection(false);
+    else setLocalAreaMode(false);
+  }, [dragState, onToggleAreaSelection]);
+
+  // Đăng ký event pointer toàn cục khi đang kéo vẽ vùng
+  useEffect(() => {
+    if (dragState) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
+      return () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+      };
+    }
+  }, [dragState, handlePointerMove, handlePointerUp]);
+
+  /**
+   * =========================================================================
+   * TEXT SELECTION HANDLER (Native Text Selection on Text PDF)
+   * =========================================================================
    */
   const handleMouseUp = useCallback(() => {
+    if (isAreaModeActive) return; // Nếu đang bật Area Selection Mode thì không bắt text selection
+
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
       return;
@@ -190,7 +362,6 @@ export default function PdfStudyViewer({
 
     const range = selection.getRangeAt(0);
 
-    // Tìm phần tử trang PDF (.react-pdf__Page) chứa vùng chọn
     let container = range.commonAncestorContainer;
     if (container.nodeType === Node.TEXT_NODE) {
       container = container.parentElement;
@@ -224,18 +395,20 @@ export default function PdfStudyViewer({
     }
 
     setSelectionState({
+      selectionType: 'text',
       pageNumber: pageNum,
       selectedText,
       rects: normalizedRects,
       clientRect: rangeBoundingRect
     });
-  }, [currentPage]);
+  }, [currentPage, isAreaModeActive]);
 
-  const handleSaveNote = async ({ category, color, noteText }) => {
+  const handleSaveNote = async ({ category, color, noteText, selectionType }) => {
     if (!selectionState || !onCreateNote) return;
 
     await onCreateNote({
       pageNumber: selectionState.pageNumber,
+      selectionType: selectionType || selectionState.selectionType || 'text',
       selectedText: selectionState.selectedText,
       noteText,
       category,
@@ -260,20 +433,40 @@ export default function PdfStudyViewer({
     <div
       ref={containerRef}
       onMouseUp={handleMouseUp}
-      onTouchEnd={handleMouseUp}
-      className="pdf-study-viewer w-full h-full flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl relative select-none"
+      className={`pdf-study-viewer w-full h-full flex flex-col bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl relative select-none ${
+        isAreaModeActive ? 'cursor-crosshair' : ''
+      }`}
       style={{ minHeight: '520px' }}
     >
       {/* 1. Thanh điều khiển trên cùng (PDF Toolbar) */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 z-30 text-xs text-slate-200">
-        {/* Left: Title & Mode */}
-        <div className="flex items-center gap-2.5 overflow-hidden">
+        {/* Left: Title & Quick "＋ Thêm ghi chú" Action */}
+        <div className="flex items-center gap-2 overflow-hidden">
           <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold shrink-0">
             <FiFileText />
           </div>
-          <span className="font-semibold text-slate-200 truncate max-w-[160px] sm:max-w-xs" title={title}>
+          <span className="font-semibold text-slate-200 truncate max-w-[130px] sm:max-w-xs" title={title}>
             {title}
           </span>
+
+          {/* Primary Action Button: "＋ Thêm ghi chú" */}
+          {pdfUrl && (
+            <button
+              type="button"
+              onClick={toggleAreaMode}
+              aria-label="Thêm ghi chú vùng"
+              aria-pressed={isAreaModeActive}
+              title="Khoanh vùng trên PDF để tạo ghi chú"
+              className={`ml-1 px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                isAreaModeActive
+                  ? 'bg-rose-500 text-white ring-2 ring-rose-400 scale-105 animate-pulse'
+                  : 'bg-smart-indigo hover:bg-indigo-600 active:scale-95 text-white'
+              }`}
+            >
+              <FiPlusCircle className="text-sm" />
+              <span className="hidden sm:inline">{isAreaModeActive ? 'Hủy chọn vùng' : '＋ Thêm ghi chú'}</span>
+            </button>
+          )}
         </div>
 
         {/* Center: Pagination controls */}
@@ -355,10 +548,30 @@ export default function PdfStudyViewer({
         )}
       </div>
 
+      {/* Floating Mode Banner when Area Selection is Active */}
+      {isAreaModeActive && (
+        <div className="bg-rose-500/90 text-white text-xs px-4 py-2 flex items-center justify-between shadow-lg z-25 backdrop-blur-md animate-fade">
+          <div className="flex items-center gap-2">
+            <FiCrop className="animate-spin text-sm" />
+            <span className="font-medium">
+              Kéo chuột để khoanh vùng cần ghi chú trên PDF • Nhấn <kbd className="bg-black/30 px-1.5 py-0.5 rounded font-mono text-[10.5px]">Esc</kbd> để hủy
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={toggleAreaMode}
+            className="p-1 hover:bg-black/20 rounded-lg cursor-pointer"
+            title="Đóng chế độ khoanh vùng (Esc)"
+          >
+            <FiX />
+          </button>
+        </div>
+      )}
+
       {/* 2. PDF Document Canvas & Scrollable Area */}
       <div
         className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col items-center relative bg-slate-900/90 scroll-smooth"
-        style={{ userSelect: 'text' }}
+        style={{ userSelect: isAreaModeActive ? 'none' : 'text' }}
       >
         {/* PDF Security Watermark Badge */}
         {pdfUrl && (
@@ -423,18 +636,32 @@ export default function PdfStudyViewer({
               // Continuous Scroll: Render all pages
               Array.from(new Array(numPages || 0), (_, index) => {
                 const pNum = index + 1;
+                const isCurrentDraggingPage = dragState && dragState.pageNumber === pNum;
+
+                let dragBox = null;
+                if (isCurrentDraggingPage) {
+                  const minX = Math.min(dragState.startX, dragState.currentX) - dragState.pageRect.left;
+                  const minY = Math.min(dragState.startY, dragState.currentY) - dragState.pageRect.top;
+                  const w = Math.abs(dragState.currentX - dragState.startX);
+                  const h = Math.abs(dragState.currentY - dragState.startY);
+                  dragBox = { minX, minY, w, h };
+                }
+
                 return (
                   <div
                     key={`page_${pNum}`}
                     data-page-number={pNum}
                     ref={(el) => (pageRefs.current[pNum] = el)}
-                    className="relative bg-white shadow-2xl rounded-sm overflow-hidden transition-transform duration-200 border border-slate-200"
-                    style={{ userSelect: 'text' }}
+                    onPointerDown={(e) => handlePagePointerDown(pNum, e)}
+                    className={`relative bg-white shadow-2xl rounded-sm overflow-hidden transition-transform duration-200 border border-slate-200 ${
+                      isAreaModeActive ? 'cursor-crosshair' : ''
+                    }`}
+                    style={{ userSelect: isAreaModeActive ? 'none' : 'text' }}
                   >
                     <Page
                       pageNumber={pNum}
                       scale={scale}
-                      renderTextLayer={true}
+                      renderTextLayer={!isAreaModeActive}
                       renderAnnotationLayer={true}
                     />
                     <PdfHighlightOverlay
@@ -444,6 +671,19 @@ export default function PdfStudyViewer({
                       activeGlowNoteId={activeGlowNoteId}
                       onSelectNote={onSelectNote}
                     />
+
+                    {/* Live Dragging Rectangle */}
+                    {dragBox && dragBox.w > 2 && dragBox.h > 2 && (
+                      <div
+                        className="absolute pointer-events-none z-30 bg-indigo-500/25 border-2 border-indigo-500 rounded-md shadow-md"
+                        style={{
+                          left: `${dragBox.minX}px`,
+                          top: `${dragBox.minY}px`,
+                          width: `${dragBox.w}px`,
+                          height: `${dragBox.h}px`
+                        }}
+                      />
+                    )}
                   </div>
                 );
               })
@@ -452,13 +692,17 @@ export default function PdfStudyViewer({
               <div
                 key={`single_page_${currentPage}`}
                 data-page-number={currentPage}
-                className="relative bg-white shadow-2xl rounded-sm overflow-hidden transition-transform duration-200 border border-slate-200"
-                style={{ userSelect: 'text' }}
+                ref={(el) => (pageRefs.current[currentPage] = el)}
+                onPointerDown={(e) => handlePagePointerDown(currentPage, e)}
+                className={`relative bg-white shadow-2xl rounded-sm overflow-hidden transition-transform duration-200 border border-slate-200 ${
+                  isAreaModeActive ? 'cursor-crosshair' : ''
+                }`}
+                style={{ userSelect: isAreaModeActive ? 'none' : 'text' }}
               >
                 <Page
                   pageNumber={currentPage}
                   scale={scale}
-                  renderTextLayer={true}
+                  renderTextLayer={!isAreaModeActive}
                   renderAnnotationLayer={true}
                 />
                 <PdfHighlightOverlay
@@ -468,16 +712,40 @@ export default function PdfStudyViewer({
                   activeGlowNoteId={activeGlowNoteId}
                   onSelectNote={onSelectNote}
                 />
+
+                {/* Live Dragging Rectangle for Single Page */}
+                {dragState && dragState.pageNumber === currentPage && (
+                  (() => {
+                    const minX = Math.min(dragState.startX, dragState.currentX) - dragState.pageRect.left;
+                    const minY = Math.min(dragState.startY, dragState.currentY) - dragState.pageRect.top;
+                    const w = Math.abs(dragState.currentX - dragState.startX);
+                    const h = Math.abs(dragState.currentY - dragState.startY);
+                    if (w < 2 || h < 2) return null;
+                    return (
+                      <div
+                        className="absolute pointer-events-none z-30 bg-indigo-500/25 border-2 border-indigo-500 rounded-md shadow-md"
+                        style={{
+                          left: `${minX}px`,
+                          top: `${minY}px`,
+                          width: `${w}px`,
+                          height: `${h}px`
+                        }}
+                      />
+                    );
+                  })()
+                )}
               </div>
             )}
           </Document>
         )}
 
-        {/* 3. Floating Selection Popover */}
+        {/* 3. Floating Selection Popover (Text & Area Modes) */}
         {selectionState && (
           <PdfSelectionPopover
             clientRect={selectionState.clientRect}
-            selectedText={selectionState.selectedText}
+            selectionType={selectionState.selectionType || 'text'}
+            pageNumber={selectionState.pageNumber || currentPage}
+            selectedText={selectionState.selectedText || ''}
             onSave={handleSaveNote}
             onCancel={handleCancelSelection}
           />
@@ -487,13 +755,14 @@ export default function PdfStudyViewer({
       {/* 4. Global CSS styling for Text Layer selection accessibility */}
       <style>{`
         .pdf-study-viewer .react-pdf__Page__textContent {
-          user-select: text !important;
-          cursor: text !important;
+          user-select: ${isAreaModeActive ? 'none !important' : 'text !important'};
+          cursor: ${isAreaModeActive ? 'crosshair !important' : 'text !important'};
           opacity: 0.25;
           mix-blend-mode: multiply;
+          pointer-events: ${isAreaModeActive ? 'none !important' : 'auto'};
         }
         .pdf-study-viewer .react-pdf__Page__textContent span {
-          user-select: text !important;
+          user-select: ${isAreaModeActive ? 'none !important' : 'text !important'};
         }
         .pdf-study-viewer .react-pdf__Page__textContent span::selection {
           background: rgba(59, 130, 246, 0.4) !important;

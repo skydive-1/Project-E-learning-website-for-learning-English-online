@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS lesson_materials (
 );
 CREATE INDEX IF NOT EXISTS idx_lesson_materials_lesson_id ON lesson_materials(lesson_id);
 
--- 19. Tạo bảng Ghi chú & Highlight PDF Cá nhân (pdf_notes) - TASK-PDF-SMART-NOTES-01
+-- 19. Tạo bảng Ghi chú & Highlight PDF Cá nhân (pdf_notes) - TASK-PDF-SMART-NOTES-01 & 02
 CREATE TABLE IF NOT EXISTS pdf_notes (
   note_id BIGSERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -244,7 +244,8 @@ CREATE TABLE IF NOT EXISTS pdf_notes (
   material_id INTEGER NULL REFERENCES lesson_materials(material_id) ON DELETE CASCADE,
   document_ref VARCHAR(255) NOT NULL,
   page_number INTEGER NOT NULL CHECK (page_number >= 1),
-  selected_text TEXT NOT NULL,
+  selection_type VARCHAR(20) NOT NULL DEFAULT 'text' CHECK (selection_type IN ('text', 'area')),
+  selected_text TEXT NULL,
   note_text TEXT NOT NULL DEFAULT '',
   category VARCHAR(30) NOT NULL CHECK (category IN ('important', 'not_understood', 'review', 'vocabulary')),
   color VARCHAR(20) NOT NULL CHECK (color IN ('yellow', 'green', 'blue', 'pink')),
