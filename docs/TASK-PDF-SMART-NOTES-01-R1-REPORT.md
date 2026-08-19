@@ -1,12 +1,12 @@
 # BÁO CÁO KỸ THUẬT: HOTFIX PDF HIGHLIGHT & PERSONAL NOTES (TASK-PDF-SMART-NOTES-01-R1)
 
-> **Mã công việc**: `TASK-PDF-SMART-NOTES-01-R1`  
-> **Nhánh thực hiện**: `feature/pdf-smart-notes`  
-> **Base SHA audit**: `2da4f9463a5c1c6a7da4e11ec035b2221d5c33ba`  
-> **HEAD SHA hiện tại**: `2da4f9463a5c1c6a7da4e11ec035b2221d5c33ba`  
-> **Thời gian thực hiện**: 19/08/2026  
-> **Người phụ trách task**: **NGUYỄN DŨNG QUỐC ANH** (*Frontend & AI UI Integration Developer*)  
-> **Hỗ trợ triển khai và kiểm thử**: **AI Agent**  
+> **Mã công việc**: `TASK-PDF-SMART-NOTES-01-R1`
+> **Nhánh thực hiện**: `feature/pdf-smart-notes`
+> **Base SHA audit**: `2da4f9463a5c1c6a7da4e11ec035b2221d5c33ba`
+> **HEAD SHA hiện tại**: `2da4f9463a5c1c6a7da4e11ec035b2221d5c33ba`
+> **Thời gian thực hiện**: 19/08/2026
+> **Người phụ trách task**: **NGUYỄN DŨNG QUỐC ANH** (*Frontend & AI UI Integration Developer*)
+> **Hỗ trợ triển khai và kiểm thử**: **AI Agent**
 > **Trạng thái kiểm định**: **AUTOMATED & INTEGRATION VERIFICATION PASSED**
 
 ---

@@ -1,11 +1,11 @@
 # BÁO CÁO KỸ THUẬT: PDF HIGHLIGHT & PERSONAL SMART NOTES (TASK-PDF-SMART-NOTES-01)
 
-> **Mã công việc**: `TASK-PDF-SMART-NOTES-01`  
-> **Nhánh thực hiện**: `feature/pdf-smart-notes`  
-> **Base Commit SHA audit**: `75b80653005f6f7fcccdf4c1b3f0b7dcbd762e6c`  
-> **Thời gian thực hiện**: 19/08/2026  
-> **Người phụ trách task**: **NGUYỄN DŨNG QUỐC ANH** (*Frontend & AI UI Integration Developer*)  
-> **Hỗ trợ triển khai và kiểm thử mã nguồn**: **AI Agent**  
+> **Mã công việc**: `TASK-PDF-SMART-NOTES-01`
+> **Nhánh thực hiện**: `feature/pdf-smart-notes`
+> **Base Commit SHA audit**: `75b80653005f6f7fcccdf4c1b3f0b7dcbd762e6c`
+> **Thời gian thực hiện**: 19/08/2026
+> **Người phụ trách task**: **NGUYỄN DŨNG QUỐC ANH** (*Frontend & AI UI Integration Developer*)
+> **Hỗ trợ triển khai và kiểm thử mã nguồn**: **AI Agent**
 > **Trạng thái kiểm định**: **AUTOMATED VERIFICATION PASSED**
 
 ---
