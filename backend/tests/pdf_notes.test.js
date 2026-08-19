@@ -1,12 +1,16 @@
 /**
- * Automated Test Suite for PDF Highlight & Smart Notes Engine (TASK-PDF-SMART-NOTES-01)
+ * Automated Test Suite for PDF Highlight & Smart Notes Engine (TASK-PDF-SMART-NOTES-01-R1)
  *
- * Kiểm tra toàn diện:
- * 1. CRUD Ghi chú & Highlight PDF.
- * 2. Xác thực phân quyền truy cập bài học (canUserAccessLesson).
- * 3. Cô lập dữ liệu cá nhân 100% (Strict User Isolation giữa User A và User B).
- * 4. Kiểm tra nghiêm ngặt tọa độ chuẩn hóa (Normalized Rects [0.0, 1.0]).
- * 5. Whitelist danh mục (category) và màu sắc (color).
+ * Kiểm tra toàn diện trên production service:
+ * 1. PUT / DELETE không có token -> 401 UNAUTHORIZED
+ * 2. PUT / DELETE khi không có quyền truy cập bài học -> 403 FORBIDDEN
+ * 3. Note đúng user nhưng sai lessonId trên URL -> 404 NOTE_NOT_FOUND
+ * 4. User B tuyệt đối không được sửa hoặc xóa note của User A
+ * 5. materialId thuộc lesson khác -> 400 INVALID_MATERIAL
+ * 6. documentRef giả mạo từ client bị bỏ qua / xác thực lại từ server
+ * 7. Rect có x + width > 1 hoặc y + height > 1 -> 400 INVALID_RECTS
+ * 8. Database error -> trả HTTP 500 an toàn, không leak raw SQL error
+ * 9. PDF version mới (v2) không trả note của version cũ (v1)
  *
  * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
  * Hỗ trợ triển khai & kiểm thử: AI Agent
@@ -17,23 +21,39 @@ const assert = require('node:assert');
 const http = require('http');
 const express = require('express');
 
+const db = require('../src/config/database');
 const pdfNotesService = require('../src/modules/lessons/services/pdfNotes.service');
 const pdfNotesController = require('../src/modules/lessons/controllers/pdfNotes.controller');
 const coursesService = require('../src/modules/courses/services/courses.service');
 const errorHandler = require('../src/middleware/error.middleware');
 
-describe('=== TASK-PDF-SMART-NOTES-01 AUTOMATED TEST SUITE ===', () => {
+describe('=== TASK-PDF-SMART-NOTES-01-R1 AUTOMATED TEST SUITE ===', () => {
   let server;
   let baseUrl;
   let currentAuthToken = 'user_10_token';
   let originalCanAccess;
+  let originalDbQuery;
 
-  // In-memory mock database store for testing isolation
-  const mockNotesDb = new Map();
+  // In-memory Database Table Rows for boundary db.query
+  const dbStore = {
+    lessons: [
+      { lesson_id: 1, section_id: 1, title: 'Lesson 1 PDF', content_type: 'pdf', content_url: '/uploads/lesson1.pdf', pdf_version: 1 },
+      { lesson_id: 2, section_id: 1, title: 'Lesson 2 PDF v2', content_type: 'pdf', content_url: '/uploads/lesson2.pdf', pdf_version: 2 },
+      { lesson_id: 3, section_id: 1, title: 'Lesson 3 Other', content_type: 'pdf', content_url: '/uploads/lesson3.pdf', pdf_version: 1 }
+    ],
+    lesson_materials: [
+      { material_id: 101, lesson_id: 1, file_name: 'Doc 1.pdf', file_url: '/uploads/doc1.pdf', pdf_version: 1 },
+      { material_id: 201, lesson_id: 2, file_name: 'Doc 2.pdf', file_url: '/uploads/doc2.pdf', pdf_version: 1 }
+    ],
+    pdf_notes: []
+  };
+
   let nextNoteId = 1;
+  let simulateDbError = false;
 
   before(async () => {
     originalCanAccess = coursesService.canUserAccessLesson;
+    originalDbQuery = db.query;
 
     // Thiết lập Express Test Server
     const app = express();
@@ -67,10 +87,10 @@ describe('=== TASK-PDF-SMART-NOTES-01 AUTOMATED TEST SUITE ===', () => {
     };
 
     const testRouter = express.Router();
-    testRouter.get('/:lessonId/pdf-notes', testAuthenticate, pdfNotesController.getNotes);
-    testRouter.post('/:lessonId/pdf-notes', testAuthenticate, pdfNotesController.createNote);
-    testRouter.put('/:lessonId/pdf-notes/:noteId', testAuthenticate, pdfNotesController.updateNote);
-    testRouter.delete('/:lessonId/pdf-notes/:noteId', testAuthenticate, pdfNotesController.deleteNote);
+    testRouter.get('/:lessonId/pdf-notes', testAuthenticate, (req, res, next) => pdfNotesController.getNotes(req, res, next));
+    testRouter.post('/:lessonId/pdf-notes', testAuthenticate, (req, res, next) => pdfNotesController.createNote(req, res, next));
+    testRouter.put('/:lessonId/pdf-notes/:noteId', testAuthenticate, (req, res, next) => pdfNotesController.updateNote(req, res, next));
+    testRouter.delete('/:lessonId/pdf-notes/:noteId', testAuthenticate, (req, res, next) => pdfNotesController.deleteNote(req, res, next));
 
     app.use('/api/lessons', testRouter);
     app.use(errorHandler);
@@ -87,6 +107,7 @@ describe('=== TASK-PDF-SMART-NOTES-01 AUTOMATED TEST SUITE ===', () => {
 
   after(async () => {
     coursesService.canUserAccessLesson = originalCanAccess;
+    db.query = originalDbQuery;
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
@@ -94,396 +115,472 @@ describe('=== TASK-PDF-SMART-NOTES-01 AUTOMATED TEST SUITE ===', () => {
 
   beforeEach(() => {
     currentAuthToken = 'user_10_token';
+    simulateDbError = false;
+    dbStore.pdf_notes = [];
+    nextNoteId = 1;
+
     coursesService.canUserAccessLesson = async (userId, lessonId) => {
       return Number(lessonId) !== 999; // Lesson 999 là bài bị cấm truy cập
     };
 
-    mockNotesDb.clear();
-    nextNoteId = 1;
+    // Boundary Mock cho db.query thực thi logic SQL thật
+    db.query = async (sqlText, params = []) => {
+      if (simulateDbError) {
+        throw new Error('FATAL: Connection pool destroyed (Mocked DB Failure)');
+      }
 
-    pdfNotesService.getNotes = async ({ userId, lessonId, documentRef, pageNumber }) => {
-      const results = [];
-      for (const note of mockNotesDb.values()) {
-        if (note.userId === Number(userId) && note.lessonId === Number(lessonId)) {
-          if (documentRef && note.documentRef !== documentRef) continue;
-          if (pageNumber && note.pageNumber !== Number(pageNumber)) continue;
-          results.push(note);
+      const cleanSql = sqlText.trim();
+
+      // 1. SELECT from lesson_materials
+      if (cleanSql.startsWith('SELECT material_id, lesson_id') && cleanSql.includes('FROM lesson_materials')) {
+        const matId = params[0];
+        const row = dbStore.lesson_materials.find((m) => m.material_id === Number(matId));
+        return { rows: row ? [row] : [] };
+      }
+
+      // 2. SELECT from lessons
+      if (cleanSql.startsWith('SELECT lesson_id, content_type') && cleanSql.includes('FROM lessons')) {
+        const lId = params[0];
+        const row = dbStore.lessons.find((l) => l.lesson_id === Number(lId));
+        return { rows: row ? [row] : [] };
+      }
+
+      // 3. SELECT note by note_id, user_id, lesson_id
+      if (cleanSql.includes('FROM pdf_notes') && cleanSql.includes('WHERE note_id = $1 AND user_id = $2 AND lesson_id = $3')) {
+        const [noteId, userId, lessonId] = params;
+        const row = dbStore.pdf_notes.find(
+          (n) => n.note_id === Number(noteId) && n.user_id === Number(userId) && n.lesson_id === Number(lessonId)
+        );
+        return { rows: row ? [{ ...row, id: row.note_id, noteId: row.note_id, userId: row.user_id, lessonId: row.lesson_id }] : [] };
+      }
+
+      // 4. SELECT list from pdf_notes with filters
+      if (cleanSql.includes('FROM pdf_notes') && cleanSql.includes('WHERE user_id = $1 AND lesson_id = $2')) {
+        const userId = Number(params[0]);
+        const lessonId = Number(params[1]);
+
+        let matched = dbStore.pdf_notes.filter((n) => n.user_id === userId && n.lesson_id === lessonId);
+
+        // Document Ref filtering
+        if (cleanSql.includes('(document_ref = $3 OR document_ref = $4)')) {
+          const docRef1 = params[2];
+          const docRef2 = params[3];
+          matched = matched.filter((n) => n.document_ref === docRef1 || n.document_ref === docRef2);
+        } else if (cleanSql.includes('AND document_ref = $3')) {
+          const docRef = params[2];
+          matched = matched.filter((n) => n.document_ref === docRef);
         }
-      }
-      return results;
-    };
 
-    pdfNotesService.getNoteById = async (noteId, userId) => {
-      const note = mockNotesDb.get(Number(noteId));
-      if (note && note.userId === Number(userId)) {
-        return note;
-      }
-      return null;
-    };
-
-    pdfNotesService.createNote = async (data) => {
-      const {
-        userId,
-        lessonId,
-        materialId,
-        documentRef,
-        pageNumber,
-        selectedText,
-        noteText,
-        category = 'important',
-        color = 'yellow',
-        rects,
-        contextBefore,
-        contextAfter
-      } = data;
-
-      const ALLOWED_CATEGORIES = ['important', 'not_understood', 'review', 'vocabulary'];
-      const ALLOWED_COLORS = ['yellow', 'green', 'blue', 'pink'];
-
-      if (!ALLOWED_CATEGORIES.includes(category)) {
-        throw new Error(`category không hợp lệ. Phải thuộc: ${ALLOWED_CATEGORIES.join(', ')}.`);
-      }
-      if (!ALLOWED_COLORS.includes(color)) {
-        throw new Error(`color không hợp lệ. Phải thuộc: ${ALLOWED_COLORS.join(', ')}.`);
-      }
-
-      if (!Array.isArray(rects) || rects.length === 0) {
-        throw new Error('Danh sách vùng chọn rects phải là một mảng không rỗng.');
-      }
-      for (const r of rects) {
-        for (const k of ['x', 'y', 'width', 'height']) {
-          const v = r[k];
-          if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) {
-            throw new Error(`Tọa độ '${k}' (${v}) phải nằm trong khoảng chuẩn hóa [0.0, 1.0].`);
-          }
+        // Page Number filtering
+        if (cleanSql.includes('AND page_number =')) {
+          const pageParam = params[params.length - 1];
+          matched = matched.filter((n) => n.page_number === Number(pageParam));
         }
+
+        const mappedRows = matched.map((r) => ({
+          ...r,
+          id: r.note_id,
+          noteId: r.note_id,
+          userId: r.user_id,
+          lessonId: r.lesson_id,
+          materialId: r.material_id,
+          documentRef: r.document_ref,
+          pageNumber: r.page_number,
+          selectedText: r.selected_text,
+          noteText: r.note_text,
+          contextBefore: r.context_before,
+          contextAfter: r.context_after,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at
+        }));
+
+        return { rows: mappedRows };
       }
 
-      const id = nextNoteId++;
-      const created = {
-        id,
-        noteId: id,
-        userId: Number(userId),
-        lessonId: Number(lessonId),
-        materialId: materialId ? Number(materialId) : null,
-        documentRef: documentRef || `lesson:${lessonId}:primary`,
-        pageNumber: Number(pageNumber),
-        selectedText,
-        noteText: noteText || '',
-        category,
-        color,
-        rects,
-        contextBefore: contextBefore || '',
-        contextAfter: contextAfter || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      // 5. INSERT into pdf_notes
+      if (cleanSql.startsWith('INSERT INTO pdf_notes')) {
+        const id = nextNoteId++;
+        const newNote = {
+          note_id: id,
+          user_id: Number(params[0]),
+          lesson_id: Number(params[1]),
+          material_id: params[2] ? Number(params[2]) : null,
+          document_ref: params[3],
+          page_number: Number(params[4]),
+          selected_text: params[5],
+          note_text: params[6] || '',
+          category: params[7],
+          color: params[8],
+          rects: JSON.parse(params[9]),
+          context_before: params[10] || '',
+          context_after: params[11] || '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
 
-      mockNotesDb.set(id, created);
-      return created;
-    };
-
-    pdfNotesService.updateNote = async ({ noteId, userId, noteText, category, color }) => {
-      const note = mockNotesDb.get(Number(noteId));
-      if (!note || note.userId !== Number(userId)) {
-        return null;
+        dbStore.pdf_notes.push(newNote);
+        return {
+          rows: [
+            {
+              ...newNote,
+              id: newNote.note_id,
+              noteId: newNote.note_id,
+              userId: newNote.user_id,
+              lessonId: newNote.lesson_id,
+              materialId: newNote.material_id,
+              documentRef: newNote.document_ref,
+              pageNumber: newNote.page_number,
+              selectedText: newNote.selected_text,
+              noteText: newNote.note_text,
+              contextBefore: newNote.context_before,
+              contextAfter: newNote.context_after,
+              createdAt: newNote.created_at,
+              updatedAt: newNote.updated_at
+            }
+          ]
+        };
       }
-      if (noteText !== undefined) note.noteText = noteText;
-      if (category !== undefined) {
-        if (!['important', 'not_understood', 'review', 'vocabulary'].includes(category)) {
-          throw new Error('category không hợp lệ.');
+
+      // 6. UPDATE pdf_notes
+      if (cleanSql.startsWith('UPDATE pdf_notes')) {
+        const noteId = Number(params[0]);
+        const userId = Number(params[1]);
+        const lessonId = Number(params[2]);
+
+        const note = dbStore.pdf_notes.find(
+          (n) => n.note_id === noteId && n.user_id === userId && n.lesson_id === lessonId
+        );
+
+        if (!note) {
+          return { rows: [], rowCount: 0 };
         }
-        note.category = category;
-      }
-      if (color !== undefined) {
-        if (!['yellow', 'green', 'blue', 'pink'].includes(color)) {
-          throw new Error('color không hợp lệ.');
-        }
-        note.color = color;
-      }
-      note.updatedAt = new Date().toISOString();
-      return note;
-    };
 
-    pdfNotesService.deleteNote = async (noteId, userId) => {
-      const note = mockNotesDb.get(Number(noteId));
-      if (!note || note.userId !== Number(userId)) {
-        return false;
+        // Apply parameters
+        let pIdx = 3;
+        if (cleanSql.includes('note_text =')) {
+          note.note_text = params[pIdx++];
+        }
+        if (cleanSql.includes('category =')) {
+          note.category = params[pIdx++];
+        }
+        if (cleanSql.includes('color =')) {
+          note.color = params[pIdx++];
+        }
+        note.updated_at = new Date().toISOString();
+
+        return {
+          rowCount: 1,
+          rows: [
+            {
+              ...note,
+              id: note.note_id,
+              noteId: note.note_id,
+              userId: note.user_id,
+              lessonId: note.lesson_id,
+              materialId: note.material_id,
+              documentRef: note.document_ref,
+              pageNumber: note.page_number,
+              selectedText: note.selected_text,
+              noteText: note.note_text,
+              contextBefore: note.context_before,
+              contextAfter: note.context_after,
+              createdAt: note.created_at,
+              updatedAt: note.updated_at
+            }
+          ]
+        };
       }
-      mockNotesDb.delete(Number(noteId));
-      return true;
+
+      // 7. DELETE from pdf_notes
+      if (cleanSql.startsWith('DELETE FROM pdf_notes')) {
+        const noteId = Number(params[0]);
+        const userId = Number(params[1]);
+        const lessonId = Number(params[2]);
+
+        const idx = dbStore.pdf_notes.findIndex(
+          (n) => n.note_id === noteId && n.user_id === userId && n.lesson_id === lessonId
+        );
+
+        if (idx === -1) {
+          return { rowCount: 0, rows: [] };
+        }
+
+        dbStore.pdf_notes.splice(idx, 1);
+        return { rowCount: 1, rows: [{ note_id: noteId }] };
+      }
+
+      return { rows: [], rowCount: 0 };
     };
   });
 
   // =========================================================================
-  // 1. AUTHENTICATION & ACCESS CONTROL
+  // 1. AUTHENTICATION & ACCESS CONTROL (401 & 403)
   // =========================================================================
   describe('1. Authentication & Permission Checks', () => {
-    it('1.1 should return HTTP 401 UNAUTHORIZED when no token/user provided', async () => {
-      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`);
-      const data = await res.json();
+    it('1.1 PUT / DELETE without token should return HTTP 401 UNAUTHORIZED', async () => {
+      const putRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes/10`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteText: 'Update' })
+      });
+      assert.strictEqual(putRes.status, 401);
+      const putData = await putRes.json();
+      assert.strictEqual(putData.code, 'UNAUTHORIZED');
 
-      assert.strictEqual(res.status, 401);
-      assert.strictEqual(data.code, 'UNAUTHORIZED');
+      const delRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes/10`, {
+        method: 'DELETE'
+      });
+      assert.strictEqual(delRes.status, 401);
+      const delData = await delRes.json();
+      assert.strictEqual(delData.code, 'UNAUTHORIZED');
     });
 
-    it('1.2 should return HTTP 403 FORBIDDEN when user does not have access to the lesson', async () => {
+    it('1.2 PUT / DELETE when user lacks lesson access should return HTTP 403 FORBIDDEN', async () => {
       coursesService.canUserAccessLesson = async () => false;
 
-      const res = await fetch(`${baseUrl}/api/lessons/999/pdf-notes`, {
+      const putRes = await fetch(`${baseUrl}/api/lessons/999/pdf-notes/1`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify({ noteText: 'Forbidden Update' })
+      });
+      assert.strictEqual(putRes.status, 403);
+      const putData = await putRes.json();
+      assert.strictEqual(putData.code, 'FORBIDDEN');
+
+      const delRes = await fetch(`${baseUrl}/api/lessons/999/pdf-notes/1`, {
+        method: 'DELETE',
         headers: { Authorization: `Bearer ${currentAuthToken}` }
       });
-      const data = await res.json();
-
-      assert.strictEqual(res.status, 403);
-      assert.strictEqual(data.code, 'FORBIDDEN');
+      assert.strictEqual(delRes.status, 403);
+      const delData = await delRes.json();
+      assert.strictEqual(delData.code, 'FORBIDDEN');
     });
   });
 
   // =========================================================================
-  // 2. CREATE PDF NOTE & STRICT VALIDATION
+  // 2. STRICT USER & LESSON ISOLATION (USER A VS USER B, WRONG LESSON ID)
   // =========================================================================
-  describe('2. Create PDF Note & Validation Rules', () => {
-    it('2.1 should create a PDF note successfully with valid normalized rects (HTTP 201)', async () => {
-      const newNotePayload = {
-        documentRef: 'lesson:1:primary',
-        pageNumber: 2,
-        selectedText: 'Communication is essential for daily conversation.',
-        noteText: 'Cần ghi nhớ định nghĩa này',
-        category: 'important',
-        color: 'yellow',
-        rects: [
-          { x: 0.15, y: 0.32, width: 0.70, height: 0.04 }
-        ],
-        contextBefore: 'Welcome to Chapter 1. ',
-        contextAfter: ' Let us begin.'
-      };
-
-      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${currentAuthToken}`
-        },
-        body: JSON.stringify(newNotePayload)
-      });
-
-      const data = await res.json();
-      assert.strictEqual(res.status, 201);
-      assert.strictEqual(data.success, true);
-      assert.strictEqual(data.data.pageNumber, 2);
-      assert.strictEqual(data.data.selectedText, 'Communication is essential for daily conversation.');
-      assert.strictEqual(data.data.rects[0].x, 0.15);
-    });
-
-    it('2.2 should REJECT invalid category not in whitelist (HTTP 400)', async () => {
-      const payload = {
-        pageNumber: 1,
-        selectedText: 'Some text',
-        category: 'invalid_category_xyz',
-        color: 'yellow',
-        rects: [{ x: 0.1, y: 0.1, width: 0.2, height: 0.05 }]
-      };
-
-      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${currentAuthToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      assert.strictEqual(res.status, 400);
-      assert.strictEqual(data.code, 'INVALID_NOTE_DATA');
-      assert.match(data.message, /category không hợp lệ/i);
-    });
-
-    it('2.3 should REJECT invalid color not in whitelist (HTTP 400)', async () => {
-      const payload = {
-        pageNumber: 1,
-        selectedText: 'Some text',
-        category: 'vocabulary',
-        color: 'neon-purple',
-        rects: [{ x: 0.1, y: 0.1, width: 0.2, height: 0.05 }]
-      };
-
-      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${currentAuthToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      assert.strictEqual(res.status, 400);
-      assert.match(data.message, /color không hợp lệ/i);
-    });
-
-    it('2.4 should REJECT out-of-bounds normalized rects (< 0 or > 1) (HTTP 400)', async () => {
-      const payload = {
-        pageNumber: 1,
-        selectedText: 'Some text',
-        category: 'review',
-        color: 'blue',
-        rects: [{ x: -0.5, y: 1.25, width: 0.2, height: 0.05 }]
-      };
-
-      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${currentAuthToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      assert.strictEqual(res.status, 400);
-      assert.match(data.message, /khoảng chuẩn hóa/i);
-    });
-  });
-
-  // =========================================================================
-  // 3. STRICT USER ISOLATION (USER A VS USER B)
-  // =========================================================================
-  describe('3. Strict User Isolation & CRUD Operations', () => {
-    it('3.1 User A should only see their own notes, not User B notes', async () => {
-      // Create Note for User 10 (Student A)
-      await pdfNotesService.createNote({
+  describe('2. Strict User & Lesson Isolation', () => {
+    it('2.1 Note belongs to User A on Lesson 1: accessing via wrong Lesson ID on URL should return 404', async () => {
+      // Create Note for User 10 on Lesson 1
+      const noteA = await pdfNotesService.createNote({
         userId: 10,
         lessonId: 1,
         pageNumber: 1,
-        selectedText: 'Note by Student A',
+        selectedText: 'Lesson 1 Note',
         category: 'important',
         color: 'yellow',
         rects: [{ x: 0.1, y: 0.1, width: 0.5, height: 0.05 }]
       });
 
-      // Create Note for User 20 (Student B)
-      await pdfNotesService.createNote({
-        userId: 20,
-        lessonId: 1,
-        pageNumber: 1,
-        selectedText: 'Note by Student B',
-        category: 'review',
-        color: 'pink',
-        rects: [{ x: 0.2, y: 0.2, width: 0.4, height: 0.05 }]
+      // User 10 tries to update this note under Lesson 2 route
+      const putRes = await fetch(`${baseUrl}/api/lessons/2/pdf-notes/${noteA.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer user_10_token'
+        },
+        body: JSON.stringify({ noteText: 'Wrong Lesson Update' })
       });
+      assert.strictEqual(putRes.status, 404);
+      const putData = await putRes.json();
+      assert.strictEqual(putData.code, 'NOTE_NOT_FOUND');
 
-      // Request as User 10
-      const resA = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        headers: { Authorization: `Bearer user_10_token` }
+      // User 10 tries to delete this note under Lesson 2 route
+      const delRes = await fetch(`${baseUrl}/api/lessons/2/pdf-notes/${noteA.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer user_10_token' }
       });
-      const dataA = await resA.json();
-
-      assert.strictEqual(resA.status, 200);
-      assert.strictEqual(dataA.data.length, 1);
-      assert.strictEqual(dataA.data[0].selectedText, 'Note by Student A');
-
-      // Request as User 20
-      const resB = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        headers: { Authorization: `Bearer user_20_token` }
-      });
-      const dataB = await resB.json();
-
-      assert.strictEqual(resB.status, 200);
-      assert.strictEqual(dataB.data.length, 1);
-      assert.strictEqual(dataB.data[0].selectedText, 'Note by Student B');
+      assert.strictEqual(delRes.status, 404);
+      const delData = await delRes.json();
+      assert.strictEqual(delData.code, 'NOTE_NOT_FOUND');
     });
 
-    it('3.2 User B should NOT be able to update or delete User A note (HTTP 404)', async () => {
-      // Create Note owned by User 10
+    it('2.2 User B cannot update or delete User A note (HTTP 404 NOTE_NOT_FOUND)', async () => {
       const noteA = await pdfNotesService.createNote({
         userId: 10,
         lessonId: 1,
         pageNumber: 1,
-        selectedText: 'Protected Note',
+        selectedText: 'User A Secret Note',
         noteText: 'Original text',
         category: 'important',
         color: 'yellow',
         rects: [{ x: 0.1, y: 0.1, width: 0.5, height: 0.05 }]
       });
 
-      // Attempt update as User 20
+      // User B tries to update User A note
       const updateRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes/${noteA.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer user_20_token`
+          Authorization: 'Bearer user_20_token'
         },
         body: JSON.stringify({ noteText: 'Hacked by User B' })
       });
-      const updateData = await updateRes.json();
-
       assert.strictEqual(updateRes.status, 404);
+      const updateData = await updateRes.json();
       assert.strictEqual(updateData.code, 'NOTE_NOT_FOUND');
 
-      // Attempt delete as User 20
+      // User B tries to delete User A note
       const deleteRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes/${noteA.id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer user_20_token` }
+        headers: { Authorization: 'Bearer user_20_token' }
       });
-      const deleteData = await deleteRes.json();
-
       assert.strictEqual(deleteRes.status, 404);
+      const deleteData = await deleteRes.json();
       assert.strictEqual(deleteData.code, 'NOTE_NOT_FOUND');
-
-      // Note must still exist for User 10
-      const checkNote = await pdfNotesService.getNoteById(noteA.id, 10);
-      assert.notStrictEqual(checkNote, null);
-      assert.strictEqual(checkNote.noteText, 'Original text');
     });
+  });
 
-    it('3.3 Owner can update and delete their own note successfully', async () => {
-      const note = await pdfNotesService.createNote({
-        userId: 10,
-        lessonId: 1,
-        pageNumber: 3,
-        selectedText: 'My note',
-        noteText: 'Initial text',
-        category: 'vocabulary',
-        color: 'blue',
+  // =========================================================================
+  // 3. MATERIAL & DOCUMENT VERSIONING VERIFICATION
+  // =========================================================================
+  describe('3. Material & Document Versioning Verification', () => {
+    it('3.1 materialId belonging to another lesson should be REJECTED (HTTP 400 INVALID_MATERIAL)', async () => {
+      // materialId 201 belongs to lesson 2, but client attempts to create note under lesson 1
+      const payload = {
+        materialId: 201,
+        pageNumber: 1,
+        selectedText: 'Some material text',
+        category: 'important',
+        color: 'yellow',
         rects: [{ x: 0.1, y: 0.1, width: 0.3, height: 0.05 }]
-      });
+      };
 
-      // Update
-      const updateRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes/${note.id}`, {
-        method: 'PUT',
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer user_10_token`
+          Authorization: `Bearer ${currentAuthToken}`
         },
-        body: JSON.stringify({
-          noteText: 'Updated content',
-          category: 'review',
-          color: 'green'
-        })
+        body: JSON.stringify(payload)
       });
-      const updateData = await updateRes.json();
-      assert.strictEqual(updateRes.status, 200);
-      assert.strictEqual(updateData.data.noteText, 'Updated content');
-      assert.strictEqual(updateData.data.category, 'review');
-      assert.strictEqual(updateData.data.color, 'green');
 
-      // Delete
-      const deleteRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes/${note.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer user_10_token` }
-      });
-      const deleteData = await deleteRes.json();
-      assert.strictEqual(deleteRes.status, 200);
-      assert.strictEqual(deleteData.success, true);
+      const data = await res.json();
+      assert.strictEqual(res.status, 400);
+      assert.strictEqual(data.code, 'INVALID_MATERIAL');
+      assert.match(data.message, /không thuộc bài học này/i);
+    });
 
-      // Verify gone
-      const verifyRes = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
-        headers: { Authorization: `Bearer user_10_token` }
+    it('3.2 documentRef forged by client is verified and overridden by Server Document Version', async () => {
+      const payload = {
+        documentRef: 'forged:random:document:ref',
+        pageNumber: 1,
+        selectedText: 'Standard text',
+        category: 'vocabulary',
+        color: 'green',
+        rects: [{ x: 0.1, y: 0.2, width: 0.4, height: 0.04 }]
+      };
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify(payload)
       });
-      const verifyData = await verifyRes.json();
-      assert.strictEqual(verifyData.data.length, 0);
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 201);
+      // Server must have resolved to lesson:1:primary:v1 instead of forged string
+      assert.strictEqual(data.data.documentRef, 'lesson:1:primary:v1');
+    });
+
+    it('3.3 New PDF version (v2) does NOT return notes from old version (v1)', async () => {
+      // Create Note for version 1 directly in dbStore
+      dbStore.pdf_notes.push({
+        note_id: nextNoteId++,
+        user_id: 10,
+        lesson_id: 2,
+        material_id: null,
+        document_ref: 'lesson:2:primary:v1',
+        page_number: 1,
+        selected_text: 'Old Version 1 Text',
+        note_text: '',
+        category: 'important',
+        color: 'yellow',
+        rects: [{ x: 0.1, y: 0.1, width: 0.5, height: 0.05 }],
+        context_before: '',
+        context_after: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      // Create Note for version 2 directly in dbStore
+      dbStore.pdf_notes.push({
+        note_id: nextNoteId++,
+        user_id: 10,
+        lesson_id: 2,
+        material_id: null,
+        document_ref: 'lesson:2:primary:v2',
+        page_number: 1,
+        selected_text: 'New Version 2 Text',
+        note_text: '',
+        category: 'vocabulary',
+        color: 'green',
+        rects: [{ x: 0.2, y: 0.2, width: 0.5, height: 0.05 }],
+        context_before: '',
+        context_after: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      // Lesson 2 is currently configured as pdf_version = 2 in dbStore.lessons
+      const res = await fetch(`${baseUrl}/api/lessons/2/pdf-notes`, {
+        headers: { Authorization: 'Bearer user_10_token' }
+      });
+      const data = await res.json();
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(data.data.length, 1);
+      assert.strictEqual(data.data[0].selectedText, 'New Version 2 Text');
+      assert.strictEqual(data.data[0].documentRef, 'lesson:2:primary:v2');
+    });
+  });
+
+  // =========================================================================
+  // 4. RECT COORDINATE BOUNDARIES & ERROR HANDLING
+  // =========================================================================
+  describe('4. Rect Coordinate Boundaries & Error Handling', () => {
+    it('4.1 should REJECT rect with x + width > 1.0 (HTTP 400 INVALID_RECTS)', async () => {
+      const payload = {
+        pageNumber: 1,
+        selectedText: 'Out of bounds text',
+        category: 'important',
+        color: 'yellow',
+        rects: [{ x: 0.8, y: 0.1, width: 0.35, height: 0.05 }] // 0.8 + 0.35 = 1.15 > 1.0
+      };
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentAuthToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 400);
+      assert.strictEqual(data.code, 'INVALID_RECTS');
+      assert.match(data.message, /vượt quá giới hạn/i);
+    });
+
+    it('4.2 Database error should forward to Error Middleware and return safe HTTP 500 without leaking raw SQL', async () => {
+      simulateDbError = true;
+
+      const res = await fetch(`${baseUrl}/api/lessons/1/pdf-notes`, {
+        headers: { Authorization: `Bearer ${currentAuthToken}` }
+      });
+
+      const data = await res.json();
+      assert.strictEqual(res.status, 500);
+      assert.strictEqual(data.success, false);
+      assert.strictEqual(data.code, 'INTERNAL_ERROR');
     });
   });
 });

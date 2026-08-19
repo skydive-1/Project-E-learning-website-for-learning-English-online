@@ -15,8 +15,8 @@ import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import CaptionOverlay from '../components/CaptionOverlay';
 import InteractiveTranscript from '../components/InteractiveTranscript';
-import PdfStudyViewer from '../components/PdfStudyViewer';
-import PdfNotesPanel from '../components/PdfNotesPanel';
+const PdfStudyViewer = React.lazy(() => import('../components/PdfStudyViewer'));
+const PdfNotesPanel = React.lazy(() => import('../components/PdfNotesPanel'));
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
 import { subtitlesService } from '../services/subtitles.service';
 import {
@@ -572,15 +572,28 @@ const LessonDetailPage = () => {
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
   // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01)
-  const pdfDocumentRef = currentLesson ? `lesson:${currentLesson.id}:primary` : '';
+  const pdfDocumentRef = currentLesson?.documentRef || (currentLesson ? `lesson:${currentLesson.id}:primary:v${currentLesson.pdfVersion || 1}` : '');
   const [activePdfPage, setActivePdfPage] = useState(1);
   const [selectedPdfNoteId, setSelectedPdfNoteId] = useState(null);
   const [activeGlowNoteId, setActiveGlowNoteId] = useState(null);
 
-  // Tự động chuyển từ tab transcript sang tab notes nếu bài học hiện tại là PDF
+  // Reset trang và highlight state khi đổi bài học
   useEffect(() => {
-    if (isPdfLesson && activeRightTab === 'transcript') {
-      setActiveRightTab('notes');
+    setActivePdfPage(1);
+    setSelectedPdfNoteId(null);
+    setActiveGlowNoteId(null);
+  }, [currentLesson?.id]);
+
+  // Đồng bộ sidebar tab 2 chiều khi chuyển đổi giữa PDF và Video (TASK-PDF-SMART-NOTES-01-R1)
+  useEffect(() => {
+    if (isPdfLesson) {
+      if (activeRightTab === 'transcript') {
+        setActiveRightTab('notes');
+      }
+    } else {
+      if (activeRightTab === 'notes') {
+        setActiveRightTab('transcript');
+      }
     }
   }, [isPdfLesson, activeRightTab]);
 
@@ -1138,7 +1151,11 @@ const LessonDetailPage = () => {
                     {/* Premium Video/Document Container with Layer 1 & Layer 2 Security Protections */}
                     <div
                       ref={containerRef}
-                      className="bg-black rounded-2xl overflow-hidden aspect-video border border-slate-800 shadow-lg relative group select-none"
+                      className={`rounded-2xl overflow-hidden border border-slate-800 shadow-lg relative group select-none ${
+                        isPdfLesson
+                          ? 'w-full min-h-[580px] lg:h-[calc(100vh-110px)] bg-slate-900'
+                          : 'bg-black aspect-video'
+                      }`}
                       onContextMenu={(e) => e.preventDefault()}
                       onDragStart={(e) => e.preventDefault()}
                     >
@@ -1157,19 +1174,28 @@ const LessonDetailPage = () => {
                         className="w-full h-full relative"
                       >
                         {currentLesson?.type === 'pdf' ? (
-                          <PdfStudyViewer
-                            key={currentLesson?.id || 'pdf-viewer'}
-                            pdfUrl={currentLesson.pdfUrl}
-                            title={currentLesson.title}
-                            user={user}
-                            notes={pdfNotes}
-                            selectedNoteId={selectedPdfNoteId}
-                            activeGlowNoteId={activeGlowNoteId}
-                            activePage={activePdfPage}
-                            onPageChange={(p) => setActivePdfPage(p)}
-                            onCreateNote={handleCreatePdfNote}
-                            onSelectNote={handleNavigateToPdfNote}
-                          />
+                          <React.Suspense
+                            fallback={
+                              <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center gap-4 bg-slate-900 text-slate-300">
+                                <div className="w-10 h-10 border-4 border-slate-700 border-t-rose-500 rounded-full animate-spin"></div>
+                                <span className="text-xs font-semibold">Đang chuẩn bị trình đọc PDF...</span>
+                              </div>
+                            }
+                          >
+                            <PdfStudyViewer
+                              key={currentLesson?.id || 'pdf-viewer'}
+                              pdfUrl={currentLesson.pdfUrl}
+                              title={currentLesson.title}
+                              user={user}
+                              notes={pdfNotes}
+                              selectedNoteId={selectedPdfNoteId}
+                              activeGlowNoteId={activeGlowNoteId}
+                              activePage={activePdfPage}
+                              onPageChange={(p) => setActivePdfPage(p)}
+                              onCreateNote={handleCreatePdfNote}
+                              onSelectNote={handleNavigateToPdfNote}
+                            />
+                          </React.Suspense>
                         ) : currentLesson?.videoUrl ? (
                           <>
                             {videoError ? (
@@ -1611,14 +1637,22 @@ const LessonDetailPage = () => {
                   {/* PDF Notes View */}
                   {activeRightTab === "notes" && isPdfLesson && (
                     <div className="h-full">
-                      <PdfNotesPanel
-                        notes={pdfNotes}
-                        isLoading={isPdfNotesLoading}
-                        selectedNoteId={selectedPdfNoteId}
-                        onNavigateToNote={handleNavigateToPdfNote}
-                        onUpdateNote={handleUpdatePdfNote}
-                        onDeleteNote={handleDeletePdfNote}
-                      />
+                      <React.Suspense
+                        fallback={
+                          <div className="flex items-center justify-center p-8 text-slate-400 text-xs">
+                            Đang tải ghi chú...
+                          </div>
+                        }
+                      >
+                        <PdfNotesPanel
+                          notes={pdfNotes}
+                          isLoading={isPdfNotesLoading}
+                          selectedNoteId={selectedPdfNoteId}
+                          onNavigateToNote={handleNavigateToPdfNote}
+                          onUpdateNote={handleUpdatePdfNote}
+                          onDeleteNote={handleDeletePdfNote}
+                        />
+                      </React.Suspense>
                     </div>
                   )}
 

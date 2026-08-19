@@ -1,5 +1,5 @@
 /**
- * PDF Highlight & Personal Notes Controller (TASK-PDF-SMART-NOTES-01)
+ * PDF Highlight & Personal Notes Controller (TASK-PDF-SMART-NOTES-01-R1)
  *
  * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
  * Hỗ trợ triển khai & kiểm thử: AI Agent
@@ -15,15 +15,23 @@ class PdfNotesController {
   async getNotes(req, res, next) {
     try {
       const userId = req.user?.id || req.user?.userId;
-      const roleId = req.user?.roleId || req.user?.role;
+      const roleId = req.user?.roleId || req.user?.role_id || req.user?.role;
       const { lessonId } = req.params;
-      const { documentRef, page } = req.query;
+      const { materialId, documentRef, page } = req.query;
 
       if (!userId) {
         return res.status(401).json({
           success: false,
           code: 'UNAUTHORIZED',
           message: 'Yêu cầu đăng nhập để truy cập ghi chú.'
+        });
+      }
+
+      if (!/^\d+$/.test(String(lessonId).trim())) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_PARAM',
+          message: 'lessonId không hợp lệ.'
         });
       }
 
@@ -40,6 +48,7 @@ class PdfNotesController {
       const notes = await pdfNotesService.getNotes({
         userId,
         lessonId,
+        materialId,
         documentRef,
         pageNumber: page
       });
@@ -50,6 +59,13 @@ class PdfNotesController {
         total: notes.length
       });
     } catch (error) {
+      if (error.status && error.status < 500) {
+        return res.status(error.status).json({
+          success: false,
+          code: error.code || 'BAD_REQUEST',
+          message: error.message
+        });
+      }
       next(error);
     }
   }
@@ -60,7 +76,7 @@ class PdfNotesController {
   async createNote(req, res, next) {
     try {
       const userId = req.user?.id || req.user?.userId;
-      const roleId = req.user?.roleId || req.user?.role;
+      const roleId = req.user?.roleId || req.user?.role_id || req.user?.role;
       const { lessonId } = req.params;
 
       if (!userId) {
@@ -68,6 +84,14 @@ class PdfNotesController {
           success: false,
           code: 'UNAUTHORIZED',
           message: 'Yêu cầu đăng nhập để tạo ghi chú.'
+        });
+      }
+
+      if (!/^\d+$/.test(String(lessonId).trim())) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_PARAM',
+          message: 'lessonId không hợp lệ.'
         });
       }
 
@@ -93,7 +117,6 @@ class PdfNotesController {
         contextAfter
       } = req.body;
 
-      // Basic parameter validations
       if (!pageNumber || !selectedText || !rects) {
         return res.status(400).json({
           success: false,
@@ -102,35 +125,34 @@ class PdfNotesController {
         });
       }
 
-      try {
-        const note = await pdfNotesService.createNote({
-          userId,
-          lessonId,
-          materialId,
-          documentRef,
-          pageNumber,
-          selectedText,
-          noteText,
-          category,
-          color,
-          rects,
-          contextBefore,
-          contextAfter
-        });
+      const note = await pdfNotesService.createNote({
+        userId,
+        lessonId,
+        materialId,
+        documentRef,
+        pageNumber,
+        selectedText,
+        noteText,
+        category,
+        color,
+        rects,
+        contextBefore,
+        contextAfter
+      });
 
-        return res.status(201).json({
-          success: true,
-          message: 'Tạo ghi chú thành công.',
-          data: note
-        });
-      } catch (valErr) {
-        return res.status(400).json({
+      return res.status(201).json({
+        success: true,
+        message: 'Tạo ghi chú thành công.',
+        data: note
+      });
+    } catch (error) {
+      if (error.status && error.status < 500) {
+        return res.status(error.status).json({
           success: false,
-          code: 'INVALID_NOTE_DATA',
-          message: valErr.message
+          code: error.code || 'BAD_REQUEST',
+          message: error.message
         });
       }
-    } catch (error) {
       next(error);
     }
   }
@@ -141,47 +163,66 @@ class PdfNotesController {
   async updateNote(req, res, next) {
     try {
       const userId = req.user?.id || req.user?.userId;
-      const { noteId } = req.params;
+      const roleId = req.user?.roleId || req.user?.role_id || req.user?.role;
+      const { lessonId, noteId } = req.params;
       const { noteText, category, color } = req.body;
 
       if (!userId) {
         return res.status(401).json({
           success: false,
           code: 'UNAUTHORIZED',
-          message: 'Yêu cầu đăng nhập.'
+          message: 'Yêu cầu đăng nhập để chỉnh sửa ghi chú.'
         });
       }
 
-      try {
-        const updated = await pdfNotesService.updateNote({
-          noteId,
-          userId,
-          noteText,
-          category,
-          color
-        });
-
-        if (!updated) {
-          return res.status(404).json({
-            success: false,
-            code: 'NOTE_NOT_FOUND',
-            message: 'Ghi chú không tồn tại hoặc bạn không có quyền chỉnh sửa.'
-          });
-        }
-
-        return res.status(200).json({
-          success: true,
-          message: 'Cập nhật ghi chú thành công.',
-          data: updated
-        });
-      } catch (valErr) {
+      if (!/^\d+$/.test(String(lessonId).trim()) || !/^\d+$/.test(String(noteId).trim())) {
         return res.status(400).json({
           success: false,
-          code: 'INVALID_UPDATE_DATA',
-          message: valErr.message
+          code: 'INVALID_PARAM',
+          message: 'lessonId hoặc noteId không hợp lệ.'
         });
       }
+
+      // Kiểm tra quyền truy cập bài học
+      const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, roleId);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          code: 'FORBIDDEN',
+          message: 'Bạn không có quyền truy cập bài học này.'
+        });
+      }
+
+      const updated = await pdfNotesService.updateNote({
+        noteId,
+        userId,
+        lessonId,
+        noteText,
+        category,
+        color
+      });
+
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          code: 'NOTE_NOT_FOUND',
+          message: 'Ghi chú không tồn tại hoặc bạn không có quyền chỉnh sửa.'
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Cập nhật ghi chú thành công.',
+        data: updated
+      });
     } catch (error) {
+      if (error.status && error.status < 500) {
+        return res.status(error.status).json({
+          success: false,
+          code: error.code || 'BAD_REQUEST',
+          message: error.message
+        });
+      }
       next(error);
     }
   }
@@ -192,17 +233,41 @@ class PdfNotesController {
   async deleteNote(req, res, next) {
     try {
       const userId = req.user?.id || req.user?.userId;
-      const { noteId } = req.params;
+      const roleId = req.user?.roleId || req.user?.role_id || req.user?.role;
+      const { lessonId, noteId } = req.params;
 
       if (!userId) {
         return res.status(401).json({
           success: false,
           code: 'UNAUTHORIZED',
-          message: 'Yêu cầu đăng nhập.'
+          message: 'Yêu cầu đăng nhập để xóa ghi chú.'
         });
       }
 
-      const deleted = await pdfNotesService.deleteNote(noteId, userId);
+      if (!/^\d+$/.test(String(lessonId).trim()) || !/^\d+$/.test(String(noteId).trim())) {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_PARAM',
+          message: 'lessonId hoặc noteId không hợp lệ.'
+        });
+      }
+
+      // Kiểm tra quyền truy cập bài học
+      const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, roleId);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          code: 'FORBIDDEN',
+          message: 'Bạn không có quyền truy cập bài học này.'
+        });
+      }
+
+      const deleted = await pdfNotesService.deleteNote({
+        noteId,
+        userId,
+        lessonId
+      });
+
       if (!deleted) {
         return res.status(404).json({
           success: false,
@@ -216,6 +281,13 @@ class PdfNotesController {
         message: 'Đã xóa ghi chú thành công.'
       });
     } catch (error) {
+      if (error.status && error.status < 500) {
+        return res.status(error.status).json({
+          success: false,
+          code: error.code || 'BAD_REQUEST',
+          message: error.message
+        });
+      }
       next(error);
     }
   }

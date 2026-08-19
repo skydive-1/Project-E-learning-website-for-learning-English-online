@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { FiCheck, FiX, FiTag, FiEdit3 } from 'react-icons/fi';
 
 const CATEGORIES = [
@@ -16,7 +17,7 @@ const COLORS = [
 ];
 
 export default function PdfSelectionPopover({
-  position, // { top, left, width, height } in px relative to container
+  clientRect, // Bounding client rect { top, left, width, height, bottom, right } in viewport
   selectedText,
   initialDraft = '',
   onSave,
@@ -28,7 +29,56 @@ export default function PdfSelectionPopover({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const popoverRef = useRef(null);
 
-  // Đóng khi ấn phím Escape
+  // Tính toán vị trí fixed thông minh bám theo viewport
+  const calculatePosition = useCallback(() => {
+    if (!clientRect) {
+      return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', position: 'fixed' };
+    }
+
+    const POPOVER_WIDTH = 320;
+    const POPOVER_HEIGHT = 280;
+    const GAP = 10;
+
+    let top = clientRect.bottom + GAP;
+    let left = clientRect.left + (clientRect.width / 2) - (POPOVER_WIDTH / 2);
+
+    // Nếu tràn phía dưới màn hình thì lật lên trên vùng chọn
+    if (top + POPOVER_HEIGHT > window.innerHeight - 10) {
+      top = Math.max(10, clientRect.top - POPOVER_HEIGHT - GAP);
+    }
+
+    // Giữ trong giới hạn viewport trái/phải
+    if (left < 10) left = 10;
+    if (left + POPOVER_WIDTH > window.innerWidth - 10) {
+      left = Math.max(10, window.innerWidth - POPOVER_WIDTH - 10);
+    }
+
+    return {
+      position: 'fixed',
+      top: `${Math.round(top)}px`,
+      left: `${Math.round(left)}px`,
+      zIndex: 99999
+    };
+  }, [clientRect]);
+
+  const [coords, setCoords] = useState(calculatePosition);
+
+  // Cập nhật vị trí khi resize / scroll
+  useEffect(() => {
+    setCoords(calculatePosition());
+    const handleUpdate = () => {
+      setCoords(calculatePosition());
+    };
+
+    window.addEventListener('resize', handleUpdate);
+    window.addEventListener('scroll', handleUpdate, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('scroll', handleUpdate, { capture: true });
+    };
+  }, [calculatePosition]);
+
+  // Đóng khi ấn Escape
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
@@ -71,28 +121,11 @@ export default function PdfSelectionPopover({
     }
   };
 
-  // Tính toán vị trí thông minh để không tràn màn hình
-  const calculateStyle = () => {
-    if (!position) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-
-    let top = position.top + position.height + 12;
-    let left = position.left + (position.width / 2) - 160; // 320px width / 2
-
-    // Chống tràn mép trái/phải
-    if (left < 10) left = 10;
-    if (left + 320 > window.innerWidth) left = window.innerWidth - 330;
-
-    return {
-      top: `${Math.max(10, top)}px`,
-      left: `${left}px`
-    };
-  };
-
-  return (
+  const content = (
     <div
       ref={popoverRef}
-      style={calculateStyle()}
-      className="absolute z-50 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 text-xs font-sans animate-fade text-slate-800 dark:text-slate-100 select-none"
+      style={coords}
+      className="pdf-selection-popover w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 text-xs font-sans text-slate-800 dark:text-slate-100 select-none animate-fade"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
@@ -209,4 +242,11 @@ export default function PdfSelectionPopover({
       </form>
     </div>
   );
+
+  // Render qua Portal vào document.body nếu có DOM
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+
+  return content;
 }

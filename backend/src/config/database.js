@@ -224,6 +224,9 @@ const testConnection = async () => {
 
     // Tự động đồng bộ cấu trúc: Đảm bảo bảng pdf_notes tồn tại cho PDF Highlight & Smart Notes (TASK-PDF-SMART-NOTES-01)
     try {
+      await client.query("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS pdf_version INT DEFAULT 1;");
+      await client.query("ALTER TABLE lesson_materials ADD COLUMN IF NOT EXISTS pdf_version INT DEFAULT 1;");
+
       await client.query(`
         CREATE TABLE IF NOT EXISTS pdf_notes (
           note_id BIGSERIAL PRIMARY KEY,
@@ -245,7 +248,7 @@ const testConnection = async () => {
       `);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_doc ON pdf_notes(user_id, lesson_id, document_ref);`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, lesson_id, page_number);`);
-      console.log('✅ Tự động đồng bộ: Đảm bảo bảng pdf_notes tồn tại thành công');
+      console.log('✅ Tự động đồng bộ: Đảm bảo bảng pdf_notes và pdf_version tồn tại thành công');
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tự động tạo bảng pdf_notes:', migErr.message);
     }

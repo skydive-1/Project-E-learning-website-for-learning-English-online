@@ -1,11 +1,47 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { pdfjs } from 'react-pdf';
 import PdfNotesPanel from '../src/modules/lessons/components/PdfNotesPanel';
 import PdfSelectionPopover from '../src/modules/lessons/components/PdfSelectionPopover';
 import PdfHighlightOverlay from '../src/modules/lessons/components/PdfHighlightOverlay';
+import PdfStudyViewer from '../src/modules/lessons/components/PdfStudyViewer';
 import * as pdfNotesService from '../src/modules/lessons/services/pdfNotes.service';
 import apiClient from '../src/config/api.config';
+
+if (typeof global !== 'undefined' && !global.DOMMatrix) {
+  global.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+    }
+  };
+}
+
+vi.mock('react-pdf', () => ({
+  Document: ({ children, onLoadSuccess, file }) => (
+    <div data-testid="mock-pdf-document" data-file={file}>
+      {file ? (
+        <button
+          data-testid="trigger-load-success"
+          onClick={() => onLoadSuccess && onLoadSuccess({ numPages: 5 })}
+        >
+          Simulate Load
+        </button>
+      ) : null}
+      {children}
+    </div>
+  ),
+  Page: ({ pageNumber, scale }) => (
+    <div data-testid={`mock-pdf-page-${pageNumber}`} data-scale={scale}>
+      Page {pageNumber} Content
+    </div>
+  ),
+  pdfjs: {
+    GlobalWorkerOptions: {
+      workerSrc: 'bundled-local-worker.js'
+    }
+  }
+}));
 
 vi.mock('../src/config/api.config', () => ({
   default: {
@@ -16,7 +52,7 @@ vi.mock('../src/config/api.config', () => ({
   }
 }));
 
-describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
+describe('=== TASK-PDF-SMART-NOTES-01-R1 FRONTEND TEST SUITE ===', () => {
   const mockNotes = [
     {
       id: 1,
@@ -95,7 +131,7 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
       expect(screen.queryByText(/Communication is essential/i)).not.toBeInTheDocument();
     });
 
-    it('1.3 should filter notes by category', () => {
+    it('1.3 should filter notes by category and color', () => {
       render(
         <PdfNotesPanel
           notes={mockNotes}
@@ -144,7 +180,6 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
         />
       );
 
-      // Click Edit icon on first note
       const editButtons = screen.getAllByTitle(/Chỉnh sửa/i);
       fireEvent.click(editButtons[0]);
 
@@ -180,16 +215,16 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 2. PDF SELECTION POPOVER TESTS
+  // 2. PDF SELECTION POPOVER & PORTAL TESTS
   // =========================================================================
-  describe('2. PdfSelectionPopover Component', () => {
-    it('2.1 should render selection popover with selected text preview and submit form', async () => {
+  describe('2. PdfSelectionPopover & Portal Rendering', () => {
+    it('2.1 should render selection popover via portal with selected text preview and submit form', async () => {
       const onSaveMock = vi.fn().mockResolvedValue(true);
       const onCancelMock = vi.fn();
 
       render(
         <PdfSelectionPopover
-          position={{ top: 100, left: 100, width: 200, height: 20 }}
+          clientRect={{ top: 100, left: 100, width: 200, height: 20, bottom: 120, right: 300 }}
           selectedText="Highlighted sentence from PDF"
           onSave={onSaveMock}
           onCancel={onCancelMock}
@@ -221,7 +256,7 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
 
       render(
         <PdfSelectionPopover
-          position={{ top: 100, left: 100, width: 200, height: 20 }}
+          clientRect={{ top: 100, left: 100, width: 200, height: 20, bottom: 120, right: 300 }}
           selectedText="Sample"
           onSave={vi.fn()}
           onCancel={onCancelMock}
@@ -237,7 +272,7 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
   // 3. PDF HIGHLIGHT OVERLAY TESTS
   // =========================================================================
   describe('3. PdfHighlightOverlay Component', () => {
-    it('3.1 should render highlight rects for the specified page', () => {
+    it('3.1 should render highlight rects for the specified page with percentage styles', () => {
       const onSelectNoteMock = vi.fn();
       const { container } = render(
         <PdfHighlightOverlay
@@ -272,20 +307,73 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 4. PDF NOTES SERVICE TESTS
+  // 4. PDF STUDY VIEWER COMPONENT TESTS
   // =========================================================================
-  describe('4. pdfNotes.service', () => {
-    it('4.1 fetchPdfNotes should call GET endpoint with correct params', async () => {
+  describe('4. PdfStudyViewer Component (Worker, Empty State, Reset & Retry)', () => {
+    it('4.1 should have local bundled worker without external unpkg.com URL', () => {
+      const workerSrc = pdfjs.GlobalWorkerOptions.workerSrc || '';
+      expect(workerSrc).not.toContain('unpkg.com');
+      expect(workerSrc).not.toContain('cdnjs.cloudflare.com');
+    });
+
+    it('4.2 should render empty state when pdfUrl is not provided (no infinite spinner)', () => {
+      render(
+        <PdfStudyViewer
+          pdfUrl={null}
+          title="Tài liệu chưa có"
+          user={{ email: 'test@example.com' }}
+          notes={[]}
+        />
+      );
+
+      expect(screen.getByText(/Tài liệu bài học chưa được tải lên/i)).toBeInTheDocument();
+    });
+
+    it('4.3 should reset page number to 1 when switching between PDFs', async () => {
+      const { rerender } = render(
+        <PdfStudyViewer
+          pdfUrl="https://example.com/docA.pdf"
+          title="Tài liệu A"
+          user={{ email: 'test@example.com' }}
+          notes={[]}
+          activePage={3}
+        />
+      );
+
+      // Change pdfUrl to Doc B
+      rerender(
+        <PdfStudyViewer
+          pdfUrl="https://example.com/docB.pdf"
+          title="Tài liệu B"
+          user={{ email: 'test@example.com' }}
+          notes={[]}
+          activePage={1}
+        />
+      );
+
+      const loadSuccessBtn = screen.getByTestId('trigger-load-success');
+      fireEvent.click(loadSuccessBtn);
+
+      expect(screen.getByText(/1 \/ 5/i)).toBeInTheDocument();
+      expect(screen.getByTestId('mock-pdf-page-1')).toBeInTheDocument();
+    });
+  });
+
+  // =========================================================================
+  // 5. PDF NOTES SERVICE TESTS
+  // =========================================================================
+  describe('5. pdfNotes.service', () => {
+    it('5.1 fetchPdfNotes should call GET endpoint with correct params', async () => {
       apiClient.get.mockResolvedValueOnce({ data: { data: mockNotes } });
 
-      const res = await pdfNotesService.fetchPdfNotes(1, 'lesson:1:primary', 2);
+      const res = await pdfNotesService.fetchPdfNotes(1, 'lesson:1:primary:v1', 2);
       expect(apiClient.get).toHaveBeenCalledWith('/lessons/1/pdf-notes', {
-        params: { documentRef: 'lesson:1:primary', page: 2 }
+        params: { documentRef: 'lesson:1:primary:v1', page: 2 }
       });
       expect(res).toEqual(mockNotes);
     });
 
-    it('4.2 createPdfNote should call POST endpoint', async () => {
+    it('5.2 createPdfNote should call POST endpoint', async () => {
       apiClient.post.mockResolvedValueOnce({ data: { data: mockNotes[0] } });
 
       const newNote = { pageNumber: 1, selectedText: 'Hello', rects: [] };
@@ -294,7 +382,23 @@ describe('=== TASK-PDF-SMART-NOTES-01 FRONTEND TEST SUITE ===', () => {
       expect(res).toEqual(mockNotes[0]);
     });
 
-    it('4.3 getLocalDraft & setLocalDraft should persist in localStorage', () => {
+    it('5.3 updatePdfNote should call PUT endpoint', async () => {
+      apiClient.put.mockResolvedValueOnce({ data: { data: { ...mockNotes[0], noteText: 'Updated' } } });
+
+      const res = await pdfNotesService.updatePdfNote(1, 10, { noteText: 'Updated' });
+      expect(apiClient.put).toHaveBeenCalledWith('/lessons/1/pdf-notes/10', { noteText: 'Updated' });
+      expect(res.noteText).toBe('Updated');
+    });
+
+    it('5.4 deletePdfNote should call DELETE endpoint', async () => {
+      apiClient.delete.mockResolvedValueOnce({ data: { success: true } });
+
+      const res = await pdfNotesService.deletePdfNote(1, 10);
+      expect(apiClient.delete).toHaveBeenCalledWith('/lessons/1/pdf-notes/10');
+      expect(res.success).toBe(true);
+    });
+
+    it('5.5 getLocalDraft & setLocalDraft should persist in localStorage', () => {
       pdfNotesService.setLocalDraft(10, 1, 'primary', 'My draft note');
       expect(pdfNotesService.getLocalDraft(10, 1, 'primary')).toBe('My draft note');
 

@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS lessons (
   content_type VARCHAR(20) NOT NULL, -- video, pdf, quiz, text
   content_url TEXT,
   order_index INT NOT NULL,
+  pdf_version INT DEFAULT 1,
   CONSTRAINT fk_lesson_section FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE CASCADE
 );
 
@@ -228,6 +229,7 @@ CREATE TABLE IF NOT EXISTS lesson_materials (
   file_url TEXT NOT NULL,
   file_type VARCHAR(50) DEFAULT 'application/pdf',
   file_size_kb INT DEFAULT 0,
+  pdf_version INT DEFAULT 1,
   uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

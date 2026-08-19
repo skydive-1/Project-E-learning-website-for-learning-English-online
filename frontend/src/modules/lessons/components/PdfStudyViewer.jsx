@@ -11,17 +11,24 @@ import {
   FiChevronRight,
   FiRefreshCw,
   FiAlertTriangle,
-  FiCheckCircle,
   FiFileText,
-  FiLayers
+  FiLayers,
+  FiInfo
 } from 'react-icons/fi';
 
 import PdfHighlightOverlay from './PdfHighlightOverlay';
 import PdfSelectionPopover from './PdfSelectionPopover';
 
-// Cấu hình Worker tương thích với Vite & Browser ESM
-if (typeof window !== 'undefined' && 'Worker' in window) {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Cấu hình Bundled Worker cục bộ tương thích hoàn toàn với Vite và không phụ thuộc CDN bên ngoài
+if (typeof window !== 'undefined') {
+  try {
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url
+    ).toString();
+  } catch (e) {
+    console.warn('Cảnh báo nạp worker PDF:', e.message);
+  }
 }
 
 const WATERMARK_POSITIONS = [
@@ -48,18 +55,33 @@ export default function PdfStudyViewer({
   const [currentPage, setCurrentPage] = useState(activePage || 1);
   const [scale, setScale] = useState(1.15); // Zoom 115% mặc định
   const [viewMode, setViewMode] = useState('single'); // 'single' hoặc 'continuous'
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(pdfUrl));
   const [error, setError] = useState(null);
+  const [documentRetryKey, setDocumentRetryKey] = useState(0);
   const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
 
   // Selection Popover State
   const [selectionState, setSelectionState] = useState(null);
-  // selectionState = { pageNumber, selectedText, rects, contextBefore, contextAfter, position: { top, left, width, height } }
+  // selectionState = { pageNumber, selectedText, rects, clientRect }
 
   const containerRef = useRef(null);
   const pageRefs = useRef({});
 
-  // Cập nhật watermark xoay vòng mỗi 25s chống quay lén
+  // 1. Reset state khi pdfUrl thay đổi
+  useEffect(() => {
+    setCurrentPage(1);
+    setNumPages(null);
+    setSelectionState(null);
+    if (pdfUrl) {
+      setLoading(true);
+      setError(null);
+    } else {
+      setLoading(false);
+      setError(null);
+    }
+  }, [pdfUrl]);
+
+  // 2. Xoay vòng vị trí watermark động mỗi 25s
   useEffect(() => {
     const timer = setInterval(() => {
       setWatermarkPosIndex((prev) => (prev + 1) % WATERMARK_POSITIONS.length);
@@ -67,7 +89,7 @@ export default function PdfStudyViewer({
     return () => clearInterval(timer);
   }, []);
 
-  // Đồng bộ trang khi có trigger chuyển trang từ bên ngoài (ví dụ nhấp note ở sidebar)
+  // 3. Đồng bộ trang khi có trigger chuyển trang từ bên ngoài (ví dụ nhấp note ở sidebar)
   useEffect(() => {
     if (activePage && activePage !== currentPage && numPages && activePage <= numPages) {
       setCurrentPage(activePage);
@@ -77,10 +99,38 @@ export default function PdfStudyViewer({
     }
   }, [activePage, numPages, viewMode]);
 
+  // 4. Continuous Mode IntersectionObserver để theo dõi trang người dùng đang cuộn tới
+  useEffect(() => {
+    if (viewMode !== 'continuous' || !numPages) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const pageNum = parseInt(entry.target.getAttribute('data-page-number'), 10);
+            if (pageNum && pageNum !== currentPage) {
+              setCurrentPage(pageNum);
+              if (onPageChange) onPageChange(pageNum);
+            }
+          }
+        });
+      },
+      { threshold: 0.5 }
+    );
+
+    Object.values(pageRefs.current).forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [viewMode, numPages, currentPage, onPageChange]);
+
   const onDocumentLoadSuccess = ({ numPages }) => {
     setNumPages(numPages);
     setLoading(false);
     setError(null);
+    // Clamp trang hợp lệ trong khoảng 1..numPages
+    setCurrentPage((prev) => Math.min(Math.max(1, prev), numPages));
   };
 
   const onDocumentLoadError = (err) => {
@@ -90,8 +140,16 @@ export default function PdfStudyViewer({
   };
 
   const handleZoomIn = () => setScale((prev) => Math.min(2.0, Number((prev + 0.15).toFixed(2))));
-  const handleZoomOut = () => setScale((prev) => Math.max(0.75, Number((prev - 0.15).toFixed(2))));
-  const handleFitWidth = () => setScale(1.0);
+  const handleZoomOut = () => setScale((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))));
+  const handleFitWidth = () => {
+    if (containerRef.current) {
+      const containerWidth = containerRef.current.clientWidth;
+      const calculatedScale = Math.max(0.6, Math.min(2.0, Number(((containerWidth - 48) / 650).toFixed(2))));
+      setScale(calculatedScale);
+    } else {
+      setScale(1.0);
+    }
+  };
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
@@ -107,6 +165,12 @@ export default function PdfStudyViewer({
       setCurrentPage(p);
       if (onPageChange) onPageChange(p);
     }
+  };
+
+  const handleRetryLoad = () => {
+    setDocumentRetryKey((k) => k + 1);
+    setLoading(true);
+    setError(null);
   };
 
   /**
@@ -141,40 +205,38 @@ export default function PdfStudyViewer({
 
     const pageRect = pageElement.getBoundingClientRect();
     const clientRects = Array.from(range.getClientRects());
+    const rangeBoundingRect = range.getBoundingClientRect();
 
     if (clientRects.length === 0 || pageRect.width === 0 || pageRect.height === 0) {
       return;
     }
 
-    // Chuẩn hóa tọa độ theo tỷ lệ trang [0.0 - 1.0]
-    const normalizedRects = clientRects.map((r) => ({
-      x: Math.max(0, Math.min(1, Number(((r.left - pageRect.left) / pageRect.width).toFixed(4)))),
-      y: Math.max(0, Math.min(1, Number(((r.top - pageRect.top) / pageRect.height).toFixed(4)))),
-      width: Math.max(0.001, Math.min(1, Number((r.width / pageRect.width).toFixed(4)))),
-      height: Math.max(0.001, Math.min(1, Number((r.height / pageRect.height).toFixed(4))))
-    })).filter((r) => r.width > 0 && r.height > 0);
+    // Chuẩn hóa tọa độ theo tỷ lệ trang [0.0 - 1.0] với validation nghiêm ngặt
+    const normalizedRects = clientRects.map((r) => {
+      let x = Math.max(0, Math.min(1, (r.left - pageRect.left) / pageRect.width));
+      let y = Math.max(0, Math.min(1, (r.top - pageRect.top) / pageRect.height));
+      let width = Math.max(0.001, (r.width / pageRect.width));
+      let height = Math.max(0.001, (r.height / pageRect.height));
+
+      // Đảm bảo x + width <= 1.0 và y + height <= 1.0
+      if (x + width > 1.0) width = Math.max(0.001, 1.0 - x);
+      if (y + height > 1.0) height = Math.max(0.001, 1.0 - y);
+
+      return {
+        x: Number(x.toFixed(4)),
+        y: Number(y.toFixed(4)),
+        width: Number(width.toFixed(4)),
+        height: Number(height.toFixed(4))
+      };
+    }).filter((r) => r.width > 0 && r.height > 0);
 
     if (normalizedRects.length === 0) return;
-
-    // Vị trí mở popover (tương đối theo container tổng)
-    const viewerRect = containerRef.current.getBoundingClientRect();
-    const firstRect = clientRects[0];
-    const lastRect = clientRects[clientRects.length - 1];
-
-    const popoverPos = {
-      top: lastRect.bottom - viewerRect.top + containerRef.current.scrollTop,
-      left: firstRect.left - viewerRect.left + containerRef.current.scrollLeft,
-      width: firstRect.width,
-      height: firstRect.height
-    };
 
     setSelectionState({
       pageNumber: pageNum,
       selectedText,
       rects: normalizedRects,
-      contextBefore: '',
-      contextAfter: '',
-      position: popoverPos
+      clientRect: rangeBoundingRect
     });
   }, [currentPage]);
 
@@ -187,12 +249,9 @@ export default function PdfStudyViewer({
       noteText,
       category,
       color,
-      rects: selectionState.rects,
-      contextBefore: selectionState.contextBefore,
-      contextAfter: selectionState.contextAfter
+      rects: selectionState.rects
     });
 
-    // Clear selection
     if (window.getSelection) {
       window.getSelection().removeAllRanges();
     }
@@ -215,115 +274,125 @@ export default function PdfStudyViewer({
       style={{ minHeight: '520px' }}
     >
       {/* 1. Thanh điều khiển trên cùng (PDF Toolbar) */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 z-30 text-xs text-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 z-30 text-xs text-slate-200">
         {/* Left: Title & Mode */}
         <div className="flex items-center gap-2.5 overflow-hidden">
           <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold shrink-0">
             <FiFileText />
           </div>
-          <span className="font-semibold text-slate-200 truncate max-w-[200px] sm:max-w-xs" title={title}>
+          <span className="font-semibold text-slate-200 truncate max-w-[160px] sm:max-w-xs" title={title}>
             {title}
           </span>
         </div>
 
         {/* Center: Pagination controls */}
-        <div className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-1 rounded-xl border border-slate-800">
-          <button
-            type="button"
-            onClick={handlePrevPage}
-            disabled={currentPage <= 1 || loading}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            title="Trang trước"
-          >
-            <FiChevronLeft className="text-base" />
-          </button>
-          <span className="font-mono text-[11px] px-1 font-bold">
-            {loading ? '...' : `${currentPage} / ${numPages || 1}`}
-          </span>
-          <button
-            type="button"
-            onClick={handleNextPage}
-            disabled={!numPages || currentPage >= numPages || loading}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            title="Trang tiếp theo"
-          >
-            <FiChevronRight className="text-base" />
-          </button>
-        </div>
+        {pdfUrl && (
+          <div className="flex items-center gap-1.5 bg-slate-900/80 px-2 py-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={handlePrevPage}
+              disabled={currentPage <= 1 || loading}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              title="Trang trước"
+            >
+              <FiChevronLeft className="text-base" />
+            </button>
+            <span className="font-mono text-[11px] px-1 font-bold">
+              {loading ? '...' : `${currentPage} / ${numPages || 1}`}
+            </span>
+            <button
+              type="button"
+              onClick={handleNextPage}
+              disabled={!numPages || currentPage >= numPages || loading}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              title="Trang tiếp theo"
+            >
+              <FiChevronRight className="text-base" />
+            </button>
+          </div>
+        )}
 
         {/* Right: Zoom & View Mode Controls */}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setViewMode(viewMode === 'single' ? 'continuous' : 'single')}
-            className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-              viewMode === 'continuous'
-                ? 'bg-smart-indigo text-white border-indigo-400'
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-            }`}
-            title={viewMode === 'continuous' ? 'Chế độ cuộn liên tục' : 'Chế độ từng trang'}
-          >
-            <FiLayers />
-            <span className="hidden sm:inline">{viewMode === 'continuous' ? 'Cuộn' : 'Trang'}</span>
-          </button>
+        {pdfUrl && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setViewMode(viewMode === 'single' ? 'continuous' : 'single')}
+              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                viewMode === 'continuous'
+                  ? 'bg-smart-indigo text-white border-indigo-400'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+              title={viewMode === 'continuous' ? 'Chế độ cuộn liên tục' : 'Chế độ từng trang'}
+            >
+              <FiLayers />
+              <span className="hidden sm:inline">{viewMode === 'continuous' ? 'Cuộn' : 'Trang'}</span>
+            </button>
 
-          <div className="h-4 w-px bg-slate-800 mx-1"></div>
+            <div className="h-4 w-px bg-slate-800 mx-1"></div>
 
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            disabled={scale <= 0.75}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors cursor-pointer"
-            title="Thu nhỏ (-)"
-          >
-            <FiZoomOut />
-          </button>
-          <span className="font-mono text-[11px] font-bold text-slate-400 w-10 text-center">
-            {Math.round(scale * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            disabled={scale >= 2.0}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors cursor-pointer"
-            title="Phóng to (+)"
-          >
-            <FiZoomIn />
-          </button>
-          <button
-            type="button"
-            onClick={handleFitWidth}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Khớp chiều rộng (100%)"
-          >
-            <FiMaximize2 />
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              disabled={scale <= 0.6}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors cursor-pointer"
+              title="Thu nhỏ (-)"
+            >
+              <FiZoomOut />
+            </button>
+            <span className="font-mono text-[11px] font-bold text-slate-400 w-10 text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              disabled={scale >= 2.0}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 transition-colors cursor-pointer"
+              title="Phóng to (+)"
+            >
+              <FiZoomIn />
+            </button>
+            <button
+              type="button"
+              onClick={handleFitWidth}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Khớp chiều rộng"
+            >
+              <FiMaximize2 />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 2. PDF Document Canvas & Overlay Scrollable Area */}
+      {/* 2. PDF Document Canvas & Scrollable Area */}
       <div
         className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col items-center relative bg-slate-900/90 scroll-smooth"
         style={{ userSelect: 'text' }}
       >
         {/* PDF Security Watermark Badge */}
-        <div
-          className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-25 select-none font-mono text-[9.5px] sm:text-[10.5px] text-slate-800 dark:text-slate-200 bg-white/80 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 px-3 py-1 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}
-        >
-          <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
-          <span className="text-slate-400">•</span>
-          <span>ID: {user?.id || user?.userId || 'N/A'}</span>
-        </div>
+        {pdfUrl && (
+          <div
+            className={`absolute ${WATERMARK_POSITIONS[watermarkPosIndex]} pointer-events-none z-30 opacity-25 select-none font-mono text-[9.5px] sm:text-[10.5px] text-slate-800 dark:text-slate-200 bg-white/80 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 px-3 py-1 rounded-full shadow-sm backdrop-blur-md flex items-center gap-1.5 transition-all duration-700 ease-in-out`}
+          >
+            <span>🔒 E-Learn Academy • {user?.email || 'Unknown User'}</span>
+            <span className="text-slate-400">•</span>
+            <span>ID: {user?.id || user?.userId || 'N/A'}</span>
+          </div>
+        )}
 
-        {/* Diagonal Background Watermark */}
-        <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden flex items-center justify-center opacity-5 select-none rotate-[-25deg]">
-          <span className="font-mono text-2xl sm:text-3xl font-extrabold text-slate-300 tracking-widest whitespace-nowrap">
-            {user?.email || 'Unknown User'} • COPYRIGHT PROTECTED
-          </span>
-        </div>
+        {/* Trạng thái không có PDF URL */}
+        {!pdfUrl && (
+          <div className="my-auto flex flex-col items-center justify-center p-8 bg-slate-950/80 border border-slate-800 rounded-2xl max-w-md text-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mb-3 shadow-lg">
+              <FiInfo />
+            </div>
+            <h4 className="text-sm font-bold text-white mb-1">Tài liệu bài học chưa được tải lên</h4>
+            <p className="text-xs text-slate-400">Giảng viên chưa cập nhật tệp tài liệu PDF cho bài học này.</p>
+          </div>
+        )}
 
         {/* Loading State */}
-        {loading && (
+        {pdfUrl && loading && (
           <div className="my-auto flex flex-col items-center justify-center p-8 text-center gap-4">
             <div className="w-10 h-10 border-4 border-slate-700 border-t-rose-500 rounded-full animate-spin"></div>
             <span className="text-xs font-semibold text-slate-300">Đang chuẩn bị hiển thị tài liệu PDF...</span>
@@ -331,7 +400,7 @@ export default function PdfStudyViewer({
         )}
 
         {/* Error State */}
-        {error && !loading && (
+        {pdfUrl && error && !loading && (
           <div className="my-auto flex flex-col items-center justify-center p-8 bg-slate-950/80 border border-rose-500/30 rounded-2xl max-w-md text-center">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/40 flex items-center justify-center text-rose-400 text-2xl mb-3 shadow-lg">
               <FiAlertTriangle />
@@ -340,10 +409,7 @@ export default function PdfStudyViewer({
             <p className="text-xs text-slate-400 mb-4">{error}</p>
             <button
               type="button"
-              onClick={() => {
-                setLoading(true);
-                setError(null);
-              }}
+              onClick={handleRetryLoad}
               className="px-4 py-2 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md"
             >
               <FiRefreshCw />
@@ -355,6 +421,7 @@ export default function PdfStudyViewer({
         {/* PDF Pages Rendering */}
         {pdfUrl && (
           <Document
+            key={`doc_retry_${documentRetryKey}_${pdfUrl}`}
             file={pdfUrl}
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={onDocumentLoadError}
@@ -368,6 +435,7 @@ export default function PdfStudyViewer({
                 return (
                   <div
                     key={`page_${pNum}`}
+                    data-page-number={pNum}
                     ref={(el) => (pageRefs.current[pNum] = el)}
                     className="relative bg-white shadow-2xl rounded-sm overflow-hidden transition-transform duration-200 border border-slate-200"
                     style={{ userSelect: 'text' }}
@@ -392,6 +460,7 @@ export default function PdfStudyViewer({
               // Single Page Mode
               <div
                 key={`single_page_${currentPage}`}
+                data-page-number={currentPage}
                 className="relative bg-white shadow-2xl rounded-sm overflow-hidden transition-transform duration-200 border border-slate-200"
                 style={{ userSelect: 'text' }}
               >
@@ -416,7 +485,7 @@ export default function PdfStudyViewer({
         {/* 3. Floating Selection Popover */}
         {selectionState && (
           <PdfSelectionPopover
-            position={selectionState.position}
+            clientRect={selectionState.clientRect}
             selectedText={selectionState.selectedText}
             onSave={handleSaveNote}
             onCancel={handleCancelSelection}
