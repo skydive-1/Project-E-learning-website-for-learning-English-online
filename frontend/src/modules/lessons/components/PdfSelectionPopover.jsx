@@ -66,20 +66,20 @@ export default function PdfSelectionPopover({
 
   const [coords, setCoords] = useState(calculatePosition);
 
-  // Cập nhật vị trí khi resize / scroll
+  // Đóng popover ngay lập tức khi cuộn trang hoặc resize để tránh lệch vị trí
   useEffect(() => {
     setCoords(calculatePosition());
-    const handleUpdate = () => {
-      setCoords(calculatePosition());
+    const handleDismissOnScrollOrResize = () => {
+      onCancel();
     };
 
-    window.addEventListener('resize', handleUpdate);
-    window.addEventListener('scroll', handleUpdate, { capture: true, passive: true });
+    window.addEventListener('resize', handleDismissOnScrollOrResize);
+    window.addEventListener('scroll', handleDismissOnScrollOrResize, { capture: true, passive: true });
     return () => {
-      window.removeEventListener('resize', handleUpdate);
-      window.removeEventListener('scroll', handleUpdate, { capture: true });
+      window.removeEventListener('resize', handleDismissOnScrollOrResize);
+      window.removeEventListener('scroll', handleDismissOnScrollOrResize, { capture: true });
     };
-  }, [calculatePosition]);
+  }, [calculatePosition, onCancel]);
 
   // Đóng khi ấn Escape
   useEffect(() => {

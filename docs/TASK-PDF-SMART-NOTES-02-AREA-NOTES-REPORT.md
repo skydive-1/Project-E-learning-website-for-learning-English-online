@@ -1,12 +1,12 @@
 # BÁO CÁO KỸ THUẬT: NÚT “THÊM GHI CHÚ” VÀ GHI CHÚ THEO VÙNG (TASK-PDF-SMART-NOTES-02)
 
-> **Mã công việc**: `TASK-PDF-SMART-NOTES-02`  
-> **Nhánh thực hiện**: `feature/pdf-smart-notes`  
-> **Base SHA audit**: `7e872fdacd9566169f90a5fade4010e5ad45535c`  
-> **HEAD SHA hiện tại**: `7e872fdacd9566169f90a5fade4010e5ad45535c`  
-> **Thời gian thực hiện**: 19/08/2026  
-> **Người phụ trách task**: **NGUYỄN DŨNG QUỐC ANH** (*Frontend & AI UI Integration Developer*)  
-> **Hỗ trợ triển khai và kiểm thử**: **AI Agent**  
+> **Mã công việc**: `TASK-PDF-SMART-NOTES-02`
+> **Nhánh thực hiện**: `feature/pdf-smart-notes`
+> **Base SHA audit**: `7e872fdacd9566169f90a5fade4010e5ad45535c`
+> **HEAD SHA hiện tại**: `7e872fdacd9566169f90a5fade4010e5ad45535c`
+> **Thời gian thực hiện**: 19/08/2026
+> **Người phụ trách task**: **NGUYỄN DŨNG QUỐC ANH** (*Frontend & AI UI Integration Developer*)
+> **Hỗ trợ triển khai và kiểm thử**: **AI Agent**
 > **Trạng thái kiểm định**: **ALL AUTOMATED TESTS & PRODUCTION BUILD PASSED (0 FAILURES)**
 
 ---
@@ -31,11 +31,11 @@
 ### 2.1. Thay đổi Database Migration (`pdf_notes`)
 ```sql
 -- Thêm cột phân loại vùng chọn
-ALTER TABLE pdf_notes 
+ALTER TABLE pdf_notes
 ADD COLUMN IF NOT EXISTS selection_type VARCHAR(20) NOT NULL DEFAULT 'text';
 
 -- Cho phép selected_text là NULL đối với ghi chú vùng (area note)
-ALTER TABLE pdf_notes 
+ALTER TABLE pdf_notes
 ALTER COLUMN selected_text DROP NOT NULL;
 ```
 - Dữ liệu cũ tự động mang giá trị `selection_type = 'text'`, đảm bảo 100% tương thích ngược và idempotent.

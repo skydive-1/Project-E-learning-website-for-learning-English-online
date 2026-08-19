@@ -1,84 +1,72 @@
-/**
- * PDF Highlight & Personal Notes Frontend Service (TASK-PDF-SMART-NOTES-01)
- *
- * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
- * Hỗ trợ triển khai & kiểm thử: AI Agent
- */
-
 import apiClient from '../../../config/api.config';
 
 /**
- * Lấy danh sách ghi chú theo bài học và tài liệu PDF
- * @param {string|number} lessonId 
- * @param {string} documentRef 
- * @param {number} [page] 
+ * Service quản lý PDF Smart Notes & Highlight phía Client (TASK-PDF-SMART-NOTES-01, 02 & 03)
  */
-export const fetchPdfNotes = async (lessonId, documentRef, page) => {
-  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+
+/**
+ * Lấy danh sách ghi chú cho bài học / tài liệu đính kèm
+ * @param {number|string} lessonId - ID bài học
+ * @param {number|null} [materialId=null] - ID tài liệu đính kèm nếu có
+ * @param {number|null} [page=null] - Lọc theo trang
+ * @returns {Promise<Array>}
+ */
+export const fetchPdfNotes = async (lessonId, materialId = null, page = null) => {
+  const cleanLessonId = String(lessonId).replace(/^(quiz|speaking)-/, '');
   const params = {};
-  if (documentRef) params.documentRef = documentRef;
+  if (materialId) params.materialId = materialId;
   if (page) params.page = page;
 
-  const response = await apiClient.get(`/lessons/${cleanId}/pdf-notes`, { params });
+  const response = await apiClient.get(`/lessons/${cleanLessonId}/pdf-notes`, { params });
   return response.data?.data || [];
 };
 
 /**
- * Tạo mới ghi chú / highlight trên PDF
- * @param {string|number} lessonId 
- * @param {object} noteData 
+ * Tạo mới ghi chú / highlight cho PDF (Hỗ trợ cả text note và area note)
+ * @param {number|string} lessonId - ID bài học
+ * @param {Object} noteData - Dữ liệu ghi chú
+ * @returns {Promise<Object>}
  */
 export const createPdfNote = async (lessonId, noteData) => {
-  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-  const response = await apiClient.post(`/lessons/${cleanId}/pdf-notes`, noteData);
+  const cleanLessonId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  const payload = {
+    materialId: noteData.materialId || null,
+    pageNumber: noteData.pageNumber,
+    selectionType: noteData.selectionType || 'text',
+    selectedText: noteData.selectionType === 'area' ? null : noteData.selectedText,
+    noteText: noteData.noteText || '',
+    category: noteData.category || 'important',
+    color: noteData.color || 'yellow',
+    rects: noteData.rects || [],
+    contextBefore: noteData.contextBefore || '',
+    contextAfter: noteData.contextAfter || ''
+  };
+
+  const response = await apiClient.post(`/lessons/${cleanLessonId}/pdf-notes`, payload);
   return response.data?.data;
 };
 
 /**
- * Cập nhật nội dung hoặc phân loại ghi chú
- * @param {string|number} lessonId 
- * @param {string|number} noteId 
- * @param {object} updateData 
+ * Cập nhật nội dung / nhãn / màu sắc của ghi chú
+ * @param {number|string} lessonId - ID bài học
+ * @param {number|string} noteId - ID ghi chú
+ * @param {Object} updateData - Dữ liệu cập nhật { noteText, category, color }
+ * @returns {Promise<Object>}
  */
 export const updatePdfNote = async (lessonId, noteId, updateData) => {
-  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-  const response = await apiClient.put(`/lessons/${cleanId}/pdf-notes/${noteId}`, updateData);
+  const cleanLessonId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  const response = await apiClient.put(`/lessons/${cleanLessonId}/pdf-notes/${noteId}`, updateData);
   return response.data?.data;
 };
 
 /**
- * Xóa một ghi chú
- * @param {string|number} lessonId 
- * @param {string|number} noteId 
+ * Xóa ghi chú cá nhân
+ * @param {number|string} lessonId - ID bài học
+ * @param {number|string} noteId - ID ghi chú
+ * @returns {Promise<Object>}
  */
 export const deletePdfNote = async (lessonId, noteId) => {
-  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-  const response = await apiClient.delete(`/lessons/${cleanId}/pdf-notes/${noteId}`);
+  const cleanLessonId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  const response = await apiClient.delete(`/lessons/${cleanLessonId}/pdf-notes/${noteId}`);
   return response.data;
-};
-
-/**
- * Lấy bản nháp ghi chú tạm thời từ LocalStorage
- */
-export const getLocalDraft = (userId, lessonId, documentRef) => {
-  if (!userId || !lessonId) return '';
-  try {
-    return localStorage.getItem(`pdf_draft_${userId}_${lessonId}_${documentRef || 'primary'}`) || '';
-  } catch (e) {
-    return '';
-  }
-};
-
-/**
- * Lưu bản nháp ghi chú tạm thời vào LocalStorage
- */
-export const setLocalDraft = (userId, lessonId, documentRef, text) => {
-  if (!userId || !lessonId) return;
-  try {
-    if (text) {
-      localStorage.setItem(`pdf_draft_${userId}_${lessonId}_${documentRef || 'primary'}`, text);
-    } else {
-      localStorage.removeItem(`pdf_draft_${userId}_${lessonId}_${documentRef || 'primary'}`);
-    }
-  } catch (e) { }
 };

@@ -19,13 +19,13 @@ class CoursesService {
       const queryText = `
         SELECT c.*, s.subject_name,
           COALESCE(
-            (SELECT COUNT(*) FROM sections sec WHERE sec.course_id = c.course_id), 
+            (SELECT COUNT(*) FROM sections sec WHERE sec.course_id = c.course_id),
             0
           )::integer AS sections_count,
           COALESCE(
             (SELECT COUNT(*) FROM lessons les WHERE les.section_id IN (
               SELECT section_id FROM sections sec WHERE sec.course_id = c.course_id
-            )), 
+            )),
             0
           )::integer AS lessons_count
         FROM courses c
@@ -72,14 +72,14 @@ class CoursesService {
       // 1. Chèn khóa học vào bảng courses (Đã đồng bộ với Supabase)
       const courseResult = await client.query(`
         INSERT INTO courses (
-          subject_id, 
-          course_name, 
-          description, 
-          instructor_id, 
-          thumbnail_url, 
-          price, 
-          status, 
-          start_date, 
+          subject_id,
+          course_name,
+          description,
+          instructor_id,
+          thumbnail_url,
+          price,
+          status,
+          start_date,
           end_date
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -160,7 +160,7 @@ class CoursesService {
   async getLessonById(lessonId) {
     try {
       const queryText = `
-        SELECT l.*, s.course_id 
+        SELECT l.*, s.course_id
         FROM lessons l
         JOIN sections s ON l.section_id = s.section_id
         WHERE l.lesson_id = $1
@@ -175,7 +175,7 @@ class CoursesService {
   async getCourseById(courseId) {
     try {
       const queryText = `
-        SELECT 
+        SELECT
           c.*,
           s.section_id, s.title AS section_title, s.order_index AS section_order,
           l.lesson_id, l.title AS lesson_title, l.content_type, l.content_url, l.order_index AS lesson_order,
@@ -304,8 +304,8 @@ class CoursesService {
       if (updates.length > 0) {
         values.push(courseId);
         const queryText = `
-          UPDATE courses 
-          SET ${updates.join(', ')} 
+          UPDATE courses
+          SET ${updates.join(', ')}
           WHERE course_id = $${paramIndex}
         `;
         await client.query(queryText, values);
@@ -371,20 +371,33 @@ class CoursesService {
               const isExistingLesson = les.id && Number.isInteger(Number(les.id)) && Number(les.id) < 1000000000;
 
               if (isExistingLesson && existingLessonIds.includes(Number(les.id))) {
-                // Update existing lesson
+                // Update existing lesson with pdf_version check
                 lesId = Number(les.id);
+                const oldLessonRes = await client.query(
+                  'SELECT content_type, content_url, COALESCE(pdf_version, 1) AS pdf_version FROM lessons WHERE lesson_id = $1',
+                  [lesId]
+                );
+                const oldLesson = oldLessonRes.rows[0] || {};
+                const oldType = oldLesson.content_type;
+                const oldUrl = oldLesson.content_url;
+                const urlChanged = String(oldUrl || '').trim() !== String(contentUrl || '').trim();
+                const typeChanged = String(oldType || '').trim() !== String(contentType || '').trim();
+                const shouldIncrement = (urlChanged && (oldType === 'pdf' || contentType === 'pdf')) ||
+                                        (typeChanged && (oldType === 'pdf' || contentType === 'pdf'));
+
                 await client.query(
-                  `UPDATE lessons 
-                   SET title = $1, content_type = $2, content_url = $3, order_index = $4, 
-                       speaking_sentences = $5, speaking_questions = $6 
+                  `UPDATE lessons
+                   SET title = $1, content_type = $2, content_url = $3, order_index = $4,
+                       speaking_sentences = $5, speaking_questions = $6,
+                       pdf_version = CASE WHEN $8::boolean THEN COALESCE(pdf_version, 1) + 1 ELSE COALESCE(pdf_version, 1) END
                    WHERE lesson_id = $7`,
-                  [les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions, lesId]
+                  [les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions, lesId, shouldIncrement]
                 );
               } else {
                 // Insert new lesson
                 const insertLesRes = await client.query(
-                  `INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)
+                  `INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions, pdf_version)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
                    RETURNING lesson_id`,
                   [secId, les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions]
                 );

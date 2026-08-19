@@ -234,10 +234,13 @@ export default function PdfStudyViewer({
     if (!pageElement) return;
 
     const pageRect = pageElement.getBoundingClientRect();
-    const clientX = e.clientX || (e.touches && e.touches[0]?.clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0]?.clientY);
+    const rawX = e.clientX || (e.touches && e.touches[0]?.clientX);
+    const rawY = e.clientY || (e.touches && e.touches[0]?.clientY);
 
-    if (clientX === undefined || clientY === undefined) return;
+    if (rawX === undefined || rawY === undefined) return;
+
+    const clientX = Math.max(pageRect.left, Math.min(pageRect.right, rawX));
+    const clientY = Math.max(pageRect.top, Math.min(pageRect.bottom, rawY));
 
     // Bắt đầu vẽ khoanh vùng
     setDragState({
@@ -254,10 +257,13 @@ export default function PdfStudyViewer({
   const handlePointerMove = useCallback((e) => {
     if (!dragState) return;
 
-    const clientX = e.clientX || (e.touches && e.touches[0]?.clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0]?.clientY);
+    const rawX = e.clientX || (e.touches && e.touches[0]?.clientX);
+    const rawY = e.clientY || (e.touches && e.touches[0]?.clientY);
 
-    if (clientX === undefined || clientY === undefined) return;
+    if (rawX === undefined || rawY === undefined) return;
+
+    const clientX = Math.max(dragState.pageRect.left, Math.min(dragState.pageRect.right, rawX));
+    const clientY = Math.max(dragState.pageRect.top, Math.min(dragState.pageRect.bottom, rawY));
 
     setDragState((prev) => {
       if (!prev) return null;

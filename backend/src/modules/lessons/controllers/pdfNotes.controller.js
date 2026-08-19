@@ -49,7 +49,6 @@ class PdfNotesController {
         userId,
         lessonId,
         materialId,
-        documentRef,
         pageNumber: page
       });
 

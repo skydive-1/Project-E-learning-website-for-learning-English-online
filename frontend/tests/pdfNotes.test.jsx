@@ -32,7 +32,13 @@ vi.mock('react-pdf', () => ({
     </div>
   ),
   Page: ({ pageNumber, scale }) => (
-    <div data-testid={`mock-pdf-page-${pageNumber}`} data-scale={scale}>
+    <div
+      data-testid={`mock-pdf-page-${pageNumber}`}
+      className="react-pdf__Page"
+      data-page-number={pageNumber}
+      data-scale={scale}
+      style={{ width: '600px', height: '800px' }}
+    >
       Page {pageNumber} Content
     </div>
   ),
@@ -52,7 +58,7 @@ vi.mock('../src/config/api.config', () => ({
   }
 }));
 
-describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
+describe('=== TASK-PDF-SMART-NOTES-03 FRONTEND TEST SUITE ===', () => {
   const mockNotes = [
     {
       id: 1,
@@ -94,7 +100,7 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 1. PDF NOTES PANEL TESTS (Text & Area Notes, Button "＋ Thêm ghi chú")
+  // 1. PDF NOTES PANEL TESTS
   // =========================================================================
   describe('1. PdfNotesPanel Component (Area Notes & Button)', () => {
     it('1.1 should render list of notes including both Text Notes and Area Notes without null/undefined leak', () => {
@@ -110,9 +116,8 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       );
 
       expect(screen.getByText(/Ghi chú cá nhân/i)).toBeInTheDocument();
-      expect(screen.getByText('3')).toBeInTheDocument(); // Badge count
+      expect(screen.getByText('3')).toBeInTheDocument();
       expect(screen.getByText(/Communication is essential for daily conversation./i)).toBeInTheDocument();
-      // Area note fallback header
       expect(screen.getByText(/Ghi chú vùng • Trang 2/i)).toBeInTheDocument();
       expect(screen.getByText(/Phần sơ đồ cấu trúc câu này cần xem lại/i)).toBeInTheDocument();
       expect(screen.queryByText(/null/i)).not.toBeInTheDocument();
@@ -155,7 +160,7 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       expect(screen.getByText(/Bôi đen văn bản hoặc khoanh vùng bất kỳ trên PDF/i)).toBeInTheDocument();
 
       const addBtns = screen.getAllByRole('button', { name: /Thêm ghi chú vùng/i });
-      expect(addBtns.length).toBe(2); // Header button + Empty state button
+      expect(addBtns.length).toBe(2);
       fireEvent.click(addBtns[1]);
       expect(onTriggerMock).toHaveBeenCalledTimes(1);
     });
@@ -180,9 +185,9 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 2. PDF SELECTION POPOVER TESTS (Area & Text Mode)
+  // 2. PDF SELECTION POPOVER TESTS
   // =========================================================================
-  describe('2. PdfSelectionPopover Component (Area & Text)', () => {
+  describe('2. PdfSelectionPopover Component (Area & Text & Scroll Dismiss)', () => {
     it('2.1 Area Note: should display area header and require noteText before submission', async () => {
       const onSaveMock = vi.fn().mockResolvedValue(true);
       const onCancelMock = vi.fn();
@@ -201,15 +206,12 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       expect(screen.getByText(/Tạo ghi chú vùng/i)).toBeInTheDocument();
       expect(screen.getByText(/Vùng đã chọn • Trang 2/i)).toBeInTheDocument();
 
-      // Submit without entering noteText
       const submitBtn = screen.getByRole('button', { name: /Lưu ghi chú/i });
       fireEvent.click(submitBtn);
 
-      // Warning displayed, onSave not called
       expect(screen.getByText(/Vui lòng nhập nội dung ghi chú cho vùng đã chọn/i)).toBeInTheDocument();
       expect(onSaveMock).not.toHaveBeenCalled();
 
-      // Enter noteText and submit
       const textarea = screen.getByPlaceholderText(/Nhập ghi chú cho vùng vừa khoanh/i);
       fireEvent.change(textarea, { target: { value: 'Ghi chú sơ đồ hình ảnh' } });
       fireEvent.click(submitBtn);
@@ -257,6 +259,23 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       fireEvent.keyDown(window, { key: 'Escape' });
       expect(onCancelMock).toHaveBeenCalledTimes(1);
     });
+
+    it('2.4 should close popover on window scroll event', () => {
+      const onCancelMock = vi.fn();
+
+      render(
+        <PdfSelectionPopover
+          clientRect={{ top: 100, left: 100, width: 200, height: 20, bottom: 120, right: 300 }}
+          selectionType="area"
+          pageNumber={1}
+          onSave={vi.fn()}
+          onCancel={onCancelMock}
+        />
+      );
+
+      fireEvent.scroll(window);
+      expect(onCancelMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   // =========================================================================
@@ -276,18 +295,17 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       );
 
       const boxes = container.querySelectorAll('.pdf-highlight-box');
-      expect(boxes.length).toBe(2); // Note 2 (text) and Note 3 (area) on page 2
+      expect(boxes.length).toBe(2);
 
-      // Click on area note box
       fireEvent.click(boxes[1]);
       expect(onSelectNoteMock).toHaveBeenCalledWith(mockNotes[2]);
     });
   });
 
   // =========================================================================
-  // 4. PDF STUDY VIEWER COMPONENT TESTS
+  // 4. PDF STUDY VIEWER COMPONENT TESTS (Toolbar, Dragging Simulation, Esc)
   // =========================================================================
-  describe('4. PdfStudyViewer Component (Toolbar "＋ Thêm ghi chú" & Area Selection)', () => {
+  describe('4. PdfStudyViewer Component (Toolbar & Area Selection)', () => {
     it('4.1 should render "＋ Thêm ghi chú" button on toolbar and toggle area selection mode', () => {
       const onToggleMock = vi.fn();
       render(
@@ -335,7 +353,6 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
         />
       );
 
-      // Change pdfUrl to Doc B
       rerender(
         <PdfStudyViewer
           pdfUrl="https://example.com/docB.pdf"
@@ -355,15 +372,15 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
   });
 
   // =========================================================================
-  // 5. PDF NOTES SERVICE TESTS
+  // 5. PDF NOTES SERVICE TESTS (No Forged documentRef)
   // =========================================================================
-  describe('5. pdfNotes.service', () => {
-    it('5.1 fetchPdfNotes should call GET endpoint with correct params', async () => {
+  describe('5. pdfNotes.service (Backend Canonical Resolution)', () => {
+    it('5.1 fetchPdfNotes should call GET endpoint without sending documentRef', async () => {
       apiClient.get.mockResolvedValueOnce({ data: { data: mockNotes } });
 
-      const res = await pdfNotesService.fetchPdfNotes(1, 'lesson:1:primary:v1', 2);
+      const res = await pdfNotesService.fetchPdfNotes(1, 101, 2);
       expect(apiClient.get).toHaveBeenCalledWith('/lessons/1/pdf-notes', {
-        params: { documentRef: 'lesson:1:primary:v1', page: 2 }
+        params: { materialId: 101, page: 2 }
       });
       expect(res).toEqual(mockNotes);
     });
@@ -372,11 +389,16 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       apiClient.post.mockResolvedValueOnce({ data: { data: mockNotes[2] } });
 
       const newAreaNote = {
+        materialId: null,
         pageNumber: 2,
         selectionType: 'area',
         selectedText: null,
         noteText: 'Phần sơ đồ cấu trúc câu này cần xem lại',
-        rects: [{ x: 0.2, y: 0.6, width: 0.6, height: 0.15 }]
+        category: 'important',
+        color: 'yellow',
+        rects: [{ x: 0.2, y: 0.6, width: 0.6, height: 0.15 }],
+        contextBefore: '',
+        contextAfter: ''
       };
 
       const res = await pdfNotesService.createPdfNote(1, newAreaNote);
