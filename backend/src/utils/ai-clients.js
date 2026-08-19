@@ -389,10 +389,20 @@ Hãy trả lời một cách tự nhiên, dễ hiểu, định dạng markdown �
   }
 };
 
+const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
+const DEFAULT_GEMINI_SPEAKING_MODEL = "gemini-3.7-flash";
+
+function getSpeakingModelName() {
+  return process.env.GEMINI_SPEAKING_MODEL || process.env.GEMINI_MODEL || DEFAULT_GEMINI_SPEAKING_MODEL;
+}
+
+// Log an toàn khi khởi động (không lộ key)
+console.log(`[AI Speaking] Model configured: ${getSpeakingModelName()}`);
+
 const geminiSpeakingModel = {
   async evaluateSpeaking({ contents, responseMimeType = "application/json" }) {
     const client = getAiClient();
-    const model = process.env.GEMINI_SPEAKING_MODEL || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    const model = getSpeakingModelName();
     const config = {
       temperature: 0,
       responseMimeType
@@ -413,6 +423,7 @@ const geminiSpeakingModel = {
       };
     } catch (error) {
       console.error(`[Gemini Speaking Model Error] (${model}):`, error.message);
+      // Không âm thầm fallback sang model khác để bảo đảm tính nhất quán của chuẩn chấm điểm
       throw error;
     }
   }
@@ -421,6 +432,9 @@ const geminiSpeakingModel = {
 module.exports = {
   ai,
   getAiClient,
+  getSpeakingModelName,
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_GEMINI_SPEAKING_MODEL,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,

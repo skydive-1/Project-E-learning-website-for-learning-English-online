@@ -1,47 +1,52 @@
 /**
- * Speaking AI Response Validator
+ * Strict Speaking AI Response Validator (TASK-AI-SPEAKING-01-HOTFIX-R2)
+ *
  * Kiểm tra nghiêm ngặt kiểu dữ liệu từ AI Response:
- * - hasSpeech: boolean thật (không chấp nhận "false" string)
- * - transcription: string
- * - scores: finite number trong [0, 100] (không chấp nhận string "85%", NaN, Infinity)
- * - wordAssessments: mảng các objects { word, occurrenceIndex, status, confidence, feedback }
- * - audioQuality: object { quality, noiseLevel, warning }
- * 
- * Phụ trách:
- * - NGUYỄN THANH LIÊM (Backend & Security Developer)
- * - LÊ ĐÌNH CHƯƠNG (Database Administrator & Infrastructure Specialist)
+ * - hasSpeech: boolean thật (BẮT BUỘC typeof === 'boolean', từ chối "true", "false")
+ * - scores: finite number trong [0, 100] (từ chối "85", "85%", NaN, Infinity, <0, >100 - KHÔNG auto-clamp)
+ * - Khi hasSpeech === true: tất cả điểm bắt buộc phải tồn tại, KHÔNG mặc định thành 0
+ * - wordAssessments: status thuộc ['correct', 'mispronounced', 'uncertain']
+ * - KHÔNG tự động tạo feedback tích cực giả mạo
+ * - Ném lỗi chuẩn AI_RESPONSE_INVALID (HTTP 503) khi schema sai
+ *
+ * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
+ * Hỗ trợ triển khai và kiểm thử mã nguồn: AI Agent
  */
 
-function sanitizeScore(score, fieldName) {
-  if (score === null || score === undefined) return 0;
-  
-  let num;
-  if (typeof score === 'number') {
-    num = score;
-  } else if (typeof score === 'string') {
-    // Không chấp nhận chuỗi bậy bạ, chỉ parse chuỗi số thuần túy
-    const clean = score.replace('%', '').trim();
-    num = Number(clean);
-  } else {
-    throw new Error(`Trường điểm ${fieldName} không đúng định dạng số (nhận được ${typeof score}).`);
-  }
-
-  if (!Number.isFinite(num) || Number.isNaN(num)) {
-    throw new Error(`Trường điểm ${fieldName} có giá trị không hợp lệ (${score}).`);
-  }
-
-  // Clamping trong khoảng 0-100
-  return Math.max(0, Math.min(100, Math.round(num)));
+function createValidationError(message) {
+  const err = new Error(message);
+  err.status = 503;
+  err.code = 'AI_RESPONSE_INVALID';
+  return err;
 }
 
-function parseBooleanStrict(val, fieldName = 'hasSpeech') {
-  if (typeof val === 'boolean') return val;
-  if (typeof val === 'string') {
-    const lower = val.toLowerCase().trim();
-    if (lower === 'true') return true;
-    if (lower === 'false') return false;
+/**
+ * Validate một trường điểm số nghiêm ngặt
+ */
+function validateStrictScore(score, fieldName) {
+  if (score === null || score === undefined) {
+    throw createValidationError(`Thiếu trường điểm bắt buộc: ${fieldName}`);
   }
-  return false;
+
+  if (typeof score !== 'number' || !Number.isFinite(score) || Number.isNaN(score)) {
+    throw createValidationError(`Trường điểm ${fieldName} phải là một số hợp lệ (nhận được ${typeof score}: ${score}).`);
+  }
+
+  if (score < 0 || score > 100) {
+    throw createValidationError(`Trường điểm ${fieldName} (${score}) nằm ngoài thang điểm hợp lệ 0-100.`);
+  }
+
+  return Math.round(score);
+}
+
+/**
+ * Validate trường boolean nghiêm ngặt
+ */
+function validateStrictBoolean(val, fieldName = 'hasSpeech') {
+  if (typeof val !== 'boolean') {
+    throw createValidationError(`Trường ${fieldName} phải là boolean (true/false), không chấp nhận chuỗi hoặc kiểu khác (nhận được ${typeof val}: ${val}).`);
+  }
+  return val;
 }
 
 /**
@@ -49,16 +54,15 @@ function parseBooleanStrict(val, fieldName = 'hasSpeech') {
  */
 function validateReadAloudResponse(rawObj) {
   if (!rawObj || typeof rawObj !== 'object' || Array.isArray(rawObj)) {
-    throw new Error("Phản hồi từ AI không phải là một JSON object hợp lệ.");
+    throw createValidationError("Phản hồi từ AI không phải là một JSON object hợp lệ.");
   }
 
-  const hasSpeech = parseBooleanStrict(rawObj.hasSpeech, 'hasSpeech');
-  const transcription = typeof rawObj.transcription === 'string' ? rawObj.transcription.trim() : '';
+  const hasSpeech = validateStrictBoolean(rawObj.hasSpeech, 'hasSpeech');
 
-  if (!hasSpeech || !transcription) {
+  if (!hasSpeech) {
     return {
       hasSpeech: false,
-      transcription: '',
+      transcription: typeof rawObj.transcription === 'string' ? rawObj.transcription.trim() : '',
       pronunciationScore: 0,
       fluencyScore: 0,
       wordAssessments: [],
@@ -66,40 +70,52 @@ function validateReadAloudResponse(rawObj) {
         hasSpeech: false,
         quality: 'no_speech',
         noiseLevel: typeof rawObj.noiseLevel === 'string' ? rawObj.noiseLevel : 'unknown',
-        warning: 'Không phát hiện giọng nói từ thiết bị ghi âm.'
+        warning: typeof rawObj.warning === 'string' ? rawObj.warning : 'Không phát hiện giọng nói từ thiết bị ghi âm.'
       },
       feedback: {
-        pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : 'Không phát hiện tín hiệu giọng nói rõ ràng.',
-        fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : 'Chưa ghi nhận giọng nói.',
-        general: typeof rawObj.generalFeedback === 'string' ? rawObj.generalFeedback : 'Vui lòng kiểm tra micro và phát âm to hơn.'
+        pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : null,
+        fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : null,
+        general: typeof rawObj.generalFeedback === 'string' ? rawObj.generalFeedback : null
       }
     };
   }
 
-  const pronunciationScore = sanitizeScore(rawObj.pronunciationScore, 'pronunciationScore');
-  const fluencyScore = sanitizeScore(rawObj.fluencyScore, 'fluencyScore');
+  // Khi hasSpeech === true, transcription và các điểm bắt buộc phải có
+  if (typeof rawObj.transcription !== 'string' || !rawObj.transcription.trim()) {
+    throw createValidationError("Khi hasSpeech là true, trường transcription không được để trống.");
+  }
+
+  const transcription = rawObj.transcription.trim();
+  const pronunciationScore = validateStrictScore(rawObj.pronunciationScore, 'pronunciationScore');
+  const fluencyScore = validateStrictScore(rawObj.fluencyScore, 'fluencyScore');
 
   // Validate wordAssessments
   let wordAssessments = [];
-  if (Array.isArray(rawObj.wordAssessments)) {
+  if (rawObj.wordAssessments !== undefined && rawObj.wordAssessments !== null) {
+    if (!Array.isArray(rawObj.wordAssessments)) {
+      throw createValidationError("Trường wordAssessments phải là một mảng nếu được cung cấp.");
+    }
     wordAssessments = rawObj.wordAssessments.map((w, idx) => {
-      if (!w || typeof w !== 'object') return null;
+      if (!w || typeof w !== 'object') {
+        throw createValidationError(`Mục wordAssessments thứ ${idx} không hợp lệ.`);
+      }
       const validStatuses = ['correct', 'mispronounced', 'uncertain'];
-      const status = validStatuses.includes(w.status) ? w.status : 'uncertain';
+      if (!validStatuses.includes(w.status)) {
+        throw createValidationError(`Trạng thái status '${w.status}' trong wordAssessments không hợp lệ.`);
+      }
       return {
         word: String(w.word || '').toLowerCase().trim(),
         occurrenceIndex: Number.isInteger(w.occurrenceIndex) ? w.occurrenceIndex : idx,
-        status: status,
-        confidence: Number.isFinite(w.confidence) ? Math.max(0, Math.min(1, w.confidence)) : 0.8,
+        status: w.status,
+        confidence: typeof w.confidence === 'number' && Number.isFinite(w.confidence) ? w.confidence : null,
         feedback: typeof w.feedback === 'string' ? w.feedback : ''
       };
-    }).filter(Boolean);
+    });
   }
 
   // Validate audio quality
   const validQualities = ['good', 'poor', 'uncertain', 'no_speech'];
-  let quality = typeof rawObj.quality === 'string' && validQualities.includes(rawObj.quality) ? rawObj.quality : 'uncertain';
-  if (quality === 'good' && !rawObj.quality) quality = 'uncertain'; // Không được tự ý gán good nếu AI không trả
+  const quality = typeof rawObj.quality === 'string' && validQualities.includes(rawObj.quality) ? rawObj.quality : 'uncertain';
 
   return {
     hasSpeech: true,
@@ -114,9 +130,9 @@ function validateReadAloudResponse(rawObj) {
       warning: typeof rawObj.warning === 'string' ? rawObj.warning : null
     },
     feedback: {
-      pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : 'Phát âm tương đối rõ ràng.',
-      fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : 'Độ trôi chảy ổn định.',
-      general: typeof rawObj.generalFeedback === 'string' ? rawObj.generalFeedback : 'Bạn đã hoàn thành câu đọc.'
+      pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : null,
+      fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : null,
+      general: typeof rawObj.generalFeedback === 'string' ? rawObj.generalFeedback : null
     }
   };
 }
@@ -126,42 +142,46 @@ function validateReadAloudResponse(rawObj) {
  */
 function validateQAResponse(rawObj) {
   if (!rawObj || typeof rawObj !== 'object' || Array.isArray(rawObj)) {
-    throw new Error("Phản hồi từ AI không phải là một JSON object hợp lệ.");
+    throw createValidationError("Phản hồi từ AI không phải là một JSON object hợp lệ.");
   }
 
-  const hasSpeech = parseBooleanStrict(rawObj.hasSpeech, 'hasSpeech');
-  const transcription = typeof rawObj.transcription === 'string' ? rawObj.transcription.trim() : '';
+  const hasSpeech = validateStrictBoolean(rawObj.hasSpeech, 'hasSpeech');
 
-  if (!hasSpeech || !transcription) {
+  if (!hasSpeech) {
     return {
       hasSpeech: false,
-      transcription: '',
+      transcription: typeof rawObj.transcription === 'string' ? rawObj.transcription.trim() : '',
       scores: { relevance: 0, grammar: 0, vocabulary: 0, pronunciation: 0, fluency: 0 },
       audioQuality: {
         hasSpeech: false,
         quality: 'no_speech',
         noiseLevel: typeof rawObj.noiseLevel === 'string' ? rawObj.noiseLevel : 'unknown',
-        warning: 'Không phát hiện giọng nói từ thiết bị ghi âm.'
+        warning: typeof rawObj.warning === 'string' ? rawObj.warning : 'Không phát hiện giọng nói.'
       },
       feedback: {
-        relevance: typeof rawObj.relevanceFeedback === 'string' ? rawObj.relevanceFeedback : 'Chưa ghi nhận câu trả lời.',
-        grammar: typeof rawObj.grammarFeedback === 'string' ? rawObj.grammarFeedback : 'Chưa ghi nhận cấu trúc câu.',
-        vocabulary: typeof rawObj.vocabularyFeedback === 'string' ? rawObj.vocabularyFeedback : 'Chưa ghi nhận từ vựng.',
-        pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : 'Không phát hiện giọng nói.',
-        fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : 'Chưa ghi nhận giọng nói.'
+        relevance: typeof rawObj.relevanceFeedback === 'string' ? rawObj.relevanceFeedback : null,
+        grammar: typeof rawObj.grammarFeedback === 'string' ? rawObj.grammarFeedback : null,
+        vocabulary: typeof rawObj.vocabularyFeedback === 'string' ? rawObj.vocabularyFeedback : null,
+        pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : null,
+        fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : null
       },
-      improvedAnswer: typeof rawObj.improvedAnswer === 'string' ? rawObj.improvedAnswer : 'Please speak clearly into your microphone.'
+      improvedAnswer: typeof rawObj.improvedAnswer === 'string' ? rawObj.improvedAnswer : ''
     };
   }
 
-  const relevance = sanitizeScore(rawObj.relevanceScore, 'relevanceScore');
-  const grammar = sanitizeScore(rawObj.grammarScore, 'grammarScore');
-  const vocabulary = sanitizeScore(rawObj.vocabularyScore, 'vocabularyScore');
-  const pronunciation = sanitizeScore(rawObj.pronunciationScore, 'pronunciationScore');
-  const fluency = sanitizeScore(rawObj.fluencyScore, 'fluencyScore');
+  if (typeof rawObj.transcription !== 'string' || !rawObj.transcription.trim()) {
+    throw createValidationError("Khi hasSpeech là true, trường transcription không được để trống.");
+  }
+
+  const transcription = rawObj.transcription.trim();
+  const relevance = validateStrictScore(rawObj.relevanceScore, 'relevanceScore');
+  const grammar = validateStrictScore(rawObj.grammarScore, 'grammarScore');
+  const vocabulary = validateStrictScore(rawObj.vocabularyScore, 'vocabularyScore');
+  const pronunciation = validateStrictScore(rawObj.pronunciationScore, 'pronunciationScore');
+  const fluency = validateStrictScore(rawObj.fluencyScore, 'fluencyScore');
 
   const validQualities = ['good', 'poor', 'uncertain', 'no_speech'];
-  let quality = typeof rawObj.quality === 'string' && validQualities.includes(rawObj.quality) ? rawObj.quality : 'uncertain';
+  const quality = typeof rawObj.quality === 'string' && validQualities.includes(rawObj.quality) ? rawObj.quality : 'uncertain';
 
   return {
     hasSpeech: true,
@@ -174,19 +194,20 @@ function validateQAResponse(rawObj) {
       warning: typeof rawObj.warning === 'string' ? rawObj.warning : null
     },
     feedback: {
-      relevance: typeof rawObj.relevanceFeedback === 'string' ? rawObj.relevanceFeedback : 'Câu trả lời phù hợp với ngữ cảnh.',
-      grammar: typeof rawObj.grammarFeedback === 'string' ? rawObj.grammarFeedback : 'Cấu trúc ngữ pháp hoàn chỉnh.',
-      vocabulary: typeof rawObj.vocabularyFeedback === 'string' ? rawObj.vocabularyFeedback : 'Từ vựng lựa chọn phù hợp.',
-      pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : 'Phát âm rõ ràng.',
-      fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : 'Tốc độ phản xạ đều đặn.'
+      relevance: typeof rawObj.relevanceFeedback === 'string' ? rawObj.relevanceFeedback : null,
+      grammar: typeof rawObj.grammarFeedback === 'string' ? rawObj.grammarFeedback : null,
+      vocabulary: typeof rawObj.vocabularyFeedback === 'string' ? rawObj.vocabularyFeedback : null,
+      pronunciation: typeof rawObj.pronunciationFeedback === 'string' ? rawObj.pronunciationFeedback : null,
+      fluency: typeof rawObj.fluencyFeedback === 'string' ? rawObj.fluencyFeedback : null
     },
     improvedAnswer: typeof rawObj.improvedAnswer === 'string' ? rawObj.improvedAnswer : ''
   };
 }
 
 module.exports = {
-  sanitizeScore,
-  parseBooleanStrict,
+  createValidationError,
+  validateStrictScore,
+  validateStrictBoolean,
   validateReadAloudResponse,
   validateQAResponse
 };

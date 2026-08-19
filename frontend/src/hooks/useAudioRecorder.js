@@ -1,12 +1,20 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
-export const useAudioRecorder = () => {
+export const useAudioRecorder = ({ onAutoStop } = {}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [lastRecordedBlob, setLastRecordedBlob] = useState(null);
+
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
+  const isStoppingRef = useRef(false);
+  const onAutoStopRef = useRef(onAutoStop);
+
+  useEffect(() => {
+    onAutoStopRef.current = onAutoStop;
+  }, [onAutoStop]);
 
   // Expose WebAudio API hooks for visualizer
   const audioContextRef = useRef(null);
@@ -17,7 +25,6 @@ export const useAudioRecorder = () => {
     return () => {
       cleanup();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const cleanup = () => {
@@ -47,11 +54,72 @@ export const useAudioRecorder = () => {
     }
   };
 
+  const stopRecording = useCallback(() => {
+    return new Promise((resolve) => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive" || isStoppingRef.current) {
+        resolve(null);
+        return;
+      }
+
+      isStoppingRef.current = true;
+
+      mediaRecorderRef.current.onstop = () => {
+        const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const audioBlob = audioChunksRef.current.length > 0
+          ? new Blob(audioChunksRef.current, { type: mimeType })
+          : null;
+
+        // Cleanup audio nodes
+        if (sourceNodeRef.current) {
+          try { sourceNodeRef.current.disconnect(); } catch (e) { }
+          sourceNodeRef.current = null;
+        }
+        if (analyserRef.current) {
+          try { analyserRef.current.disconnect(); } catch (e) { }
+          analyserRef.current = null;
+        }
+        if (audioContextRef.current) {
+          try { audioContextRef.current.close(); } catch (e) { }
+          audioContextRef.current = null;
+        }
+
+        cleanup();
+        setIsRecording(false);
+        setRecordingTime(0);
+        setLastRecordedBlob(audioBlob);
+        isStoppingRef.current = false;
+
+        resolve(audioBlob);
+      };
+
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (err) {
+        isStoppingRef.current = false;
+        resolve(null);
+      }
+    });
+  }, []);
+
+  const handleAutoStop = useCallback(async () => {
+    const blob = await stopRecording();
+    if (onAutoStopRef.current && blob) {
+      onAutoStopRef.current(blob);
+    }
+  }, [stopRecording]);
+
   const startRecording = async () => {
     try {
       cleanup();
       audioChunksRef.current = [];
       setRecordingTime(0);
+      setLastRecordedBlob(null);
+      isStoppingRef.current = false;
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -66,7 +134,6 @@ export const useAudioRecorder = () => {
         sourceNodeRef.current.connect(analyserRef.current);
       }
 
-      // Xác định mimeType phù hợp tùy theo trình duyệt hỗ trợ
       let options = {};
       if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         options = { mimeType: 'audio/webm;codecs=opus' };
@@ -87,18 +154,18 @@ export const useAudioRecorder = () => {
         }
       };
 
-      mediaRecorder.start(250); // Thu nhận mỗi 250ms
+      mediaRecorder.start(250);
       setIsRecording(true);
 
+      let currentSec = 0;
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => {
-          if (prev >= 119) {
-            // Đạt ngưỡng tối đa 120 giây (đồng bộ giới hạn 10MB)
-            stopRecording();
-            return 120;
-          }
-          return prev + 1;
-        });
+        currentSec += 1;
+        setRecordingTime(currentSec);
+
+        if (currentSec >= 120) {
+          // Dừng khi đạt đúng 120s và bảo toàn blob
+          handleAutoStop();
+        }
       }, 1000);
 
     } catch (error) {
@@ -108,58 +175,12 @@ export const useAudioRecorder = () => {
     }
   };
 
-  const stopRecording = () => {
-    return new Promise((resolve) => {
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
-        // cleanup audio nodes as well
-        if (analyserRef.current) {
-          try { analyserRef.current.disconnect(); } catch (e) {}
-          analyserRef.current = null;
-        }
-        if (audioContextRef.current) {
-          try { audioContextRef.current.close(); } catch (e) {}
-          audioContextRef.current = null;
-        }
-        resolve(null);
-        return;
-      }
-
-      mediaRecorderRef.current.onstop = () => {
-        // Xác định type chính xác của tệp xuất ra dựa vào recorder
-        const mimeType = mediaRecorderRef.current.mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        
-        // cleanup audio nodes
-        if (sourceNodeRef.current) {
-          try { sourceNodeRef.current.disconnect(); } catch (e) { }
-          sourceNodeRef.current = null;
-        }
-        if (analyserRef.current) {
-          try { analyserRef.current.disconnect(); } catch (e) { }
-          analyserRef.current = null;
-        }
-        if (audioContextRef.current) {
-          try { audioContextRef.current.close(); } catch (e) { }
-          audioContextRef.current = null;
-        }
-
-        cleanup();
-        setIsRecording(false);
-        setRecordingTime(0);
-        
-        resolve(audioBlob);
-      };
-
-      mediaRecorderRef.current.stop();
-    });
-  };
-
   return {
     isRecording,
     recordingTime,
+    lastRecordedBlob,
     startRecording,
     stopRecording,
-    // expose analyser and audio context for visualizer
     analyserRef,
     audioContextRef,
     streamRef

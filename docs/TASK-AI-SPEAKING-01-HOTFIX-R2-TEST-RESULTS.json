@@ -1,0 +1,61 @@
+{
+  "task": "TASK-AI-SPEAKING-01-HOTFIX-R2",
+  "baseCommitSha": "ccf1dce6822914e7c15d6f109a6110f655bbdf3b",
+  "workingTreeDirty": true,
+  "taskOwner": "NGUYỄN DŨNG QUỐC ANH",
+  "support": "AI Agent",
+  "modelConfiguration": {
+    "configured_model": "gemini-3.7-flash",
+    "default_speaking_model": "gemini-3.7-flash",
+    "default_general_model": "gemini-3.7-flash",
+    "resolution_precedence": "GEMINI_SPEAKING_MODEL -> GEMINI_MODEL -> DEFAULT_GEMINI_SPEAKING_MODEL"
+  },
+  "automatedTests": {
+    "backend": {
+      "status": "PASS",
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm test"
+    },
+    "frontend": {
+      "status": "PASS",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "command": "npm run test:speaking"
+    },
+    "build": {
+      "status": "PASS",
+      "command": "npm run build"
+    },
+    "lint": {
+      "status": "NOT_RUN",
+      "reason": "no lint script configured"
+    }
+  },
+  "liveVerification": {
+    "geminiBenchmark": {
+      "status": "NOT_VERIFIED",
+      "reason": "MISSING_REAL_SPEECH_FIXTURE",
+      "details": "Audio fixture hiện tại là tone mẫu tổng hợp. Live benchmark được phân tách an toàn và chỉ chạy khi bật RUN_LIVE_GEMINI_TESTS=true kèm GEMINI_API_KEY hợp lệ.",
+      "model": "gemini-3.7-flash",
+      "runs": 0,
+      "scores": []
+    },
+    "railway": {
+      "status": "NOT_VERIFIED",
+      "note": "Yêu cầu cấu hình biến thủ công và kiểm tra sau khi deploy Railway"
+    },
+    "vercel": {
+      "status": "NOT_VERIFIED",
+      "note": "Yêu cầu kiểm tra HTTPS microphone permission trên Vercel sau khi deploy"
+    },
+    "realMicrophoneE2E": {
+      "status": "NOT_VERIFIED",
+      "note": "Cần kiểm thử ghi âm người thật trên trình duyệt sau khi deploy"
+    }
+  }
+}
