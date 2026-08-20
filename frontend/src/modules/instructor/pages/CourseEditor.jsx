@@ -74,7 +74,15 @@ const CourseEditor = () => {
                   title: l.title,
                   type: l.content_type,
                   contentUrl: l.content_url,
+                  storageKey: l.storage_key || l.storageKey || (l.content_url && !l.content_url.startsWith('http') ? l.content_url : null),
+                  storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : 'videos'),
+                  storageProvider: l.storage_provider || l.storageProvider || (l.content_url ? (l.content_url.startsWith('http') ? 'external' : 'supabase') : null),
+                  mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : 'video/mp4'),
+                  sizeBytes: l.size_bytes || l.sizeBytes || 0,
+                  checksumSha256: l.checksum_sha256 || l.checksumSha256 || null,
+                  mediaStatus: l.media_status || l.mediaStatus || (l.content_url ? 'READY' : null),
                   uploading: false,
+                  uploadVerified: !!l.content_url,
                   fileName: l.content_url ? l.content_url.split('/').pop() : '',
                   speakingSentences: l.speaking_sentences || '',
                   speakingQuestions: l.speaking_questions || ''
@@ -284,8 +292,12 @@ const CourseEditor = () => {
           setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
           return;
         }
-        if (!lesson.contentUrl) {
-          setErrorMsg(`Vui lòng tải lên nội dung (video/pdf) cho bài học "${lesson.title}".`);
+        if (lesson.uploading) {
+          setErrorMsg(`Bài học "${lesson.title}" đang được tải lên. Vui lòng chờ hoàn tất.`);
+          return;
+        }
+        if ((lesson.type === 'video' || lesson.type === 'pdf') && !lesson.contentUrl) {
+          setErrorMsg(`Vui lòng tải lên nội dung (${lesson.type.toUpperCase()}) cho bài học "${lesson.title}".`);
           return;
         }
       }
@@ -318,6 +330,13 @@ const CourseEditor = () => {
         setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
         return;
       }
+      for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
+        const lesson = section.lessons[lIdx];
+        if (lesson.uploading) {
+          setErrorMsg(`Bài học "${lesson.title}" đang được tải lên. Vui lòng đợi.`);
+          return;
+        }
+      }
     }
 
     setLoading(true);
@@ -349,8 +368,15 @@ const CourseEditor = () => {
         lessons: sec.lessons.map((les, lIdx) => ({
           id: les.id,
           title: les.title,
-          contentType: les.type, // 'video' or 'pdf'
+          contentType: les.type, // 'video', 'pdf', 'quiz', 'speaking', 'text'
           contentUrl: les.contentUrl,
+          storageProvider: les.storageProvider || (les.contentUrl ? (les.contentUrl.startsWith('http') ? 'external' : 'supabase') : null),
+          storageBucket: les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null),
+          storageKey: les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null),
+          mimeType: les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null)),
+          sizeBytes: les.sizeBytes || 0,
+          checksumSha256: les.checksumSha256 || null,
+          mediaStatus: les.mediaStatus || (les.contentUrl ? 'READY' : null),
           orderIndex: lIdx + 1,
           speakingSentences: les.speakingSentences || '',
           speakingQuestions: les.speakingQuestions || ''
