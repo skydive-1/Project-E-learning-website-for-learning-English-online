@@ -16,16 +16,19 @@ const {
 describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup & Classifier Test Suite', () => {
   let origDeleteStorageObject;
   let origQuery;
+  let origPool;
   let deletedFromStorage = [];
 
   before(() => {
     origDeleteStorageObject = supabaseStorage.deleteStorageObject;
     origQuery = db.query;
+    origPool = db.pool;
   });
 
   after(() => {
     supabaseStorage.deleteStorageObject = origDeleteStorageObject;
     db.query = origQuery;
+    db.pool = origPool;
   });
 
   beforeEach(() => {
@@ -152,6 +155,9 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
   describe('3. Course Service Integration: Replace Asset & Delete Course', () => {
     it('3.1. deleteCourse collects course assets before deletion and triggers orphan cleanup', async () => {
       db.query = async (sql, params) => {
+        if (sql.includes('SELECT course_id, instructor_id FROM courses')) {
+          return { rows: [{ course_id: 10, instructor_id: 2 }] };
+        }
         if (sql.includes('FROM lessons l') && sql.includes('course_id = $1')) {
           return {
             rows: [
@@ -167,6 +173,13 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
           return { rows: [{ total_ref: '0' }] };
         }
         return { rows: [] };
+      };
+
+      db.pool = {
+        connect: async () => ({
+          query: db.query,
+          release: () => {}
+        })
       };
 
       const deleted = await coursesService.deleteCourse(10);

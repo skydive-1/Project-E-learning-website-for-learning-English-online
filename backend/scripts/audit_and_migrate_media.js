@@ -53,18 +53,8 @@ function parseSupabaseStorageUrl(url) {
  * @returns {string|null} Đường dẫn tuyệt đối an toàn hoặc null nếu không hợp lệ / traversal
  */
 function resolveLocalUploadPath(rawUrl) {
-  if (!rawUrl || typeof rawUrl !== 'string') return null;
-  if (!rawUrl.startsWith('/uploads/') && !rawUrl.startsWith('uploads/')) return null;
-
-  const sanitizedRelative = rawUrl.replace(/^\/?uploads\/?/, '');
-  const resolved = path.resolve(UPLOADS_ROOT, sanitizedRelative);
-
-  // Bảo vệ chống Path Traversal: đường dẫn phân giải BẮT BUỘC nằm trong UPLOADS_ROOT
-  if (!resolved.startsWith(UPLOADS_ROOT)) {
-    console.warn(`🚨 [Path Traversal Blocked] Từ chối truy cập đường dẫn bất hợp lệ: ${rawUrl}`);
-    return null;
-  }
-  return resolved;
+  const { resolveSafePath, UPLOADS_ROOT } = require('../src/utils/safePath.util');
+  return resolveSafePath(UPLOADS_ROOT, rawUrl, { checkExists: false });
 }
 
 /**

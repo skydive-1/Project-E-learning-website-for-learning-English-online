@@ -69,24 +69,31 @@ const CourseEditor = () => {
               setSections(course.sections.map(sec => ({
                 id: sec.section_id,
                 title: sec.title,
-                lessons: (sec.lessons || []).map(l => ({
-                  id: l.lesson_id,
-                  title: l.title,
-                  type: l.content_type,
-                  contentUrl: l.content_url,
-                  storageKey: l.storage_key || l.storageKey || (l.content_url && !l.content_url.startsWith('http') ? l.content_url : null),
-                  storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : 'videos'),
-                  storageProvider: l.storage_provider || l.storageProvider || (l.content_url ? (l.content_url.startsWith('http') ? 'external' : 'supabase') : null),
-                  mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : 'video/mp4'),
-                  sizeBytes: l.size_bytes || l.sizeBytes || 0,
-                  checksumSha256: l.checksum_sha256 || l.checksumSha256 || null,
-                  mediaStatus: l.media_status || l.mediaStatus || (l.content_url ? 'READY' : null),
-                  uploading: false,
-                  uploadVerified: !!l.content_url,
-                  fileName: l.content_url ? l.content_url.split('/').pop() : '',
-                  speakingSentences: l.speaking_sentences || '',
-                  speakingQuestions: l.speaking_questions || ''
-                }))
+                lessons: (sec.lessons || []).map(l => {
+                  const isExternal = l.content_url && (l.content_url.startsWith('http://') || l.content_url.startsWith('https://'));
+                  const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : (l.storage_key ? 'READY' : 'PENDING_AUDIT'));
+                  const isVerified = status === 'READY' || isExternal;
+
+                  return {
+                    id: l.lesson_id,
+                    title: l.title,
+                    type: l.content_type,
+                    contentUrl: l.content_url,
+                    storageKey: l.storage_key || l.storageKey || (!isExternal ? l.content_url : null),
+                    storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : 'videos'),
+                    storageProvider: l.storage_provider || l.storageProvider || (isExternal ? 'external' : 'supabase'),
+                    mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : 'video/mp4'),
+                    sizeBytes: l.size_bytes || l.sizeBytes || 0,
+                    checksumSha256: l.checksum_sha256 || l.checksumSha256 || null,
+                    mediaStatus: status,
+                    pendingUploadId: null,
+                    uploading: false,
+                    uploadVerified: isVerified,
+                    fileName: l.content_url ? l.content_url.split('/').pop() : '',
+                    speakingSentences: l.speaking_sentences || '',
+                    speakingQuestions: l.speaking_questions || ''
+                  };
+                })
               })));
             }
           }
@@ -240,6 +247,7 @@ const CourseEditor = () => {
         newSections[sIdx].lessons[lIdx].sizeBytes = response.data.sizeBytes || file.size;
         newSections[sIdx].lessons[lIdx].checksumSha256 = response.data.checksumSha256;
         newSections[sIdx].lessons[lIdx].mediaStatus = response.data.mediaStatus || 'READY';
+        newSections[sIdx].lessons[lIdx].pendingUploadId = response.data.pendingUploadId || null;
         newSections[sIdx].lessons[lIdx].type = detectedType;
         newSections[sIdx].lessons[lIdx].uploading = false;
         newSections[sIdx].lessons[lIdx].uploadVerified = true;
@@ -296,9 +304,16 @@ const CourseEditor = () => {
           setErrorMsg(`Bài học "${lesson.title}" đang được tải lên. Vui lòng chờ hoàn tất.`);
           return;
         }
-        if ((lesson.type === 'video' || lesson.type === 'pdf') && !lesson.contentUrl) {
-          setErrorMsg(`Vui lòng tải lên nội dung (${lesson.type.toUpperCase()}) cho bài học "${lesson.title}".`);
-          return;
+        if (lesson.type === 'video' || lesson.type === 'pdf') {
+          if (!lesson.contentUrl && !lesson.storageKey) {
+            setErrorMsg(`Vui lòng tải lên nội dung (${lesson.type.toUpperCase()}) cho bài học "${lesson.title}".`);
+            return;
+          }
+          const isExternal = lesson.contentUrl && (lesson.contentUrl.startsWith('http://') || lesson.contentUrl.startsWith('https://'));
+          if (!isExternal && (!lesson.uploadVerified || lesson.mediaStatus !== 'READY')) {
+            setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng (trạng thái: ${lesson.mediaStatus || 'CHƯA_XÁC_THỰC'}). Vui lòng tải lại tệp tin trước khi xuất bản.`);
+            return;
+          }
         }
       }
     }
@@ -357,7 +372,7 @@ const CourseEditor = () => {
 
     const payload = {
       courseName,
-      subjectId: parseInt(subjectId),
+      subjectId: parseInt(subjectId, 10),
       startDate,
       endDate,
       status, // 1: Published, 0: Draft
@@ -377,6 +392,7 @@ const CourseEditor = () => {
           sizeBytes: les.sizeBytes || 0,
           checksumSha256: les.checksumSha256 || null,
           mediaStatus: les.mediaStatus || (les.contentUrl ? 'READY' : null),
+          pendingUploadId: les.pendingUploadId || null,
           orderIndex: lIdx + 1,
           speakingSentences: les.speakingSentences || '',
           speakingQuestions: les.speakingQuestions || ''
@@ -618,15 +634,19 @@ const CourseEditor = () => {
                                 onClick={() => triggerFileSelect(sIdx, lIdx)}
                                 disabled={lesson.uploading}
                                 style={{
-                                  background: lesson.contentUrl ? '#ecfdf5' : '',
-                                  color: lesson.contentUrl ? '#059669' : '',
-                                  borderColor: lesson.contentUrl ? '#a7f3d0' : ''
+                                  background: lesson.uploading ? '#f8fafc' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fef2f2' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fffbeb' : lesson.contentUrl ? '#ecfdf5' : '',
+                                  color: lesson.uploading ? '#64748b' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#dc2626' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#d97706' : lesson.contentUrl ? '#059669' : '',
+                                  borderColor: (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fecaca' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fde68a' : lesson.contentUrl ? '#a7f3d0' : ''
                                 }}
                               >
                                 {lesson.uploading ? (
-                                  <><FiLoader className="spin" /> Tải lên...</>
+                                  <><FiLoader className="spin" /> Đang tải...</>
+                                ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
+                                  <><FiUpload /> ⚠️ Cần tải lại</>
+                                ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
+                                  <><FiUpload /> ⏳ Chờ kiểm định</>
                                 ) : lesson.contentUrl ? (
-                                  <><FiUpload /> Đã tải lên</>
+                                  <><FiUpload /> ✓ Đã tải lên</>
                                 ) : (
                                   <><FiUpload /> Chọn tệp</>
                                 )}

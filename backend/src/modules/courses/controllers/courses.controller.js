@@ -91,17 +91,14 @@ exports.uploadFile = async (req, res, next) => {
         }
       }
 
-      // Mặc định (ENABLE_DRM_PACKAGING=false): Upload trực tiếp lên Supabase Storage bucket 'videos'
       const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.mp4`;
       const uploadResult = await supabaseStorage.uploadVideoToSupabase(req.file.path, objectKey, 'video/mp4');
 
       if (!uploadResult.success) {
-        const statusCode = (uploadResult.code === 'UNSUPPORTED_VIDEO_CODEC' ||
-                            uploadResult.code === 'INVALID_VIDEO_CONTAINER' ||
-                            uploadResult.code === 'EMPTY_FILE' ||
+        const statusCode = (uploadResult.code === 'INVALID_VIDEO_CONTAINER' || 
+                            uploadResult.code === 'UNSUPPORTED_VIDEO_CODEC' ||
                             uploadResult.code === 'FILE_TOO_LARGE' ||
-                            uploadResult.code === 'CORRUPTED_VIDEO_FILE' ||
-                            uploadResult.code === 'NO_VIDEO_STREAM') ? 400 : 500;
+                            uploadResult.code === 'EMPTY_FILE') ? 400 : 500;
         return res.status(statusCode).json({
           success: false,
           code: uploadResult.code || 'UPLOAD_FAILED',
@@ -109,9 +106,27 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
+      // Đăng ký pending upload vào cơ sở dữ liệu
+      const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+      const pendingUploadId = crypto.randomUUID();
+      try {
+        await orphanCleanupService.registerPendingUpload({
+          uploadId: pendingUploadId,
+          instructorId: req.user?.id || req.user?.userId || instructorId,
+          storageKey: uploadResult.storageKey,
+          storageBucket: 'videos',
+          mimeType: 'video/mp4',
+          sizeBytes: uploadResult.sizeBytes,
+          checksumSha256: uploadResult.checksumSha256
+        });
+      } catch (pendingErr) {
+        console.warn('⚠️ [uploadFile] Cảnh báo đăng ký pending upload:', pendingErr.message);
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Tải video lên Supabase Storage thành công',
+        pendingUploadId,
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
         storageProvider: 'supabase',
@@ -151,9 +166,27 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
+      // Đăng ký pending upload vào cơ sở dữ liệu
+      const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+      const pendingUploadId = crypto.randomUUID();
+      try {
+        await orphanCleanupService.registerPendingUpload({
+          uploadId: pendingUploadId,
+          instructorId: req.user?.id || req.user?.userId || instructorId,
+          storageKey: uploadResult.storageKey,
+          storageBucket: 'documents',
+          mimeType: 'application/pdf',
+          sizeBytes: uploadResult.sizeBytes,
+          checksumSha256: uploadResult.checksumSha256
+        });
+      } catch (pendingErr) {
+        console.warn('⚠️ [uploadFile] Cảnh báo đăng ký pending upload:', pendingErr.message);
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Tải tài liệu PDF lên Supabase Storage thành công',
+        pendingUploadId,
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
         storageProvider: 'supabase',
@@ -191,9 +224,10 @@ exports.uploadFile = async (req, res, next) => {
 
 exports.createCourse = async (req, res, next) => {
   try {
-    // instructor_id lấy từ auth middleware (req.user.id)
-    const instructorId = req.user.id;
-    const course = await coursesService.createCourse(req.body, instructorId);
+    // Bắt buộc lấy instructorId duy nhất từ token đã xác thực
+    const instructorId = req.user.id || req.user.userId;
+    const userRole = req.user.roleId || req.user.role || 2;
+    const course = await coursesService.createCourse(req.body, instructorId, userRole);
     
     res.status(201).json({
       success: true,
@@ -265,7 +299,9 @@ exports.getCourseById = async (req, res, next) => {
 exports.updateCourse = async (req, res, next) => {
   try {
     const { courseId } = req.params;
-    const course = await coursesService.updateCourse(courseId, req.body);
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.roleId || req.user?.role || 2;
+    const course = await coursesService.updateCourse(courseId, req.body, userId, userRole);
     if (!course) {
       return res.status(404).json({
         success: false,
@@ -285,7 +321,9 @@ exports.updateCourse = async (req, res, next) => {
 exports.deleteCourse = async (req, res, next) => {
   try {
     const { courseId } = req.params;
-    const result = await coursesService.deleteCourse(courseId);
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.roleId || req.user?.role || 2;
+    const result = await coursesService.deleteCourse(courseId, userId, userRole);
     if (!result) {
       return res.status(404).json({
         success: false,

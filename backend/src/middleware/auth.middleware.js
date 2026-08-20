@@ -243,13 +243,13 @@ const authenticateVideoToken = (req, res, next) => {
       }
     }
 
-    // 🔒 3. Xác thực Token / Ticket
-    const token = req.query.ticket || req.query.token;
+    // 🔒 3. Xác thực Token / Ticket (Ưu tiên Header X-Video-Ticket, hỗ trợ fallback query param ?ticket=)
+    const token = req.headers['x-video-ticket'] || req.query.ticket || req.query.token;
     if (!token) {
       return res.status(401).json({
         success: false,
         code: 'AUTH_REQUIRED',
-        message: 'Không có token xác thực, quyền truy cập video bị từ chối'
+        message: 'Không có token/ticket xác thực, quyền truy cập video bị từ chối'
       });
     }
 

@@ -18,6 +18,12 @@ router.get('/video/ticket/:lessonId', authenticate, lessonsController.getVideoTi
 // GET /api/lessons/video/stream/:lessonId - Stream video bảo mật
 router.get('/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
 
+// GET /api/lessons/dash/:lessonId/manifest.mpd - Stream DASH MPD manifest có bảo vệ ticket
+router.get('/dash/:lessonId/manifest.mpd', authenticateVideoToken, lessonsController.streamDashManifest);
+
+// GET /api/lessons/dash/:lessonId/:segmentFile - Stream DASH media/audio segments có bảo vệ ticket
+router.get('/dash/:lessonId/:segmentFile', authenticateVideoToken, lessonsController.streamDashSegment);
+
 // Tài liệu đính kèm bài học (Lesson Materials / Resources PDF)
 router.post('/:lessonId/materials', authenticate, authorize([1, 2]), upload.materialPdf.single('file'), lessonsController.uploadMaterial);
 router.get('/:lessonId/materials', authenticate, lessonsController.getMaterialsByLesson);

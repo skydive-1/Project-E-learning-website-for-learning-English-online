@@ -206,9 +206,10 @@ exports.streamLessonVideo = async (req, res, next) => {
     }
 
     // C. Nếu là file video cục bộ (Legacy local file)
-    const filePath = path.resolve(__dirname, '../../../../', contentUrl.replace(/^\//, ''));
+    const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+    const filePath = resolveSafePath(UPLOADS_ROOT, contentUrl, { checkExists: true });
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
         message: 'Tệp video không tồn tại trên hệ thống hoặc đã bị xóa.'
@@ -357,8 +358,9 @@ exports.previewMaterial = async (req, res, next) => {
     }
 
     // 5. Nếu là file local legacy
-    const filePath = path.resolve(__dirname, '../../../../', (mat.file_url || '').replace(/^\//, ''));
-    if (fs.existsSync(filePath)) {
+    const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+    const filePath = resolveSafePath(UPLOADS_ROOT, mat.file_url || '', { checkExists: true });
+    if (filePath && fs.existsSync(filePath)) {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(mat.file_name)}"`);
       return fs.createReadStream(filePath).pipe(res);

@@ -275,3 +275,38 @@ CREATE TABLE IF NOT EXISTS pdf_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_doc ON pdf_notes(user_id, lesson_id, document_ref);
 CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, lesson_id, page_number);
+
+-- 20. Bảng Quản lý Upload Tạm thời & TTL Cleanup (pending_media_uploads) - TASK-DURABLE-MEDIA-R2.1
+CREATE TABLE IF NOT EXISTS pending_media_uploads (
+  upload_id UUID PRIMARY KEY,
+  instructor_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  storage_provider VARCHAR(50) NOT NULL DEFAULT 'supabase',
+  storage_bucket VARCHAR(50) NOT NULL,
+  storage_key TEXT NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  size_bytes BIGINT NOT NULL DEFAULT 0,
+  checksum_sha256 VARCHAR(64) NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CLAIMING', 'CLEANING', 'COMMITTED', 'EXPIRED')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP + INTERVAL '24 hours'),
+  claimed_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_status_expires ON pending_media_uploads(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_instructor ON pending_media_uploads(instructor_id);
+CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
+
+-- 21. Bảng Hàng đợi Thử lại Xóa Storage Thất bại (failed_storage_deletions) - TASK-DURABLE-MEDIA-R2.1
+CREATE TABLE IF NOT EXISTS failed_storage_deletions (
+  deletion_id SERIAL PRIMARY KEY,
+  storage_provider VARCHAR(50) NOT NULL DEFAULT 'supabase',
+  storage_bucket VARCHAR(50) NOT NULL,
+  storage_key TEXT NOT NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT,
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING_RETRY' CHECK (status IN ('PENDING_RETRY', 'FAILED_PERMANENT', 'RESOLVED')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  next_retry_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_failed_storage_deletions_retry ON failed_storage_deletions(status, next_retry_at);
+
