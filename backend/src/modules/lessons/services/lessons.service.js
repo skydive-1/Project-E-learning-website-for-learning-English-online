@@ -171,8 +171,20 @@ class LessonsService {
    */
   async deleteLesson(lessonId) {
     try {
-      const result = await db.query('DELETE FROM lessons WHERE lesson_id = $1 RETURNING lesson_id', [parseInt(lessonId, 10)]);
-      return result.rows.length > 0;
+      const cleanLessonId = parseInt(lessonId, 10);
+      const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+      const assetsToCleanup = await orphanCleanupService.collectAssetsFromLesson(cleanLessonId);
+
+      const result = await db.query('DELETE FROM lessons WHERE lesson_id = $1 RETURNING lesson_id', [cleanLessonId]);
+      const deleted = result.rows.length > 0;
+
+      if (deleted && assetsToCleanup.length > 0) {
+        orphanCleanupService.cleanupUnreferencedAssets(assetsToCleanup).catch((err) => {
+          console.warn('⚠️ [LessonsService.deleteLesson] Cảnh báo dọn dẹp orphan asset:', err.message);
+        });
+      }
+
+      return deleted;
     } catch (error) {
       handleServiceError(error, 'Lỗi xóa bài giảng');
     }
@@ -371,12 +383,14 @@ class LessonsService {
       // 2. Xóa trong CSDL
       await db.query(`DELETE FROM lesson_materials WHERE material_id = $1`, [cleanMaterialId]);
 
-      // 3. Xóa trên Supabase Storage nếu là storage object
+      // 3. Xóa trên Supabase Storage nếu là storage object và không còn tham chiếu nào khác
       if (storageKey) {
-        const { deleteStorageObject } = require('../../../utils/supabaseStorage');
-        deleteStorageObject(storageKey, storageBucket).catch(e => {
+        try {
+          const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+          await orphanCleanupService.cleanupUnreferencedAssets([{ key: storageKey, bucket: storageBucket }]);
+        } catch (e) {
           console.warn(`[Storage Delete] Cảnh báo lỗi xóa object ${storageKey} trên Supabase:`, e.message);
-        });
+        }
       }
 
       // 4. Xóa file vật lý trên đĩa nếu là file local legacy

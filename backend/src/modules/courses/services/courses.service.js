@@ -1,5 +1,6 @@
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
+const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 
 class CoursesService {
   async getSubjects() {
@@ -43,8 +44,73 @@ class CoursesService {
     }
   }
 
+  /**
+   * Phân loại và chuẩn hóa metadata lưu trữ bền vững cho từng bài học
+   */
+  _resolveMediaMetadata(lessonData) {
+    const contentType = lessonData.contentType || lessonData.type || 'video';
+    const contentUrl = lessonData.contentUrl || lessonData.url || '';
+    const isNonMedia = contentType === 'quiz' || contentType === 'speaking' || contentType === 'text';
+
+    if (isNonMedia) {
+      return {
+        contentType,
+        contentUrl,
+        storageProvider: null,
+        storageBucket: null,
+        storageKey: null,
+        mimeType: null,
+        sizeBytes: 0,
+        checksumSha256: null,
+        mediaStatus: 'READY'
+      };
+    }
+
+    const isPdf = contentType === 'pdf' || (contentUrl && contentUrl.endsWith('.pdf'));
+    const isExternal = contentUrl && (contentUrl.startsWith('http://') || contentUrl.startsWith('https://')) && !contentUrl.includes('supabase.co');
+    const isLocal = contentUrl && contentUrl.startsWith('/uploads/');
+
+    let storageKey = lessonData.storageKey || null;
+    let storageBucket = lessonData.storageBucket || null;
+    let storageProvider = lessonData.storageProvider || null;
+    let mimeType = lessonData.mimeType || (isPdf ? 'application/pdf' : 'video/mp4');
+    let sizeBytes = lessonData.sizeBytes || 0;
+    let checksumSha256 = lessonData.checksumSha256 || null;
+    let mediaStatus = lessonData.mediaStatus || (contentUrl ? 'READY' : null);
+
+    if (isExternal) {
+      storageProvider = 'external';
+      storageBucket = null;
+      storageKey = null;
+      mediaStatus = 'READY';
+    } else if (isLocal) {
+      storageProvider = 'local';
+      storageBucket = null;
+      storageKey = contentUrl;
+      mediaStatus = 'READY';
+    } else {
+      // Supabase Storage
+      storageProvider = storageProvider || 'supabase';
+      storageBucket = storageBucket || (isPdf ? 'documents' : 'videos');
+      storageKey = storageKey || (contentUrl && !contentUrl.startsWith('http') ? contentUrl : null);
+    }
+
+    return {
+      contentType: isPdf ? 'pdf' : (contentType || 'video'),
+      contentUrl,
+      storageProvider,
+      storageBucket,
+      storageKey,
+      mimeType,
+      sizeBytes,
+      checksumSha256,
+      mediaStatus
+    };
+  }
+
   async createCourse(courseData, instructorId) {
     const client = await db.pool.connect();
+    const newlyUploadedKeys = [];
     try {
       await client.query('BEGIN');
 
@@ -69,7 +135,7 @@ class CoursesService {
       const finalPrice = price || 0;
       const finalSubjectId = subjectId ? parseInt(subjectId) : null;
 
-      // 1. Chèn khóa học vào bảng courses (Đã đồng bộ với Supabase)
+      // 1. Chèn khóa học vào bảng courses
       const courseResult = await client.query(`
         INSERT INTO courses (
           subject_id, 
@@ -102,7 +168,7 @@ class CoursesService {
       // 2. Chèn các chương (sections) và bài học (lessons)
       if (sections && Array.isArray(sections)) {
         for (let i = 0; i < sections.length; i++) {
-          await this._insertSection(client, courseId, sections[i], i + 1);
+          await this._insertSection(client, courseId, sections[i], i + 1, newlyUploadedKeys);
         }
       }
 
@@ -114,6 +180,10 @@ class CoursesService {
       return newCourse;
     } catch (error) {
       await client.query('ROLLBACK');
+      // Dọn dẹp rollback an toàn cho các asset mới upload nếu DB thất bại
+      if (newlyUploadedKeys.length > 0) {
+        orphanCleanupService.rollbackNewUploads(newlyUploadedKeys).catch(() => {});
+      }
       handleServiceError(error, 'Lỗi tạo khóa học');
     } finally {
       client.release();
@@ -123,7 +193,7 @@ class CoursesService {
   /**
    * Helper để chèn section
    */
-  async _insertSection(client, courseId, sectionData, defaultOrder) {
+  async _insertSection(client, courseId, sectionData, defaultOrder, trackedKeys = []) {
     const orderIndex = sectionData.orderIndex !== undefined ? sectionData.orderIndex : defaultOrder;
 
     const result = await client.query(`
@@ -136,7 +206,7 @@ class CoursesService {
 
     if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
       for (let i = 0; i < sectionData.lessons.length; i++) {
-        await this._insertLesson(client, sectionId, sectionData.lessons[i], i + 1);
+        await this._insertLesson(client, sectionId, sectionData.lessons[i], i + 1, trackedKeys);
       }
     }
   }
@@ -144,21 +214,16 @@ class CoursesService {
   /**
    * Helper để chèn bài học
    */
-  async _insertLesson(client, sectionId, lessonData, defaultOrder) {
+  async _insertLesson(client, sectionId, lessonData, defaultOrder, trackedKeys = []) {
     const orderIndex = lessonData.orderIndex !== undefined ? lessonData.orderIndex : defaultOrder;
-    const contentType = lessonData.contentType || lessonData.type || 'video';
-    const contentUrl = lessonData.contentUrl || lessonData.url || '';
     const speakingSentences = lessonData.speakingSentences || lessonData.speaking_sentences || '';
     const speakingQuestions = lessonData.speakingQuestions || lessonData.speaking_questions || '';
 
-    const isPdf = contentType === 'pdf' || contentUrl.endsWith('.pdf');
-    const storageKey = lessonData.storageKey || (contentUrl && !contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('http') ? contentUrl : null);
-    const storageBucket = lessonData.storageBucket || (isPdf ? 'documents' : 'videos');
-    const storageProvider = lessonData.storageProvider || (storageKey ? 'supabase' : (contentUrl.startsWith('/uploads/') ? 'local' : 'external'));
-    const mimeType = lessonData.mimeType || (isPdf ? 'application/pdf' : 'video/mp4');
-    const sizeBytes = lessonData.sizeBytes || 0;
-    const checksumSha256 = lessonData.checksumSha256 || null;
-    const mediaStatus = lessonData.mediaStatus || 'READY';
+    const meta = this._resolveMediaMetadata(lessonData);
+
+    if (meta.storageKey) {
+      trackedKeys.push({ key: meta.storageKey, bucket: meta.storageBucket });
+    }
 
     await client.query(`
       INSERT INTO lessons (
@@ -167,8 +232,8 @@ class CoursesService {
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     `, [
-      sectionId, lessonData.title, contentType, contentUrl, orderIndex, speakingSentences, speakingQuestions,
-      storageProvider, storageBucket, storageKey, mimeType, sizeBytes, checksumSha256, mediaStatus
+      sectionId, lessonData.title, meta.contentType, meta.contentUrl, orderIndex, speakingSentences, speakingQuestions,
+      meta.storageProvider, meta.storageBucket, meta.storageKey, meta.mimeType, meta.sizeBytes, meta.checksumSha256, meta.mediaStatus
     ]);
   }
 
@@ -256,6 +321,9 @@ class CoursesService {
 
   async updateCourse(courseId, courseData) {
     const client = await db.pool.connect();
+    const newlyUploadedKeys = [];
+    const assetsToCleanup = [];
+
     try {
       await client.query('BEGIN');
 
@@ -362,40 +430,40 @@ class CoursesService {
           }
           currentSectionIds.push(secId);
 
-          // Get existing lesson IDs for this section if updating
-          let existingLessonIds = [];
+          // Get existing lesson IDs and old storage keys for this section if updating
+          let existingLessons = [];
           if (isExistingSection) {
             const existingLessonsRes = await client.query(
-              'SELECT lesson_id FROM lessons WHERE section_id = $1',
+              'SELECT lesson_id, storage_key, storage_bucket FROM lessons WHERE section_id = $1',
               [secId]
             );
-            existingLessonIds = existingLessonsRes.rows.map(r => r.lesson_id);
+            existingLessons = existingLessonsRes.rows;
           }
+          const existingLessonIds = existingLessons.map(r => r.lesson_id);
 
           // Process lessons
           if (sec.lessons && Array.isArray(sec.lessons)) {
             for (let j = 0; j < sec.lessons.length; j++) {
               const les = sec.lessons[j];
               const lessonOrder = les.orderIndex || (j + 1);
-              const contentType = les.contentType || les.type || 'video';
-              const contentUrl = les.contentUrl || '';
               const speakingSentences = les.speakingSentences || les.speaking_sentences || '';
               const speakingQuestions = les.speakingQuestions || les.speaking_questions || '';
 
-              const isPdf = contentType === 'pdf' || contentUrl.endsWith('.pdf');
-              const storageKey = les.storageKey || (contentUrl && !contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('http') ? contentUrl : null);
-              const storageBucket = les.storageBucket || (isPdf ? 'documents' : 'videos');
-              const storageProvider = les.storageProvider || (storageKey ? 'supabase' : (contentUrl.startsWith('/uploads/') ? 'local' : 'external'));
-              const mimeType = les.mimeType || (isPdf ? 'application/pdf' : 'video/mp4');
-              const sizeBytes = les.sizeBytes || 0;
-              const checksumSha256 = les.checksumSha256 || null;
-              const mediaStatus = les.mediaStatus || 'READY';
+              const meta = this._resolveMediaMetadata(les);
+              if (meta.storageKey) {
+                newlyUploadedKeys.push({ key: meta.storageKey, bucket: meta.storageBucket });
+              }
 
               let lesId;
-
               const isExistingLesson = les.id && Number.isInteger(Number(les.id)) && Number(les.id) < 1000000000;
 
               if (isExistingLesson && existingLessonIds.includes(Number(les.id))) {
+                // Check if storage asset was replaced
+                const oldLesson = existingLessons.find(el => el.lesson_id === Number(les.id));
+                if (oldLesson && oldLesson.storage_key && meta.storageKey && oldLesson.storage_key !== meta.storageKey) {
+                  assetsToCleanup.push({ key: oldLesson.storage_key, bucket: oldLesson.storage_bucket });
+                }
+
                 // Update existing lesson
                 lesId = Number(les.id);
                 await client.query(
@@ -411,8 +479,8 @@ class CoursesService {
                        media_status = COALESCE($13, media_status)
                    WHERE lesson_id = $14`,
                   [
-                    les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions,
-                    storageProvider, storageBucket, storageKey, mimeType, sizeBytes, checksumSha256, mediaStatus,
+                    les.title, meta.contentType, meta.contentUrl, lessonOrder, speakingSentences, speakingQuestions,
+                    meta.storageProvider, meta.storageBucket, meta.storageKey, meta.mimeType, meta.sizeBytes, meta.checksumSha256, meta.mediaStatus,
                     lesId
                   ]
                 );
@@ -426,8 +494,8 @@ class CoursesService {
                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                    RETURNING lesson_id`,
                   [
-                    secId, les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions,
-                    storageProvider, storageBucket, storageKey, mimeType, sizeBytes, checksumSha256, mediaStatus
+                    secId, les.title, meta.contentType, meta.contentUrl, lessonOrder, speakingSentences, speakingQuestions,
+                    meta.storageProvider, meta.storageBucket, meta.storageKey, meta.mimeType, meta.sizeBytes, meta.checksumSha256, meta.mediaStatus
                   ]
                 );
                 lesId = insertLesRes.rows[0].lesson_id;
@@ -436,8 +504,14 @@ class CoursesService {
             }
           }
 
-          // Delete lessons of this section that were removed
+          // Thu thập và xóa các bài học bị xóa trong section này
           if (isExistingSection) {
+            const removedLessonsRes = await client.query(
+              'SELECT storage_key, storage_bucket FROM lessons WHERE section_id = $1 AND NOT (lesson_id = ANY($2::int[])) AND storage_key IS NOT NULL',
+              [secId, currentLessonIds.length > 0 ? currentLessonIds : [-1]]
+            );
+            removedLessonsRes.rows.forEach(r => assetsToCleanup.push({ key: r.storage_key, bucket: r.storage_bucket }));
+
             await client.query(
               'DELETE FROM lessons WHERE section_id = $1 AND NOT (lesson_id = ANY($2::int[]))',
               [secId, currentLessonIds.length > 0 ? currentLessonIds : [-1]]
@@ -445,7 +519,16 @@ class CoursesService {
           }
         }
 
-        // Delete sections of this course that were removed
+        // Thu thập và xóa các section bị xóa khỏi khóa học
+        const removedSectionsRes = await client.query(
+          `SELECT l.storage_key, l.storage_bucket 
+           FROM lessons l 
+           JOIN sections s ON l.section_id = s.section_id 
+           WHERE s.course_id = $1 AND NOT (s.section_id = ANY($2::int[])) AND l.storage_key IS NOT NULL`,
+          [courseId, currentSectionIds.length > 0 ? currentSectionIds : [-1]]
+        );
+        removedSectionsRes.rows.forEach(r => assetsToCleanup.push({ key: r.storage_key, bucket: r.storage_bucket }));
+
         await client.query(
           'DELETE FROM sections WHERE course_id = $1 AND NOT (section_id = ANY($2::int[]))',
           [courseId, currentSectionIds.length > 0 ? currentSectionIds : [-1]]
@@ -453,9 +536,20 @@ class CoursesService {
       }
 
       await client.query('COMMIT');
+
+      // Thực hiện dọn dẹp các asset mồ côi ngoài luồng sau khi DB Commit thành công
+      if (assetsToCleanup.length > 0) {
+        orphanCleanupService.cleanupUnreferencedAssets(assetsToCleanup).catch((err) => {
+          console.warn('⚠️ [CoursesService.updateCourse] Cảnh báo dọn dẹp orphan asset:', err.message);
+        });
+      }
+
       return await this.getCourseById(courseId);
     } catch (error) {
       await client.query('ROLLBACK');
+      if (newlyUploadedKeys.length > 0) {
+        orphanCleanupService.rollbackNewUploads(newlyUploadedKeys).catch(() => {});
+      }
       handleServiceError(error, 'Lỗi cập nhật khóa học');
     } finally {
       client.release();
@@ -464,8 +558,21 @@ class CoursesService {
 
   async deleteCourse(courseId) {
     try {
+      // 1. Thu thập danh sách storage keys trước khi xóa DB
+      const assetsToCleanup = await orphanCleanupService.collectAssetsFromCourse(courseId);
+
+      // 2. Xóa khóa học trong database (Cascade xóa sections, lessons, materials)
       const result = await db.query('DELETE FROM courses WHERE course_id = $1 RETURNING course_id', [courseId]);
-      return result.rows.length > 0;
+      const deleted = result.rows.length > 0;
+
+      // 3. Dọn dẹp các storage object mồ côi trên Supabase
+      if (deleted && assetsToCleanup.length > 0) {
+        orphanCleanupService.cleanupUnreferencedAssets(assetsToCleanup).catch((err) => {
+          console.warn('⚠️ [CoursesService.deleteCourse] Cảnh báo dọn dẹp orphan asset:', err.message);
+        });
+      }
+
+      return deleted;
     } catch (error) {
       handleServiceError(error, 'Lỗi xóa khóa học');
     }

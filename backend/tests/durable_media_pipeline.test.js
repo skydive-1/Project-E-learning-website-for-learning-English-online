@@ -758,6 +758,9 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
           dbDeleted = true;
           return { rowCount: 1 };
         }
+        if (typeof text === 'string' && text.includes('SELECT COUNT(*) FROM lessons')) {
+          return { rows: [{ total_ref: '0' }] };
+        }
         return origQuery(text, params);
       };
 
