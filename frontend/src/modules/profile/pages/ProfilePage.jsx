@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FiUser, FiMail, FiLock, FiCalendar, FiShield, 
   FiCamera, FiBookOpen, FiTrendingUp, FiMessageSquare, 
-  FiArrowLeft, FiCheck, FiSave 
+  FiAlertCircle, FiArrowLeft, FiAward, FiCheck, FiLoader, FiRefreshCw, FiSave
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
@@ -15,7 +15,13 @@ import '../styles/profile.scss';
 const ProfilePage = () => {
   const navigate = useNavigate();
   const { user: authUser, refreshProfile } = useAuth();
-  const { badges, triggerBadgeUnlock } = useGamification();
+  const {
+    badges,
+    badgesError,
+    isGamificationLoading,
+    reloadGamification,
+    triggerBadgeUnlock
+  } = useGamification();
   
   // Gán biến user bằng authUser từ context để giữ nguyên các tham chiếu hiển thị trong JSX bên dưới
   const user = authUser;
@@ -423,7 +429,8 @@ const ProfilePage = () => {
                       <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginBottom: '16px' }}>
                         <div>
                           <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-color, #0f172a)', margin: 0 }}>
-                            🏆 Huy hiệu & Thành tích (Gamification Badges)
+                            <FiAward aria-hidden="true" style={{ display: 'inline', marginRight: '8px' }} />
+                            Huy hiệu & Thành tích (Gamification Badges)
                           </h3>
                           <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
                             Bộ sưu tập huy hiệu độc quyền khi đạt cột mốc học tập
@@ -431,11 +438,58 @@ const ProfilePage = () => {
                         </div>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                      {badgesError ? (
+                        <div
+                          role="alert"
+                          style={{
+                            padding: '24px',
+                            borderRadius: '16px',
+                            background: 'rgba(190, 18, 60, 0.08)',
+                            color: 'var(--text-color, #0f172a)',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <FiAlertCircle aria-hidden="true" style={{ fontSize: '28px', color: '#be123c', marginBottom: '8px' }} />
+                          <p style={{ margin: '0 0 12px', fontWeight: '700' }}>
+                            Không thể tải danh sách huy hiệu, vui lòng thử lại sau
+                          </p>
+                          <button
+                            type="button"
+                            onClick={reloadGamification}
+                            disabled={isGamificationLoading}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '10px 18px',
+                              border: 0,
+                              borderRadius: '12px',
+                              background: '#1d4ed8',
+                              color: '#fff',
+                              fontWeight: '700',
+                              cursor: isGamificationLoading ? 'wait' : 'pointer',
+                              opacity: isGamificationLoading ? 0.7 : 1
+                            }}
+                          >
+                            <FiRefreshCw aria-hidden="true" />
+                            {isGamificationLoading ? 'Đang thử lại...' : 'Thử lại'}
+                          </button>
+                        </div>
+                      ) : isGamificationLoading && badges.length === 0 ? (
+                        <div role="status" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-light, #475569)' }}>
+                          <FiLoader className="animate-spin" aria-hidden="true" style={{ marginRight: '8px' }} />
+                          Đang tải danh sách huy hiệu...
+                        </div>
+                      ) : badges.length === 0 ? (
+                        <div role="status" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-light, #475569)' }}>
+                          Bạn chưa có huy hiệu nào.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
                         {(badges || []).map((badge) => (
                           <div 
                             key={badge.id}
-                            onClick={() => triggerBadgeUnlock(badge)}
+                            onClick={badge.unlocked ? () => triggerBadgeUnlock(badge) : undefined}
                             style={{
                               background: badge.unlocked ? 'var(--card-bg, #ffffff)' : '#f8fafc',
                               border: badge.unlocked ? '2px solid #f59e0b' : '1px dashed #cbd5e1',
@@ -446,7 +500,7 @@ const ProfilePage = () => {
                               alignItems: 'center',
                               textAlign: 'center',
                               gap: '8px',
-                              cursor: 'pointer',
+                              cursor: badge.unlocked ? 'pointer' : 'default',
                               opacity: badge.unlocked ? 1 : 0.65,
                               transition: 'all 0.2s hover:scale-102 shadow-sm'
                             }}
@@ -463,7 +517,7 @@ const ProfilePage = () => {
                             </span>
                             {badge.unlocked ? (
                               <span style={{ fontSize: '10px', fontWeight: '800', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '12px' }}>
-                                ✨ Đã đạt được ({badge.unlockedAt})
+                                Đã đạt được{badge.unlockedAt ? ` (${badge.unlockedAt})` : ''}
                               </span>
                             ) : (
                               <span style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px' }}>
@@ -472,7 +526,8 @@ const ProfilePage = () => {
                             )}
                           </div>
                         ))}
-                      </div>
+                        </div>
+                      )}
                     </div>
 
                   </div>

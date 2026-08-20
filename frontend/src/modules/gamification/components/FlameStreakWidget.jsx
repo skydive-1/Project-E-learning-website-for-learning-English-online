@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiZap, FiCheck, FiAward, FiTrendingUp, FiChevronRight, FiCalendar } from 'react-icons/fi';
+import { FiAlertCircle, FiCheck, FiChevronRight, FiCalendar, FiLoader, FiRefreshCw } from 'react-icons/fi';
 import { useGamification } from '../../../context/GamificationContext';
 import { useAuth } from '../../../context/AuthContext';
 
 const FlameStreakWidget = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { streak, triggerBadgeUnlock } = useGamification();
+  const { streak, streakError, isGamificationLoading, reloadGamification } = useGamification();
   const [isOpen, setIsOpen] = useState(false);
   const widgetRef = useRef(null);
 
@@ -31,9 +31,13 @@ const FlameStreakWidget = () => {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-orange-500/10 border border-amber-500/30 hover:border-amber-500/60 shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer font-bold text-xs"
         title="Bộ đếm chuỗi ngày học liên tiếp (Flame Streak)"
       >
-        <span className="text-base animate-bounce inline-block" style={{ animationDuration: '2s' }}>🔥</span>
-        <span className="font-black bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent">
-          {streak?.currentStreak ?? 0} Ngày
+        <span className="text-base" aria-hidden="true">🔥</span>
+        <span className="font-black text-amber-700 dark:text-amber-300">
+          {streakError
+            ? 'Không khả dụng'
+            : isGamificationLoading && !streak
+              ? 'Đang tải...'
+              : `${streak?.currentStreak ?? 0} Ngày`}
         </span>
       </button>
 
@@ -57,6 +61,33 @@ const FlameStreakWidget = () => {
               </div>
             </div>
           </div>
+
+          {streakError ? (
+            <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/30 p-4 text-center" role="alert">
+              <FiAlertCircle className="mx-auto mb-2 text-2xl text-rose-600 dark:text-rose-400" aria-hidden="true" />
+              <p className="text-sm font-bold text-rose-800 dark:text-rose-200">
+                Không thể tải chuỗi học tập
+              </p>
+              <p className="mt-1 text-xs text-rose-700 dark:text-rose-300">
+                Vui lòng thử lại sau.
+              </p>
+              <button
+                type="button"
+                onClick={reloadGamification}
+                disabled={isGamificationLoading}
+                className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-rose-700 px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-70"
+              >
+                <FiRefreshCw aria-hidden="true" />
+                {isGamificationLoading ? 'Đang thử lại...' : 'Thử lại'}
+              </button>
+            </div>
+          ) : isGamificationLoading && !streak ? (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm font-semibold text-slate-600 dark:text-slate-300" role="status">
+              <FiLoader className="animate-spin" aria-hidden="true" />
+              Đang tải chuỗi học tập...
+            </div>
+          ) : streak ? (
+            <>
 
           {/* Key Stats Counter */}
           <div className="grid grid-cols-2 gap-3">
@@ -92,15 +123,7 @@ const FlameStreakWidget = () => {
             </div>
 
             <div className="grid grid-cols-7 gap-1.5">
-              {(streak?.weeklyStatus || [
-                { day: 'T2', active: false },
-                { day: 'T3', active: false },
-                { day: 'T4', active: false },
-                { day: 'T5', active: false },
-                { day: 'T6', active: false },
-                { day: 'T7', active: false },
-                { day: 'CN', active: false }
-              ]).map((item, idx) => (
+              {(streak.weeklyStatus || []).map((item, idx) => (
                 <div key={idx} className="flex flex-col items-center gap-1">
                   <div
                     className={`w-full aspect-square rounded-xl flex items-center justify-center text-xs font-bold shadow-sm transition-transform hover:scale-110 ${
@@ -119,19 +142,8 @@ const FlameStreakWidget = () => {
             </div>
           </div>
 
-          {/* Test Badge Trigger Demo Button & Navigation */}
+          {/* Navigation */}
           <div className="pt-2 space-y-2 border-t border-slate-100 dark:border-slate-800">
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                triggerBadgeUnlock('badge-lessons-5');
-              }}
-              className="w-full py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-amber-500/30 active:scale-98"
-            >
-              <FiAward className="text-sm" />
-              <span>Thử nhận Huy hiệu "Bậc Thầy Chăm Chỉ" ✨</span>
-            </button>
-
             <button
               onClick={() => {
                 setIsOpen(false);
@@ -143,6 +155,8 @@ const FlameStreakWidget = () => {
               <FiChevronRight />
             </button>
           </div>
+            </>
+          ) : null}
 
         </div>
       )}

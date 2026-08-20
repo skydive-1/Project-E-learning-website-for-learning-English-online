@@ -1,54 +1,79 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { getUserStreakInfo, getUserBadges, SYSTEM_BADGES } from '../modules/gamification/services/gamification.service';
+import { getUserStreakInfo, getUserBadges } from '../modules/gamification/services/gamification.service';
 import { useAuth } from './AuthContext';
 
 const GamificationContext = createContext();
 
 export const GamificationProvider = ({ children }) => {
   const { user } = useAuth();
-  const [streak, setStreak] = useState({
-    currentStreak: 0,
-    longestStreak: 0,
-    weeklyStatus: [
-      { day: 'T2', active: false, label: 'Thứ 2' },
-      { day: 'T3', active: false, label: 'Thứ 3' },
-      { day: 'T4', active: false, label: 'Thứ 4' },
-      { day: 'T5', active: false, label: 'Thứ 5' },
-      { day: 'T6', active: false, label: 'Thứ 6' },
-      { day: 'T7', active: false, label: 'Thứ 7' },
-      { day: 'CN', active: false, label: 'Chủ nhật' }
-    ]
-  });
-
-  const [badges, setBadges] = useState(SYSTEM_BADGES);
+  const [streak, setStreak] = useState(null);
+  const [badges, setBadges] = useState([]);
+  const [streakError, setStreakError] = useState(null);
+  const [badgesError, setBadgesError] = useState(null);
+  const [isGamificationLoading, setIsGamificationLoading] = useState(false);
   const [activeBadgePopup, setActiveBadgePopup] = useState(null);
+  const loadGeneration = useRef(0);
 
   // Nạp thông tin Streak và Badges khi người dùng thay đổi hoặc ứng dụng khởi chạy
-  useEffect(() => {
-    const loadGamificationData = async () => {
-      const uid = user?.user_id || user?.id;
-      const sData = await getUserStreakInfo(uid);
-      const bData = await getUserBadges(uid);
-      if (sData) setStreak(sData);
-      if (bData) setBadges(bData);
-    };
-    loadGamificationData();
+  const reloadGamification = useCallback(async () => {
+    const requestId = ++loadGeneration.current;
+
+    if (!user) {
+      setStreak(null);
+      setBadges([]);
+      setStreakError(null);
+      setBadgesError(null);
+      setIsGamificationLoading(false);
+      return;
+    }
+
+    setIsGamificationLoading(true);
+    setStreakError(null);
+    setBadgesError(null);
+
+    const [streakResult, badgesResult] = await Promise.allSettled([
+      getUserStreakInfo(),
+      getUserBadges()
+    ]);
+
+    if (requestId !== loadGeneration.current) return;
+
+    if (streakResult.status === 'fulfilled') {
+      setStreak(streakResult.value);
+    } else {
+      setStreak(null);
+      setStreakError(streakResult.reason);
+    }
+
+    if (badgesResult.status === 'fulfilled') {
+      setBadges(badgesResult.value);
+    } else {
+      setBadges([]);
+      setBadgesError(badgesResult.reason);
+    }
+
+    setIsGamificationLoading(false);
   }, [user]);
+
+  useEffect(() => {
+    reloadGamification();
+    return () => {
+      loadGeneration.current += 1;
+    };
+  }, [reloadGamification]);
 
   // Kích hoạt pháo hoa mừng và hiển thị Pop-up Huy hiệu
   const triggerBadgeUnlock = (badgeOrId) => {
     let badgeObj = null;
     if (typeof badgeOrId === 'string') {
-      badgeObj = badges.find(b => b.id === badgeOrId) || SYSTEM_BADGES.find(b => b.id === badgeOrId);
+      badgeObj = badges.find(b => b.id === badgeOrId);
     } else {
       badgeObj = badgeOrId;
     }
 
-    if (!badgeObj) return;
+    if (!badgeObj?.unlocked) return;
 
-    // Cập nhật trạng thái mở khóa huy hiệu trong state
-    setBadges(prev => prev.map(b => b.id === badgeObj.id ? { ...b, unlocked: true, unlockedAt: new Date().toLocaleDateString('vi-VN') } : b));
     setActiveBadgePopup(badgeObj);
 
     // Kích hoạt bắn pháo hoa Confetti 3 đợt ăn mừng rực rỡ
@@ -86,6 +111,10 @@ export const GamificationProvider = ({ children }) => {
       value={{
         streak,
         badges,
+        streakError,
+        badgesError,
+        isGamificationLoading,
+        reloadGamification,
         activeBadgePopup,
         triggerBadgeUnlock,
         closeBadgePopup

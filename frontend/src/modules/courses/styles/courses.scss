@@ -498,6 +498,10 @@ $border-light: var(--border-color, #d1d7dc);
       cursor: pointer;
       transition: background 0.2s, transform 0.1s;
       box-shadow: 0 4px 12px rgba(29, 78, 216, 0.15);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
 
       &:hover {
         background: $hover-blue;
@@ -506,6 +510,12 @@ $border-light: var(--border-color, #d1d7dc);
 
       &:active {
         transform: translateY(0);
+      }
+
+      &:disabled {
+        cursor: wait;
+        opacity: 0.7;
+        transform: none;
       }
     }
   }

@@ -6,8 +6,8 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { getCourseDetails } from '../../lessons/services/lessons.service';
 import { 
-  FiSearch, FiBook, FiAward, FiClock, FiPlay, 
-  FiChevronRight, FiCheckCircle, FiLoader, FiSliders 
+  FiAlertCircle, FiSearch, FiBook, FiAward, FiClock,
+  FiCheckCircle, FiRefreshCw
 } from 'react-icons/fi';
 import '../styles/courses.scss';
 
@@ -50,7 +50,13 @@ const MyCoursesPage = () => {
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'in_progress', 'completed'
 
   // 1. Fetch all courses
-  const { data: rawCourses = [], isLoading: isCoursesLoading } = useQuery({
+  const {
+    data: rawCourses = [],
+    isLoading: isCoursesLoading,
+    isFetching: isCoursesFetching,
+    isError: isCoursesError,
+    refetch: refetchCourses
+  } = useQuery({
     queryKey: ['courses-raw'],
     queryFn: async () => {
       const response = await apiClient.get('/courses');
@@ -59,59 +65,15 @@ const MyCoursesPage = () => {
   });
 
   // 2. Fetch details for each course to calculate the progress dynamically
-  const { data: myCourses = [], isLoading: isProgressLoading } = useQuery({
+  const {
+    data: myCourses = [],
+    isLoading: isProgressLoading,
+    isFetching: isProgressFetching,
+    isError: isProgressError,
+    refetch: refetchProgress
+  } = useQuery({
     queryKey: ['my-courses-progress', rawCourses.map(c => c.course_id).join(',')],
     queryFn: async () => {
-      if (rawCourses.length === 0) {
-        // Fallback to mock data with mock progress if database has no courses
-        return [
-          {
-            id: 'mock-1',
-            title: 'IELTS Masterclass: Target Band 7.5+',
-            instructor: 'Dr. Alexander Wright',
-            image: '/images/hero_illustration.png',
-            level: 'Advanced',
-            subjectName: 'IELTS Masterclass',
-            progress: 80,
-            lessonsCount: 12,
-            sectionsCount: 3
-          },
-          {
-            id: 'mock-2',
-            title: 'Business English: Communication Mastery',
-            instructor: 'Sarah Jenkins',
-            image: '/images/meeting_group.png',
-            level: 'Intermediate',
-            subjectName: 'Business English',
-            progress: 45,
-            lessonsCount: 8,
-            sectionsCount: 2
-          },
-          {
-            id: 'mock-3',
-            title: 'English for Beginners: Pronunciation',
-            instructor: 'Michael Ross',
-            image: '/images/teacher_virtual.png',
-            level: 'Beginner',
-            subjectName: 'General English',
-            progress: 100,
-            lessonsCount: 6,
-            sectionsCount: 1
-          },
-          {
-            id: 'mock-4',
-            title: 'Daily Conversation Patterns',
-            instructor: 'Jessica Lee',
-            image: '/images/hero_illustration.png',
-            level: 'Elementary',
-            subjectName: 'General English',
-            progress: 0,
-            lessonsCount: 10,
-            sectionsCount: 2
-          }
-        ];
-      }
-
       // Map through all database courses and fetch their details (which computes progress under-the-hood)
       const coursesWithProgress = await Promise.all(
         rawCourses.map(async (c) => {
@@ -132,33 +94,23 @@ const MyCoursesPage = () => {
             };
           } catch (e) {
             console.error(`Error loading details for course ${c.course_id}:`, e);
-            return {
-              id: `db-${c.course_id}`,
-              title: c.course_name,
-              instructor: c.instructor_name || 'Hệ thống E-Learning',
-              image: c.thumbnail_url || '/images/hero_illustration.png',
-              level: getCourseLevel(c.course_name, c.subject_name),
-              subjectName: c.subject_name,
-              progress: 0,
-              lessonsCount: c.lessons_count || 0,
-              sectionsCount: c.sections_count || 0,
-              startDate: c.start_date,
-              instructorId: c.instructor_id
-            };
+            throw e;
           }
         })
       );
       return coursesWithProgress;
     },
-    enabled: rawCourses.length >= 0
+    enabled: rawCourses.length > 0
   });
 
   const isLoading = isCoursesLoading || isProgressLoading;
+  const isFetching = isCoursesFetching || isProgressFetching;
+  const isError = isCoursesError || isProgressError;
 
   // Filter courses based on search & completion status
   const filteredCourses = myCourses.filter(c => {
-    const matchSearch = c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        c.subjectName.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchSearch = (c.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (c.subjectName || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     if (statusFilter === 'completed') {
       return matchSearch && c.progress === 100;
@@ -177,15 +129,13 @@ const MyCoursesPage = () => {
     : 0;
 
   const handleStartLearning = (course) => {
-    if (course.id.startsWith('db-')) {
-      const dbId = course.id.split('-')[1];
-      navigate(`/lessons?courseId=${dbId}`);
-    } else {
-      const mockId = course.id === 'mock-1' ? 1 : 
-                     course.id === 'mock-2' ? 3 : 
-                     course.id === 'mock-3' ? 4 : 2;
-      navigate(`/lessons?courseId=${mockId}`);
-    }
+    const dbId = course.id?.startsWith('db-') ? course.id.slice(3) : null;
+    if (dbId) navigate(`/lessons?courseId=${dbId}`);
+  };
+
+  const handleRetry = () => {
+    if (isCoursesError) return refetchCourses();
+    return refetchProgress();
   };
 
   // Trigger fade-in animation
@@ -260,7 +210,7 @@ const MyCoursesPage = () => {
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '14px', color: 'var(--text-light)', fontWeight: '500' }}>Khóa học đã đăng ký</span>
-                <strong style={{ display: 'block', fontSize: '28px', fontWeight: '800', color: 'var(--text-color)' }}>{totalCourses}</strong>
+                <strong style={{ display: 'block', fontSize: '28px', fontWeight: '800', color: 'var(--text-color)' }}>{isLoading || isError ? '—' : totalCourses}</strong>
               </div>
             </div>
 
@@ -290,7 +240,7 @@ const MyCoursesPage = () => {
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '14px', color: 'var(--text-light)', fontWeight: '500' }}>Khóa học hoàn thành</span>
-                <strong style={{ display: 'block', fontSize: '28px', fontWeight: '800', color: 'var(--text-color)' }}>{completedCourses}</strong>
+                <strong style={{ display: 'block', fontSize: '28px', fontWeight: '800', color: 'var(--text-color)' }}>{isLoading || isError ? '—' : completedCourses}</strong>
               </div>
             </div>
 
@@ -320,7 +270,7 @@ const MyCoursesPage = () => {
               </div>
               <div>
                 <span style={{ display: 'block', fontSize: '14px', color: 'var(--text-light)', fontWeight: '500' }}>Tiến độ trung bình</span>
-                <strong style={{ display: 'block', fontSize: '28px', fontWeight: '800', color: 'var(--text-color)' }}>{averageProgress}%</strong>
+                <strong style={{ display: 'block', fontSize: '28px', fontWeight: '800', color: 'var(--text-color)' }}>{isLoading || isError ? '—' : `${averageProgress}%`}</strong>
               </div>
             </div>
           </div>
@@ -431,6 +381,42 @@ const MyCoursesPage = () => {
             }}>
               {[...Array(6)].map((_, i) => <MyCourseCardSkeleton key={i} />)}
             </div>
+          ) : isError ? (
+            <div
+              role="alert"
+              style={{
+                background: 'var(--card-bg, #ffffff)',
+                borderRadius: '16px',
+                padding: '60px 24px',
+                textAlign: 'center'
+              }}
+            >
+              <FiAlertCircle aria-hidden="true" style={{ fontSize: '48px', color: '#be123c', marginBottom: '16px' }} />
+              <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px', color: 'var(--text-color)' }}>
+                Không thể tải khóa học của bạn, vui lòng thử lại sau
+              </h3>
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={isFetching}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 24px',
+                  background: '#1d4ed8',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  cursor: isFetching ? 'wait' : 'pointer',
+                  opacity: isFetching ? 0.7 : 1
+                }}
+              >
+                <FiRefreshCw aria-hidden="true" />
+                {isFetching ? 'Đang thử lại...' : 'Thử lại'}
+              </button>
+            </div>
           ) : filteredCourses.length === 0 ? (
             /* Empty State */
             <div style={{
@@ -442,11 +428,15 @@ const MyCoursesPage = () => {
               boxShadow: '0 4px 20px rgba(0, 0, 0, 0.01)'
             }}>
               <FiBook style={{ fontSize: '48px', color: 'var(--text-light)', marginBottom: '16px', opacity: 0.5 }} />
-              <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px', color: 'var(--text-color)' }}>Không tìm thấy khóa học nào</h3>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px', color: 'var(--text-color)' }}>
+                {searchTerm || statusFilter !== 'all'
+                  ? 'Không tìm thấy khóa học nào'
+                  : 'Bạn chưa đăng ký/xem khóa học nào'}
+              </h3>
               <p style={{ color: 'var(--text-light)', fontSize: '14px', maxWidth: '400px', margin: '0 auto 20px' }}>
                 {searchTerm || statusFilter !== 'all' 
                   ? 'Hãy thử thay đổi từ khóa tìm kiếm hoặc bộ lọc.' 
-                  : 'Bạn chưa có khóa học nào hoạt động trên hệ thống.'}
+                  : 'Khám phá danh sách khóa học và bắt đầu lộ trình học của bạn.'}
               </p>
               <button 
                 onClick={() => navigate('/courses')}

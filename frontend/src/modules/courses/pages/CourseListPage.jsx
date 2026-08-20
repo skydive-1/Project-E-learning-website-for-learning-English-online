@@ -1,89 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useLanguage } from '../../../context/LanguageContext';
-import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiLoader, FiX, FiCheckCircle } from 'react-icons/fi';
+import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiX, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
 import '../styles/courses.scss';
-
-// Mẫu dữ liệu Mock đồng bộ với database subject_id
-const mockCoursesData = [
-  {
-    id: 'course-1',
-    title: 'IELTS Masterclass: Target Band 7.5+',
-    instructor: 'Dr. Alexander Wright',
-    rating: 4.9,
-    reviews: 2400,
-    students: 15600,
-    price: 'Miễn phí',
-    image: '/images/hero_illustration.png',
-    badge: 'Đề xuất',
-    level: 'Advanced',
-    duration: '45 giờ',
-    subjectId: 1,
-    subjectName: 'IELTS Masterclass'
-  },
-  {
-    id: 'course-2',
-    title: 'Business English: Communication Mastery',
-    instructor: 'Sarah Jenkins',
-    rating: 4.8,
-    reviews: 1850,
-    students: 8900,
-    price: 'Miễn phí',
-    image: '/images/meeting_group.png',
-    badge: 'Mới',
-    level: 'Intermediate',
-    duration: '32 giờ',
-    subjectId: 3,
-    subjectName: 'Business English'
-  },
-  {
-    id: 'course-3',
-    title: 'English for Beginners: Pronunciation',
-    instructor: 'Michael Ross',
-    rating: 4.7,
-    reviews: 4200,
-    students: 45000,
-    price: 'Miễn phí',
-    image: '/images/teacher_virtual.png',
-    level: 'Beginner',
-    duration: '12 giờ',
-    subjectId: 4,
-    subjectName: 'General English Communication'
-  },
-  {
-    id: 'course-4',
-    title: 'Daily Conversation Patterns',
-    instructor: 'Jessica Lee',
-    rating: 4.6,
-    reviews: 3100,
-    students: 28000,
-    price: 'Miễn phí',
-    image: '/images/hero_illustration.png',
-    level: 'Elementary',
-    duration: '15 giờ',
-    subjectId: 4,
-    subjectName: 'General English Communication'
-  },
-  {
-    id: 'course-5',
-    title: 'Grammar Essentials for TOEIC',
-    instructor: 'David Pham',
-    rating: 4.8,
-    reviews: 5600,
-    students: 32000,
-    price: 'Miễn phí',
-    image: '/images/meeting_group.png',
-    badge: 'Đề xuất',
-    level: 'Intermediate',
-    duration: '20 giờ',
-    subjectId: 2,
-    subjectName: 'TOEIC Prep'
-  }
-];
 
 // Hàm phụ trợ tự động phân loại trình độ tiếng Anh từ tiêu đề/môn học
 const getCourseLevel = (courseName, subjectName) => {
@@ -109,6 +32,45 @@ const removeVietnameseTones = (str) => {
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'D')
     .toLowerCase();
+};
+
+const toOptionalNumber = value => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const fetchCourses = async () => {
+  try {
+    const response = await apiClient.get('/courses');
+    const dbCourses = Array.isArray(response.data?.courses) ? response.data.courses : [];
+
+    return dbCourses.map(c => {
+      const price = toOptionalNumber(c.price);
+      const lessonsCount = toOptionalNumber(c.lessons_count);
+
+      return {
+        id: `db-${c.course_id}`,
+        title: c.course_name,
+        instructor: c.instructor_name || 'Hệ thống E-Learning',
+        rating: toOptionalNumber(c.rating),
+        reviews: toOptionalNumber(c.reviews_count ?? c.reviews),
+        students: toOptionalNumber(c.students_count ?? c.enrollment_count),
+        price: price && price > 0 ? `${price.toLocaleString('vi-VN')} ₫` : 'Miễn phí',
+        image: c.thumbnail_url || '/images/hero_illustration.png',
+        badge: c.badge || null,
+        level: getCourseLevel(c.course_name, c.subject_name),
+        subjectId: c.subject_id,
+        subjectName: c.subject_name,
+        duration: lessonsCount === null ? null : `${lessonsCount} bài giảng`,
+        startDate: c.start_date,
+        instructorId: c.instructor_id
+      };
+    });
+  } catch (err) {
+    console.error('Lỗi fetch courses từ DB:', err);
+    throw err;
+  }
 };
 
 // Skeleton Card Component
@@ -138,19 +100,13 @@ const CourseCard = ({ course }) => {
   const startDate = course.startDate ? new Date(course.startDate) : null;
   const currentDate = new Date();
   const hasNotStarted = startDate && startDate > currentDate;
+  const hasRating = Number.isFinite(course.rating);
+  const hasReviews = Number.isFinite(course.reviews);
+  const hasStudents = Number.isFinite(course.students);
 
   const handleStartLearning = () => {
-    if (course.id && course.id.startsWith('db-')) {
-      const dbId = course.id.split('-')[1];
-      navigate(`/lessons?courseId=${dbId}`);
-    } else {
-      // Map mock course id dynamically to corresponding subject values
-      const mockId = course.id === 'course-1' ? 1 : 
-                     course.id === 'course-2' ? 3 : 
-                     course.id === 'course-3' ? 4 : 
-                     course.id === 'course-4' ? 4 : 2;
-      navigate(`/lessons?courseId=${mockId}`);
-    }
+    const dbId = course.id?.startsWith('db-') ? course.id.slice(3) : course.id;
+    navigate(`/lessons?courseId=${dbId}`);
   };
 
   return (
@@ -175,19 +131,27 @@ const CourseCard = ({ course }) => {
         </div>
         <h3 className="course-title">{t(course.title)}</h3>
         <p className="instructor">{t(course.instructor)}</p>
-        <div className="rating-row">
-          <span className="rating-score">{course.rating}</span>
-          <div className="stars">
-            {[...Array(5)].map((_, i) => (
-              <FiStar key={i} className={i < Math.floor(course.rating) ? 'star-filled' : 'star-empty'} />
-            ))}
+        {(hasRating || hasReviews) && (
+          <div className="rating-row">
+            {hasRating && (
+              <>
+                <span className="rating-score">{course.rating}</span>
+                <div className="stars">
+                  {[...Array(5)].map((_, i) => (
+                    <FiStar key={i} className={i < Math.floor(course.rating) ? 'star-filled' : 'star-empty'} />
+                  ))}
+                </div>
+              </>
+            )}
+            {hasReviews && <span className="reviews-count">({course.reviews.toLocaleString()})</span>}
           </div>
-          <span className="reviews-count">({course.reviews.toLocaleString()})</span>
-        </div>
-        <div className="meta-info">
-          <span><FiUsers /> {course.students.toLocaleString()} {t('student')}</span>
-          <span><FiPlayCircle /> {course.duration}</span>
-        </div>
+        )}
+        {(hasStudents || course.duration) && (
+          <div className="meta-info">
+            {hasStudents && <span><FiUsers /> {course.students.toLocaleString()} {t('student')}</span>}
+            {course.duration && <span><FiPlayCircle /> {course.duration}</span>}
+          </div>
+        )}
         <div className="price-row">
           <span className="current-price text-emerald-600">{t(course.price)}</span>
         </div>
@@ -203,7 +167,12 @@ const CourseListPage = () => {
   const [sortBy, setSortBy] = useState('newest');
 
   // Fetch danh sách môn học phục vụ cho việc hiển thị bộ lọc động
-  const { data: subjects = [] } = useQuery({
+  const {
+    data: subjects = [],
+    isError: isSubjectsError,
+    isFetching: isSubjectsFetching,
+    refetch: refetchSubjects
+  } = useQuery({
     queryKey: ['subjects'],
     queryFn: async () => {
       try {
@@ -211,56 +180,25 @@ const CourseListPage = () => {
         return response.data?.subjects || [];
       } catch (err) {
         console.error('Lỗi fetch subjects từ DB:', err);
-        return [];
+        throw err;
       }
     }
   });
 
   // Fetch danh sách khóa học từ DB
-  const { data: courses = [], isLoading: loading } = useQuery({
+  const {
+    data: courses = [],
+    isLoading: loading,
+    isError,
+    isFetching,
+    refetch
+  } = useQuery({
     queryKey: ['courses'],
-    queryFn: async () => {
-      try {
-        const response = await apiClient.get('/courses');
-        if (response.data && response.data.courses && response.data.courses.length > 0) {
-          const dbCoursesMapped = response.data.courses.map(c => {
-            const calculatedLevel = getCourseLevel(c.course_name, c.subject_name);
-            return {
-              id: `db-${c.course_id}`,
-              title: c.course_name,
-              instructor: 'Hệ thống E-Learning',
-              rating: 4.8,
-              reviews: 15,
-              students: 120,
-              price: 'Miễn phí',
-              image: c.thumbnail_url || '/images/hero_illustration.png',
-              badge: 'Thực tế',
-              level: calculatedLevel,
-              subjectId: c.subject_id,
-              subjectName: c.subject_name,
-              duration: `${c.lessons_count || 0} bài giảng`,
-              startDate: c.start_date,
-              instructorId: c.instructor_id
-            };
-          });
-          return dbCoursesMapped; // Trả về duy nhất dữ liệu thật nếu có trong DB
-        }
-        return mockCoursesData; // Fallback về mock data nếu DB rỗng
-      } catch (err) {
-        console.error('Lỗi fetch courses từ DB:', err);
-        return mockCoursesData; // Fallback về mock data nếu có lỗi kết nối DB
-      }
-    }
+    queryFn: fetchCourses
   });
 
   // Lọc danh sách môn học để hiển thị lên thanh danh mục
-  const displayedSubjects = subjects.length > 0 ? subjects : [
-    { subject_id: 1, subject_name: 'IELTS Masterclass' },
-    { subject_id: 2, subject_name: 'TOEIC Prep' },
-    { subject_id: 3, subject_name: 'Business English' },
-    { subject_id: 4, subject_name: 'General English Communication' },
-    { subject_id: 5, subject_name: 'English Grammar Essentials' }
-  ];
+  const displayedSubjects = subjects;
 
   // Xử lý bộ lọc và tìm kiếm
   const filteredCourses = courses.filter(course => {
@@ -291,10 +229,7 @@ const CourseListPage = () => {
       return b.students - a.students;
     }
     if (sortBy === 'newest') {
-      const getNumId = (id) => {
-        if (id.startsWith('db-')) return parseInt(id.split('-')[1], 10);
-        return 0; // Mock data có thứ tự thấp hơn
-      };
+      const getNumId = (id) => parseInt(String(id).replace(/^db-/, ''), 10) || 0;
       return getNumId(b.id) - getNumId(a.id);
     }
     return 0;
@@ -387,6 +322,12 @@ const CourseListPage = () => {
                   {t(sub.subject_name)}
                 </button>
               ))}
+              {isSubjectsError && (
+                <button type="button" onClick={() => refetchSubjects()} disabled={isSubjectsFetching}>
+                  <FiRefreshCw aria-hidden="true" />
+                  {t(isSubjectsFetching ? 'Đang tải lại môn học...' : 'Không thể tải môn học — Thử lại')}
+                </button>
+              )}
             </div>
           </div>
         </nav>
@@ -441,9 +382,29 @@ const CourseListPage = () => {
               <div className="course-grid">
                 {[...Array(6)].map((_, i) => <CourseCardSkeleton key={i} />)}
               </div>
+            ) : isError ? (
+              <div className="courses-empty-state" role="alert" aria-live="assertive">
+                <FiAlertCircle className="empty-illustration" aria-hidden="true" />
+                <h3>{t('Không thể tải danh sách khóa học, vui lòng thử lại sau')}</h3>
+                <button
+                  type="button"
+                  className="btn-reset-filters"
+                  onClick={() => refetch()}
+                  disabled={isFetching}
+                >
+                  <FiRefreshCw aria-hidden="true" />
+                  {t(isFetching ? 'Đang thử lại...' : 'Thử lại')}
+                </button>
+              </div>
+            ) : courses.length === 0 ? (
+              <div className="courses-empty-state" role="status">
+                <FiPlayCircle className="empty-illustration" aria-hidden="true" />
+                <h3>{t('Chưa có khóa học nào')}</h3>
+                <p>{t('Các khóa học mới sẽ xuất hiện tại đây khi được xuất bản.')}</p>
+              </div>
             ) : sortedCourses.length === 0 ? (
               <div className="courses-empty-state">
-                <div className="empty-illustration">🔍</div>
+                <FiSearch className="empty-illustration" aria-hidden="true" />
                 <h3>{t('Không tìm thấy kết quả phù hợp')}</h3>
                 <p>{t('Thử thay đổi từ khóa tìm kiếm hoặc đặt lại bộ lọc của bạn để khám phá các khóa học khác.')}</p>
                 <button className="btn-reset-filters" onClick={handleResetFilters}>

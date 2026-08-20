@@ -4,111 +4,26 @@ import apiClient from '../../../config/api.config';
  * Lấy dữ liệu Daily Streak hiện tại của người dùng
  * API Backend: GET /api/gamification/streak
  */
-export const getUserStreakInfo = async (userId) => {
+export const getUserStreakInfo = async () => {
   try {
-    const url = userId ? `/gamification/streak?user_id=${userId}` : '/gamification/streak';
-    const response = await apiClient.get(url);
+    const response = await apiClient.get('/gamification/streak');
     const realData = response.data?.data || response.data;
-    if (realData && (realData.streak !== undefined || realData.currentStreak !== undefined)) {
-      const streakVal = realData.streak ?? realData.currentStreak ?? 0;
-      return {
-        currentStreak: streakVal,
-        longestStreak: realData.longestStreak || streakVal,
-        lastActiveDate: realData.last_activity_date || new Date().toISOString().split('T')[0],
-        weeklyStatus: realData.weeklyStatus || [
-          { day: 'T2', active: streakVal > 0, label: 'Thứ 2' },
-          { day: 'T3', active: streakVal > 1, label: 'Thứ 3' },
-          { day: 'T4', active: streakVal > 2, label: 'Thứ 4' },
-          { day: 'T5', active: streakVal > 3, label: 'Thứ 5' },
-          { day: 'T6', active: streakVal > 4, label: 'Thứ 6' },
-          { day: 'T7', active: streakVal > 5, label: 'Thứ 7' },
-          { day: 'CN', active: streakVal > 6, label: 'Chủ nhật' }
-        ],
-        freezeStreakCount: realData.freezeStreakCount || 0
-      };
+
+    if (!realData || (realData.streak === undefined && realData.currentStreak === undefined)) {
+      throw new Error('Phản hồi streak từ máy chủ không hợp lệ');
     }
+
+    const streakVal = realData.streak ?? realData.currentStreak;
+    return {
+      currentStreak: streakVal,
+      longestStreak: realData.longestStreak ?? streakVal,
+      lastActiveDate: realData.last_activity_date ?? null,
+      weeklyStatus: Array.isArray(realData.weeklyStatus) ? realData.weeklyStatus : []
+    };
   } catch (err) {
-    console.warn("Sử dụng dữ liệu Streak mô phỏng (Backend offline):", err.message);
+    throw err;
   }
-
-  // Fallback Streak Data
-  return {
-    currentStreak: 0,
-    longestStreak: 0,
-    lastActiveDate: null,
-    weeklyStatus: [
-      { day: 'T2', active: false, label: 'Thứ 2' },
-      { day: 'T3', active: false, label: 'Thứ 3' },
-      { day: 'T4', active: false, label: 'Thứ 4' },
-      { day: 'T5', active: false, label: 'Thứ 5' },
-      { day: 'T6', active: false, label: 'Thứ 6' },
-      { day: 'T7', active: false, label: 'Thứ 7' },
-      { day: 'CN', active: false, label: 'Chủ nhật' }
-    ],
-    freezeStreakCount: 0
-  };
 };
-
-/**
- * Danh sách huy hiệu thành tích mặc định của hệ thống
- */
-export const SYSTEM_BADGES = [
-  {
-    id: 'badge-lessons-5',
-    title: 'Bậc Thầy Chăm Chỉ 🌟',
-    category: 'Lessons',
-    icon: '📚',
-    gradient: 'from-amber-400 to-amber-600',
-    description: 'Hoàn thành đủ 5 bài học tích xanh trên hệ thống E-Learn Academy.',
-    requiredCount: 5,
-    unlocked: true,
-    unlockedAt: '10/08/2026'
-  },
-  {
-    id: 'badge-quiz-100',
-    title: 'Xạ Thủ Trắc Nghiệm 🎯',
-    category: 'Quiz',
-    icon: '🎯',
-    gradient: 'from-emerald-400 to-teal-600',
-    description: 'Đạt điểm tuyệt đối 100% trong bất kỳ bài tập trắc nghiệm phản xạ nào.',
-    requiredCount: 100,
-    unlocked: true,
-    unlockedAt: '11/08/2026'
-  },
-  {
-    id: 'badge-streak-7',
-    title: 'Chiến Binh Luyện Tập 🔥',
-    category: 'Streak',
-    icon: '🔥',
-    gradient: 'from-rose-500 to-orange-600',
-    description: 'Duy trì chuỗi học tập liên tiếp 7 ngày không gián đoạn.',
-    requiredCount: 7,
-    unlocked: true,
-    unlockedAt: '08/08/2026'
-  },
-  {
-    id: 'badge-speaking-ai',
-    title: 'Ngôi Sao Phát Âm 🎙️',
-    category: 'Speaking',
-    icon: '🎙️',
-    gradient: 'from-indigo-500 to-purple-600',
-    description: 'Thực hiện ít nhất 1 bài học luyện phát âm và thu âm phản xạ với Trợ lý AI.',
-    requiredCount: 1,
-    unlocked: false,
-    unlockedAt: null
-  },
-  {
-    id: 'badge-lessons-20',
-    title: 'Học Giả Uyên Bác 🎓',
-    category: 'Lessons',
-    icon: '🎓',
-    gradient: 'from-blue-500 to-cyan-600',
-    description: 'Hoàn thành 20 bài học trên hệ thống.',
-    requiredCount: 20,
-    unlocked: false,
-    unlockedAt: null
-  }
-];
 
 /**
  * Lấy danh sách Huy hiệu của người dùng
@@ -117,12 +32,15 @@ export const SYSTEM_BADGES = [
 export const getUserBadges = async () => {
   try {
     const response = await apiClient.get('/gamification/badges');
-    if (response.data && response.data.badges) {
-      return response.data.badges;
+    if (!Array.isArray(response.data?.badges)) {
+      throw new Error('Phản hồi huy hiệu từ máy chủ không hợp lệ');
     }
-  } catch (err) {
-    console.warn("Sử dụng dữ liệu Huy hiệu mô phỏng (Backend offline):", err.message);
-  }
 
-  return SYSTEM_BADGES;
+    return response.data.badges.map(badge => ({
+      ...badge,
+      description: badge.description ?? badge.desc ?? ''
+    }));
+  } catch (err) {
+    throw err;
+  }
 };
