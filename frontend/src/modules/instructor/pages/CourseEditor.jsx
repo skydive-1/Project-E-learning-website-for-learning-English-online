@@ -253,9 +253,58 @@ const CourseEditor = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Set uploading state
-    handleLessonChange(sIdx, lIdx, 'uploading', true);
-    handleLessonChange(sIdx, lIdx, 'uploadError', null);
+    // ── CLIENT-SIDE VALIDATION (trước khi gửi lên server) ──────────────────
+    const MAX_VIDEO_SIZE_MB = 50;  // Supabase Storage free plan 1GB (~20 video)
+    const MAX_PDF_SIZE_MB = 20;
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isVideoFile = file.type.startsWith('video/') || ['mp4', 'mov', 'mkv', 'avi'].includes(ext);
+    const isPdfFile = file.type === 'application/pdf' || ext === 'pdf';
+    const lessonType = sections[sIdx].lessons[lIdx].type;
+
+    // Kiểm tra định dạng file khớp với loại bài học
+    if (lessonType === 'video' && !isVideoFile) {
+      const msg = 'Bài học Video chỉ chấp nhận tệp video (MP4). Vui lòng chọn lại.';
+      handleLessonChange(sIdx, lIdx, 'uploadError', msg);
+      setErrorMsg(msg);
+      return;
+    }
+    if (lessonType === 'pdf' && !isPdfFile) {
+      const msg = 'Bài học PDF chỉ chấp nhận tệp định dạng PDF. Vui lòng chọn lại.';
+      handleLessonChange(sIdx, lIdx, 'uploadError', msg);
+      setErrorMsg(msg);
+      return;
+    }
+    // Kiểm tra đuôi mở rộng MP4 cho video (server chỉ nhận .mp4)
+    if (isVideoFile && ext !== 'mp4') {
+      const msg = `Định dạng .${ext} không được hỗ trợ. Hệ thống chỉ nhận tệp MP4 chuẩn (H.264/AAC). Vui lòng chuyển đổi sang MP4 trước khi tải lên.`;
+      handleLessonChange(sIdx, lIdx, 'uploadError', msg);
+      setErrorMsg(msg);
+      return;
+    }
+    // Kiểm tra dung lượng
+    const fileSizeMB = file.size / (1024 * 1024);
+    const maxSizeMB = isVideoFile ? MAX_VIDEO_SIZE_MB : MAX_PDF_SIZE_MB;
+    if (fileSizeMB > maxSizeMB) {
+      const msg = `Tệp quá lớn (${fileSizeMB.toFixed(1)} MB). Giới hạn tối đa: ${maxSizeMB} MB. Vui lòng nén tệp trước khi tải lên.`;
+      handleLessonChange(sIdx, lIdx, 'uploadError', msg);
+      setErrorMsg(msg);
+      return;
+    }
+
+    // ── BẮT ĐẦU UPLOAD ────────────────────────────────────────────────────
+    const fileSizeFormatted = fileSizeMB >= 1
+      ? `${fileSizeMB.toFixed(1)} MB`
+      : `${(file.size / 1024).toFixed(0)} KB`;
+
+    // Reset state và bắt đầu uploading
+    const newSections = [...sections];
+    newSections[sIdx].lessons[lIdx] = {
+      ...newSections[sIdx].lessons[lIdx],
+      uploading: true,
+      uploadError: null,
+      uploadProgress: 0
+    };
+    setSections(newSections);
     setErrorMsg('');
 
     const formData = new FormData();
@@ -263,8 +312,21 @@ const CourseEditor = () => {
 
     try {
       const response = await apiClient.post('/courses/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setSections(prev => {
+              const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+                ...sec,
+                lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+                  ...les,
+                  uploadProgress: percent
+                })
+              });
+              return updated;
+            });
+          }
         }
       });
 
@@ -273,11 +335,25 @@ const CourseEditor = () => {
             !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
           throw new Error('Phản hồi upload thiếu metadata pending bắt buộc. Vui lòng tải lại tệp.');
         }
-        const newSections = [...sections];
-        newSections[sIdx].lessons[lIdx] = applySuccessfulUploadToLesson(
-          newSections[sIdx].lessons[lIdx], response.data, file
-        );
-        setSections(newSections);
+        setSections(prev => {
+          const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+            ...sec,
+            lessons: sec.lessons.map((les, li) => li !== lIdx ? les : applySuccessfulUploadToLesson(les, response.data, file))
+          });
+          return updated;
+        });
+        // Lưu thêm thông tin file để hiển thị
+        setSections(prev => {
+          const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+            ...sec,
+            lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+              ...les,
+              uploadProgress: 100,
+              fileSizeFormatted
+            })
+          });
+          return updated;
+        });
       } else {
         throw new Error(response.data?.message || 'Không thể xác thực tệp lưu trữ.');
       }
@@ -285,9 +361,22 @@ const CourseEditor = () => {
       console.error('Lỗi khi tải file lên:', err);
       const errMsg = err.response?.data?.message || err.message || 'Lỗi khi tải file lên máy chủ.';
       setErrorMsg(errMsg);
-      handleLessonChange(sIdx, lIdx, 'uploading', false);
-      handleLessonChange(sIdx, lIdx, 'uploadVerified', false);
-      handleLessonChange(sIdx, lIdx, 'uploadError', errMsg);
+      setSections(prev => {
+        const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+          ...sec,
+          lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+            ...les,
+            uploading: false,
+            uploadVerified: false,
+            uploadError: errMsg,
+            uploadProgress: 0
+          })
+        });
+        return updated;
+      });
+    } finally {
+      // Reset file input để có thể chọn lại cùng tên file
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -650,12 +739,16 @@ const CourseEditor = () => {
                                 ref={el => fileInputRef.current[refKey] = el}
                                 style={{ display: 'none' }}
                                 onChange={(e) => handleFileChange(sIdx, lIdx, e)}
-                                accept={lesson.type === 'video' ? 'video/*' : 'application/pdf'}
+                                accept={lesson.type === 'video' ? 'video/mp4' : 'application/pdf'}
                               />
                               <button 
                                 className="btn-edit-content" 
                                 onClick={() => triggerFileSelect(sIdx, lIdx)}
                                 disabled={lesson.uploading}
+                                title={lesson.type === 'video'
+                                  ? 'Chỉ chấp nhận MP4 chuẩn (H.264/AAC) — Tối đa 50 MB'
+                                  : 'Chỉ chấp nhận PDF — Tối đa 20 MB'
+                                }
                                 style={{
                                   background: lesson.uploading ? '#f8fafc' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fef2f2' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fffbeb' : lesson.contentUrl ? '#ecfdf5' : '',
                                   color: lesson.uploading ? '#64748b' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#dc2626' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#d97706' : lesson.contentUrl ? '#059669' : '',
@@ -663,7 +756,7 @@ const CourseEditor = () => {
                                 }}
                               >
                                 {lesson.uploading ? (
-                                  <><FiLoader className="spin" /> Đang tải...</>
+                                  <><FiLoader className="spin" /> Đang tải ({lesson.uploadProgress || 0}%)...</>
                                 ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
                                   <><FiUpload /> ⚠️ Cần tải lại</>
                                 ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
@@ -680,7 +773,57 @@ const CourseEditor = () => {
                             </div>
                           </div>
 
-                          {/* Toggle Speaking Configuration Button */}
+                          {/* ━━ Upload Progress Bar — hiển thị khi đang uploading ━━ */}
+                          {lesson.uploading && (
+                            <div style={{ marginLeft: '28px', marginTop: '2px' }}>
+                              <div style={{
+                                width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  width: `${lesson.uploadProgress || 0}%`,
+                                  height: '100%',
+                                  background: 'linear-gradient(90deg, #4f46e5, #7c3aed)',
+                                  borderRadius: '99px',
+                                  transition: 'width 0.3s ease'
+                                }} />
+                              </div>
+                              <span style={{ fontSize: '10px', color: '#64748b', marginTop: '3px', display: 'block' }}>
+                                Đang tải lên Supabase Storage... {lesson.uploadProgress || 0}%
+                              </span>
+                            </div>
+                          )}
+
+                          {/* ━━ MISSING_SOURCE Warning Banner (Edit Mode) ━━ */}
+                          {!lesson.uploading && (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') && !lesson.uploadError && (
+                            <div style={{
+                              marginLeft: '28px', marginTop: '2px',
+                              display: 'flex', alignItems: 'flex-start', gap: '8px',
+                              padding: '8px 12px', borderRadius: '8px',
+                              background: '#fffbeb', border: '1px solid #fde68a',
+                              fontSize: '12px', color: '#92400e', lineHeight: '1.5'
+                            }}>
+                              <FiAlertCircle style={{ flexShrink: 0, marginTop: '1px', color: '#d97706' }} />
+                              <span>
+                                <strong>Video/PDF bị mất nguồn:</strong> Tệp bài giảng này không còn tồn tại trên hệ thống lưu trữ.
+                                {' '}<strong>Vui lòng tải lại tệp</strong> bằng cách nhấp nút “⚠️ Cần tải lại” bên trên.
+                              </span>
+                            </div>
+                          )}
+
+                          {/* ━━ Upload Error Banner ━━ */}
+                          {lesson.uploadError && !lesson.uploading && (
+                            <div style={{
+                              marginLeft: '28px', marginTop: '2px',
+                              display: 'flex', alignItems: 'flex-start', gap: '8px',
+                              padding: '8px 12px', borderRadius: '8px',
+                              background: '#fef2f2', border: '1px solid #fecaca',
+                              fontSize: '12px', color: '#991b1b', lineHeight: '1.5'
+                            }}>
+                              <FiAlertCircle style={{ flexShrink: 0, marginTop: '1px', color: '#ef4444' }} />
+                              <span>{lesson.uploadError}</span>
+                            </div>
+                          )}
+
                           <div style={{ marginLeft: '28px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <button
                               type="button"
@@ -838,7 +981,7 @@ const CourseEditor = () => {
                           )}
 
                           {/* File details banner if uploaded & verified */}
-                          {lesson.contentUrl && (
+                          {lesson.contentUrl && !lesson.uploading && (
                             <div style={{
                               fontSize: '12px', color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '6px',
                               marginLeft: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '4px'
@@ -848,7 +991,12 @@ const CourseEditor = () => {
                                 <span style={{ fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {lesson.fileName || 'Tài nguyên bài giảng'}
                                 </span>
-                                <span style={{ fontSize: '10px', background: '#10b981', color: '#ffffff', padding: '1px 6px', borderRadius: '10px', fontWeight: '700' }}>
+                                {lesson.fileSizeFormatted && (
+                                  <span style={{ fontSize: '10px', color: '#6b7280', flexShrink: 0 }}>
+                                    ({lesson.fileSizeFormatted})
+                                  </span>
+                                )}
+                                <span style={{ fontSize: '10px', background: '#10b981', color: '#ffffff', padding: '1px 6px', borderRadius: '10px', fontWeight: '700', flexShrink: 0 }}>
                                   ✓ Đã bảo vệ (Supabase Storage)
                                 </span>
                               </div>

@@ -103,6 +103,23 @@ exports.getVideoTicket = async (req, res, next) => {
       });
     }
 
+    // 🔒 3. Kiểm tra trạng thái media — Trả lỗi sớm nếu video chưa được upload hoặc bị thiếu nguồn
+    if (!lesson.content_url) {
+      return res.status(409).json({
+        success: false,
+        code: 'MEDIA_NOT_UPLOADED',
+        message: 'Video bài học này chưa được tải lên. Vui lòng liên hệ giảng viên để cập nhật nội dung.'
+      });
+    }
+
+    if (lesson.media_status === 'MISSING_SOURCE') {
+      return res.status(409).json({
+        success: false,
+        code: 'MEDIA_MISSING_SOURCE',
+        message: 'Nguồn video bài học không còn tồn tại trên hệ thống lưu trữ. Giảng viên cần tải lên lại video.'
+      });
+    }
+
     const ticket = jwt.sign(
       {
         id: userId,
@@ -220,6 +237,23 @@ exports.streamLessonVideo = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'Bài giảng này không chứa tài nguyên video'
+      });
+    }
+
+    // 🔒 Kiểm tra trạng thái media trước khi stream — Tránh trả về JSON dưới dạng binary stream gây MEDIA_ELEMENT_ERROR
+    if (lesson.media_status === 'MISSING_SOURCE') {
+      return res.status(409).json({
+        success: false,
+        code: 'MEDIA_MISSING_SOURCE',
+        message: 'Nguồn video bài học không còn tồn tại trên hệ thống lưu trữ. Giảng viên cần tải lên lại video.'
+      });
+    }
+
+    if (!lesson.content_url && !lesson.storage_key) {
+      return res.status(409).json({
+        success: false,
+        code: 'MEDIA_NOT_UPLOADED',
+        message: 'Video bài học này chưa được tải lên. Vui lòng liên hệ giảng viên.'
       });
     }
 

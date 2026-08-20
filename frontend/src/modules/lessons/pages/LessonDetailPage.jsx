@@ -760,19 +760,39 @@ const LessonDetailPage = () => {
       url: cleanUrl
     });
 
-    // 🔄 Controlled Auto-Retry: Tự động xin lại ticket tối đa một lần cho cùng lesson
+    // MEDIA_ERR_SRC_NOT_SUPPORTED (code=4): Server trả về JSON thay vì video (409/404),
+    // hoặc định dạng không được hỗ trợ. Không nên auto-retry vì sẽ gặp lỗi tương tự.
+    const isFormatError = code === 4;
+
+    // 🔄 Controlled Auto-Retry: Tự động xin lại ticket tối đa một lần — chỉ khi không phải lỗi format
     const isInternal = currentLesson?.videoUrl && !currentLesson.videoUrl.startsWith('http');
-    if (autoRetryCountRef.current < 1 && isInternal) {
+    if (!isFormatError && autoRetryCountRef.current < 1 && isInternal) {
       autoRetryCountRef.current += 1;
       setVideoLoading(true);
       setReloadKey(prev => prev + 1);
       return;
     }
 
+    // Phân loại thông báo lỗi thân thiện dựa trên mã lỗi HTML MediaError
+    let friendlyMessage = 'Không thể tải hoặc giải mã video. Vui lòng thử lại.';
+    let isMediaMissing = false;
+    if (isFormatError) {
+      // code=4: MEDIA_ERR_SRC_NOT_SUPPORTED - Nguồn video không hợp lệ hoặc server trả lỗi
+      friendlyMessage = 'Không thể phát video bài học. Nguồn video có thể chưa được tải lên hoặc đã bị xóa khỏi hệ thống lưu trữ.';
+      isMediaMissing = true;
+    } else if (code === 2) {
+      // MEDIA_ERR_NETWORK
+      friendlyMessage = 'Lỗi mạng khi tải video. Vui lòng kiểm tra kết nối internet và thử lại.';
+    } else if (code === 3) {
+      // MEDIA_ERR_DECODE
+      friendlyMessage = 'Không thể giải mã video. Định dạng video có thể không được hỗ trợ trên trình duyệt này.';
+    }
+
     setVideoError({
       code,
-      message: 'Không thể tải hoặc giải mã video. Nguồn video có thể chưa được tải lên hoặc vé phát video đã hết hạn.',
-      sanitizedUrl: cleanUrl
+      message: friendlyMessage,
+      sanitizedUrl: cleanUrl,
+      isMediaMissing
     });
   };
 
@@ -950,9 +970,16 @@ const LessonDetailPage = () => {
       }).catch(err => {
         if (!active) return;
         setVideoLoading(false);
+        // Phân biệt lỗi ticket bị từ chối do video thiếu nguồn vs lỗi xác thực
+        const errCode = err?.response?.data?.code || err?.code || '';
+        const errMsg = err?.response?.data?.message || err?.message || '';
+        const isMediaMissing = errCode === 'MEDIA_MISSING_SOURCE' || errCode === 'MEDIA_NOT_UPLOADED';
         setVideoError({
-          code: 403,
-          message: 'Không thể lấy vé xem luồng DASH bảo mật.'
+          code: 409,
+          message: isMediaMissing
+            ? (errMsg || 'Nguồn video bài học không còn tồn tại. Giảng viên cần tải lên lại video.')
+            : 'Không thể lấy vé xem luồng DASH bảo mật.',
+          isMediaMissing
         });
       });
 
@@ -1017,9 +1044,22 @@ const LessonDetailPage = () => {
         if (!active) return;
         console.warn('⚠️ [Video Ticket Error]:', err?.response?.data || err.message);
         setVideoLoading(false);
+        // Phân biệt rõ mã lỗi để hiển thị thông báo thân thiện hơn
+        const errCode = err?.response?.data?.code || '';
+        const errStatus = err?.response?.status || 403;
+        let friendlyMessage = 'Không thể lấy vé phát video bài học. Vui lòng thử lại.';
+        if (errCode === 'MEDIA_MISSING_SOURCE' || errCode === 'MEDIA_NOT_UPLOADED') {
+          friendlyMessage = err?.response?.data?.message || 'Video bài học này chưa có nội dung hoặc giảng viên chưa tải lên video. Vui lòng liên hệ giảng viên để được hỗ trợ.';
+        } else if (errStatus === 403) {
+          friendlyMessage = 'Quyền truy cập video bị từ chối. Vui lòng kiểm tra lại đăng ký khóa học.';
+        } else if (errCode === 'MEDIA_NOT_READY') {
+          friendlyMessage = 'Video đang trong quá trình xử lý. Vui lòng thử lại sau vài phút.';
+        }
         setVideoError({
-          code: err?.response?.status || 403,
-          message: err?.response?.data?.message || 'Không thể lấy vé phát video bài học. Vui lòng thử lại.'
+          code: errStatus,
+          errorCode: errCode,
+          message: friendlyMessage,
+          isMediaMissing: errCode === 'MEDIA_MISSING_SOURCE' || errCode === 'MEDIA_NOT_UPLOADED'
         });
       });
 
@@ -1379,21 +1419,27 @@ const LessonDetailPage = () => {
                             {videoError ? (
                               <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-200 p-6 text-center select-none">
                                 <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-4 text-2xl shadow-lg">
-                                  ⚠️
+                                  {videoError.isMediaMissing ? '📤' : '⚠️'}
                                 </div>
                                 <h3 className="text-base sm:text-lg font-bold text-white mb-2">
-                                  Không thể phát video bài học
+                                  {videoError.isMediaMissing ? 'Không thể phát video bài học' : 'Không thể phát video'}
                                 </h3>
                                 <p className="text-xs sm:text-sm text-slate-400 max-w-md mb-5 leading-relaxed">
                                   {videoError.message || 'Tệp video nguồn có thể chưa được tải lên hoặc đường dẫn không còn tồn tại.'}
                                 </p>
-                                <button
-                                  type="button"
-                                  onClick={handleRetryVideo}
-                                  className="px-5 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
-                                >
-                                  <span>🔄 Thử tải lại video</span>
-                                </button>
+                                {videoError.isMediaMissing ? (
+                                  <p className="text-xs text-slate-500 italic max-w-sm">
+                                    💡 Giảng viên cần truy cập trang quản lý khóa học để tải lên lại video cho bài học này.
+                                  </p>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={handleRetryVideo}
+                                    className="px-5 py-2.5 bg-smart-indigo hover:bg-indigo-600 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                                  >
+                                    <span>🔄 Thử tải lại video</span>
+                                  </button>
+                                )}
                               </div>
                             ) : (
                               <>
