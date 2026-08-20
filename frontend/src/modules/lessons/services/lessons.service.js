@@ -1,6 +1,16 @@
 import apiClient from '../../../config/api.config';
 import { getCourseQuizQuestions, fetchAndCacheQuizzes } from '../../quizzes/services/quizzes.service';
 
+/**
+ * Lấy vé xem video bài học ngắn hạn (Short-lived 60s Ticket - TASK-VIDEO-TICKET-CONTRACT-HOTFIX-01)
+ * Session JWT được truyền an toàn qua Authorization header của axios, không gắn vào query string.
+ */
+export const getVideoTicket = async (lessonId) => {
+  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  const response = await apiClient.get(`/lessons/video/ticket/${cleanId}`);
+  return response.data;
+};
+
 
 const mockCourseData = {
   id: "course-1",
@@ -121,6 +131,7 @@ export const getUserIdFromToken = () => {
   if (!token) return null;
   try {
     const payload = token.split('.')[1];
+    if (!payload) return null;
     // Giải mã Base64URL an toàn chống thiếu padding và ký tự đặc biệt
     const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
@@ -204,16 +215,16 @@ export const getCourseDetails = async (courseId = 1) => {
             content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
           }
 
-          const token = localStorage.getItem('token') || '';
           let resolvedUrl = '';
           if (l.content_url) {
-            if (l.content_url.startsWith('http')) {
+            if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
               resolvedUrl = l.content_url;
             } else {
               const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
               const backendHost = apiUrl.replace(/\/api\/?$/, '');
               if (l.content_type === 'video') {
-                resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
+                // Video nội bộ: Không gắn session JWT vào URL; Active lesson player sẽ xin ticket 60s riêng
+                resolvedUrl = l.content_url;
               } else {
                 resolvedUrl = `${backendHost}${l.content_url}`;
               }
@@ -226,6 +237,8 @@ export const getCourseDetails = async (courseId = 1) => {
             title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
             duration: isSpeakingType ? 'Luyện phát âm AI' : duration,
             type: l.content_type || 'video',
+            playbackType: l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4'),
+            isDrmProtected: l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd')),
             videoUrl: l.content_type === 'video' ? resolvedUrl : null,
             pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
             description: description,
@@ -404,18 +417,17 @@ export const getLessonById = async (lessonId) => {
       content = `Phương pháp Shadowing (Nói đuổi):\n1. Nghe một câu tiếng Anh ngắn mẫu.\n2. Bắt chước ngay lập tức theo ngữ điệu, cách nhấn âm và nối âm của người nói.\n3. Ghi âm lại và tự so sánh để sửa đổi.\n\nHãy chat với AI Assistant cụm từ bạn nghe thấy trong video để xem bạn viết đúng chính tả chưa.`;
     }
 
-    const token = localStorage.getItem('token') || '';
     let resolvedUrl = '';
     if (l.content_url) {
       if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
-        // Link trực tiếp CDN (Google Cloud Storage, Supabase Storage Signed URL) -> Phát trực tiếp để đạt tốc độ cao nhất
+        // Link trực tiếp CDN -> Phát trực tiếp để đạt tốc độ cao nhất
         resolvedUrl = l.content_url;
       } else {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         const backendHost = apiUrl.replace(/\/api\/?$/, '');
         if (l.content_type === 'video') {
-          // File video lưu trên server cục bộ -> Phát qua endpoint stream có hỗ trợ HTTP Range 206
-          resolvedUrl = `${apiUrl}/lessons/video/stream/${l.lesson_id}?token=${token}`;
+          // Video nội bộ: Không gắn session JWT vào URL; Active lesson player sẽ xin ticket 60s riêng
+          resolvedUrl = l.content_url;
         } else {
           resolvedUrl = `${backendHost}${l.content_url}`;
         }

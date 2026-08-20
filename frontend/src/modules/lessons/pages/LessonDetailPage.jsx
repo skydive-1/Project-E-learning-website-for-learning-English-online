@@ -29,7 +29,8 @@ import shaka from 'shaka-player';
 import {
   getCourseDetails,
   getLessonById,
-  toggleLessonCompletion
+  toggleLessonCompletion,
+  getVideoTicket
 } from '../services/lessons.service';
 
 const WATERMARK_POSITIONS = [
@@ -66,7 +67,8 @@ const LessonDetailPage = () => {
   const [expandedSections, setExpandedSections] = useState({});
   const [optimisticLessonId, setOptimisticLessonId] = useState(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [blobVideoUrl, setBlobVideoUrl] = useState(null);
+  const [ticketPlaybackUrl, setTicketPlaybackUrl] = useState(null);
+  const autoRetryCountRef = useRef(0);
 
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -74,7 +76,7 @@ const LessonDetailPage = () => {
   // Video & Screen Recording Protection States
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState(null);
-  const [retryKey, setReloadKey] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
   const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
   // Smart AI Subtitles & Interactive Bilingual Transcript States
@@ -528,40 +530,24 @@ const LessonDetailPage = () => {
   // 3. Xác định targetLessonId thực tế (kết hợp optimistic state để phản hồi ngay lập tức < 50ms)
   const targetLessonId = optimisticLessonId || lessonId || (course?.sections?.[0]?.lessons?.[0]?.id || null);
 
-  // ⚡ TỰ ĐỘNG NẠP TRƯỚC BỘ NHỚ ĐỆM CLIENT (Client Memory Prefetching Engine)
-  // Khi khóa học tải xong, tự động nạp tất cả bài học vào React Query cache để người dùng click chuyển bài tức thì (< 10ms)
-  useEffect(() => {
-    if (course?.sections) {
-      course.sections.forEach((sec) => {
-        sec.lessons.forEach((l) => {
-          queryClient.setQueryData(['lesson', l.id], (old) => old || l);
-          queryClient.prefetchQuery({
-            queryKey: ['lesson', l.id],
-            queryFn: () => getLessonById(l.id),
-            staleTime: 1000 * 60 * 15
-          });
-        });
-      });
-    }
-  }, [course, queryClient]);
-
   // Đồng bộ optimistic state với URL params khi navigate
   useEffect(() => {
     setOptimisticLessonId(lessonId || null);
   }, [lessonId]);
 
-  // 4. Tải chi tiết bài học hiện tại với placeholderData để tránh giật lag UI khi chuyển bài
+  // 4. Tải chi tiết bài học hiện tại (Sử dụng cache key 'lesson-detail' để tránh nhầm với playlist summary)
   const { data: currentLesson, isLoading: lessonLoading, isFetching: lessonFetching } = useQuery({
-    queryKey: ['lesson', targetLessonId],
+    queryKey: ['lesson-detail', targetLessonId],
     queryFn: () => getLessonById(targetLessonId),
     enabled: !!targetLessonId,
-    staleTime: 1000 * 60 * 15,
-    placeholderData: (previousData) => previousData
+    staleTime: 1000 * 60 * 15
   });
 
-  const isLessonLoading = lessonLoading || (lessonFetching && String(currentLesson?.id) !== String(targetLessonId));
+  // Kiểm tra tính sẵn sàng thực sự của chi tiết bài học (Chống Race Condition out-of-order responses)
+  const isDetailResolved = !lessonLoading && !!currentLesson && String(currentLesson.id) === String(targetLessonId);
+  const isLessonLoading = !isDetailResolved || lessonLoading || (lessonFetching && String(currentLesson?.id) !== String(targetLessonId));
 
-  const isLoading = (lessonId && !initialLessonData) || courseLoading || (targetLessonId && isLessonLoading);
+  const isLoading = (lessonId && !initialLessonData) || courseLoading;
 
   // Real-time Study Time Tracker: Tự động ghi nhận từng phút học thực tế vào Heatmap
   const isSpeakingLesson = String(targetLessonId).startsWith('speaking-') || !!currentLesson?.speakingSentences || !!currentLesson?.speakingQuestions;
@@ -763,7 +749,7 @@ const LessonDetailPage = () => {
     const message = mediaError?.message || '';
     const networkState = e?.target?.networkState;
     const readyState = e?.target?.readyState;
-    const rawUrl = currentLesson?.videoUrl || blobVideoUrl || '';
+    const rawUrl = ticketPlaybackUrl || currentLesson?.videoUrl || '';
     const cleanUrl = sanitizeUrl(rawUrl);
 
     console.warn('⚠️ [Video Player Error]:', {
@@ -774,9 +760,18 @@ const LessonDetailPage = () => {
       url: cleanUrl
     });
 
+    // 🔄 Controlled Auto-Retry: Tự động xin lại ticket tối đa một lần cho cùng lesson
+    const isInternal = currentLesson?.videoUrl && !currentLesson.videoUrl.startsWith('http');
+    if (autoRetryCountRef.current < 1 && isInternal) {
+      autoRetryCountRef.current += 1;
+      setVideoLoading(true);
+      setReloadKey(prev => prev + 1);
+      return;
+    }
+
     setVideoError({
       code,
-      message: 'Không thể tải hoặc giải mã video. Nguồn video có thể chưa được tải lên hoặc đường dẫn không còn tồn tại.',
+      message: 'Không thể tải hoặc giải mã video. Nguồn video có thể chưa được tải lên hoặc vé phát video đã hết hạn.',
       sanitizedUrl: cleanUrl
     });
   };
@@ -787,81 +782,256 @@ const LessonDetailPage = () => {
     setReloadKey(prev => prev + 1);
   };
 
-  // Video loading state — browser tự stream qua HTTP Range Requests, không cần tải trước
-  // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Blob RAM Memory Masking & W3C ClearKey DRM)
+  // Single-flight DASH ticket renewal refs
+  const activeDashTicketRef = useRef(null);
+  const renewalTimerRef = useRef(null);
+  const renewalPromiseRef = useRef(null);
+  const dashGenerationRef = useRef(0);
+
+  // Video loading state — Lấy Video Ticket 60s cho internal MP4 / Khởi tạo Shaka Player cho DASH DRM / Phát trực tiếp external MP4
+  // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Short-Lived 60s Video Ticket & W3C ClearKey DASH DRM)
   useEffect(() => {
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
     const rawVideoUrl = currentLesson?.videoUrl;
+    const dashGeneration = ++dashGenerationRef.current;
+    activeDashTicketRef.current = null;
+    renewalPromiseRef.current = null;
 
     setVideoError(null);
 
-    if (!rawVideoUrl) {
-      setBlobVideoUrl(null);
+    if (renewalTimerRef.current) {
+      clearTimeout(renewalTimerRef.current);
+      renewalTimerRef.current = null;
+    }
+
+    if (!rawVideoUrl || currentLesson?.type === 'pdf' || currentLesson?.type === 'quiz' || currentLesson?.type === 'speaking') {
+      setTicketPlaybackUrl(null);
       setVideoLoading(false);
+      if (shakaPlayerRef.current) {
+        shakaPlayerRef.current.destroy().catch(() => {});
+        shakaPlayerRef.current = null;
+        shakaAttachedToRef.current = null;
+      }
       return;
     }
 
+    // Reset URL ngay lập tức khi đổi bài học để tránh hiển thị video cũ (stale video)
+    setTicketPlaybackUrl(null);
+    setVideoLoading(true);
     let active = true;
-    const isDash = currentLesson?.playbackType === 'dash' || (rawVideoUrl.includes('.mpd') && currentLesson?.isDrmProtected);
 
-    // 1. Đối với luồng MPEG-DASH: Nạp qua Shaka Player với W3C ClearKey DRM
+    const isDash = currentLesson?.playbackType === 'dash' ||
+                   currentLesson?.isDrmProtected === true ||
+                   (typeof rawVideoUrl === 'string' && rawVideoUrl.includes('.mpd'));
+
+    const isExternal = !isDash && (rawVideoUrl.startsWith('http://') || rawVideoUrl.startsWith('https://'));
+
+    // -------------------------------------------------------------
+    // LUỒNG 1: Video Mã hóa DASH / W3C ClearKey DRM -> Sử dụng Shaka Player
+    // -------------------------------------------------------------
     if (isDash) {
-      if (shaka.Player && shaka.Player.isBrowserSupported() && videoRef.current) {
+      if (!shaka || !shaka.Player || !shaka.Player.isBrowserSupported()) {
+        setVideoLoading(false);
+        setVideoError({
+          code: 4,
+          message: 'Trình duyệt hiện tại không hỗ trợ giải mã DRM DASH qua Shaka Player.'
+        });
+        return () => {
+          active = false;
+        };
+      }
+
+      const rawLessonId = String(currentLesson.id).replace(/^(quiz|speaking)-/, '');
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const allowQueryTicket = import.meta.env.VITE_DASH_TICKET_QUERY_FALLBACK === 'true';
+      let authRetryCount = 0;
+      let shakaErrorHandler = null;
+
+      // Hàm gia hạn ticket đơn luồng an toàn (Single-Flight Proactive Renewal)
+      const fetchOrRenewTicket = async () => {
+        if (renewalPromiseRef.current?.generation === dashGeneration) return renewalPromiseRef.current.promise;
+        const promise = (async () => {
+          try {
+            const ticketRes = await getVideoTicket(rawLessonId);
+            if (active && dashGenerationRef.current === dashGeneration && ticketRes?.ticket) {
+              activeDashTicketRef.current = ticketRes.ticket;
+              // Lên lịch gia hạn trước 15s (ở giây thứ 45 của vé 60s)
+              if (renewalTimerRef.current) clearTimeout(renewalTimerRef.current);
+              renewalTimerRef.current = setTimeout(() => {
+                if (active) fetchOrRenewTicket().catch(() => {});
+              }, 45000);
+              return ticketRes.ticket;
+            }
+          } catch (e) {
+            console.warn('⚠️ [DASH Ticket Renewal Error]:', e.message);
+          } finally {
+            if (renewalPromiseRef.current?.generation === dashGeneration) renewalPromiseRef.current = null;
+          }
+          return active && dashGenerationRef.current === dashGeneration ? activeDashTicketRef.current : null;
+        })();
+        renewalPromiseRef.current = { generation: dashGeneration, promise };
+        return promise;
+      };
+
+      fetchOrRenewTicket().then(ticket => {
+        if (!active) return;
+        if (!ticket) throw new Error('DASH ticket unavailable');
+
         if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
           shakaPlayerRef.current.destroy().catch(() => {});
           shakaPlayerRef.current = null;
           shakaAttachedToRef.current = null;
         }
 
-        if (!shakaPlayerRef.current) {
+        if (!shakaPlayerRef.current && videoRef.current) {
           const player = new shaka.Player(videoRef.current);
           shakaPlayerRef.current = player;
           shakaAttachedToRef.current = videoRef.current;
 
-          const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
-          if (token) {
-            player.getNetworkingEngine().registerRequestFilter((type, request) => {
-              if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+          const MANIFEST = shaka?.net?.NetworkingEngine?.RequestType?.MANIFEST ?? 0;
+          const SEGMENT = shaka?.net?.NetworkingEngine?.RequestType?.SEGMENT ?? 2;
+          const LICENSE = shaka?.net?.NetworkingEngine?.RequestType?.LICENSE ?? 1;
+
+          player.getNetworkingEngine().registerRequestFilter((type, request) => {
+            if (type === LICENSE) {
+              const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+              if (token) {
                 request.headers['Authorization'] = `Bearer ${token}`;
               }
-            });
-          }
+            } else if (type === MANIFEST || type === SEGMENT) {
+              const currentTicket = activeDashTicketRef.current || ticket;
+              if (currentTicket) {
+                request.headers['X-Video-Ticket'] = currentTicket;
+                if (allowQueryTicket && request.uris && request.uris[0]) {
+                  const sep = request.uris[0].includes('?') ? '&' : '?';
+                  request.uris[0] = `${request.uris[0]}${sep}ticket=${encodeURIComponent(currentTicket)}`;
+                }
+              }
+            }
+          });
+
+          shakaErrorHandler = (event) => {
+            const detail = event?.detail || event;
+            const serialized = JSON.stringify(detail || {});
+            const isAuthError = /\b(401|403)\b/.test(serialized);
+            if (!isAuthError || authRetryCount >= 1 || !active) return;
+            authRetryCount++;
+            fetchOrRenewTicket().then(newTicket => {
+              if (newTicket && active && dashGenerationRef.current === dashGeneration) {
+                player.retryStreaming?.();
+              }
+            }).catch(() => {});
+          };
+          player.addEventListener?.('error', shakaErrorHandler);
         }
 
-        const currentLessonId = currentLesson?.id || lessonId || 1;
-        const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${currentLessonId}`;
-        shakaPlayerRef.current.configure({
+        const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${rawLessonId}`;
+        shakaPlayerRef.current?.configure({
           drm: { servers: { 'org.w3.clearkey': licenseUrl } }
         });
 
-        shakaPlayerRef.current.load(rawVideoUrl)
+        // Điểm cuối DASH có bảo vệ
+        const manifestBaseUrl = `${API_BASE_URL}/lessons/dash/${rawLessonId}/manifest.mpd`;
+        const manifestUrl = allowQueryTicket ? `${manifestBaseUrl}?ticket=${encodeURIComponent(ticket)}` : manifestBaseUrl;
+
+        shakaPlayerRef.current?.load(manifestUrl)
           .then(() => {
             if (active) setVideoLoading(false);
           })
-          .catch(err => {
-            console.warn('[Shaka DRM]: Lỗi nạp luồng DASH, fallback về Native Video:', err?.message || err);
-            if (active && videoRef.current) {
-              videoRef.current.src = rawVideoUrl;
-              videoRef.current.load();
-              setVideoLoading(false);
-            }
+          .catch((err) => {
+            if (!active) return;
+            console.warn('⚠️ [Shaka DRM Error]:', err?.message || err);
+            setVideoLoading(false);
+            setVideoError({
+              code: 4,
+              message: 'Không thể giải mã hoặc phát luồng video DRM DASH.',
+              sanitizedUrl: sanitizeUrl(manifestUrl)
+            });
           });
-      }
-      return;
+      }).catch(err => {
+        if (!active) return;
+        setVideoLoading(false);
+        setVideoError({
+          code: 403,
+          message: 'Không thể lấy vé xem luồng DASH bảo mật.'
+        });
+      });
+
+      return () => {
+        active = false;
+        if (renewalTimerRef.current) {
+          clearTimeout(renewalTimerRef.current);
+          renewalTimerRef.current = null;
+        }
+        renewalPromiseRef.current = null;
+        const player = shakaPlayerRef.current;
+        if (player) {
+          if (shakaErrorHandler) player.removeEventListener?.('error', shakaErrorHandler);
+          player.destroy().catch(() => {});
+          shakaPlayerRef.current = null;
+          shakaAttachedToRef.current = null;
+        }
+      };
     }
 
-    // Nếu không phải luồng DASH DRM -> Hủy Shaka Player
+    // Nếu không phải luồng DASH DRM -> Hủy Shaka Player instance nếu đang tồn tại
     if (shakaPlayerRef.current) {
       shakaPlayerRef.current.destroy().catch(() => {});
       shakaPlayerRef.current = null;
       shakaAttachedToRef.current = null;
     }
 
-    // 2. Đối với Video MP4 thông thường: Gán trực tiếp URL để trình duyệt tự stream qua HTTP Range Requests
-    setBlobVideoUrl(rawVideoUrl);
-    setVideoLoading(false);
-  }, [currentLesson?.videoUrl, currentLesson?.playbackType, lessonId, retryKey]);
+    // -------------------------------------------------------------
+    // LUỒNG 2: Video Ngoài / CDN Trực tiếp -> Phát trực tiếp không qua ticket
+    // -------------------------------------------------------------
+    if (isExternal) {
+      setTicketPlaybackUrl(rawVideoUrl);
+      setVideoLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
+    // -------------------------------------------------------------
+    // LUỒNG 3: Video Nội bộ Bảo mật / Supabase Storage -> Lấy Video Ticket 60s
+    // -------------------------------------------------------------
+    const rawLessonId = String(currentLesson.id).replace(/^(quiz|speaking)-/, '');
+    getVideoTicket(rawLessonId)
+      .then((res) => {
+        if (!active) return;
+        if (res && res.streamUrl) {
+          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const backendHost = apiUrl.replace(/\/api\/?$/, '');
+          const fullStreamUrl = res.streamUrl.startsWith('http')
+            ? res.streamUrl
+            : `${backendHost}${res.streamUrl.startsWith('/') ? '' : '/'}${res.streamUrl}`;
+          setTicketPlaybackUrl(fullStreamUrl);
+        } else {
+          setVideoError({
+            code: 403,
+            message: 'Không nhận được vé phát video từ máy chủ.'
+          });
+        }
+        setVideoLoading(false);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.warn('⚠️ [Video Ticket Error]:', err?.response?.data || err.message);
+        setVideoLoading(false);
+        setVideoError({
+          code: err?.response?.status || 403,
+          message: err?.response?.data?.message || 'Không thể lấy vé phát video bài học. Vui lòng thử lại.'
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentLesson?.id, currentLesson?.videoUrl, currentLesson?.type, currentLesson?.playbackType, currentLesson?.isDrmProtected, reloadKey]);
+
+  // Reset autoRetry counter khi chuyển sang bài học khác
+  useEffect(() => {
+    autoRetryCountRef.current = 0;
+  }, [currentLesson?.id]);
 
   // Cleanup Shaka Player khi component unmount
   useEffect(() => {
@@ -869,6 +1039,7 @@ const LessonDetailPage = () => {
       if (shakaPlayerRef.current) {
         shakaPlayerRef.current.destroy().catch(() => {});
         shakaPlayerRef.current = null;
+        shakaAttachedToRef.current = null;
       }
     };
   }, []);
@@ -1103,16 +1274,19 @@ const LessonDetailPage = () => {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-              {/* Left Area - 65%-70% (xl: 8 cols, lg: 7 cols) — Wrapper bọc ngoài để transition mượt khi chuyển bài */}
-              <div
-                className="col-span-1 lg:col-span-7 xl:col-span-8 flex flex-col space-y-6"
-                style={{
-                  opacity: isLessonLoading ? 0.6 : 1,
-                  transition: 'opacity 0.2s ease',
-                  pointerEvents: isLessonLoading ? 'none' : 'auto'
-                }}
-              >
-                {currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
+              {/* Left Area - 65%-70% (xl: 8 cols, lg: 7 cols) */}
+              <div className="col-span-1 lg:col-span-7 xl:col-span-8 flex flex-col space-y-6">
+                {!isDetailResolved ? (
+                  <div className="w-full flex flex-col space-y-6 animate-pulse" style={{ opacity: 0.8 }}>
+                    {/* Video/Document Block Skeleton */}
+                    <div className="rounded-2xl overflow-hidden aspect-video border border-slate-200 dark:border-slate-800 shadow-md relative" style={{ backgroundColor: 'var(--card-bg, #cbd5e1)', opacity: 0.3 }}></div>
+                    {/* Title and metadata skeleton */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ height: '28px', width: '60%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', opacity: 0.3 }}></div>
+                      <div style={{ height: '18px', width: '40%', backgroundColor: 'var(--border-color, #cbd5e1)', borderRadius: '6px', opacity: 0.3 }}></div>
+                    </div>
+                  </div>
+                ) : currentLesson?.type === 'quiz' || currentLesson?.type === 'quizz' ? (
                   <div className="w-full flex flex-col space-y-6">
                     <QuizContent
                       lessonId={currentLesson?.id ? currentLesson.id.replace('quiz-', '') : ''}
@@ -1302,7 +1476,7 @@ const LessonDetailPage = () => {
 
                                 <video
                                   ref={videoRef}
-                                  src={blobVideoUrl || undefined}
+                                  src={ticketPlaybackUrl || undefined}
                                   controls
                                   autoPlay
                                   preload="auto"

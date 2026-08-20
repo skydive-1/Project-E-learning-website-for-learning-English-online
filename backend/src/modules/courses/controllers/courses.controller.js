@@ -2,8 +2,34 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const coursesService = require('../services/courses.service');
-const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
-const { uploadVideoToSupabase, deleteStorageObject } = require('../../../utils/supabaseStorage');
+const supabaseStorage = require('../../../utils/supabaseStorage');
+const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+
+async function registerUploadedObject(req, uploadResult, storageBucket, mimeType) {
+  const pendingUploadId = crypto.randomUUID();
+  try {
+    await orphanCleanupService.registerPendingUpload({
+      uploadId: pendingUploadId,
+      instructorId: req.user?.id || req.user?.userId,
+      storageKey: uploadResult.storageKey,
+      storageBucket,
+      mimeType,
+      sizeBytes: uploadResult.sizeBytes,
+      checksumSha256: uploadResult.checksumSha256
+    });
+    return pendingUploadId;
+  } catch (error) {
+    let deleted = false;
+    try { deleted = await supabaseStorage.deleteStorageObject(uploadResult.storageKey, storageBucket); } catch (_) {}
+    if (!deleted) {
+      await orphanCleanupService.recordFailedDeletion(uploadResult.storageKey, storageBucket, `Pending registration failed: ${error.message}`);
+    }
+    const registrationError = new Error('Không thể đăng ký phiên tải lên; tệp chưa được liên kết');
+    registrationError.status = 500;
+    registrationError.code = 'PENDING_UPLOAD_REGISTRATION_FAILED';
+    throw registrationError;
+  }
+}
 
 exports.getAllCourses = async (req, res, next) => {
   try {
@@ -52,57 +78,53 @@ exports.uploadFile = async (req, res, next) => {
     tempFilePath = req.file.path;
     const ext = path.extname(req.file.originalname).toLowerCase();
     const isVideo = req.file.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.avi'].includes(ext);
-    const enableDrm = process.env.ENABLE_DRM_PACKAGING === 'true';
+    const isPdf = req.file.mimetype === 'application/pdf' || ext === '.pdf';
 
-    // 1. XỬ LÝ VIDEO
+    const instructorId = req.user?.id || req.user?.userId || 'common';
+    const assetId = crypto.randomUUID();
+    const rawBaseName = path.basename(req.file.originalname, ext);
+    const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    // 1. XỬ LÝ VIDEO BÀI GIẢNG (Bucket 'videos')
     if (isVideo) {
-      // Yêu cầu nghiêm ngặt: Chỉ chấp nhận định dạng MP4 thuần
       if (ext !== '.mp4' || req.file.mimetype !== 'video/mp4') {
         return res.status(400).json({
           success: false,
+          code: 'UNSUPPORTED_VIDEO_FORMAT',
           message: 'Hệ thống chỉ chấp nhận tệp video định dạng MP4 chuẩn (MIME video/mp4, đuôi .mp4).'
         });
       }
 
-      // Khi DRM Packaging được kích hoạt rõ ràng bằng feature flag
-      if (enableDrm) {
-        const lessonId = req.body?.lessonId || Date.now();
-        const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
-        if (drmResult.success && drmResult.mpdUrl) {
-          return res.status(200).json({
-            success: true,
-            message: 'Tải file lên và đóng gói mã hóa DRM DASH thành công',
-            fileUrl: drmResult.mpdUrl,
-            storageKey: drmResult.mpdUrl,
-            playbackType: 'dash',
-            originalName: req.file.originalname,
-            mimetype: req.file.mimetype,
-            isDrmProtected: true
-          });
-        }
-      }
-
-      // Mặc định (ENABLE_DRM_PACKAGING=false): Upload trực tiếp lên Supabase Storage bucket 'videos'
-      const instructorId = req.user?.id || req.user?.userId || 'common';
-      const assetId = crypto.randomUUID();
-      const rawBaseName = path.basename(req.file.originalname, ext);
-      const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
       const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.mp4`;
-
-      const uploadResult = await uploadVideoToSupabase(req.file.path, objectKey, 'video/mp4');
+      const uploadResult = await supabaseStorage.uploadVideoToSupabase(req.file.path, objectKey, 'video/mp4');
 
       if (!uploadResult.success) {
-        return res.status(500).json({
+        const statusCode = (uploadResult.code === 'INVALID_VIDEO_CONTAINER' || 
+                            uploadResult.code === 'UNSUPPORTED_VIDEO_CODEC' ||
+                            uploadResult.code === 'FILE_TOO_LARGE' ||
+                            uploadResult.code === 'EMPTY_FILE') ? 400 : 500;
+        return res.status(statusCode).json({
           success: false,
-          message: `Tải video lên Supabase Storage thất bại: ${uploadResult.error || 'Lỗi không xác định'}`
+          code: uploadResult.code || 'UPLOAD_FAILED',
+          message: uploadResult.error || 'Tải video lên máy chủ lưu trữ thất bại'
         });
       }
+
+      // Đăng ký pending upload vào cơ sở dữ liệu
+      const pendingUploadId = await registerUploadedObject(req, uploadResult, 'videos', 'video/mp4');
 
       return res.status(200).json({
         success: true,
         message: 'Tải video lên Supabase Storage thành công',
+        pendingUploadId,
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
+        storageProvider: 'supabase',
+        storageBucket: 'videos',
+        mimeType: 'video/mp4',
+        sizeBytes: uploadResult.sizeBytes,
+        checksumSha256: uploadResult.checksumSha256,
+        mediaStatus: 'PENDING',
         playbackType: 'mp4',
         originalName: req.file.originalname,
         mimetype: 'video/mp4',
@@ -110,20 +132,57 @@ exports.uploadFile = async (req, res, next) => {
       });
     }
 
-    // 2. XỬ LÝ CÁC LOẠI TỆP KHÁC (Tài liệu PDF, Hình ảnh)
-    const destNormalized = req.file.destination.replace(/\\/g, '/');
-    const uploadIdx = destNormalized.indexOf('/uploads');
-    const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
-    const fileUrl = `/uploads${subFolder}/${req.file.filename}`;
+    // 2. XỬ LÝ TÀI LIỆU PDF BÀI GIẢNG (Bucket 'documents')
+    if (isPdf) {
+      if (ext !== '.pdf') {
+        return res.status(400).json({
+          success: false,
+          code: 'INVALID_PDF_FORMAT',
+          message: 'Tài liệu phải có định dạng PDF với đuôi .pdf.'
+        });
+      }
 
-    return res.status(200).json({
-      success: true,
-      message: 'Tải file lên thành công',
-      fileUrl,
-      storageKey: fileUrl,
-      originalName: req.file.originalname,
-      mimetype: req.file.mimetype,
-      isDrmProtected: false
+      const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.pdf`;
+      const uploadResult = await supabaseStorage.uploadDocumentToSupabase(req.file.path, objectKey, 'application/pdf');
+
+      if (!uploadResult.success) {
+        const statusCode = (uploadResult.code === 'INVALID_PDF_FORMAT' ||
+                            uploadResult.code === 'EMPTY_FILE' ||
+                            uploadResult.code === 'FILE_TOO_LARGE') ? 400 : 500;
+        return res.status(statusCode).json({
+          success: false,
+          code: uploadResult.code || 'UPLOAD_FAILED',
+          message: uploadResult.error || 'Tải tài liệu PDF lên máy chủ lưu trữ thất bại'
+        });
+      }
+
+      // Đăng ký pending upload vào cơ sở dữ liệu
+      const pendingUploadId = await registerUploadedObject(req, uploadResult, 'documents', 'application/pdf');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Tải tài liệu PDF lên Supabase Storage thành công',
+        pendingUploadId,
+        fileUrl: uploadResult.storageKey,
+        storageKey: uploadResult.storageKey,
+        storageProvider: 'supabase',
+        storageBucket: 'documents',
+        mimeType: 'application/pdf',
+        sizeBytes: uploadResult.sizeBytes,
+        checksumSha256: uploadResult.checksumSha256,
+        mediaStatus: 'PENDING',
+        playbackType: 'pdf',
+        originalName: req.file.originalname,
+        mimetype: 'application/pdf',
+        isDrmProtected: false
+      });
+    }
+
+    // 3. TỪ CHỐI ĐỊNH DẠNG KHÔNG HỢP LỆ
+    return res.status(400).json({
+      success: false,
+      code: 'UNSUPPORTED_FILE_TYPE',
+      message: 'Hệ thống chỉ hỗ trợ tải lên bài giảng dạng Video (MP4 H.264/AAC) hoặc Tài liệu (PDF).'
     });
   } catch (error) {
     next(error);
@@ -141,9 +200,10 @@ exports.uploadFile = async (req, res, next) => {
 
 exports.createCourse = async (req, res, next) => {
   try {
-    // instructor_id lấy từ auth middleware (req.user.id)
-    const instructorId = req.user.id;
-    const course = await coursesService.createCourse(req.body, instructorId);
+    // Bắt buộc lấy instructorId duy nhất từ token đã xác thực
+    const instructorId = req.user.id || req.user.userId;
+    const userRole = req.user.roleId || req.user.role || 2;
+    const course = await coursesService.createCourse(req.body, instructorId, userRole);
     
     res.status(201).json({
       success: true,
@@ -156,85 +216,12 @@ exports.createCourse = async (req, res, next) => {
 };
 
 exports.uploadMedia = async (req, res) => {
-  let tempFilePath = null;
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
+  // Alias gọi thẳng sang uploadFile để bảo đảm tính thống nhất
+  return exports.uploadFile(req, res, (err) => {
+    if (err) {
+      res.status(err.status || 500).json({ success: false, message: err.message });
     }
-
-    tempFilePath = req.file.path;
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    const isVideo = req.file.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.avi'].includes(ext);
-    const enableDrm = process.env.ENABLE_DRM_PACKAGING === 'true';
-
-    if (isVideo) {
-      if (ext !== '.mp4' || req.file.mimetype !== 'video/mp4') {
-        return res.status(400).json({
-          success: false,
-          message: 'Chỉ chấp nhận tệp video MP4 chuẩn.'
-        });
-      }
-
-      if (enableDrm) {
-        const lessonId = req.body?.lessonId || Date.now();
-        const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
-        if (drmResult.success && drmResult.mpdUrl) {
-          return res.status(200).json({
-            success: true,
-            url: drmResult.mpdUrl,
-            storageKey: drmResult.mpdUrl,
-            playbackType: 'dash',
-            isDrmProtected: true
-          });
-        }
-      }
-
-      const instructorId = req.user?.id || req.user?.userId || 'common';
-      const assetId = crypto.randomUUID();
-      const rawBaseName = path.basename(req.file.originalname, ext);
-      const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.mp4`;
-
-      const uploadResult = await uploadVideoToSupabase(req.file.path, objectKey, 'video/mp4');
-
-      if (!uploadResult.success) {
-        return res.status(500).json({
-          success: false,
-          message: `Lỗi upload Supabase: ${uploadResult.error}`
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        url: uploadResult.storageKey,
-        storageKey: uploadResult.storageKey,
-        playbackType: 'mp4',
-        isDrmProtected: false
-      });
-    }
-
-    const destNormalized = req.file.destination.replace(/\\/g, '/');
-    const uploadIdx = destNormalized.indexOf('/uploads');
-    const subFolder = uploadIdx !== -1 ? destNormalized.substring(uploadIdx + 8) : '';
-    const fileUrl = `/uploads${subFolder}/${req.file.filename}`;
-
-    res.status(200).json({
-      success: true,
-      url: fileUrl,
-      storageKey: fileUrl,
-      isDrmProtected: false
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  } finally {
-    if (tempFilePath && fs.existsSync(tempFilePath)) {
-      try {
-        fs.unlinkSync(tempFilePath);
-      } catch (cleanupErr) {
-        console.warn('⚠️ Lỗi dọn dẹp file tạm Multer:', cleanupErr.message);
-      }
-    }
-  }
+  });
 };
 
 exports.getLessonById = async (req, res, next) => {
@@ -288,7 +275,9 @@ exports.getCourseById = async (req, res, next) => {
 exports.updateCourse = async (req, res, next) => {
   try {
     const { courseId } = req.params;
-    const course = await coursesService.updateCourse(courseId, req.body);
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.roleId || req.user?.role || 2;
+    const course = await coursesService.updateCourse(courseId, req.body, userId, userRole);
     if (!course) {
       return res.status(404).json({
         success: false,
@@ -308,7 +297,9 @@ exports.updateCourse = async (req, res, next) => {
 exports.deleteCourse = async (req, res, next) => {
   try {
     const { courseId } = req.params;
-    const result = await coursesService.deleteCourse(courseId);
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.roleId || req.user?.role || 2;
+    const result = await coursesService.deleteCourse(courseId, userId, userRole);
     if (!result) {
       return res.status(404).json({
         success: false,

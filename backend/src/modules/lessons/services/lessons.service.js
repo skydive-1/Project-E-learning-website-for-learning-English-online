@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 
@@ -169,8 +171,20 @@ class LessonsService {
    */
   async deleteLesson(lessonId) {
     try {
-      const result = await db.query('DELETE FROM lessons WHERE lesson_id = $1 RETURNING lesson_id', [parseInt(lessonId, 10)]);
-      return result.rows.length > 0;
+      const cleanLessonId = parseInt(lessonId, 10);
+      const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+      const assetsToCleanup = await orphanCleanupService.collectAssetsFromLesson(cleanLessonId);
+
+      const result = await db.query('DELETE FROM lessons WHERE lesson_id = $1 RETURNING lesson_id', [cleanLessonId]);
+      const deleted = result.rows.length > 0;
+
+      if (deleted && assetsToCleanup.length > 0) {
+        orphanCleanupService.cleanupUnreferencedAssets(assetsToCleanup).catch((err) => {
+          console.warn('⚠️ [LessonsService.deleteLesson] Cảnh báo dọn dẹp orphan asset:', err.message);
+        });
+      }
+
+      return deleted;
     } catch (error) {
       handleServiceError(error, 'Lỗi xóa bài giảng');
     }
@@ -197,6 +211,9 @@ class LessonsService {
    * Upload tài liệu đính kèm (PDF), trích xuất text và nạp vào Pinecone RAG
    */
   async uploadLessonMaterial(lessonId, file, userId, userRole) {
+    let tempFilePath = null;
+    let uploadedStorageKey = null;
+
     try {
       const cleanLessonId = parseInt(lessonId, 10);
       const isOwner = await this.checkLessonOwnership(cleanLessonId, userId, userRole);
@@ -212,33 +229,84 @@ class LessonsService {
         throw error;
       }
 
-      const relativeUrl = `/uploads/courses/documents/${file.filename}`;
-      const sizeKb = Math.round(file.size / 1024) || 1;
+      tempFilePath = file.path;
 
-      // 1. Lưu thông tin tài liệu vào CSDL
-      const insertQuery = `
-        INSERT INTO lesson_materials (lesson_id, file_name, file_url, file_type, file_size_kb, uploaded_by)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING material_id, lesson_id, file_name, file_url, file_type, file_size_kb, created_at
-      `;
-      const result = await db.query(insertQuery, [
-        cleanLessonId,
-        file.originalname,
-        relativeUrl,
-        file.mimetype || 'application/pdf',
-        sizeKb,
-        userId
-      ]);
+      // 1. Validate PDF file
+      const { validatePdfFile } = require('../../../utils/pdfValidator.util');
+      const validation = await validatePdfFile(file.path);
+      if (!validation.isValid) {
+        const error = new Error(validation.message || 'Tệp tải lên không phải là định dạng PDF hợp lệ.');
+        error.status = 400;
+        error.code = validation.code || 'INVALID_PDF';
+        throw error;
+      }
 
-      const material = result.rows[0];
+      // 2. Upload lên Supabase Storage bucket 'documents'
+      const { uploadDocumentToSupabase, deleteStorageObject } = require('../../../utils/supabaseStorage');
+      const crypto = require('crypto');
+      const ext = path.extname(file.originalname).toLowerCase();
+      const rawBaseName = path.basename(file.originalname, ext);
+      const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const assetId = crypto.randomUUID();
+      const objectKey = `courses/materials/${cleanLessonId}/${assetId}/${safeBaseName}.pdf`;
 
-      // 2. Trích xuất text từ tệp PDF và nạp vào Pinecone RAG
+      const uploadResult = await uploadDocumentToSupabase(file.path, objectKey, 'application/pdf');
+      if (!uploadResult.success) {
+        const error = new Error(`Tải tài liệu PDF lên Supabase Storage thất bại: ${uploadResult.error || 'Lỗi không xác định'}`);
+        error.status = 500;
+        error.code = uploadResult.code || 'STORAGE_UPLOAD_ERROR';
+        throw error;
+      }
+
+      uploadedStorageKey = uploadResult.storageKey;
+      const sizeKb = Math.round(uploadResult.sizeBytes / 1024) || 1;
+
+      // 3. Lưu thông tin tài liệu vào CSDL trong transaction
+      let material;
+      try {
+        const insertQuery = `
+          INSERT INTO lesson_materials (
+            lesson_id, file_name, file_url, file_type, file_size_kb, uploaded_by,
+            storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          RETURNING material_id, lesson_id, file_name, file_url, file_type, file_size_kb,
+                    storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status, created_at
+        `;
+        const result = await db.query(insertQuery, [
+          cleanLessonId,
+          file.originalname,
+          uploadResult.storageKey, // Lưu storage key vào file_url để tương thích
+          'application/pdf',
+          sizeKb,
+          userId,
+          'supabase',
+          'documents',
+          uploadResult.storageKey,
+          'application/pdf',
+          uploadResult.sizeBytes,
+          uploadResult.checksumSha256,
+          'READY'
+        ]);
+
+        material = result.rows[0];
+      } catch (dbErr) {
+        // Rollback orphan object trên Supabase Storage nếu DB insert thất bại
+        if (uploadedStorageKey) {
+          deleteStorageObject(uploadedStorageKey, 'documents').catch(delErr => {
+            console.warn('⚠️ Lỗi xóa orphan document object sau DB failure:', delErr.message);
+          });
+        }
+        throw dbErr;
+      }
+
+      // 4. Trích xuất text từ tệp PDF và nạp vào Pinecone RAG
       const { extractTextFromPdf } = require('../../../utils/pdfExtractor.util');
       const extractedText = await extractTextFromPdf(file.path);
 
       if (extractedText && extractedText.trim()) {
         const { ingestPdfDocument } = require('./ragIngestion.service');
-        // Nạp vector chạy ngầm bất đồng bộ không chặn luồng phản hồi
+        // Nạp vector chạy ngầm bất đồng bộ không chặn luồng phản hồi; nếu Pinecone lỗi vẫn giữ nguyên PDF
         ingestPdfDocument(cleanLessonId, material.material_id, file.originalname, extractedText).catch(ragErr => {
           console.error(`[RAG Ingestion] Lỗi nạp vector tài liệu ${material.material_id}:`, ragErr.message);
         });
@@ -247,6 +315,15 @@ class LessonsService {
       return material;
     } catch (error) {
       handleServiceError(error, 'Lỗi tải lên tài liệu bài học');
+    } finally {
+      // Dọn dẹp file tạm Multer
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (cleanupErr) {
+          console.warn('⚠️ Lỗi dọn dẹp file tạm Multer:', cleanupErr.message);
+        }
+      }
     }
   }
 
@@ -257,7 +334,8 @@ class LessonsService {
     try {
       const cleanLessonId = parseInt(lessonId, 10);
       const query = `
-        SELECT material_id, lesson_id, file_name, file_url, file_type, file_size_kb, created_at
+        SELECT material_id, lesson_id, file_name, file_url, file_type, file_size_kb,
+               storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status, created_at
         FROM lesson_materials
         WHERE lesson_id = $1
         ORDER BY material_id ASC
@@ -285,7 +363,11 @@ class LessonsService {
       }
 
       // 1. Lấy thông tin file trước khi xóa
-      const checkQuery = `SELECT file_url FROM lesson_materials WHERE material_id = $1 AND lesson_id = $2`;
+      const checkQuery = `
+        SELECT material_id, file_url, storage_key, storage_bucket 
+        FROM lesson_materials 
+        WHERE material_id = $1 AND lesson_id = $2
+      `;
       const checkRes = await db.query(checkQuery, [cleanMaterialId, cleanLessonId]);
       if (checkRes.rows.length === 0) {
         const error = new Error('Không tìm thấy tài liệu đính kèm để xóa.');
@@ -293,12 +375,25 @@ class LessonsService {
         throw error;
       }
 
-      const fileUrl = checkRes.rows[0].file_url;
+      const mat = checkRes.rows[0];
+      const fileUrl = mat.file_url;
+      const storageKey = mat.storage_key || (fileUrl && !fileUrl.startsWith('/uploads/') ? fileUrl : null);
+      const storageBucket = mat.storage_bucket || 'documents';
 
       // 2. Xóa trong CSDL
       await db.query(`DELETE FROM lesson_materials WHERE material_id = $1`, [cleanMaterialId]);
 
-      // 3. Xóa file vật lý trên đĩa
+      // 3. Xóa trên Supabase Storage nếu là storage object và không còn tham chiếu nào khác
+      if (storageKey) {
+        try {
+          const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+          await orphanCleanupService.cleanupUnreferencedAssets([{ key: storageKey, bucket: storageBucket }]);
+        } catch (e) {
+          console.warn(`[Storage Delete] Cảnh báo lỗi xóa object ${storageKey} trên Supabase:`, e.message);
+        }
+      }
+
+      // 4. Xóa file vật lý trên đĩa nếu là file local legacy
       if (fileUrl && fileUrl.startsWith('/uploads/')) {
         const path = require('path');
         const fs = require('fs');
@@ -312,7 +407,7 @@ class LessonsService {
         }
       }
 
-      // 4. Xóa vector trong Pinecone
+      // 5. Xóa vector trong Pinecone
       const { deleteMaterialVectors } = require('./ragIngestion.service');
       deleteMaterialVectors(cleanMaterialId).catch(err => {
         console.warn(`[RAG Vector Delete] Cảnh báo xóa vector materialId=${cleanMaterialId}:`, err.message);

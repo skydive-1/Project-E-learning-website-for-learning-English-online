@@ -13,9 +13,9 @@ RUN curl -fsSL https://github.com/shaka-project/shaka-packager/releases/latest/d
 # Set working directory
 WORKDIR /usr/src/app
 
-# 4. Cài đặt Node dependencies (tận dụng Docker layer cache)
+# 4. Cài đặt Node dependencies (tận dụng Docker layer cache & deterministic build)
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # 5. Cài đặt Python dependencies (tận dụng Docker layer cache)
 COPY scripts/requirements.txt ./scripts/requirements.txt

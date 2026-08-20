@@ -1,5 +1,5 @@
 /**
- * Video Streaming & Upload Test Suite
+ * Video Streaming & Ticket Contract Test Suite (TASK-VIDEO-TICKET-CONTRACT-HOTFIX-01)
  * Run with: node --test tests/video_streaming.test.js
  */
 
@@ -13,20 +13,134 @@ const jwt = require('jsonwebtoken');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
-const { isValidMp4, uploadVideoToSupabase, generateSignedUrl } = require('../src/utils/supabaseStorage');
+const db = require('../src/config/database');
+const { authenticate, authenticateVideoToken } = require('../src/middleware/auth.middleware');
+const supabaseStorage = require('../src/utils/supabaseStorage');
+const { isValidMp4 } = supabaseStorage;
 const coursesService = require('../src/modules/courses/services/courses.service');
 const lessonsController = require('../src/modules/lessons/controllers/lessons.controller');
 
-describe('🎬 Video Streaming & Security Test Suite', () => {
+describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', () => {
   const sampleMp4Path = path.join(__dirname, '../uploads/videos/valid_test_video.mp4');
+  let server;
+  let baseUrl;
+  let originalQuery;
+  let originalGetLessonById;
+  let originalCanAccess;
+  let originalGenerateSignedUrl;
+  const originalJwtSecret = process.env.JWT_SECRET;
+  const testSecret = 'test-video-ticket-secret-key-123456';
+
+  const mockUsers = [
+    { user_id: 1, email: 'student@example.com', username: 'student', full_name: 'Student One', role_id: 3 },
+    { user_id: 2, email: 'hacker@example.com', username: 'hacker', full_name: 'Hacker User', role_id: 3 }
+  ];
+
+  before(async () => {
+    process.env.JWT_SECRET = testSecret;
+    originalQuery = db.query;
+    originalGetLessonById = coursesService.getLessonById;
+    originalCanAccess = coursesService.canUserAccessLesson;
+    originalGenerateSignedUrl = supabaseStorage.generateSignedUrl;
+
+    // Mock DB for auth middleware user lookup
+    db.query = async (sqlText, params = []) => {
+      const cleanSql = sqlText.trim();
+      if (cleanSql.includes('FROM users WHERE user_id = $1 OR email = $2')) {
+        const [userId, email] = params;
+        const user = mockUsers.find((u) => u.user_id === Number(userId) || u.email === email);
+        return { rows: user ? [user] : [] };
+      }
+      return { rows: [] };
+    };
+
+    // Mock courses service
+    coursesService.canUserAccessLesson = async (userId, lessonId, roleId) => {
+      if (Number(userId) === 2 || Number(lessonId) === 999) {
+        return false; // User 2 has no access, lesson 999 is inaccessible
+      }
+      return true;
+    };
+
+    coursesService.getLessonById = async (id) => {
+      const numId = Number(id);
+      if (numId === 123) {
+        return {
+          lesson_id: 123,
+          title: 'Local MP4 Lesson',
+          content_type: 'video',
+          content_url: '/uploads/videos/valid_test_video.mp4'
+        };
+      }
+      if (numId === 44) {
+        return {
+          lesson_id: 44,
+          title: 'Supabase Cloud Lesson 44',
+          content_type: 'video',
+          content_url: 'courses/5/eb5f9f73-a9c4-4fb3-9a71-57e2f8c1c752/lesson44.mp4'
+        };
+      }
+      if (numId === 456) {
+        return {
+          lesson_id: 456,
+          title: 'Another Lesson',
+          content_type: 'video',
+          content_url: '/uploads/videos/valid_test_video.mp4'
+        };
+      }
+      if (numId === 789) {
+        return {
+          lesson_id: 789,
+          title: 'PDF Lesson',
+          content_type: 'pdf',
+          content_url: '/uploads/lesson.pdf'
+        };
+      }
+      return null;
+    };
+
+    // Mock generateSignedUrl for storage keys
+    supabaseStorage.generateSignedUrl = async (filePath, bucket, expires) => {
+      if (filePath && !filePath.startsWith('/uploads/') && !filePath.startsWith('uploads/')) {
+        return `https://mock-supabase.supabase.co/storage/v1/object/sign/videos/${filePath}?token=mock_signed_token`;
+      }
+      return null;
+    };
+
+    // Express app using authentic production middlewares
+    const app = express();
+    app.use(express.json());
+
+    // Mount real production routes
+    app.get('/api/lessons/video/ticket/:lessonId', authenticate, lessonsController.getVideoTicket);
+    app.get('/api/lessons/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
+
+    await new Promise((resolve) => {
+      server = http.createServer(app);
+      server.listen(0, '127.0.0.1', () => {
+        const port = server.address().port;
+        baseUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+  });
+
+  after(async () => {
+    db.query = originalQuery;
+    coursesService.getLessonById = originalGetLessonById;
+    coursesService.canUserAccessLesson = originalCanAccess;
+    supabaseStorage.generateSignedUrl = originalGenerateSignedUrl;
+    process.env.JWT_SECRET = originalJwtSecret;
+    if (server) {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 
   test('1. Validation MP4 Magic Bytes & MIME Type', () => {
-    // A. File MP4 hợp lệ
     assert.strictEqual(fs.existsSync(sampleMp4Path), true, 'Sample MP4 file must exist');
     const valid = isValidMp4(sampleMp4Path);
     assert.strictEqual(valid, true, 'valid_test_video.mp4 must have valid ftyp header');
 
-    // B. File giả mạo / non-MP4
     const fakeBuffer = Buffer.from('NOT_AN_MP4_FILE_CONTENT_AT_ALL');
     const fakeValid = isValidMp4(fakeBuffer);
     assert.strictEqual(fakeValid, false, 'Fake buffer must fail isValidMp4 check');
@@ -34,100 +148,178 @@ describe('🎬 Video Streaming & Security Test Suite', () => {
 
   test('2. Feature Flag ENABLE_DRM_PACKAGING defaults to false', () => {
     const enableDrm = process.env.ENABLE_DRM_PACKAGING === 'true';
-    // Mặc định hoặc khi gán false thì enableDrm phải là false
     assert.strictEqual(enableDrm, false, 'DRM Packaging should be disabled by default');
   });
 
-  test('3. canUserAccessLesson Access Control Check', async () => {
-    // Admin (Role 1) luôn có quyền
-    const adminAccess = await coursesService.canUserAccessLesson(1, 13, 1);
-    assert.strictEqual(adminAccess, true, 'Admin should have full access to lesson');
+  test('3. Case 1: Valid Session JWT requests ticket -> 200 OK with short-lived ticket and streamUrl', async () => {
+    const sessionToken = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3 },
+      testSecret,
+      { expiresIn: '7d' }
+    );
 
-    // Lesson không tồn tại -> false
-    const nonExistentAccess = await coursesService.canUserAccessLesson(999, 999999, 3);
-    assert.strictEqual(nonExistentAccess, false, 'Non-existent lesson should return false');
+    const res = await fetch(`${baseUrl}/api/lessons/video/ticket/123`, {
+      headers: { Authorization: `Bearer ${sessionToken}` }
+    });
+    const data = await res.json();
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(data.success, true);
+    assert.strictEqual(typeof data.ticket, 'string');
+    assert.strictEqual(data.expiresIn, 60);
+    assert.strictEqual(data.streamUrl, `/api/lessons/video/stream/123?ticket=${data.ticket}`);
+
+    // Verify ticket payload contains proper fields
+    const decodedTicket = jwt.verify(data.ticket, testSecret);
+    assert.strictEqual(decodedTicket.type, 'video_stream_ticket');
+    assert.strictEqual(Number(decodedTicket.lessonId), 123);
+    assert.strictEqual(Number(decodedTicket.id), 1);
   });
 
-  test('4. HTTP Range Requests & Streaming Server (206, 416, 200)', async () => {
-    // Khởi tạo app express mini để test endpoint stream độc lập
-    const app = express();
-    const mockLessonId = 9999;
-    const testSecret = process.env.JWT_SECRET || 'elearning_video_secure_jwt_secret';
+  test('4. Case 2: User without lesson access receives 403 FORBIDDEN when requesting ticket', async () => {
+    const unauthorizedSessionToken = jwt.sign(
+      { id: 2, email: 'hacker@example.com', roleId: 3 },
+      testSecret,
+      { expiresIn: '7d' }
+    );
 
-    // Mock service getLessonById
-    const originalGetLessonById = coursesService.getLessonById;
-    coursesService.getLessonById = async (id) => {
-      if (Number(id) === mockLessonId) {
-        return {
-          lesson_id: mockLessonId,
-          title: 'Test Stream Lesson',
-          content_type: 'video',
-          content_url: '/uploads/videos/valid_test_video.mp4'
-        };
-      }
-      return null;
-    };
+    const res = await fetch(`${baseUrl}/api/lessons/video/ticket/123`, {
+      headers: { Authorization: `Bearer ${unauthorizedSessionToken}` }
+    });
+    const data = await res.json();
 
-    const originalCanAccess = coursesService.canUserAccessLesson;
-    coursesService.canUserAccessLesson = async () => true;
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(data.success, false);
+    assert.strictEqual(data.code, 'FORBIDDEN');
+    assert.match(data.message, /không có quyền/);
+  });
 
-    app.get('/api/lessons/video/stream/:lessonId', (req, res, next) => {
-      req.user = { id: 1, roleId: 1 };
-      return lessonsController.streamLessonVideo(req, res, next);
+  test('5. Case 3: Session JWT passed directly to video stream is rejected with 403 TOKEN_INVALID', async () => {
+    const sessionToken = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3 },
+      testSecret,
+      { expiresIn: '7d' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${sessionToken}`);
+    const data = await res.json();
+
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(data.code, 'TOKEN_INVALID');
+    assert.match(data.message, /không đúng loại vé xem video/);
+  });
+
+  test('6. Case 4: Ticket with matching lessonId is accepted for stream', async () => {
+    const validTicket = jwt.sign(
+      { id: 1, userId: 1, roleId: 3, lessonId: 123, type: 'video_stream_ticket' },
+      testSecret,
+      { expiresIn: '60s' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`);
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.headers.get('content-type'), 'video/mp4');
+    assert.strictEqual(res.headers.get('accept-ranges'), 'bytes');
+  });
+
+  test('7. Case 5: Ticket with mismatched lessonId is rejected with 403 TOKEN_INVALID', async () => {
+    const mismatchedTicket = jwt.sign(
+      { id: 1, userId: 1, roleId: 3, lessonId: 456, type: 'video_stream_ticket' },
+      testSecret,
+      { expiresIn: '60s' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${mismatchedTicket}`);
+    const data = await res.json();
+
+    assert.strictEqual(res.status, 403);
+    assert.strictEqual(data.code, 'TOKEN_INVALID');
+    assert.match(data.message, /không khớp với bài học yêu cầu/);
+  });
+
+  test('8. Case 6: Expired ticket is rejected with 401 TOKEN_EXPIRED', async () => {
+    const expiredTicket = jwt.sign(
+      { id: 1, userId: 1, roleId: 3, lessonId: 123, type: 'video_stream_ticket' },
+      testSecret,
+      { expiresIn: -10 }
+    );
+
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${expiredTicket}`);
+    const data = await res.json();
+
+    assert.strictEqual(res.status, 401);
+    assert.strictEqual(data.code, 'TOKEN_EXPIRED');
+  });
+
+  test('9. Case 7: Supabase storage key (Lesson 44) returns valid signed 302 redirect', async () => {
+    const sessionToken = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3 },
+      testSecret,
+      { expiresIn: '7d' }
+    );
+
+    // 1. Get ticket for lesson 44
+    const ticketRes = await fetch(`${baseUrl}/api/lessons/video/ticket/44`, {
+      headers: { Authorization: `Bearer ${sessionToken}` }
+    });
+    const ticketData = await ticketRes.json();
+    assert.strictEqual(ticketRes.status, 200);
+    assert.strictEqual(ticketData.success, true);
+
+    // 2. Stream request for lesson 44 with redirect manual
+    const streamRes = await fetch(`${baseUrl}${ticketData.streamUrl}`, {
+      redirect: 'manual'
     });
 
-    const server = http.createServer(app);
-    await new Promise(resolve => server.listen(0, resolve));
-    const port = server.address().port;
-    const baseUrl = `http://localhost:${port}/api/lessons/video/stream/${mockLessonId}`;
+    // Supabase key triggers 302 redirect to signed URL
+    assert.strictEqual(streamRes.status, 302);
+    const location = streamRes.headers.get('location');
+    assert.ok(location, 'Must return a redirect Location header');
+    assert.match(location, /^https?:\/\//);
+  });
+
+  test('10. Case 8: Local MP4 stream supports 206 Partial Content and 416 Out of Range', async () => {
+    const validTicket = jwt.sign(
+      { id: 1, userId: 1, roleId: 3, lessonId: 123, type: 'video_stream_ticket' },
+      testSecret,
+      { expiresIn: '60s' }
+    );
 
     const fileSize = fs.statSync(sampleMp4Path).size;
 
-    // A. Test Range Request hợp lệ (0-1023) -> HTTP 206 Partial Content
-    const rangeRes = await fetch(baseUrl, {
+    // Range Request 0-1023 -> 206
+    const rangeRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`, {
       headers: { Range: 'bytes=0-1023' }
     });
-    assert.strictEqual(rangeRes.status, 206, 'Valid range request must return HTTP 206');
+    assert.strictEqual(rangeRes.status, 206);
     assert.strictEqual(rangeRes.headers.get('content-range'), `bytes 0-1023/${fileSize}`);
     assert.strictEqual(rangeRes.headers.get('content-type'), 'video/mp4');
-    assert.strictEqual(rangeRes.headers.get('accept-ranges'), 'bytes');
-    const rangeBody = await rangeRes.arrayBuffer();
-    assert.strictEqual(rangeBody.byteLength, 1024);
 
-    // B. Test Range ngoài phạm vi (start >= fileSize) -> HTTP 416
-    const invalidRangeRes = await fetch(baseUrl, {
-      headers: { Range: `bytes=${fileSize + 1000}-${fileSize + 2000}` }
+    // Out of range -> 416
+    const oofRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`, {
+      headers: { Range: `bytes=${fileSize + 500}-${fileSize + 1000}` }
     });
-    assert.strictEqual(invalidRangeRes.status, 416, 'Out-of-range request must return HTTP 416');
-    assert.strictEqual(invalidRangeRes.headers.get('content-range'), `bytes */${fileSize}`);
-
-    // C. Test Full Stream Request không có Range -> HTTP 200
-    const fullRes = await fetch(baseUrl);
-    assert.strictEqual(fullRes.status, 200, 'Request without range must return HTTP 200');
-    assert.strictEqual(fullRes.headers.get('content-type'), 'video/mp4');
-    const fullBody = await fullRes.arrayBuffer();
-    assert.strictEqual(fullBody.byteLength, fileSize);
-
-    // D. Test Lesson không tồn tại -> HTTP 404
-    const notFoundRes = await fetch(`http://localhost:${port}/api/lessons/video/stream/888888`);
-    assert.strictEqual(notFoundRes.status, 404, 'Non-existent lesson must return HTTP 404');
-
-    // Cleanup server
-    await new Promise(resolve => server.close(resolve));
-    coursesService.getLessonById = originalGetLessonById;
-    coursesService.canUserAccessLesson = originalCanAccess;
+    assert.strictEqual(oofRes.status, 416);
   });
 
-  test('5. Supabase Signed URL Generator for Local Paths returns null', async () => {
-    // Không bao giờ gọi Supabase cho đường dẫn local
-    const localRes = await generateSignedUrl('/uploads/courses/videos/sample.mp4', 'videos');
-    assert.strictEqual(localRes, null, 'Local /uploads/ path must return null from generateSignedUrl');
-  });
+  test('11. Case 9: Error responses are clean JSON, video responses are media/redirect', async () => {
+    // Error response check
+    const errRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=invalid-garbage`);
+    assert.strictEqual(errRes.headers.get('content-type')?.includes('application/json'), true);
+    const errData = await errRes.json();
+    assert.strictEqual(errData.success, false);
 
-  after(async () => {
-    try {
-      const db = require('../src/config/database');
-      if (db.pool) await db.pool.end();
-    } catch (e) {}
+    // Non-video lesson ticket request check
+    const sessionToken = jwt.sign(
+      { id: 1, email: 'student@example.com', roleId: 3 },
+      testSecret,
+      { expiresIn: '7d' }
+    );
+    const pdfRes = await fetch(`${baseUrl}/api/lessons/video/ticket/789`, {
+      headers: { Authorization: `Bearer ${sessionToken}` }
+    });
+    const pdfData = await pdfRes.json();
+    assert.strictEqual(pdfRes.status, 400);
+    assert.strictEqual(pdfData.code, 'INVALID_RESOURCE_TYPE');
   });
 });

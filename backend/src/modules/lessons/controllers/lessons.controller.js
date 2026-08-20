@@ -2,22 +2,117 @@ const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const lessonsService = require('../services/lessons.service');
+const coursesService = require('../../courses/services/courses.service');
+const supabaseStorage = require('../../../utils/supabaseStorage');
+const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+
+function sendDashFile(res, filePath, contentType) {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  return fs.createReadStream(filePath).pipe(res);
+}
+
+async function resolveReadyDashLesson(req, res) {
+  const lesson = await coursesService.getLessonById(req.params.lessonId);
+  if (!lesson) {
+    res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Không tìm thấy bài giảng' });
+    return null;
+  }
+  if (lesson.content_type !== 'video' || lesson.media_status !== 'READY') {
+    res.status(409).json({ success: false, code: 'MEDIA_NOT_READY', message: 'Video chưa sẵn sàng' });
+    return null;
+  }
+  const manifestPath = resolveSafePath(UPLOADS_ROOT, lesson.content_url || '', { checkExists: true });
+  if (!manifestPath || path.extname(manifestPath).toLowerCase() !== '.mpd') {
+    res.status(404).json({ success: false, code: 'DASH_NOT_FOUND', message: 'DASH manifest không tồn tại' });
+    return null;
+  }
+  return { lesson, manifestPath };
+}
+
+exports.streamDashManifest = async (req, res, next) => {
+  try {
+    const resolved = await resolveReadyDashLesson(req, res);
+    if (!resolved) return;
+    const manifest = await fs.promises.readFile(resolved.manifestPath, 'utf8');
+    const references = [...manifest.matchAll(/(?:media|initialization|sourceURL)=["']([^"']+)["']/gi)].map(m => m[1]);
+    const dashDir = path.dirname(resolved.manifestPath);
+    if (references.some(ref => !/^[A-Za-z0-9_.-]+$/.test(ref) || !resolveSafePath(dashDir, ref, { checkExists: true }))) {
+      return res.status(422).json({ success: false, code: 'INVALID_DASH_MANIFEST', message: 'Manifest chứa đường dẫn segment không hợp lệ' });
+    }
+    return sendDashFile(res, resolved.manifestPath, 'application/dash+xml');
+  } catch (error) { next(error); }
+};
+
+exports.streamDashSegment = async (req, res, next) => {
+  try {
+    const segment = req.params.segmentFile;
+    if (!segment || !/^[A-Za-z0-9_.-]+$/.test(segment) || (!segment.endsWith('.m4s') && !segment.endsWith('.mp4'))) {
+      return res.status(400).json({ success: false, code: 'INVALID_DASH_SEGMENT', message: 'Tên segment không hợp lệ' });
+    }
+    const resolved = await resolveReadyDashLesson(req, res);
+    if (!resolved) return;
+    const segmentPath = resolveSafePath(path.dirname(resolved.manifestPath), segment, { checkExists: true });
+    if (!segmentPath) return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
+    return sendDashFile(res, segmentPath, segment.endsWith('.m4s') ? 'video/iso.segment' : 'video/mp4');
+  } catch (error) { next(error); }
+};
 
 // Sinh Short-Lived Video Streaming Ticket (Hiệu lực 60 giây - Chống tải lậu & Hotlink)
 exports.getVideoTicket = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
     const userId = req.user?.id || req.user?.userId;
+    const roleId = req.user?.roleId || req.user?.role || 3;
     const origin = req.headers.origin || req.headers.referer || '';
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        code: 'AUTH_CONFIG_ERROR',
+        message: 'Lỗi cấu hình hệ thống xác thực máy chủ'
+      });
+    }
+
+    // 🔒 1. Kiểm tra phân quyền truy cập bài học (Owner / Admin / Published / Enrolled)
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, roleId);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Quyền truy cập bị từ chối: Bạn không có quyền truy cập video bài học này.'
+      });
+    }
+
+    // 🔒 2. Kiểm tra bài học tồn tại và có content_type === 'video'
+    const lesson = await coursesService.getLessonById(lessonId);
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Không tìm thấy bài giảng'
+      });
+    }
+
+    if (lesson.content_type !== 'video') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_RESOURCE_TYPE',
+        message: 'Bài giảng này không chứa tài nguyên video'
+      });
+    }
 
     const ticket = jwt.sign(
       {
+        id: userId,
         userId,
-        lessonId,
+        roleId,
+        lessonId: Number(lessonId) || lessonId,
         origin,
         type: 'video_stream_ticket'
       },
-      process.env.JWT_SECRET || 'elearning_video_secure_jwt_secret',
+      process.env.JWT_SECRET,
       { expiresIn: '60s' }
     );
 
@@ -98,9 +193,6 @@ exports.deleteLesson = async (req, res, next) => {
   }
 };
 
-const coursesService = require('../../courses/services/courses.service');
-const { generateSignedUrl } = require('../../../utils/supabaseStorage');
-
 exports.streamLessonVideo = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
@@ -161,16 +253,17 @@ exports.streamLessonVideo = async (req, res, next) => {
 
     // B. Nếu là Supabase Storage Key (courses/...)
     if (!contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('uploads/')) {
-      const signedPlaybackUrl = await generateSignedUrl(contentUrl, 'videos', 3600);
+      const signedPlaybackUrl = await supabaseStorage.generateSignedUrl(contentUrl, 'videos', 3600);
       if (signedPlaybackUrl) {
         return res.redirect(signedPlaybackUrl);
       }
     }
 
     // C. Nếu là file video cục bộ (Legacy local file)
-    const filePath = path.resolve(__dirname, '../../../../', contentUrl.replace(/^\//, ''));
+    const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+    const filePath = resolveSafePath(UPLOADS_ROOT, contentUrl, { checkExists: true });
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
         message: 'Tệp video không tồn tại trên hệ thống hoặc đã bị xóa.'
@@ -235,14 +328,21 @@ exports.streamLessonVideo = async (req, res, next) => {
 /**
  * Helper định dạng URL tài liệu động theo host runtime
  */
-function resolveMaterialUrl(req, fileUrl) {
-  if (!fileUrl) return '';
+function resolveMaterialUrl(req, material) {
+  if (!material) return '';
+  const fileUrl = material.file_url || material.storage_key || '';
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
   const host = req.get('host');
   const protocol = req.protocol;
   const baseUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+
+  // Đối với storage key bền vững trên Supabase hoặc local: Trả về endpoint preview được bảo vệ
+  if (material.material_id && material.lesson_id) {
+    return `${baseUrl.replace(/\/$/, '')}/api/lessons/${material.lesson_id}/materials/${material.material_id}/preview`;
+  }
+
   return `${baseUrl.replace(/\/$/, '')}/${fileUrl.replace(/^\//, '')}`;
 }
 
@@ -250,12 +350,85 @@ function formatMaterialItem(req, m) {
   return {
     id: m.material_id,
     name: m.file_name,
-    url: resolveMaterialUrl(req, m.file_url),
-    fileType: m.file_type || 'application/pdf',
-    sizeKb: m.file_size_kb || 0,
+    url: resolveMaterialUrl(req, m),
+    storageKey: m.storage_key || m.file_url,
+    storageBucket: m.storage_bucket || 'documents',
+    storageProvider: m.storage_provider || 'supabase',
+    mediaStatus: m.media_status || 'READY',
+    fileType: m.mime_type || m.file_type || 'application/pdf',
+    sizeKb: m.file_size_kb || Math.round((m.size_bytes || 0) / 1024) || 0,
+    sizeBytes: m.size_bytes || 0,
     createdAt: m.created_at
   };
 }
+
+/**
+ * Endpoint xem/tải tài liệu PDF an toàn (Giảng viên / Học viên đã đăng ký)
+ */
+exports.previewMaterial = async (req, res, next) => {
+  try {
+    const { lessonId, materialId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role || 3, 10);
+
+    // 1. Kiểm tra quyền truy cập bài học
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, userRole);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền truy cập tài liệu của bài học này.'
+      });
+    }
+
+    // 2. Lấy thông tin tài liệu
+    const db = require('../../../config/database');
+    const matRes = await db.query(
+      `SELECT * FROM lesson_materials WHERE material_id = $1 AND lesson_id = $2`,
+      [materialId, lessonId]
+    );
+
+    if (matRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tài liệu đính kèm.'
+      });
+    }
+
+    const mat = matRes.rows[0];
+    const storageKey = mat.storage_key || mat.file_url;
+    const storageBucket = mat.storage_bucket || 'documents';
+
+    // 3. Nếu là link trực tiếp CDN
+    if (storageKey && (storageKey.startsWith('http://') || storageKey.startsWith('https://'))) {
+      return res.redirect(storageKey);
+    }
+
+    // 4. Nếu là Supabase Storage Object
+    if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
+      const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600);
+      if (signedUrl) {
+        return res.redirect(signedUrl);
+      }
+    }
+
+    // 5. Nếu là file local legacy
+    const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+    const filePath = resolveSafePath(UPLOADS_ROOT, mat.file_url || '', { checkExists: true });
+    if (filePath && fs.existsSync(filePath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(mat.file_name)}"`);
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    return res.status(404).json({
+      success: false,
+      code: 'MISSING_SOURCE',
+      message: 'Tài liệu không còn tồn tại trên máy chủ lưu trữ.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * Upload tài liệu đính kèm bài học (Giảng viên / Admin)

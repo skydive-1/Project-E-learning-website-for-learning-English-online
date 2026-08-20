@@ -12,6 +12,40 @@ import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPol
 import { subtitlesService } from '../../lessons/services/subtitles.service';
 import '../styles/instructor.scss';
 
+const isAllowedExternalMediaUrl = (url = '') => /^https?:\/\//i.test(url) && !/\.supabase\.co(?:\/|$)/i.test(url);
+
+export const isMediaReadyForPublish = (lesson) => {
+  if (isAllowedExternalMediaUrl(lesson.contentUrl)) return true;
+  const hasClaimablePending = lesson.mediaStatus === 'PENDING' && lesson.uploadVerified === true &&
+    lesson.pendingUploadId && lesson.storageKey && lesson.storageBucket && lesson.mimeType &&
+    Number(lesson.sizeBytes) > 0 && lesson.checksumSha256;
+  const isExistingReady = lesson.mediaStatus === 'READY' && lesson.uploadVerified === true;
+  return Boolean(hasClaimablePending || isExistingReady);
+};
+
+export const applySuccessfulUploadToLesson = (lesson, upload, file = {}) => {
+  const fileUrl = upload.fileUrl || upload.storageKey;
+  const mimeType = upload.mimeType || upload.mimetype;
+  const detectedType = mimeType?.includes('pdf') || upload.playbackType === 'pdf' ? 'pdf' : 'video';
+  return {
+    ...lesson,
+    contentUrl: fileUrl,
+    storageKey: upload.storageKey,
+    storageBucket: upload.storageBucket || (detectedType === 'pdf' ? 'documents' : 'videos'),
+    storageProvider: upload.storageProvider || 'supabase',
+    mimeType,
+    sizeBytes: upload.sizeBytes || file.size,
+    checksumSha256: upload.checksumSha256,
+    mediaStatus: upload.mediaStatus || 'PENDING_AUDIT',
+    pendingUploadId: upload.pendingUploadId,
+    type: detectedType,
+    uploading: false,
+    uploadVerified: true,
+    fileName: upload.originalName || file.name,
+    hasAcceptedPolicy: true
+  };
+};
+
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
   if (!token) return null;
@@ -69,16 +103,31 @@ const CourseEditor = () => {
               setSections(course.sections.map(sec => ({
                 id: sec.section_id,
                 title: sec.title,
-                lessons: (sec.lessons || []).map(l => ({
-                  id: l.lesson_id,
-                  title: l.title,
-                  type: l.content_type,
-                  contentUrl: l.content_url,
-                  uploading: false,
-                  fileName: l.content_url ? l.content_url.split('/').pop() : '',
-                  speakingSentences: l.speaking_sentences || '',
-                  speakingQuestions: l.speaking_questions || ''
-                }))
+                lessons: (sec.lessons || []).map(l => {
+                  const isExternal = isAllowedExternalMediaUrl(l.content_url);
+                  const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : 'PENDING_AUDIT');
+                  const isVerified = status === 'READY' || isExternal;
+
+                  return {
+                    id: l.lesson_id,
+                    title: l.title,
+                    type: l.content_type,
+                    contentUrl: l.content_url,
+                    storageKey: l.storage_key || l.storageKey || (!isExternal ? l.content_url : null),
+                    storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : 'videos'),
+                    storageProvider: l.storage_provider || l.storageProvider || (isExternal ? 'external' : 'supabase'),
+                    mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : 'video/mp4'),
+                    sizeBytes: l.size_bytes || l.sizeBytes || 0,
+                    checksumSha256: l.checksum_sha256 || l.checksumSha256 || null,
+                    mediaStatus: status,
+                    pendingUploadId: null,
+                    uploading: false,
+                    uploadVerified: isVerified,
+                    fileName: l.content_url ? l.content_url.split('/').pop() : '',
+                    speakingSentences: l.speaking_sentences || '',
+                    speakingQuestions: l.speaking_questions || ''
+                  };
+                })
               })));
             }
           }
@@ -206,6 +255,7 @@ const CourseEditor = () => {
 
     // Set uploading state
     handleLessonChange(sIdx, lIdx, 'uploading', true);
+    handleLessonChange(sIdx, lIdx, 'uploadError', null);
     setErrorMsg('');
 
     const formData = new FormData();
@@ -219,22 +269,25 @@ const CourseEditor = () => {
       });
 
       if (response.data && response.data.success) {
-        const fileUrl = response.data.fileUrl;
-        const mime = response.data.mimetype;
-        const detectedType = mime && mime.includes('pdf') ? 'pdf' : 'video';
-
+        if (!response.data.pendingUploadId || !response.data.storageKey || !response.data.storageBucket ||
+            !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
+          throw new Error('Phản hồi upload thiếu metadata pending bắt buộc. Vui lòng tải lại tệp.');
+        }
         const newSections = [...sections];
-        newSections[sIdx].lessons[lIdx].contentUrl = fileUrl;
-        newSections[sIdx].lessons[lIdx].type = detectedType;
-        newSections[sIdx].lessons[lIdx].uploading = false;
-        newSections[sIdx].lessons[lIdx].fileName = file.name;
-        newSections[sIdx].lessons[lIdx].hasAcceptedPolicy = true;
+        newSections[sIdx].lessons[lIdx] = applySuccessfulUploadToLesson(
+          newSections[sIdx].lessons[lIdx], response.data, file
+        );
         setSections(newSections);
+      } else {
+        throw new Error(response.data?.message || 'Không thể xác thực tệp lưu trữ.');
       }
     } catch (err) {
       console.error('Lỗi khi tải file lên:', err);
-      setErrorMsg(err.response?.data?.message || 'Lỗi khi tải file lên máy chủ.');
+      const errMsg = err.response?.data?.message || err.message || 'Lỗi khi tải file lên máy chủ.';
+      setErrorMsg(errMsg);
       handleLessonChange(sIdx, lIdx, 'uploading', false);
+      handleLessonChange(sIdx, lIdx, 'uploadVerified', false);
+      handleLessonChange(sIdx, lIdx, 'uploadError', errMsg);
     }
   };
 
@@ -271,9 +324,19 @@ const CourseEditor = () => {
           setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
           return;
         }
-        if (!lesson.contentUrl) {
-          setErrorMsg(`Vui lòng tải lên nội dung (video/pdf) cho bài học "${lesson.title}".`);
+        if (lesson.uploading) {
+          setErrorMsg(`Bài học "${lesson.title}" đang được tải lên. Vui lòng chờ hoàn tất.`);
           return;
+        }
+        if (lesson.type === 'video' || lesson.type === 'pdf') {
+          if (!lesson.contentUrl && !lesson.storageKey) {
+            setErrorMsg(`Vui lòng tải lên nội dung (${lesson.type.toUpperCase()}) cho bài học "${lesson.title}".`);
+            return;
+          }
+          if (!isMediaReadyForPublish(lesson)) {
+            setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng (trạng thái: ${lesson.mediaStatus || 'CHƯA_XÁC_THỰC'}). Vui lòng tải lại tệp tin trước khi xuất bản.`);
+            return;
+          }
         }
       }
     }
@@ -305,6 +368,13 @@ const CourseEditor = () => {
         setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
         return;
       }
+      for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
+        const lesson = section.lessons[lIdx];
+        if (lesson.uploading) {
+          setErrorMsg(`Bài học "${lesson.title}" đang được tải lên. Vui lòng đợi.`);
+          return;
+        }
+      }
     }
 
     setLoading(true);
@@ -325,7 +395,7 @@ const CourseEditor = () => {
 
     const payload = {
       courseName,
-      subjectId: parseInt(subjectId),
+      subjectId: parseInt(subjectId, 10),
       startDate,
       endDate,
       status, // 1: Published, 0: Draft
@@ -336,8 +406,16 @@ const CourseEditor = () => {
         lessons: sec.lessons.map((les, lIdx) => ({
           id: les.id,
           title: les.title,
-          contentType: les.type, // 'video' or 'pdf'
+          contentType: les.type, // 'video', 'pdf', 'quiz', 'speaking', 'text'
           contentUrl: les.contentUrl,
+          storageProvider: les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'supabase') : null),
+          storageBucket: les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null),
+          storageKey: les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null),
+          mimeType: les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null)),
+          sizeBytes: les.sizeBytes || 0,
+          checksumSha256: les.checksumSha256 || null,
+          mediaStatus: les.mediaStatus || (les.contentUrl ? 'PENDING_AUDIT' : null),
+          pendingUploadId: les.pendingUploadId || null,
           orderIndex: lIdx + 1,
           speakingSentences: les.speakingSentences || '',
           speakingQuestions: les.speakingQuestions || ''
@@ -579,15 +657,19 @@ const CourseEditor = () => {
                                 onClick={() => triggerFileSelect(sIdx, lIdx)}
                                 disabled={lesson.uploading}
                                 style={{
-                                  background: lesson.contentUrl ? '#ecfdf5' : '',
-                                  color: lesson.contentUrl ? '#059669' : '',
-                                  borderColor: lesson.contentUrl ? '#a7f3d0' : ''
+                                  background: lesson.uploading ? '#f8fafc' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fef2f2' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fffbeb' : lesson.contentUrl ? '#ecfdf5' : '',
+                                  color: lesson.uploading ? '#64748b' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#dc2626' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#d97706' : lesson.contentUrl ? '#059669' : '',
+                                  borderColor: (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fecaca' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fde68a' : lesson.contentUrl ? '#a7f3d0' : ''
                                 }}
                               >
                                 {lesson.uploading ? (
-                                  <><FiLoader className="spin" /> Tải lên...</>
+                                  <><FiLoader className="spin" /> Đang tải...</>
+                                ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
+                                  <><FiUpload /> ⚠️ Cần tải lại</>
+                                ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
+                                  <><FiUpload /> ⏳ Chờ kiểm định</>
                                 ) : lesson.contentUrl ? (
-                                  <><FiUpload /> Đã tải lên</>
+                                  <><FiUpload /> ✓ Đã tải lên</>
                                 ) : (
                                   <><FiUpload /> Chọn tệp</>
                                 )}
@@ -755,14 +837,26 @@ const CourseEditor = () => {
                             </div>
                           )}
 
-                          {/* File details banner if uploaded */}
+                          {/* File details banner if uploaded & verified */}
                           {lesson.contentUrl && (
                             <div style={{
-                              fontSize: '12px', color: '#059669', background: '#f0fdf4', padding: '6px 12px', borderRadius: '6px',
-                              marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px'
+                              fontSize: '12px', color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '6px',
+                              marginLeft: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '4px'
                             }}>
-                              {lesson.type === 'video' ? <FiVideo /> : <FiFileText />}
-                              <span>Link file: <a href={`${(import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '')}${lesson.contentUrl}`} target="_blank" rel="noreferrer" style={{ color: '#059669', textDecoration: 'underline' }}>{lesson.fileName || 'Xem file bài giảng'}</a></span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                {lesson.type === 'video' ? <FiVideo className="shrink-0" /> : <FiFileText className="shrink-0" />}
+                                <span style={{ fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {lesson.fileName || 'Tài nguyên bài giảng'}
+                                </span>
+                                <span style={{ fontSize: '10px', background: '#10b981', color: '#ffffff', padding: '1px 6px', borderRadius: '10px', fontWeight: '700' }}>
+                                  ✓ Đã bảo vệ (Supabase Storage)
+                                </span>
+                              </div>
+                              {lesson.contentUrl.startsWith('http') && (
+                                <a href={lesson.contentUrl} target="_blank" rel="noreferrer" style={{ color: '#047857', textDecoration: 'underline', fontSize: '11px', flexShrink: 0 }}>
+                                  Xem liên kết
+                                </a>
+                              )}
                             </div>
                           )}
                         </div>
