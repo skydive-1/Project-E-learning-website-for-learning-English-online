@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS pending_media_uploads (
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_status_expires ON pending_media_uploads(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_instructor ON pending_media_uploads(instructor_id);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
+ALTER TABLE pending_media_uploads ADD COLUMN IF NOT EXISTS cleaning_started_at TIMESTAMP WITH TIME ZONE;
 
 -- 4. CREATE failed_storage_deletions TABLE FOR RETRY QUEUE & AUDIT
 CREATE TABLE IF NOT EXISTS failed_storage_deletions (
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS failed_storage_deletions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_failed_storage_deletions_retry ON failed_storage_deletions(status, next_retry_at);
+ALTER TABLE failed_storage_deletions ADD COLUMN IF NOT EXISTS pending_upload_id UUID REFERENCES pending_media_uploads(upload_id) ON DELETE SET NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_failed_storage_deletions_object
   ON failed_storage_deletions(storage_provider, storage_bucket, storage_key);
 

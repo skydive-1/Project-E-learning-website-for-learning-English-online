@@ -454,6 +454,9 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
   it('9. DASH/DRM lesson uses Shaka Player and does not put .mpd in native video src', async () => {
     // Mock course with DASH lesson 47
     vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
+      if (url.includes('/lessons/video/ticket/47')) {
+        return { data: { success: true, ticket: 'dash-ticket-47', expiresIn: 60 } };
+      }
       if (url.includes('/courses/5')) {
         return {
           data: {

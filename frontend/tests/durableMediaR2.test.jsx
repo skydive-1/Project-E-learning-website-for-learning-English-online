@@ -7,6 +7,7 @@ import { AuthProvider } from '../src/context/AuthContext';
 import * as lessonsService from '../src/modules/lessons/services/lessons.service';
 import apiClient from '../src/config/api.config';
 import LessonDetailPage from '../src/modules/lessons/pages/LessonDetailPage';
+import { isMediaReadyForPublish } from '../src/modules/instructor/pages/CourseEditor';
 
 // Mock Shaka Player
 vi.mock('shaka-player', () => {
@@ -65,6 +66,19 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
     });
     localStorage.setItem('token', 'valid_session_token');
     localStorage.setItem('user', JSON.stringify({ id: 1, userId: 1, roleId: 2 }));
+  });
+
+  it('cho phép submit pending upload hợp lệ để backend claim, nhưng chặn pending thiếu metadata', () => {
+    const pending = {
+      contentUrl: 'courses/2/id/video.mp4', storageKey: 'courses/2/id/video.mp4',
+      storageBucket: 'videos', mimeType: 'video/mp4', sizeBytes: 2048,
+      checksumSha256: 'a'.repeat(64), pendingUploadId: 'pending-id',
+      mediaStatus: 'PENDING', uploadVerified: true
+    };
+    expect(isMediaReadyForPublish(pending)).toBe(true);
+    expect(isMediaReadyForPublish({ ...pending, pendingUploadId: null })).toBe(false);
+    expect(isMediaReadyForPublish({ ...pending, checksumSha256: null })).toBe(false);
+    expect(isMediaReadyForPublish({ contentUrl: 'https://project.supabase.co/storage/v1/object/public/videos/a.mp4', mediaStatus: 'READY', uploadVerified: false })).toBe(false);
   });
 
   it('1. Đổi bài học A -> B hiển thị skeleton transition trong cột 70% và không render nội dung stale của bài A', async () => {

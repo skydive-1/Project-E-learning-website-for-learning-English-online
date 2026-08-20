@@ -786,11 +786,15 @@ const LessonDetailPage = () => {
   const activeDashTicketRef = useRef(null);
   const renewalTimerRef = useRef(null);
   const renewalPromiseRef = useRef(null);
+  const dashGenerationRef = useRef(0);
 
   // Video loading state — Lấy Video Ticket 60s cho internal MP4 / Khởi tạo Shaka Player cho DASH DRM / Phát trực tiếp external MP4
   // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Short-Lived 60s Video Ticket & W3C ClearKey DASH DRM)
   useEffect(() => {
     const rawVideoUrl = currentLesson?.videoUrl;
+    const dashGeneration = ++dashGenerationRef.current;
+    activeDashTicketRef.current = null;
+    renewalPromiseRef.current = null;
 
     setVideoError(null);
 
@@ -838,14 +842,17 @@ const LessonDetailPage = () => {
 
       const rawLessonId = String(currentLesson.id).replace(/^(quiz|speaking)-/, '');
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const allowQueryTicket = import.meta.env.VITE_DASH_TICKET_QUERY_FALLBACK === 'true';
+      let authRetryCount = 0;
+      let shakaErrorHandler = null;
 
       // Hàm gia hạn ticket đơn luồng an toàn (Single-Flight Proactive Renewal)
       const fetchOrRenewTicket = async () => {
-        if (renewalPromiseRef.current) return renewalPromiseRef.current;
-        renewalPromiseRef.current = (async () => {
+        if (renewalPromiseRef.current?.generation === dashGeneration) return renewalPromiseRef.current.promise;
+        const promise = (async () => {
           try {
             const ticketRes = await getVideoTicket(rawLessonId);
-            if (ticketRes && ticketRes.ticket) {
+            if (active && dashGenerationRef.current === dashGeneration && ticketRes?.ticket) {
               activeDashTicketRef.current = ticketRes.ticket;
               // Lên lịch gia hạn trước 15s (ở giây thứ 45 của vé 60s)
               if (renewalTimerRef.current) clearTimeout(renewalTimerRef.current);
@@ -857,15 +864,17 @@ const LessonDetailPage = () => {
           } catch (e) {
             console.warn('⚠️ [DASH Ticket Renewal Error]:', e.message);
           } finally {
-            renewalPromiseRef.current = null;
+            if (renewalPromiseRef.current?.generation === dashGeneration) renewalPromiseRef.current = null;
           }
-          return activeDashTicketRef.current;
+          return active && dashGenerationRef.current === dashGeneration ? activeDashTicketRef.current : null;
         })();
-        return renewalPromiseRef.current;
+        renewalPromiseRef.current = { generation: dashGeneration, promise };
+        return promise;
       };
 
       fetchOrRenewTicket().then(ticket => {
         if (!active) return;
+        if (!ticket) throw new Error('DASH ticket unavailable');
 
         if (shakaPlayerRef.current && shakaAttachedToRef.current !== videoRef.current) {
           shakaPlayerRef.current.destroy().catch(() => {});
@@ -892,13 +901,27 @@ const LessonDetailPage = () => {
               const currentTicket = activeDashTicketRef.current || ticket;
               if (currentTicket) {
                 request.headers['X-Video-Ticket'] = currentTicket;
-                if (request.uris && request.uris[0]) {
+                if (allowQueryTicket && request.uris && request.uris[0]) {
                   const sep = request.uris[0].includes('?') ? '&' : '?';
                   request.uris[0] = `${request.uris[0]}${sep}ticket=${encodeURIComponent(currentTicket)}`;
                 }
               }
             }
           });
+
+          shakaErrorHandler = (event) => {
+            const detail = event?.detail || event;
+            const serialized = JSON.stringify(detail || {});
+            const isAuthError = /\b(401|403)\b/.test(serialized);
+            if (!isAuthError || authRetryCount >= 1 || !active) return;
+            authRetryCount++;
+            fetchOrRenewTicket().then(newTicket => {
+              if (newTicket && active && dashGenerationRef.current === dashGeneration) {
+                player.retryStreaming?.();
+              }
+            }).catch(() => {});
+          };
+          player.addEventListener?.('error', shakaErrorHandler);
         }
 
         const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${rawLessonId}`;
@@ -907,7 +930,8 @@ const LessonDetailPage = () => {
         });
 
         // Điểm cuối DASH có bảo vệ
-        const manifestUrl = `${API_BASE_URL}/lessons/dash/${rawLessonId}/manifest.mpd?ticket=${encodeURIComponent(ticket || '')}`;
+        const manifestBaseUrl = `${API_BASE_URL}/lessons/dash/${rawLessonId}/manifest.mpd`;
+        const manifestUrl = allowQueryTicket ? `${manifestBaseUrl}?ticket=${encodeURIComponent(ticket)}` : manifestBaseUrl;
 
         shakaPlayerRef.current?.load(manifestUrl)
           .then(() => {
@@ -937,6 +961,14 @@ const LessonDetailPage = () => {
         if (renewalTimerRef.current) {
           clearTimeout(renewalTimerRef.current);
           renewalTimerRef.current = null;
+        }
+        renewalPromiseRef.current = null;
+        const player = shakaPlayerRef.current;
+        if (player) {
+          if (shakaErrorHandler) player.removeEventListener?.('error', shakaErrorHandler);
+          player.destroy().catch(() => {});
+          shakaPlayerRef.current = null;
+          shakaAttachedToRef.current = null;
         }
       };
     }

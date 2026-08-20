@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const coursesService = require('../services/courses.service');
-const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 const supabaseStorage = require('../../../utils/supabaseStorage');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 
@@ -80,7 +79,6 @@ exports.uploadFile = async (req, res, next) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     const isVideo = req.file.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.avi'].includes(ext);
     const isPdf = req.file.mimetype === 'application/pdf' || ext === '.pdf';
-    const enableDrm = process.env.ENABLE_DRM_PACKAGING === 'true';
 
     const instructorId = req.user?.id || req.user?.userId || 'common';
     const assetId = crypto.randomUUID();
@@ -95,27 +93,6 @@ exports.uploadFile = async (req, res, next) => {
           code: 'UNSUPPORTED_VIDEO_FORMAT',
           message: 'Hệ thống chỉ chấp nhận tệp video định dạng MP4 chuẩn (MIME video/mp4, đuôi .mp4).'
         });
-      }
-
-      // Khi DRM Packaging được kích hoạt rõ ràng bằng feature flag
-      if (enableDrm) {
-        const lessonId = req.body?.lessonId || `asset-${assetId}`;
-        const drmResult = await packageVideoToDrmDash(req.file.path, lessonId);
-        if (drmResult.success && drmResult.mpdUrl) {
-          return res.status(200).json({
-            success: true,
-            message: 'Tải file lên và đóng gói mã hóa DRM DASH thành công',
-            fileUrl: drmResult.mpdUrl,
-            storageKey: drmResult.mpdUrl,
-            storageProvider: 'local',
-            storageBucket: 'dash',
-            playbackType: 'dash',
-            originalName: req.file.originalname,
-            mimetype: req.file.mimetype,
-            mediaStatus: 'READY',
-            isDrmProtected: true
-          });
-        }
       }
 
       const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.mp4`;

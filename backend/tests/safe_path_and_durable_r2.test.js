@@ -12,6 +12,7 @@ const { resolveSafePath, UPLOADS_ROOT } = require('../src/utils/safePath.util');
 const orphanCleanupService = require('../src/utils/orphanCleanup.service');
 const coursesService = require('../src/modules/courses/services/courses.service');
 const db = require('../src/config/database');
+const supabaseStorage = require('../src/utils/supabaseStorage');
 
 describe('🛡️ 1. SafePath Utility Security & Boundary Checks', () => {
   test('Phân giải đường dẫn hợp lệ bên trong uploads', () => {
@@ -149,5 +150,22 @@ describe('🎓 3. Courses Service Metadata & Publish Validation', () => {
       assert.strictEqual(err.code, 'UNVERIFIED_MEDIA_ASSETS');
       return true;
     });
+  });
+
+  test('Publish validation kiểm tra object Supabase thật và fail-closed khi object mất', async () => {
+    const originalExists = supabaseStorage.checkObjectExists;
+    const client = { query: async () => ({ rows: [{
+      lesson_id: 7, title: 'Video durable', content_type: 'video', content_url: 'courses/2/a.mp4',
+      storage_provider: 'supabase', storage_bucket: 'videos', storage_key: 'courses/2/a.mp4',
+      mime_type: 'video/mp4', size_bytes: 1024, checksum_sha256: 'a'.repeat(64), media_status: 'READY'
+    }] }) };
+    try {
+      supabaseStorage.checkObjectExists = async () => false;
+      await assert.rejects(() => coursesService._validateStoredCourseForPublish(client, 1), err => err.code === 'MEDIA_OBJECT_MISSING');
+      supabaseStorage.checkObjectExists = async () => true;
+      await coursesService._validateStoredCourseForPublish(client, 1);
+    } finally {
+      supabaseStorage.checkObjectExists = originalExists;
+    }
   });
 });

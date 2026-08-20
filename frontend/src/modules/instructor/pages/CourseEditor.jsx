@@ -12,6 +12,17 @@ import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPol
 import { subtitlesService } from '../../lessons/services/subtitles.service';
 import '../styles/instructor.scss';
 
+const isAllowedExternalMediaUrl = (url = '') => /^https?:\/\//i.test(url) && !/\.supabase\.co(?:\/|$)/i.test(url);
+
+export const isMediaReadyForPublish = (lesson) => {
+  if (isAllowedExternalMediaUrl(lesson.contentUrl)) return true;
+  const hasClaimablePending = lesson.mediaStatus === 'PENDING' && lesson.uploadVerified === true &&
+    lesson.pendingUploadId && lesson.storageKey && lesson.storageBucket && lesson.mimeType &&
+    Number(lesson.sizeBytes) > 0 && lesson.checksumSha256;
+  const isExistingReady = lesson.mediaStatus === 'READY' && lesson.uploadVerified === true;
+  return Boolean(hasClaimablePending || isExistingReady);
+};
+
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
   if (!token) return null;
@@ -70,7 +81,7 @@ const CourseEditor = () => {
                 id: sec.section_id,
                 title: sec.title,
                 lessons: (sec.lessons || []).map(l => {
-                  const isExternal = l.content_url && (l.content_url.startsWith('http://') || l.content_url.startsWith('https://'));
+                  const isExternal = isAllowedExternalMediaUrl(l.content_url);
                   const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : 'PENDING_AUDIT');
                   const isVerified = status === 'READY' || isExternal;
 
@@ -313,8 +324,7 @@ const CourseEditor = () => {
             setErrorMsg(`Vui lòng tải lên nội dung (${lesson.type.toUpperCase()}) cho bài học "${lesson.title}".`);
             return;
           }
-          const isExternal = lesson.contentUrl && (lesson.contentUrl.startsWith('http://') || lesson.contentUrl.startsWith('https://'));
-          if (!isExternal && (!lesson.uploadVerified || lesson.mediaStatus !== 'READY')) {
+          if (!isMediaReadyForPublish(lesson)) {
             setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng (trạng thái: ${lesson.mediaStatus || 'CHƯA_XÁC_THỰC'}). Vui lòng tải lại tệp tin trước khi xuất bản.`);
             return;
           }
@@ -389,7 +399,7 @@ const CourseEditor = () => {
           title: les.title,
           contentType: les.type, // 'video', 'pdf', 'quiz', 'speaking', 'text'
           contentUrl: les.contentUrl,
-          storageProvider: les.storageProvider || (les.contentUrl ? (les.contentUrl.startsWith('http') ? 'external' : 'supabase') : null),
+          storageProvider: les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'supabase') : null),
           storageBucket: les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null),
           storageKey: les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null),
           mimeType: les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null)),

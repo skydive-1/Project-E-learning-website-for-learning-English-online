@@ -36,6 +36,8 @@ services:
       - DB_PASSWORD=postgres123
       - DB_NAME=elearning_db
       - DB_SSL=false
+      - ENABLE_MEDIA_CLEANUP_WORKER=${ENABLE_MEDIA_CLEANUP_WORKER:-true}
+      - MEDIA_CLEANUP_INTERVAL_MS=${MEDIA_CLEANUP_INTERVAL_MS:-300000}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-this}
       - JWT_EXPIRE=${JWT_EXPIRE:-7d}
       - PINECONE_API_KEY=${PINECONE_API_KEY}

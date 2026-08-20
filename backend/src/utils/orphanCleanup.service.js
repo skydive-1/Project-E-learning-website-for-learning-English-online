@@ -235,8 +235,8 @@ class OrphanCleanupService {
    * Kiểm tra xem một storage_key có đang được bài học hoặc tài liệu nào khác tham chiếu không
    * Quy tắc Fail-Closed: Nếu truy vấn lỗi, luôn trả về true (giữ nguyên file)
    */
-  async isKeyReferenced(storageKey) {
-    if (!storageKey) return false;
+  async getReferenceState(storageKey) {
+    if (!storageKey) return { referenced: false, reliable: true };
     try {
       const res = await db.query(`
         SELECT 
@@ -245,28 +245,34 @@ class OrphanCleanupService {
       `, [storageKey]);
 
       const count = parseInt(res.rows[0]?.total_ref || 0, 10);
-      return count > 0;
+      return { referenced: count > 0, reliable: true };
     } catch (err) {
       console.warn(`⚠️ [OrphanCleanup] Lỗi kiểm tra tham chiếu cho key=${storageKey} (Fail-Closed: Giữ nguyên file):`, err.message);
       // Fail-Closed: giữ nguyên an toàn
-      return true;
+      return { referenced: true, reliable: false, error: err };
     }
+  }
+
+  async isKeyReferenced(storageKey) {
+    const state = await this.getReferenceState(storageKey);
+    return state.referenced;
   }
 
   /**
    * Ghi nhận xóa storage thất bại vào hàng đợi retry failed_storage_deletions
    */
-  async recordFailedDeletion(storageKey, storageBucket, errorMsg) {
+  async recordFailedDeletion(storageKey, storageBucket, errorMsg, pendingUploadId = null) {
     try {
       await db.query(`
         INSERT INTO failed_storage_deletions (
-          storage_provider, storage_bucket, storage_key, retry_count, last_error, status, next_retry_at
+          storage_provider, storage_bucket, storage_key, retry_count, last_error, status, next_retry_at, pending_upload_id
         )
-        VALUES ('supabase', $1, $2, 1, $3, 'PENDING_RETRY', CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+        VALUES ('supabase', $1, $2, 1, $3, 'PENDING_RETRY', CURRENT_TIMESTAMP + INTERVAL '5 minutes', $4)
         ON CONFLICT (storage_provider, storage_bucket, storage_key) DO UPDATE
         SET status = 'PENDING_RETRY', last_error = EXCLUDED.last_error,
-            next_retry_at = LEAST(failed_storage_deletions.next_retry_at, EXCLUDED.next_retry_at)
-      `, [storageBucket || 'videos', storageKey, errorMsg || 'Unknown deletion error']);
+            next_retry_at = LEAST(failed_storage_deletions.next_retry_at, EXCLUDED.next_retry_at),
+            pending_upload_id = COALESCE(EXCLUDED.pending_upload_id, failed_storage_deletions.pending_upload_id)
+      `, [storageBucket || 'videos', storageKey, errorMsg || 'Unknown deletion error', pendingUploadId]);
     } catch (e) {
       console.error(`🚨 [OrphanCleanup] Không thể lưu failed_storage_deletions cho ${storageKey}:`, e.message);
     }
@@ -367,7 +373,13 @@ class OrphanCleanupService {
         SELECT upload_id, storage_key, storage_bucket 
         FROM pending_media_uploads 
         WHERE (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
-           OR (status = 'CLEANING' AND created_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes')
+           OR (status = 'CLEANING'
+               AND cleaning_started_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+               AND NOT EXISTS (
+                 SELECT 1 FROM failed_storage_deletions d
+                 WHERE d.pending_upload_id = pending_media_uploads.upload_id
+                   AND d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
+               ))
         ORDER BY created_at ASC
         LIMIT $1
         FOR UPDATE SKIP LOCKED
@@ -381,7 +393,7 @@ class OrphanCleanupService {
 
       const uploadIds = res.rows.map(r => r.upload_id);
       await client.query(
-        `UPDATE pending_media_uploads SET status = 'CLEANING' WHERE upload_id = ANY($1::uuid[])`,
+        `UPDATE pending_media_uploads SET status = 'CLEANING', cleaning_started_at = CURRENT_TIMESTAMP WHERE upload_id = ANY($1::uuid[])`,
         [uploadIds]
       );
 
@@ -390,8 +402,12 @@ class OrphanCleanupService {
       // Xóa các file trên storage sau khi đã chuyển trạng thái CLEANING
       for (const item of res.rows) {
         try {
-          const isRef = await this.isKeyReferenced(item.storage_key);
-          if (isRef) {
+          const reference = await this.getReferenceState(item.storage_key);
+          if (!reference.reliable) {
+            await db.query(`UPDATE pending_media_uploads SET status = 'PENDING', cleaning_started_at = NULL, expires_at = CURRENT_TIMESTAMP + INTERVAL '5 minutes' WHERE upload_id = $1`, [item.upload_id]);
+            continue;
+          }
+          if (reference.referenced) {
             await db.query(`UPDATE pending_media_uploads SET status = 'COMMITTED' WHERE upload_id = $1`, [item.upload_id]);
             continue;
           }
@@ -404,8 +420,7 @@ class OrphanCleanupService {
           cleaned++;
         } catch (delErr) {
           console.warn(`⚠️ [TTL Cleanup] Lỗi xóa file hết hạn ${item.storage_key}:`, delErr.message);
-          await this.recordFailedDeletion(item.storage_key, item.storage_bucket, delErr.message);
-          await db.query(`UPDATE pending_media_uploads SET status = 'PENDING', expires_at = CURRENT_TIMESTAMP + INTERVAL '5 minutes' WHERE upload_id = $1`, [item.upload_id]);
+          await this.recordFailedDeletion(item.storage_key, item.storage_bucket, delErr.message, item.upload_id);
         }
       }
     } catch (e) {
@@ -428,7 +443,7 @@ class OrphanCleanupService {
       await client.query('BEGIN');
 
       const query = `
-        SELECT deletion_id, storage_key, storage_bucket, retry_count
+        SELECT deletion_id, storage_key, storage_bucket, retry_count, pending_upload_id
         FROM failed_storage_deletions
         WHERE status = 'PENDING_RETRY' AND next_retry_at <= CURRENT_TIMESTAMP
         ORDER BY deletion_id ASC
@@ -443,13 +458,25 @@ class OrphanCleanupService {
       }
 
       for (const item of res.rows) {
-        const isRef = await this.isKeyReferenced(item.storage_key);
-        if (isRef) {
+        const reference = await this.getReferenceState(item.storage_key);
+        if (!reference.reliable) {
+          const backoffMinutes = Math.pow(2, Math.min(item.retry_count + 1, 5)) * 5;
+          await client.query(
+            `UPDATE failed_storage_deletions SET retry_count = retry_count + 1, last_error = $1,
+             next_retry_at = CURRENT_TIMESTAMP + ($2 || ' minutes')::interval WHERE deletion_id = $3`,
+            ['Reference check failed; deletion deferred', backoffMinutes, item.deletion_id]
+          );
+          continue;
+        }
+        if (reference.referenced) {
           // Nếu đã có tham chiếu mới, đánh dấu RESOLVED không cần xóa nữa
           await client.query(
             `UPDATE failed_storage_deletions SET status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP WHERE deletion_id = $1`,
             [item.deletion_id]
           );
+          if (item.pending_upload_id) {
+            await client.query(`UPDATE pending_media_uploads SET status = 'COMMITTED', cleaning_started_at = NULL WHERE upload_id = $1`, [item.pending_upload_id]);
+          }
           processed++;
           continue;
         }
@@ -461,6 +488,9 @@ class OrphanCleanupService {
               `UPDATE failed_storage_deletions SET status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP WHERE deletion_id = $1`,
               [item.deletion_id]
             );
+            if (item.pending_upload_id) {
+              await client.query(`UPDATE pending_media_uploads SET status = 'EXPIRED', cleaning_started_at = NULL WHERE upload_id = $1`, [item.pending_upload_id]);
+            }
             processed++;
           } else {
             throw new Error('deleteStorageObject returned false');

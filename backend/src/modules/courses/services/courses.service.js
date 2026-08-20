@@ -127,6 +127,13 @@ class CoursesService {
         const err = new Error(`Bài học "${lesson.title || lesson.lesson_id}" có media chưa được xác thực.`);
         err.status = 400; err.code = 'UNVERIFIED_MEDIA_ASSETS'; throw err;
       }
+      if (validInternal) {
+        const exists = await supabaseStorage.checkObjectExists(lesson.storage_key, lesson.storage_bucket);
+        if (!exists) {
+          const err = new Error(`Media của bài học "${lesson.title || lesson.lesson_id}" không còn tồn tại trên storage.`);
+          err.status = 400; err.code = 'MEDIA_OBJECT_MISSING'; throw err;
+        }
+      }
     }
   }
 
@@ -405,20 +412,20 @@ class CoursesService {
     try {
       await client.query('BEGIN');
 
-      // 1. Kiểm tra quyền sở hữu khóa học nếu có thông tin người dùng
+      // Luôn khóa và đọc trạng thái hiện tại để không bypass validation khi payload bỏ status.
+      const ownerCheckRes = await client.query(
+        'SELECT course_id, instructor_id, status FROM courses WHERE course_id = $1 FOR UPDATE',
+        [courseId]
+      );
+
+      if (ownerCheckRes.rows.length === 0) {
+        const error = new Error('Không tìm thấy khóa học để cập nhật');
+        error.status = 404;
+        throw error;
+      }
+
+      const existingCourse = ownerCheckRes.rows[0];
       if (userId !== undefined && userId !== null) {
-        const ownerCheckRes = await client.query(
-          'SELECT course_id, instructor_id FROM courses WHERE course_id = $1 FOR UPDATE',
-          [courseId]
-        );
-
-        if (ownerCheckRes.rows.length === 0) {
-          const error = new Error('Không tìm thấy khóa học để cập nhật');
-          error.status = 404;
-          throw error;
-        }
-
-        const existingCourse = ownerCheckRes.rows[0];
         const isAdmin = userRole === 1 || userRole === '1';
         if (!isAdmin && Number(existingCourse.instructor_id) !== Number(userId)) {
           const error = new Error('Bạn không có quyền chỉnh sửa khóa học của giảng viên khác.');
@@ -682,7 +689,8 @@ class CoursesService {
       if (claimedUploadIds.length > 0) {
         await orphanCleanupService.commitPendingUploads(claimedUploadIds, client);
       }
-      if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
+      const resultingStatus = finalStatus === undefined ? existingCourse.status : finalStatus;
+      if (resultingStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
 
       // Dọn dẹp các storage object mồ côi ngoài luồng sau khi DB Commit thành công
