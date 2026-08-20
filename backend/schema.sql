@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS sections (
   course_id INT NOT NULL,
   title VARCHAR(255) NOT NULL,
   order_index INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_section_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE
 );
 
@@ -87,6 +89,8 @@ CREATE TABLE IF NOT EXISTS lessons (
   content_url TEXT,
   order_index INT NOT NULL,
   pdf_version INT DEFAULT 1,
+  speaking_sentences TEXT DEFAULT '',
+  speaking_questions TEXT DEFAULT '',
   storage_provider VARCHAR(50) DEFAULT NULL,
   storage_bucket VARCHAR(50) DEFAULT NULL,
   storage_key TEXT DEFAULT NULL,
@@ -94,6 +98,8 @@ CREATE TABLE IF NOT EXISTS lessons (
   size_bytes BIGINT DEFAULT 0,
   checksum_sha256 VARCHAR(64) DEFAULT NULL,
   media_status VARCHAR(30) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_lesson_section FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE CASCADE,
   CONSTRAINT chk_lessons_media_status CHECK (media_status IS NULL OR media_status IN ('READY', 'UPLOADING', 'PROCESSING', 'MISSING_SOURCE', 'FAILED', 'PENDING_AUDIT'))
 );
