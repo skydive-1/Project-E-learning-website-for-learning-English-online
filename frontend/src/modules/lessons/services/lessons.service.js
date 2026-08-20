@@ -237,6 +237,8 @@ export const getCourseDetails = async (courseId = 1) => {
             title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
             duration: isSpeakingType ? 'Luyện phát âm AI' : duration,
             type: l.content_type || 'video',
+            playbackType: l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4'),
+            isDrmProtected: l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd')),
             videoUrl: l.content_type === 'video' ? resolvedUrl : null,
             pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
             description: description,

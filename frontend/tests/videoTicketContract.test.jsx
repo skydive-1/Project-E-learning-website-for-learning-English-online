@@ -13,8 +13,26 @@ vi.mock('shaka-player', () => {
   return {
     default: {
       Player: class {
-        static isBrowserSupported() { return false; }
-        destroy() { return Promise.resolve(); }
+        static isBrowserSupported() { return true; }
+        configure() {}
+        getNetworkingEngine() {
+          return {
+            registerRequestFilter: vi.fn()
+          };
+        }
+        load() {
+          return Promise.resolve();
+        }
+        destroy() {
+          return Promise.resolve();
+        }
+      },
+      net: {
+        NetworkingEngine: {
+          RequestType: {
+            LICENSE: 1
+          }
+        }
       }
     }
   };
@@ -99,6 +117,16 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
             content_type: 'video',
             videoUrl: 'https://cdn.example.com/external-video.mp4',
             content_url: 'https://cdn.example.com/external-video.mp4'
+          },
+          {
+            id: '47',
+            title: 'Lesson 47 DASH DRM',
+            type: 'video',
+            content_type: 'video',
+            playbackType: 'dash',
+            isDrmProtected: true,
+            videoUrl: '/uploads/courses/videos/manifest.mpd',
+            content_url: '/uploads/courses/videos/manifest.mpd'
           }
         ]
       }
@@ -187,6 +215,22 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
               title: 'Lesson 46 External CDN',
               content_type: 'video',
               content_url: 'https://cdn.example.com/external-video.mp4',
+              course_id: 5
+            }
+          }
+        };
+      }
+      if (url.includes('/lessons/47')) {
+        return {
+          data: {
+            success: true,
+            lesson: {
+              lesson_id: 47,
+              title: 'Lesson 47 DASH DRM',
+              content_type: 'video',
+              content_url: '/uploads/courses/videos/manifest.mpd',
+              playbackType: 'dash',
+              isDrmProtected: true,
               course_id: 5
             }
           }
@@ -405,4 +449,66 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
     // Content is rendered stably without access check error
     expect(screen.queryByText(/Đang kiểm tra quyền truy cập/)).toBeNull();
   });
+
+  // Test 9: DASH lesson uses Shaka and does not set .mpd directly into native video src
+  it('9. DASH/DRM lesson uses Shaka Player and does not put .mpd in native video src', async () => {
+    // Mock course with DASH lesson 47
+    vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
+      if (url.includes('/courses/5')) {
+        return {
+          data: {
+            success: true,
+            course: {
+              ...mockCourseData,
+              sections: [
+                {
+                  id: 101,
+                  title: 'Section 1',
+                  lessons: [
+                    {
+                      id: '47',
+                      title: 'Lesson 47 DASH DRM',
+                      type: 'video',
+                      content_type: 'video',
+                      playbackType: 'dash',
+                      isDrmProtected: true,
+                      videoUrl: '/uploads/courses/videos/manifest.mpd',
+                      content_url: '/uploads/courses/videos/manifest.mpd'
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        };
+      }
+      if (url.includes('/lessons/47')) {
+        return {
+          data: {
+            success: true,
+            lesson: {
+              lesson_id: 47,
+              title: 'Lesson 47 DASH DRM',
+              content_type: 'video',
+              content_url: '/uploads/courses/videos/manifest.mpd',
+              playbackType: 'dash',
+              isDrmProtected: true,
+              course_id: 5
+            }
+          }
+        };
+      }
+      return { data: { success: true } };
+    });
+
+    renderLessonPage('/lessons/47');
+
+    await waitFor(() => {
+      const video = document.querySelector('video');
+      expect(video).toBeTruthy();
+      // Native video src must NOT be .mpd (handled by Shaka)
+      expect(video.src).not.toContain('.mpd');
+    });
+  });
 });
+
