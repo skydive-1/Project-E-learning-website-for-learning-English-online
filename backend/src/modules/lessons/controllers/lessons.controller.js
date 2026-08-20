@@ -2,22 +2,63 @@ const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const lessonsService = require('../services/lessons.service');
+const coursesService = require('../../courses/services/courses.service');
+const supabaseStorage = require('../../../utils/supabaseStorage');
 
 // Sinh Short-Lived Video Streaming Ticket (Hiệu lực 60 giây - Chống tải lậu & Hotlink)
 exports.getVideoTicket = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
     const userId = req.user?.id || req.user?.userId;
+    const roleId = req.user?.roleId || req.user?.role || 3;
     const origin = req.headers.origin || req.headers.referer || '';
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        code: 'AUTH_CONFIG_ERROR',
+        message: 'Lỗi cấu hình hệ thống xác thực máy chủ'
+      });
+    }
+
+    // 🔒 1. Kiểm tra phân quyền truy cập bài học (Owner / Admin / Published / Enrolled)
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, roleId);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        code: 'FORBIDDEN',
+        message: 'Quyền truy cập bị từ chối: Bạn không có quyền truy cập video bài học này.'
+      });
+    }
+
+    // 🔒 2. Kiểm tra bài học tồn tại và có content_type === 'video'
+    const lesson = await coursesService.getLessonById(lessonId);
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'Không tìm thấy bài giảng'
+      });
+    }
+
+    if (lesson.content_type !== 'video') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_RESOURCE_TYPE',
+        message: 'Bài giảng này không chứa tài nguyên video'
+      });
+    }
 
     const ticket = jwt.sign(
       {
+        id: userId,
         userId,
-        lessonId,
+        roleId,
+        lessonId: Number(lessonId) || lessonId,
         origin,
         type: 'video_stream_ticket'
       },
-      process.env.JWT_SECRET || 'elearning_video_secure_jwt_secret',
+      process.env.JWT_SECRET,
       { expiresIn: '60s' }
     );
 
@@ -98,9 +139,6 @@ exports.deleteLesson = async (req, res, next) => {
   }
 };
 
-const coursesService = require('../../courses/services/courses.service');
-const { generateSignedUrl } = require('../../../utils/supabaseStorage');
-
 exports.streamLessonVideo = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
@@ -161,7 +199,7 @@ exports.streamLessonVideo = async (req, res, next) => {
 
     // B. Nếu là Supabase Storage Key (courses/...)
     if (!contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('uploads/')) {
-      const signedPlaybackUrl = await generateSignedUrl(contentUrl, 'videos', 3600);
+      const signedPlaybackUrl = await supabaseStorage.generateSignedUrl(contentUrl, 'videos', 3600);
       if (signedPlaybackUrl) {
         return res.redirect(signedPlaybackUrl);
       }

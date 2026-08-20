@@ -284,6 +284,14 @@ const authenticateVideoToken = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_EXPIRED',
+        error: 'TokenExpiredError',
+        message: 'Vé xem video đã hết hạn (Short-lived 60s Token). Vui lòng thử lại.'
+      });
+    }
     if (error.status === 403) {
       return res.status(403).json({
         success: false,
