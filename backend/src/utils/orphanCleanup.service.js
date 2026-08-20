@@ -79,7 +79,7 @@ class OrphanCleanupService {
     const pending = res.rows[0];
 
     // 1. Kiểm tra trạng thái và hạn sử dụng TTL
-    if (pending.status !== 'PENDING' && pending.status !== 'CLAIMING') {
+    if (pending.status !== 'PENDING') {
       throw new Error(`Tài nguyên upload (${uploadId}) không ở trạng thái sẵn sàng để liên kết (status=${pending.status})`);
     }
 
@@ -97,10 +97,19 @@ class OrphanCleanupService {
     if (pending.storage_key !== storageKey) {
       throw new Error(`Storage key không khớp với phiên upload (${pending.storage_key} vs ${storageKey})`);
     }
-    if (storageBucket && pending.storage_bucket !== storageBucket) {
+    if (pending.storage_provider !== 'supabase') {
+      throw new Error('Storage provider không khớp với pending upload');
+    }
+    if (pending.storage_bucket !== storageBucket) {
       throw new Error(`Storage bucket không khớp (${pending.storage_bucket} vs ${storageBucket})`);
     }
-    if (checksumSha256 && pending.checksum_sha256 !== checksumSha256) {
+    if (pending.mime_type !== mimeType) {
+      throw new Error('MIME type không khớp với tệp đã upload.');
+    }
+    if (String(pending.size_bytes) !== String(sizeBytes)) {
+      throw new Error('Kích thước tệp không khớp với pending upload.');
+    }
+    if (pending.checksum_sha256 !== checksumSha256) {
       throw new Error('Mã băm SHA-256 không khớp với tệp đã upload.');
     }
 
@@ -137,8 +146,7 @@ class OrphanCleanupService {
    */
   async collectAssetsFromCourse(courseId, client = null) {
     const runner = client || db;
-    try {
-      const query = `
+    const query = `
         SELECT 
           l.storage_key, 
           l.storage_bucket, 
@@ -158,16 +166,12 @@ class OrphanCleanupService {
         JOIN sections s ON l.section_id = s.section_id
         WHERE s.course_id = $1 AND m.storage_key IS NOT NULL
       `;
-      const res = await runner.query(query, [courseId]);
-      return res.rows.map(r => ({
+    const res = await runner.query(query, [courseId]);
+    return res.rows.map(r => ({
         key: r.storage_key,
         bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
         provider: r.storage_provider || 'supabase'
       }));
-    } catch (err) {
-      console.warn(`⚠️ [OrphanCleanup] Lỗi thu thập assets của courseId=${courseId}:`, err.message);
-      return [];
-    }
   }
 
   /**
@@ -175,8 +179,7 @@ class OrphanCleanupService {
    */
   async collectAssetsFromSection(sectionId, client = null) {
     const runner = client || db;
-    try {
-      const query = `
+    const query = `
         SELECT 
           l.storage_key, 
           l.storage_bucket, 
@@ -192,16 +195,12 @@ class OrphanCleanupService {
         JOIN lessons l ON m.lesson_id = l.lesson_id
         WHERE l.section_id = $1 AND m.storage_key IS NOT NULL
       `;
-      const res = await runner.query(query, [sectionId]);
-      return res.rows.map(r => ({
+    const res = await runner.query(query, [sectionId]);
+    return res.rows.map(r => ({
         key: r.storage_key,
         bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
         provider: r.storage_provider || 'supabase'
       }));
-    } catch (err) {
-      console.warn(`⚠️ [OrphanCleanup] Lỗi thu thập assets của sectionId=${sectionId}:`, err.message);
-      return [];
-    }
   }
 
   /**
@@ -209,8 +208,7 @@ class OrphanCleanupService {
    */
   async collectAssetsFromLesson(lessonId, client = null) {
     const runner = client || db;
-    try {
-      const query = `
+    const query = `
         SELECT 
           l.storage_key, 
           l.storage_bucket, 
@@ -225,16 +223,12 @@ class OrphanCleanupService {
         FROM lesson_materials m
         WHERE m.lesson_id = $1 AND m.storage_key IS NOT NULL
       `;
-      const res = await runner.query(query, [lessonId]);
-      return res.rows.map(r => ({
+    const res = await runner.query(query, [lessonId]);
+    return res.rows.map(r => ({
         key: r.storage_key,
         bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
         provider: r.storage_provider || 'supabase'
       }));
-    } catch (err) {
-      console.warn(`⚠️ [OrphanCleanup] Lỗi thu thập assets của lessonId=${lessonId}:`, err.message);
-      return [];
-    }
   }
 
   /**
@@ -269,6 +263,9 @@ class OrphanCleanupService {
           storage_provider, storage_bucket, storage_key, retry_count, last_error, status, next_retry_at
         )
         VALUES ('supabase', $1, $2, 1, $3, 'PENDING_RETRY', CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+        ON CONFLICT (storage_provider, storage_bucket, storage_key) DO UPDATE
+        SET status = 'PENDING_RETRY', last_error = EXCLUDED.last_error,
+            next_retry_at = LEAST(failed_storage_deletions.next_retry_at, EXCLUDED.next_retry_at)
       `, [storageBucket || 'videos', storageKey, errorMsg || 'Unknown deletion error']);
     } catch (e) {
       console.error(`🚨 [OrphanCleanup] Không thể lưu failed_storage_deletions cho ${storageKey}:`, e.message);
@@ -369,7 +366,8 @@ class OrphanCleanupService {
       const selectQuery = `
         SELECT upload_id, storage_key, storage_bucket 
         FROM pending_media_uploads 
-        WHERE expires_at < CURRENT_TIMESTAMP AND status = 'PENDING'
+        WHERE (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
+           OR (status = 'CLEANING' AND created_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes')
         ORDER BY created_at ASC
         LIMIT $1
         FOR UPDATE SKIP LOCKED
@@ -393,9 +391,12 @@ class OrphanCleanupService {
       for (const item of res.rows) {
         try {
           const isRef = await this.isKeyReferenced(item.storage_key);
-          if (!isRef) {
-            await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket);
+          if (isRef) {
+            await db.query(`UPDATE pending_media_uploads SET status = 'COMMITTED' WHERE upload_id = $1`, [item.upload_id]);
+            continue;
           }
+          const deleted = await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket);
+          if (!deleted) throw new Error('deleteStorageObject returned false');
           await db.query(
             `UPDATE pending_media_uploads SET status = 'EXPIRED' WHERE upload_id = $1`,
             [item.upload_id]
@@ -404,6 +405,7 @@ class OrphanCleanupService {
         } catch (delErr) {
           console.warn(`⚠️ [TTL Cleanup] Lỗi xóa file hết hạn ${item.storage_key}:`, delErr.message);
           await this.recordFailedDeletion(item.storage_key, item.storage_bucket, delErr.message);
+          await db.query(`UPDATE pending_media_uploads SET status = 'PENDING', expires_at = CURRENT_TIMESTAMP + INTERVAL '5 minutes' WHERE upload_id = $1`, [item.upload_id]);
         }
       }
     } catch (e) {

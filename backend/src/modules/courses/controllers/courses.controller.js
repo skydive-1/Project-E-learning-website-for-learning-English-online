@@ -4,6 +4,33 @@ const crypto = require('crypto');
 const coursesService = require('../services/courses.service');
 const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 const supabaseStorage = require('../../../utils/supabaseStorage');
+const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+
+async function registerUploadedObject(req, uploadResult, storageBucket, mimeType) {
+  const pendingUploadId = crypto.randomUUID();
+  try {
+    await orphanCleanupService.registerPendingUpload({
+      uploadId: pendingUploadId,
+      instructorId: req.user?.id || req.user?.userId,
+      storageKey: uploadResult.storageKey,
+      storageBucket,
+      mimeType,
+      sizeBytes: uploadResult.sizeBytes,
+      checksumSha256: uploadResult.checksumSha256
+    });
+    return pendingUploadId;
+  } catch (error) {
+    let deleted = false;
+    try { deleted = await supabaseStorage.deleteStorageObject(uploadResult.storageKey, storageBucket); } catch (_) {}
+    if (!deleted) {
+      await orphanCleanupService.recordFailedDeletion(uploadResult.storageKey, storageBucket, `Pending registration failed: ${error.message}`);
+    }
+    const registrationError = new Error('Không thể đăng ký phiên tải lên; tệp chưa được liên kết');
+    registrationError.status = 500;
+    registrationError.code = 'PENDING_UPLOAD_REGISTRATION_FAILED';
+    throw registrationError;
+  }
+}
 
 exports.getAllCourses = async (req, res, next) => {
   try {
@@ -107,21 +134,7 @@ exports.uploadFile = async (req, res, next) => {
       }
 
       // Đăng ký pending upload vào cơ sở dữ liệu
-      const orphanCleanupService = require('../../../utils/orphanCleanup.service');
-      const pendingUploadId = crypto.randomUUID();
-      try {
-        await orphanCleanupService.registerPendingUpload({
-          uploadId: pendingUploadId,
-          instructorId: req.user?.id || req.user?.userId || instructorId,
-          storageKey: uploadResult.storageKey,
-          storageBucket: 'videos',
-          mimeType: 'video/mp4',
-          sizeBytes: uploadResult.sizeBytes,
-          checksumSha256: uploadResult.checksumSha256
-        });
-      } catch (pendingErr) {
-        console.warn('⚠️ [uploadFile] Cảnh báo đăng ký pending upload:', pendingErr.message);
-      }
+      const pendingUploadId = await registerUploadedObject(req, uploadResult, 'videos', 'video/mp4');
 
       return res.status(200).json({
         success: true,
@@ -134,7 +147,7 @@ exports.uploadFile = async (req, res, next) => {
         mimeType: 'video/mp4',
         sizeBytes: uploadResult.sizeBytes,
         checksumSha256: uploadResult.checksumSha256,
-        mediaStatus: 'READY',
+        mediaStatus: 'PENDING',
         playbackType: 'mp4',
         originalName: req.file.originalname,
         mimetype: 'video/mp4',
@@ -167,21 +180,7 @@ exports.uploadFile = async (req, res, next) => {
       }
 
       // Đăng ký pending upload vào cơ sở dữ liệu
-      const orphanCleanupService = require('../../../utils/orphanCleanup.service');
-      const pendingUploadId = crypto.randomUUID();
-      try {
-        await orphanCleanupService.registerPendingUpload({
-          uploadId: pendingUploadId,
-          instructorId: req.user?.id || req.user?.userId || instructorId,
-          storageKey: uploadResult.storageKey,
-          storageBucket: 'documents',
-          mimeType: 'application/pdf',
-          sizeBytes: uploadResult.sizeBytes,
-          checksumSha256: uploadResult.checksumSha256
-        });
-      } catch (pendingErr) {
-        console.warn('⚠️ [uploadFile] Cảnh báo đăng ký pending upload:', pendingErr.message);
-      }
+      const pendingUploadId = await registerUploadedObject(req, uploadResult, 'documents', 'application/pdf');
 
       return res.status(200).json({
         success: true,
@@ -194,7 +193,7 @@ exports.uploadFile = async (req, res, next) => {
         mimeType: 'application/pdf',
         sizeBytes: uploadResult.sizeBytes,
         checksumSha256: uploadResult.checksumSha256,
-        mediaStatus: 'READY',
+        mediaStatus: 'PENDING',
         playbackType: 'pdf',
         originalName: req.file.originalname,
         mimetype: 'application/pdf',

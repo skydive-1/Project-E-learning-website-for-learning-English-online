@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS failed_storage_deletions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_failed_storage_deletions_retry ON failed_storage_deletions(status, next_retry_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_failed_storage_deletions_object
+  ON failed_storage_deletions(storage_provider, storage_bucket, storage_key);
 
 -- 5. SAFE BACKFILL FOR lessons TABLE
 -- A. Non-media lessons (quiz, text, speaking) -> Clear durable media columns to NULL
@@ -96,7 +98,7 @@ SET media_status = 'PENDING_AUDIT'
 WHERE (content_url LIKE '/uploads/%' OR content_url LIKE 'uploads/%' OR storage_key IS NULL)
   AND LOWER(content_type) IN ('video', 'pdf')
   AND (media_status IS NULL OR media_status = 'READY')
-  AND storage_provider != 'external';
+  AND storage_provider IS DISTINCT FROM 'external';
 
 -- 6. SAFE BACKFILL FOR lesson_materials TABLE
 DO $$
@@ -114,7 +116,7 @@ BEGIN
     SET media_status = 'PENDING_AUDIT'
     WHERE (file_url LIKE '/uploads/%' OR file_url LIKE 'uploads/%' OR storage_key IS NULL)
       AND (media_status IS NULL OR media_status = 'READY')
-      AND storage_provider != 'external';
+      AND storage_provider IS DISTINCT FROM 'external';
   END IF;
 END $$;
 
@@ -130,11 +132,12 @@ BEGIN
   END IF;
 
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'lesson_materials') THEN
+    ALTER TABLE lesson_materials DROP CONSTRAINT IF EXISTS chk_materials_media_status;
     IF NOT EXISTS (
       SELECT 1 FROM information_schema.table_constraints
-      WHERE constraint_name = 'chk_materials_media_status' AND table_name = 'lesson_materials'
+      WHERE constraint_name = 'chk_lesson_materials_media_status' AND table_name = 'lesson_materials'
     ) THEN
-      ALTER TABLE lesson_materials ADD CONSTRAINT chk_materials_media_status
+      ALTER TABLE lesson_materials ADD CONSTRAINT chk_lesson_materials_media_status
         CHECK (media_status IS NULL OR media_status IN ('READY', 'MISSING_SOURCE', 'UPLOADING', 'PROCESSING', 'FAILED', 'PENDING_AUDIT'));
     END IF;
   END IF;
@@ -149,6 +152,6 @@ COMMIT;
 -- DROP TABLE IF EXISTS failed_storage_deletions;
 -- DROP TABLE IF EXISTS pending_media_uploads;
 -- ALTER TABLE lessons DROP CONSTRAINT IF EXISTS chk_lessons_media_status;
--- ALTER TABLE lesson_materials DROP CONSTRAINT IF EXISTS chk_materials_media_status;
+-- ALTER TABLE lesson_materials DROP CONSTRAINT IF EXISTS chk_lesson_materials_media_status;
 -- COMMIT;
 -- ==============================================================================

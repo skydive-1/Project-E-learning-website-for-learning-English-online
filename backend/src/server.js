@@ -127,10 +127,18 @@ app.use(errorHandler);
 
 // ===== 8. START SERVER =====
 const { testConnection } = require('./config/database');
+const { startMediaCleanupWorker } = require('./utils/mediaCleanup.worker');
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   // Kiểm tra kết nối Database khi khởi chạy
   await testConnection();
+  const mediaCleanupWorker = startMediaCleanupWorker();
+  const shutdown = () => {
+    mediaCleanupWorker?.stop();
+    server.close(() => process.exit(0));
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 
   // Kiểm tra Shaka Packager binary cho DRM Video Protection
   const shakaStatus = checkShakaPackagerInstalled();

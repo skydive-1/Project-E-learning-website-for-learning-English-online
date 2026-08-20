@@ -90,7 +90,7 @@ class CoursesService {
     const mimeType = les.mimeType || les.mime_type || (isPdf ? 'application/pdf' : 'video/mp4');
     const sizeBytes = Number(les.sizeBytes || les.size_bytes) || 0;
     const checksumSha256 = les.checksumSha256 || les.checksum_sha256 || null;
-    const mediaStatus = les.mediaStatus || les.media_status || (storageKey ? 'READY' : 'PENDING_AUDIT');
+    const mediaStatus = les.mediaStatus || les.media_status || 'PENDING_AUDIT';
 
     return {
       contentType,
@@ -104,6 +104,30 @@ class CoursesService {
       mediaStatus,
       isNonMedia: false
     };
+  }
+
+  async _validateStoredCourseForPublish(client, courseId) {
+    const result = await client.query(`
+      SELECT l.lesson_id, l.title, l.content_type, l.storage_provider, l.storage_bucket,
+             l.storage_key, l.mime_type, l.size_bytes, l.checksum_sha256, l.media_status,
+             l.content_url
+      FROM lessons l JOIN sections s ON s.section_id = l.section_id
+      WHERE s.course_id = $1
+    `, [courseId]);
+    if (result.rows.length === 0) {
+      const err = new Error('Khóa học phải có ít nhất một bài học trước khi xuất bản.');
+      err.status = 400; err.code = 'INVALID_COURSE_STRUCTURE'; throw err;
+    }
+    for (const lesson of result.rows) {
+      if (['quiz', 'text', 'speaking'].includes(String(lesson.content_type).toLowerCase())) continue;
+      const validExternal = lesson.storage_provider === 'external' && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
+      const validInternal = lesson.storage_provider === 'supabase' && lesson.storage_bucket && lesson.storage_key &&
+        lesson.mime_type && Number(lesson.size_bytes) > 0 && lesson.checksum_sha256 && lesson.media_status === 'READY';
+      if (!validExternal && !validInternal) {
+        const err = new Error(`Bài học "${lesson.title || lesson.lesson_id}" có media chưa được xác thực.`);
+        err.status = 400; err.code = 'UNVERIFIED_MEDIA_ASSETS'; throw err;
+      }
+    }
   }
 
   /**
@@ -161,12 +185,7 @@ class CoursesService {
       const finalPrice = price || 0;
       const finalSubjectId = subjectId ? parseInt(subjectId, 10) : null;
 
-      // 1. Kiểm tra điều kiện xuất bản (Publish Validation) nếu khóa học xuất bản ngay
-      if (finalStatus === 'published') {
-        this._validateCourseForPublish(sections);
-      }
-
-      // 2. Chèn khóa học vào bảng courses (Bắt buộc gán instructorId từ authenticated token)
+      // Chèn khóa học; publish validation chạy trên database state sau khi claim media.
       const courseResult = await client.query(`
         INSERT INTO courses (
           subject_id, 
@@ -206,20 +225,16 @@ class CoursesService {
         }
       }
 
-      await client.query('COMMIT');
-
-      // Đánh dấu các pending uploads đã committed thành công
       if (claimedUploadIds.length > 0) {
-        orphanCleanupService.commitPendingUploads(claimedUploadIds).catch(() => {});
+        await orphanCleanupService.commitPendingUploads(claimedUploadIds, client);
       }
+      if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
+      await client.query('COMMIT');
 
       newCourse.status = newCourse.status === 'published' ? 1 : 0;
       return newCourse;
     } catch (error) {
       await client.query('ROLLBACK');
-      if (newlyUploadedKeys.length > 0) {
-        orphanCleanupService.rollbackNewUploads(newlyUploadedKeys).catch(() => {});
-      }
       handleServiceError(error, 'Lỗi tạo khóa học');
     } finally {
       client.release();
@@ -252,12 +267,12 @@ class CoursesService {
     const speakingSentences = lessonData.speakingSentences || lessonData.speaking_sentences || '';
     const speakingQuestions = lessonData.speakingQuestions || lessonData.speaking_questions || '';
 
-    const meta = this._resolveMediaMetadata(lessonData);
+    let meta = this._resolveMediaMetadata(lessonData);
 
     // Xác thực và claim pending upload nếu có
     const pendingUploadId = lessonData.pendingUploadId || lessonData.pending_upload_id;
     if (pendingUploadId && meta.storageKey) {
-      await orphanCleanupService.claimPendingUpload({
+      const pending = await orphanCleanupService.claimPendingUpload({
         uploadId: pendingUploadId,
         instructorId,
         userRole,
@@ -268,16 +283,14 @@ class CoursesService {
         checksumSha256: meta.checksumSha256,
         client
       });
+      meta = { ...meta, contentUrl: pending.storage_key, storageProvider: pending.storage_provider,
+        storageBucket: pending.storage_bucket, storageKey: pending.storage_key, mimeType: pending.mime_type,
+        sizeBytes: Number(pending.size_bytes), checksumSha256: pending.checksum_sha256, mediaStatus: 'READY' };
       claimedUploadIds.push(pendingUploadId);
       trackedKeys.push({ key: meta.storageKey, bucket: meta.storageBucket });
     } else if (meta.storageKey && meta.storageProvider === 'supabase') {
-      // Nếu không có pendingUploadId nhưng khai báo Supabase storageKey, kiểm tra object tồn tại
-      const exists = await supabaseStorage.checkObjectExists(meta.storageKey, meta.storageBucket);
-      if (!exists) {
-        const err = new Error(`Tài nguyên ${meta.storageKey} không tồn tại trên máy chủ lưu trữ.`);
-        err.status = 400;
-        throw err;
-      }
+      const err = new Error('Media Supabase mới bắt buộc phải có pendingUploadId hợp lệ.');
+      err.status = 400; err.code = 'PENDING_UPLOAD_REQUIRED'; throw err;
     }
 
     await client.query(`
@@ -439,11 +452,6 @@ class CoursesService {
         }
       }
 
-      // 2. Kiểm tra điều kiện xuất bản nếu cập nhật sang published
-      if (finalStatus === 'published' && sections) {
-        this._validateCourseForPublish(sections);
-      }
-
       const updates = [];
       const values = [];
       let paramIndex = 1;
@@ -527,7 +535,7 @@ class CoursesService {
           let existingLessons = [];
           if (isExistingSection) {
             const existingLessonsRes = await client.query(
-              'SELECT lesson_id, storage_key, storage_bucket FROM lessons WHERE section_id = $1',
+              'SELECT lesson_id, storage_provider, storage_key, storage_bucket, mime_type, size_bytes, checksum_sha256, media_status FROM lessons WHERE section_id = $1',
               [secId]
             );
             existingLessons = existingLessonsRes.rows;
@@ -541,12 +549,14 @@ class CoursesService {
               const speakingSentences = les.speakingSentences || les.speaking_sentences || '';
               const speakingQuestions = les.speakingQuestions || les.speaking_questions || '';
 
-              const meta = this._resolveMediaMetadata(les);
+              let meta = this._resolveMediaMetadata(les);
               const pendingUploadId = les.pendingUploadId || les.pending_upload_id;
+              const candidateLessonId = les.id && Number.isInteger(Number(les.id)) ? Number(les.id) : null;
+              const oldLessonForClaim = existingLessons.find(el => el.lesson_id === candidateLessonId);
 
               // Claim pending upload nếu có
               if (pendingUploadId && meta.storageKey) {
-                await orphanCleanupService.claimPendingUpload({
+                const pending = await orphanCleanupService.claimPendingUpload({
                   uploadId: pendingUploadId,
                   instructorId: userId,
                   userRole,
@@ -557,15 +567,21 @@ class CoursesService {
                   checksumSha256: meta.checksumSha256,
                   client
                 });
+                meta = { ...meta, contentUrl: pending.storage_key, storageProvider: pending.storage_provider,
+                  storageBucket: pending.storage_bucket, storageKey: pending.storage_key, mimeType: pending.mime_type,
+                  sizeBytes: Number(pending.size_bytes), checksumSha256: pending.checksum_sha256, mediaStatus: 'READY' };
                 claimedUploadIds.push(pendingUploadId);
                 newlyUploadedKeys.push({ key: meta.storageKey, bucket: meta.storageBucket });
               } else if (meta.storageKey && meta.storageProvider === 'supabase') {
-                const exists = await supabaseStorage.checkObjectExists(meta.storageKey, meta.storageBucket);
-                if (!exists) {
-                  const err = new Error(`Tài nguyên ${meta.storageKey} không tồn tại trên máy chủ lưu trữ.`);
-                  err.status = 400;
-                  throw err;
+                if (!oldLessonForClaim || oldLessonForClaim.storage_key !== meta.storageKey) {
+                  const err = new Error('Thay đổi media Supabase bắt buộc phải có pendingUploadId hợp lệ.');
+                  err.status = 400; err.code = 'PENDING_UPLOAD_REQUIRED'; throw err;
                 }
+                meta = { ...meta, contentUrl: oldLessonForClaim.storage_key,
+                  storageProvider: oldLessonForClaim.storage_provider, storageBucket: oldLessonForClaim.storage_bucket,
+                  storageKey: oldLessonForClaim.storage_key, mimeType: oldLessonForClaim.mime_type,
+                  sizeBytes: Number(oldLessonForClaim.size_bytes), checksumSha256: oldLessonForClaim.checksum_sha256,
+                  mediaStatus: oldLessonForClaim.media_status || 'PENDING_AUDIT' };
               }
 
               let lesId;
@@ -633,10 +649,12 @@ class CoursesService {
           // Thu thập và xóa các bài học bị gỡ bỏ khỏi section
           if (isExistingSection) {
             const removedLessonsRes = await client.query(
-              'SELECT storage_key, storage_bucket FROM lessons WHERE section_id = $1 AND NOT (lesson_id = ANY($2::int[])) AND storage_key IS NOT NULL',
+              'SELECT lesson_id FROM lessons WHERE section_id = $1 AND NOT (lesson_id = ANY($2::int[]))',
               [secId, currentLessonIds.length > 0 ? currentLessonIds : [-1]]
             );
-            removedLessonsRes.rows.forEach(r => assetsToCleanup.push({ key: r.storage_key, bucket: r.storage_bucket }));
+            for (const row of removedLessonsRes.rows) {
+              assetsToCleanup.push(...await orphanCleanupService.collectAssetsFromLesson(row.lesson_id, client));
+            }
 
             await client.query(
               'DELETE FROM lessons WHERE section_id = $1 AND NOT (lesson_id = ANY($2::int[]))',
@@ -647,13 +665,13 @@ class CoursesService {
 
         // Thu thập và xóa các section bị gỡ bỏ khỏi khóa học
         const removedSectionsRes = await client.query(
-          `SELECT l.storage_key, l.storage_bucket 
-           FROM lessons l 
-           JOIN sections s ON l.section_id = s.section_id 
-           WHERE s.course_id = $1 AND NOT (s.section_id = ANY($2::int[])) AND l.storage_key IS NOT NULL`,
+          `SELECT section_id FROM sections
+           WHERE course_id = $1 AND NOT (section_id = ANY($2::int[]))`,
           [courseId, currentSectionIds.length > 0 ? currentSectionIds : [-1]]
         );
-        removedSectionsRes.rows.forEach(r => assetsToCleanup.push({ key: r.storage_key, bucket: r.storage_bucket }));
+        for (const row of removedSectionsRes.rows) {
+          assetsToCleanup.push(...await orphanCleanupService.collectAssetsFromSection(row.section_id, client));
+        }
 
         await client.query(
           'DELETE FROM sections WHERE course_id = $1 AND NOT (section_id = ANY($2::int[]))',
@@ -661,12 +679,11 @@ class CoursesService {
         );
       }
 
-      await client.query('COMMIT');
-
-      // Commit các pending uploads
       if (claimedUploadIds.length > 0) {
-        orphanCleanupService.commitPendingUploads(claimedUploadIds).catch(() => {});
+        await orphanCleanupService.commitPendingUploads(claimedUploadIds, client);
       }
+      if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
+      await client.query('COMMIT');
 
       // Dọn dẹp các storage object mồ côi ngoài luồng sau khi DB Commit thành công
       if (assetsToCleanup.length > 0) {
@@ -678,9 +695,6 @@ class CoursesService {
       return await this.getCourseById(courseId);
     } catch (error) {
       await client.query('ROLLBACK');
-      if (newlyUploadedKeys.length > 0) {
-        orphanCleanupService.rollbackNewUploads(newlyUploadedKeys).catch(() => {});
-      }
       handleServiceError(error, 'Lỗi cập nhật khóa học');
     } finally {
       client.release();

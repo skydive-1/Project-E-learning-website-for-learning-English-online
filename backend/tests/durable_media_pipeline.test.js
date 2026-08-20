@@ -98,7 +98,12 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
     supabaseStorage.checkObjectExists = origCheckObject;
     supabaseStorage.generateSignedUrl = origGenerateSignedUrl;
     supabaseStorage.deleteStorageObject = origDeleteStorageObject;
-    db.query = origQuery;
+    db.query = async (text, params) => {
+      if (typeof text === 'string' && text.includes('INSERT INTO pending_media_uploads')) {
+        return { rows: [{ upload_id: params[0], status: 'PENDING' }] };
+      }
+      return origQuery(text, params);
+    };
     coursesService.getLessonById = origGetLessonById;
     coursesService.canUserAccessLesson = origCanAccess;
     lessonsService.checkLessonOwnership = origCheckOwnership;
@@ -174,7 +179,8 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.strictEqual(responseBody.success, true);
       assert.strictEqual(responseBody.storageBucket, 'videos');
       assert.strictEqual(responseBody.storageProvider, 'supabase');
-      assert.strictEqual(responseBody.mediaStatus, 'READY');
+      assert.strictEqual(responseBody.mediaStatus, 'PENDING');
+      assert.ok(responseBody.pendingUploadId);
       assert.ok(responseBody.storageKey.startsWith('courses/2/'));
       assert.ok(responseBody.storageKey.endsWith('.mp4'));
     });

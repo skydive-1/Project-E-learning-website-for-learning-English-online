@@ -71,7 +71,7 @@ const CourseEditor = () => {
                 title: sec.title,
                 lessons: (sec.lessons || []).map(l => {
                   const isExternal = l.content_url && (l.content_url.startsWith('http://') || l.content_url.startsWith('https://'));
-                  const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : (l.storage_key ? 'READY' : 'PENDING_AUDIT'));
+                  const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : 'PENDING_AUDIT');
                   const isVerified = status === 'READY' || isExternal;
 
                   return {
@@ -235,6 +235,10 @@ const CourseEditor = () => {
       });
 
       if (response.data && response.data.success) {
+        if (!response.data.pendingUploadId || !response.data.storageKey || !response.data.storageBucket ||
+            !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
+          throw new Error('Phản hồi upload thiếu metadata pending bắt buộc. Vui lòng tải lại tệp.');
+        }
         const fileUrl = response.data.fileUrl || response.data.storageKey;
         const mime = response.data.mimeType || response.data.mimetype;
         const detectedType = (mime && mime.includes('pdf')) || response.data.playbackType === 'pdf' ? 'pdf' : 'video';
@@ -246,8 +250,8 @@ const CourseEditor = () => {
         newSections[sIdx].lessons[lIdx].storageProvider = response.data.storageProvider || 'supabase';
         newSections[sIdx].lessons[lIdx].sizeBytes = response.data.sizeBytes || file.size;
         newSections[sIdx].lessons[lIdx].checksumSha256 = response.data.checksumSha256;
-        newSections[sIdx].lessons[lIdx].mediaStatus = response.data.mediaStatus || 'READY';
-        newSections[sIdx].lessons[lIdx].pendingUploadId = response.data.pendingUploadId || null;
+        newSections[sIdx].lessons[lIdx].mediaStatus = response.data.mediaStatus || 'PENDING_AUDIT';
+        newSections[sIdx].lessons[lIdx].pendingUploadId = response.data.pendingUploadId;
         newSections[sIdx].lessons[lIdx].type = detectedType;
         newSections[sIdx].lessons[lIdx].uploading = false;
         newSections[sIdx].lessons[lIdx].uploadVerified = true;
@@ -391,7 +395,7 @@ const CourseEditor = () => {
           mimeType: les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null)),
           sizeBytes: les.sizeBytes || 0,
           checksumSha256: les.checksumSha256 || null,
-          mediaStatus: les.mediaStatus || (les.contentUrl ? 'READY' : null),
+          mediaStatus: les.mediaStatus || (les.contentUrl ? 'PENDING_AUDIT' : null),
           pendingUploadId: les.pendingUploadId || null,
           orderIndex: lIdx + 1,
           speakingSentences: les.speakingSentences || '',

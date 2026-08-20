@@ -4,6 +4,60 @@ const jwt = require('jsonwebtoken');
 const lessonsService = require('../services/lessons.service');
 const coursesService = require('../../courses/services/courses.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
+const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+
+function sendDashFile(res, filePath, contentType) {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  return fs.createReadStream(filePath).pipe(res);
+}
+
+async function resolveReadyDashLesson(req, res) {
+  const lesson = await coursesService.getLessonById(req.params.lessonId);
+  if (!lesson) {
+    res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Không tìm thấy bài giảng' });
+    return null;
+  }
+  if (lesson.content_type !== 'video' || lesson.media_status !== 'READY') {
+    res.status(409).json({ success: false, code: 'MEDIA_NOT_READY', message: 'Video chưa sẵn sàng' });
+    return null;
+  }
+  const manifestPath = resolveSafePath(UPLOADS_ROOT, lesson.content_url || '', { checkExists: true });
+  if (!manifestPath || path.extname(manifestPath).toLowerCase() !== '.mpd') {
+    res.status(404).json({ success: false, code: 'DASH_NOT_FOUND', message: 'DASH manifest không tồn tại' });
+    return null;
+  }
+  return { lesson, manifestPath };
+}
+
+exports.streamDashManifest = async (req, res, next) => {
+  try {
+    const resolved = await resolveReadyDashLesson(req, res);
+    if (!resolved) return;
+    const manifest = await fs.promises.readFile(resolved.manifestPath, 'utf8');
+    const references = [...manifest.matchAll(/(?:media|initialization|sourceURL)=["']([^"']+)["']/gi)].map(m => m[1]);
+    const dashDir = path.dirname(resolved.manifestPath);
+    if (references.some(ref => !/^[A-Za-z0-9_.-]+$/.test(ref) || !resolveSafePath(dashDir, ref, { checkExists: true }))) {
+      return res.status(422).json({ success: false, code: 'INVALID_DASH_MANIFEST', message: 'Manifest chứa đường dẫn segment không hợp lệ' });
+    }
+    return sendDashFile(res, resolved.manifestPath, 'application/dash+xml');
+  } catch (error) { next(error); }
+};
+
+exports.streamDashSegment = async (req, res, next) => {
+  try {
+    const segment = req.params.segmentFile;
+    if (!segment || !/^[A-Za-z0-9_.-]+$/.test(segment) || (!segment.endsWith('.m4s') && !segment.endsWith('.mp4'))) {
+      return res.status(400).json({ success: false, code: 'INVALID_DASH_SEGMENT', message: 'Tên segment không hợp lệ' });
+    }
+    const resolved = await resolveReadyDashLesson(req, res);
+    if (!resolved) return;
+    const segmentPath = resolveSafePath(path.dirname(resolved.manifestPath), segment, { checkExists: true });
+    if (!segmentPath) return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
+    return sendDashFile(res, segmentPath, segment.endsWith('.m4s') ? 'video/iso.segment' : 'video/mp4');
+  } catch (error) { next(error); }
+};
 
 // Sinh Short-Lived Video Streaming Ticket (Hiệu lực 60 giây - Chống tải lậu & Hotlink)
 exports.getVideoTicket = async (req, res, next) => {

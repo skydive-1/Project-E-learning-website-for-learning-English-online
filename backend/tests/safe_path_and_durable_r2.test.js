@@ -60,6 +60,7 @@ describe('📦 2. Pending Uploads & Fail-Closed Reference Checks', () => {
             rows: [{
               upload_id: 'test-upload-uuid',
               instructor_id: 10,
+              storage_provider: 'supabase',
               storage_key: 'courses/10/asset/video.mp4',
               storage_bucket: 'videos',
               mime_type: 'video/mp4',
@@ -92,6 +93,9 @@ describe('📦 2. Pending Uploads & Fail-Closed Reference Checks', () => {
         instructorId: 10,
         userRole: 2,
         storageKey: 'courses/10/asset/video.mp4',
+        storageBucket: 'videos',
+        mimeType: 'video/mp4',
+        sizeBytes: 1024,
         checksumSha256: 'wrong_checksum',
         client: mockClient
       });
