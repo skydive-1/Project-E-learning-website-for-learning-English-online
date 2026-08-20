@@ -1,9 +1,11 @@
 /**
- * Script Audit & Migration Tài nguyên Media Bài giảng (TASK-DURABLE-LESSON-MEDIA-PIPELINE-01)
+ * Script Audit & Migration Tài nguyên Media Bài giảng (TASK-DURABLE-LESSON-MEDIA-PIPELINE-01 / R2)
  * 
  * Chế độ chạy:
  *   node scripts/audit_and_migrate_media.js --dry-run
  *   node scripts/audit_and_migrate_media.js --apply
+ * 
+ * Phụ trách: NGUYỄN THANH LIÊM (Backend & Security Developer) & LÊ ĐÌNH CHƯƠNG (Database Administrator)
  */
 
 const fs = require('fs');
@@ -17,19 +19,145 @@ const {
   computeSha256
 } = require('../src/utils/supabaseStorage');
 
-const args = process.argv.slice(2);
-const isApply = args.includes('--apply');
-const isDryRun = !isApply;
+const BACKEND_ROOT = path.resolve(__dirname, '..');
+const UPLOADS_ROOT = path.resolve(BACKEND_ROOT, 'uploads');
+const BACKUP_DIR = path.resolve(BACKEND_ROOT, 'backups');
 
-const BACKUP_DIR = path.resolve(__dirname, '../backups');
+/**
+ * Trích xuất bucket và key từ URL Supabase đầy đủ
+ * @param {string} url 
+ * @returns {{ bucket: string, key: string } | null}
+ */
+function parseSupabaseStorageUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (!url.includes('supabase.co')) return null;
 
-async function runAuditAndMigrate() {
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/').filter(Boolean);
+    const markerIndex = pathParts.findIndex(p => ['public', 'sign', 'authenticated'].includes(p));
+    if (markerIndex !== -1 && pathParts.length > markerIndex + 2) {
+      const bucket = pathParts[markerIndex + 1];
+      const key = pathParts.slice(markerIndex + 2).join('/');
+      return { bucket, key };
+    }
+  } catch (e) {
+    // URL parse error
+  }
+  return null;
+}
+
+/**
+ * Phân giải đường dẫn file cục bộ trong backend/uploads và chống Path Traversal
+ * @param {string} rawUrl 
+ * @returns {string|null} Đường dẫn tuyệt đối an toàn hoặc null nếu không hợp lệ / traversal
+ */
+function resolveLocalUploadPath(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  if (!rawUrl.startsWith('/uploads/') && !rawUrl.startsWith('uploads/')) return null;
+
+  const sanitizedRelative = rawUrl.replace(/^\/?uploads\/?/, '');
+  const resolved = path.resolve(UPLOADS_ROOT, sanitizedRelative);
+
+  // Bảo vệ chống Path Traversal: đường dẫn phân giải BẮT BUỘC nằm trong UPLOADS_ROOT
+  if (!resolved.startsWith(UPLOADS_ROOT)) {
+    console.warn(`🚨 [Path Traversal Blocked] Từ chối truy cập đường dẫn bất hợp lệ: ${rawUrl}`);
+    return null;
+  }
+  return resolved;
+}
+
+/**
+ * Hàm thuần phân loại nguồn tài nguyên (Pure Classifier Function)
+ * @param {object} item 
+ * @returns {object} Phân loại tài nguyên
+ */
+function classifyMediaSource({ storageKey, contentUrl, contentType }) {
+  const type = (contentType || '').toLowerCase();
+  const rawUrl = contentUrl || '';
+
+  if (['quiz', 'text', 'speaking'].includes(type) || (!rawUrl && !storageKey && type !== 'video' && type !== 'pdf')) {
+    return {
+      category: 'NON_MEDIA',
+      bucket: null,
+      key: null,
+      isPdf: false,
+      mimeType: null
+    };
+  }
+
+  const isPdf = type === 'pdf' || rawUrl.endsWith('.pdf') || (storageKey && storageKey.endsWith('.pdf'));
+  const bucket = isPdf ? 'documents' : 'videos';
+  const mimeType = isPdf ? 'application/pdf' : 'video/mp4';
+
+  if (!rawUrl && !storageKey) {
+    return {
+      category: 'EMPTY_SOURCE',
+      bucket,
+      key: null,
+      isPdf,
+      mimeType
+    };
+  }
+
+  // 1. Kiểm tra URL Supabase đầy đủ
+  const supabaseParsed = parseSupabaseStorageUrl(rawUrl);
+  if (supabaseParsed) {
+    return {
+      category: 'SUPABASE_FULL_URL',
+      bucket: supabaseParsed.bucket || bucket,
+      key: supabaseParsed.key,
+      isPdf,
+      mimeType
+    };
+  }
+
+  // 2. Link ngoài HTTP / HTTPS khác
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    return {
+      category: 'EXTERNAL_URL',
+      bucket: null,
+      key: null,
+      isPdf,
+      mimeType
+    };
+  }
+
+  // 3. Đường dẫn file cục bộ (/uploads/...)
+  if (rawUrl.startsWith('/uploads/') || rawUrl.startsWith('uploads/')) {
+    return {
+      category: 'LOCAL_PATH',
+      bucket,
+      key: null,
+      isPdf,
+      mimeType
+    };
+  }
+
+  // 4. Supabase Storage Key
+  const effectiveKey = storageKey || rawUrl.replace(/^\/+/, '');
+  return {
+    category: 'SUPABASE_KEY',
+    bucket,
+    key: effectiveKey,
+    isPdf,
+    mimeType
+  };
+}
+
+async function runAuditAndMigrate(options = {}) {
+  const args = process.argv.slice(2);
+  const isApply = options.apply !== undefined ? options.apply : args.includes('--apply');
+
   console.log('================================================================');
   console.log(`🎬 AUDIT & MIGRATE LESSON MEDIA ASSETS PIPELINE`);
   console.log(`📌 Chế độ hoạt động: ${isApply ? '🚀 APPLY (Ghi vào Storage & CSDL)' : '🔍 DRY-RUN (Chỉ kiểm tra & báo cáo, không ghi CSDL)'}`);
+  console.log(`📁 Thư mục uploads cục bộ: ${UPLOADS_ROOT}`);
   console.log('================================================================\n');
 
-  await db.testConnection();
+  if (typeof db.testConnection === 'function') {
+    await db.testConnection();
+  }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupMapping = {
@@ -64,37 +192,50 @@ async function runAuditAndMigrate() {
   let lessonTextQuizCount = 0;
 
   for (const les of lessons) {
-    const rawUrl = les.content_url || '';
-    const contentType = (les.content_type || '').toLowerCase();
+    const classification = classifyMediaSource({
+      storageKey: les.storage_key,
+      contentUrl: les.content_url,
+      contentType: les.content_type
+    });
 
-    if (['quiz', 'text', 'speaking'].includes(contentType) || (!rawUrl && contentType !== 'video' && contentType !== 'pdf')) {
+    if (classification.category === 'NON_MEDIA') {
       lessonTextQuizCount++;
       continue;
     }
 
     const instructorId = les.instructor_id || 'common';
-    const isPdf = contentType === 'pdf' || rawUrl.endsWith('.pdf');
-    const bucketName = isPdf ? 'documents' : 'videos';
-    const targetMime = isPdf ? 'application/pdf' : 'video/mp4';
 
-    // A. Link ngoài HTTP / HTTPS
-    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-      if (!rawUrl.includes('supabase.co')) {
-        lessonExternalCount++;
-        backupMapping.lessons.push({
-          lessonId: les.lesson_id,
-          title: les.title,
-          category: 'EXTERNAL_URL',
-          originalUrl: rawUrl,
-          status: 'READY'
-        });
-        continue;
-      }
+    if (classification.category === 'EXTERNAL_URL') {
+      lessonExternalCount++;
+      backupMapping.lessons.push({
+        lessonId: les.lesson_id,
+        title: les.title,
+        category: 'EXTERNAL_URL',
+        originalUrl: les.content_url,
+        status: 'READY'
+      });
+      continue;
     }
 
-    // B. Đã là Supabase Storage Key
-    if (rawUrl && !rawUrl.startsWith('/uploads/') && !rawUrl.startsWith('uploads/')) {
-      const cleanKey = rawUrl.replace(/^\/+/, '');
+    if (classification.category === 'EMPTY_SOURCE') {
+      lessonMissingCount++;
+      backupMapping.missingSources.push({
+        type: 'lesson',
+        id: les.lesson_id,
+        title: les.title,
+        courseId: les.course_id,
+        instructorId,
+        reason: 'EMPTY_CONTENT_URL'
+      });
+      if (isApply) {
+        await db.query(`UPDATE lessons SET media_status = 'MISSING_SOURCE' WHERE lesson_id = $1`, [les.lesson_id]);
+      }
+      continue;
+    }
+
+    if (classification.category === 'SUPABASE_KEY' || classification.category === 'SUPABASE_FULL_URL') {
+      const cleanKey = classification.key;
+      const bucketName = classification.bucket;
       const existsOnStorage = await checkObjectExists(cleanKey, bucketName);
 
       if (existsOnStorage) {
@@ -108,13 +249,13 @@ async function runAuditAndMigrate() {
           status: 'READY'
         });
 
-        if (isApply && (!les.storage_key || les.media_status !== 'READY')) {
+        if (isApply && (!les.storage_key || les.media_status !== 'READY' || les.content_url !== cleanKey)) {
           await db.query(`
             UPDATE lessons 
             SET storage_provider = 'supabase', storage_bucket = $1, storage_key = $2,
-                mime_type = $3, media_status = 'READY'
+                content_url = $2, mime_type = $3, media_status = 'READY'
             WHERE lesson_id = $4
-          `, [bucketName, cleanKey, targetMime, les.lesson_id]);
+          `, [bucketName, cleanKey, classification.mimeType, les.lesson_id]);
         }
       } else {
         lessonMissingCount++;
@@ -125,38 +266,33 @@ async function runAuditAndMigrate() {
           title: les.title,
           courseId: les.course_id,
           instructorId,
-          originalUrl: rawUrl,
+          originalUrl: les.content_url,
           reason: 'SUPABASE_OBJECT_NOT_FOUND'
         });
 
         if (isApply) {
-          await db.query(`
-            UPDATE lessons 
-            SET media_status = 'MISSING_SOURCE'
-            WHERE lesson_id = $1
-          `, [les.lesson_id]);
+          await db.query(`UPDATE lessons SET media_status = 'MISSING_SOURCE' WHERE lesson_id = $1`, [les.lesson_id]);
         }
       }
       continue;
     }
 
-    // C. File local Railway path (/uploads/...)
-    if (rawUrl.startsWith('/uploads/') || rawUrl.startsWith('uploads/')) {
-      const localRelative = rawUrl.replace(/^\//, '');
-      const localFullPath = path.resolve(__dirname, '../../', localRelative);
+    if (classification.category === 'LOCAL_PATH') {
+      const localFullPath = resolveLocalUploadPath(les.content_url);
 
-      if (fs.existsSync(localFullPath)) {
+      if (localFullPath && fs.existsSync(localFullPath)) {
         const stats = fs.statSync(localFullPath);
         const checksum = computeSha256(localFullPath);
         const ext = path.extname(localFullPath).toLowerCase();
         const baseName = path.basename(localFullPath, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
         const objectKey = `courses/${instructorId}/${crypto.randomUUID()}/${baseName}${ext}`;
+        const bucketName = classification.bucket;
 
         console.log(`📦 [LOCAL FOUND] Lesson #${les.lesson_id} ("${les.title}") -> Sẵn sàng migrate lên Supabase ('${bucketName}/${objectKey}')`);
 
         if (isApply) {
           let uploadRes;
-          if (isPdf) {
+          if (classification.isPdf) {
             uploadRes = await uploadDocumentToSupabase(localFullPath, objectKey, 'application/pdf');
           } else {
             uploadRes = await uploadVideoToSupabase(localFullPath, objectKey, 'video/mp4');
@@ -174,7 +310,7 @@ async function runAuditAndMigrate() {
                   checksum_sha256 = $5,
                   media_status = 'READY'
               WHERE lesson_id = $6
-            `, [bucketName, uploadRes.storageKey, targetMime, stats.size, checksum, les.lesson_id]);
+            `, [bucketName, uploadRes.storageKey, classification.mimeType, stats.size, checksum, les.lesson_id]);
             lessonLocalMigratedCount++;
             console.log(`   ✅ Đã upload & cập nhật DB thành công cho lesson #${les.lesson_id}`);
           } else {
@@ -188,29 +324,25 @@ async function runAuditAndMigrate() {
           lessonId: les.lesson_id,
           title: les.title,
           category: 'LOCAL_MIGRATED',
-          originalUrl: rawUrl,
+          originalUrl: les.content_url,
           targetStorageKey: objectKey,
           targetBucket: bucketName
         });
       } else {
         lessonMissingCount++;
-        console.warn(`⚠️ [MISSING SOURCE] Lesson #${les.lesson_id} ("${les.title}"): File cục bộ không tồn tại (${rawUrl})`);
+        console.warn(`⚠️ [MISSING SOURCE] Lesson #${les.lesson_id} ("${les.title}"): File cục bộ không tồn tại (${les.content_url})`);
         backupMapping.missingSources.push({
           type: 'lesson',
           id: les.lesson_id,
           title: les.title,
           courseId: les.course_id,
           instructorId,
-          originalUrl: rawUrl,
+          originalUrl: les.content_url,
           reason: 'LOCAL_FILE_NOT_FOUND_ON_DISK'
         });
 
         if (isApply) {
-          await db.query(`
-            UPDATE lessons 
-            SET media_status = 'MISSING_SOURCE'
-            WHERE lesson_id = $1
-          `, [les.lesson_id]);
+          await db.query(`UPDATE lessons SET media_status = 'MISSING_SOURCE' WHERE lesson_id = $1`, [les.lesson_id]);
         }
       }
     }
@@ -237,11 +369,16 @@ async function runAuditAndMigrate() {
   let matMissingCount = 0;
 
   for (const mat of materials) {
-    const rawUrl = mat.file_url || '';
-    const cleanKey = rawUrl.replace(/^\/+/, '');
+    const classification = classifyMediaSource({
+      storageKey: mat.storage_key,
+      contentUrl: mat.file_url,
+      contentType: 'pdf'
+    });
 
-    // A. Supabase object
-    if (!rawUrl.startsWith('/uploads/') && !rawUrl.startsWith('uploads/') && !rawUrl.startsWith('http')) {
+    const instructorId = mat.instructor_id || 'common';
+
+    if (classification.category === 'SUPABASE_KEY' || classification.category === 'SUPABASE_FULL_URL') {
+      const cleanKey = classification.key;
       const exists = await checkObjectExists(cleanKey, 'documents');
       if (exists) {
         matSupabaseCount++;
@@ -268,36 +405,27 @@ async function runAuditAndMigrate() {
         backupMapping.missingSources.push({
           type: 'material',
           id: mat.material_id,
+          fileName: mat.file_name,
           lessonId: mat.lesson_id,
-          title: mat.file_name,
-          courseId: mat.course_id,
-          instructorId: mat.instructor_id,
-          originalUrl: rawUrl,
           reason: 'SUPABASE_OBJECT_NOT_FOUND'
         });
 
         if (isApply) {
-          await db.query(`
-            UPDATE lesson_materials
-            SET media_status = 'MISSING_SOURCE'
-            WHERE material_id = $1
-          `, [mat.material_id]);
+          await db.query(`UPDATE lesson_materials SET media_status = 'MISSING_SOURCE' WHERE material_id = $1`, [mat.material_id]);
         }
       }
       continue;
     }
 
-    // B. Local file
-    if (rawUrl.startsWith('/uploads/') || rawUrl.startsWith('uploads/')) {
-      const localRelative = rawUrl.replace(/^\//, '');
-      const localFullPath = path.resolve(__dirname, '../../', localRelative);
+    if (classification.category === 'LOCAL_PATH') {
+      const localFullPath = resolveLocalUploadPath(mat.file_url);
 
-      if (fs.existsSync(localFullPath)) {
+      if (localFullPath && fs.existsSync(localFullPath)) {
         const stats = fs.statSync(localFullPath);
         const checksum = computeSha256(localFullPath);
         const ext = path.extname(localFullPath).toLowerCase();
         const baseName = path.basename(localFullPath, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
-        const objectKey = `courses/materials/${mat.lesson_id}/${crypto.randomUUID()}/${baseName}${ext}`;
+        const objectKey = `courses/${instructorId}/${crypto.randomUUID()}/${baseName}${ext}`;
 
         console.log(`📦 [LOCAL FOUND] Material #${mat.material_id} ("${mat.file_name}") -> Sẵn sàng migrate lên Supabase ('documents/${objectKey}')`);
 
@@ -330,75 +458,84 @@ async function runAuditAndMigrate() {
           lessonId: mat.lesson_id,
           fileName: mat.file_name,
           category: 'LOCAL_MIGRATED',
-          originalUrl: rawUrl,
+          originalUrl: mat.file_url,
           targetStorageKey: objectKey
         });
       } else {
         matMissingCount++;
-        console.warn(`⚠️ [MISSING SOURCE] Material #${mat.material_id} ("${mat.file_name}"): File cục bộ không tồn tại (${rawUrl})`);
+        console.warn(`⚠️ [MISSING SOURCE] Material #${mat.material_id} ("${mat.file_name}"): File cục bộ không tồn tại (${mat.file_url})`);
         backupMapping.missingSources.push({
           type: 'material',
           id: mat.material_id,
+          fileName: mat.file_name,
           lessonId: mat.lesson_id,
-          title: mat.file_name,
-          courseId: mat.course_id,
-          instructorId: mat.instructor_id,
-          originalUrl: rawUrl,
           reason: 'LOCAL_FILE_NOT_FOUND_ON_DISK'
         });
 
         if (isApply) {
-          await db.query(`
-            UPDATE lesson_materials
-            SET media_status = 'MISSING_SOURCE'
-            WHERE material_id = $1
-          `, [mat.material_id]);
+          await db.query(`UPDATE lesson_materials SET media_status = 'MISSING_SOURCE' WHERE material_id = $1`, [mat.material_id]);
         }
       }
     }
   }
 
   // -------------------------------------------------------------
-  // 3. Xuất báo cáo và lưu file backup mapping
+  // 3. Xuất báo cáo và Backup Mapping
   // -------------------------------------------------------------
+  console.log('\n💾 [3/3] Xuất file Backup Mapping JSON...');
   if (!fs.existsSync(BACKUP_DIR)) {
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
   }
 
-  const backupFile = path.join(BACKUP_DIR, `media_migration_backup_${timestamp}.json`);
-  fs.writeFileSync(backupFile, JSON.stringify(backupMapping, null, 2), 'utf-8');
+  const backupFilePath = path.join(BACKUP_DIR, `media_migration_mapping_${timestamp}.json`);
+  fs.writeFileSync(backupFilePath, JSON.stringify(backupMapping, null, 2), 'utf-8');
+  console.log(`✅ File backup mapping đã được lưu tại: ${backupFilePath}\n`);
 
-  console.log('\n================================================================');
-  console.log('📊 TỔNG KẾT KẾT QUẢ AUDIT MEDIA ASSETS');
   console.log('================================================================');
-  console.log(`🔹 Tổng số bài học (Lessons): ${lessons.length}`);
-  console.log(`   - Text / Quiz / Speaking (Không có media file): ${lessonTextQuizCount}`);
-  console.log(`   - Đã lưu trên Supabase Storage (Hợp lệ): ${lessonSupabaseCount}`);
-  console.log(`   - Link ngoài (External CDN/URL): ${lessonExternalCount}`);
-  console.log(`   - File local có thể migrate: ${lessonLocalMigratedCount}`);
-  console.log(`   - File bị mất nguồn (MISSING_SOURCE): ${lessonMissingCount}`);
-  console.log('----------------------------------------------------------------');
-  console.log(`🔹 Tổng số tài liệu đính kèm (Materials): ${materials.length}`);
-  console.log(`   - Đã lưu trên Supabase Storage (Hợp lệ): ${matSupabaseCount}`);
-  console.log(`   - File local có thể migrate: ${matLocalMigratedCount}`);
-  console.log(`   - File bị mất nguồn (MISSING_SOURCE): ${matMissingCount}`);
+  console.log('📊 TỔNG KẾT KẾT QUẢ AUDIT & MIGRATION:');
   console.log('================================================================');
-  console.log(`💾 File sao lưu mapping đã lưu tại: ${backupFile}`);
+  console.log(`- Bài học (Lessons):`);
+  console.log(`  + Đã ở Supabase Storage:  ${lessonSupabaseCount}`);
+  console.log(`  + Nguồn External (CDN):    ${lessonExternalCount}`);
+  console.log(`  + Local file cần migrate: ${lessonLocalMigratedCount}`);
+  console.log(`  + Bài học Text/Quiz/Nói:   ${lessonTextQuizCount}`);
+  console.log(`  + Nguồn bị thiếu/mất:      ${lessonMissingCount}`);
+  console.log(`- Tài liệu đính kèm (Materials):`);
+  console.log(`  + Đã ở Supabase Storage:  ${matSupabaseCount}`);
+  console.log(`  + Local file cần migrate: ${matLocalMigratedCount}`);
+  console.log(`  + Nguồn bị thiếu/mất:      ${matMissingCount}`);
+  console.log('================================================================\n');
 
-  if (backupMapping.missingSources.length > 0) {
-    console.log(`\n⚠️ DANH SÁCH TÀI NGUYÊN CẦN GIẢNG VIÊN UPLOAD LẠI (${backupMapping.missingSources.length} mục):`);
-    backupMapping.missingSources.forEach((item, idx) => {
-      console.log(`  ${idx + 1}. [${item.type.toUpperCase()}] ID: ${item.id} | Tiêu đề: "${item.title}" | Khóa học ID: ${item.courseId} | URL cũ: ${item.originalUrl}`);
-    });
-  } else {
-    console.log('\n🎉 Toàn bộ tài nguyên media đều hoàn hảo, không có file nào bị thiếu!');
-  }
-
-  console.log('\n================================================================\n');
-  process.exit(0);
+  return {
+    success: true,
+    backupFilePath,
+    stats: {
+      lessonSupabaseCount,
+      lessonExternalCount,
+      lessonLocalMigratedCount,
+      lessonTextQuizCount,
+      lessonMissingCount,
+      matSupabaseCount,
+      matLocalMigratedCount,
+      matMissingCount
+    }
+  };
 }
 
-runAuditAndMigrate().catch(err => {
-  console.error('❌ Lỗi khi thực thi Audit & Migrate Media:', err);
-  process.exit(1);
-});
+// Chạy trực tiếp qua CLI
+if (require.main === module) {
+  runAuditAndMigrate()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('❌ Lỗi thực thi audit script:', err);
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  runAuditAndMigrate,
+  classifyMediaSource,
+  parseSupabaseStorageUrl,
+  resolveLocalUploadPath,
+  UPLOADS_ROOT
+};
