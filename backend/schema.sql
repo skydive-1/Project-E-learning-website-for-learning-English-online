@@ -87,14 +87,15 @@ CREATE TABLE IF NOT EXISTS lessons (
   content_url TEXT,
   order_index INT NOT NULL,
   pdf_version INT DEFAULT 1,
-  storage_provider VARCHAR(50) DEFAULT 'supabase',
-  storage_bucket VARCHAR(50) DEFAULT 'videos',
-  storage_key TEXT,
-  mime_type VARCHAR(100) DEFAULT 'video/mp4',
+  storage_provider VARCHAR(50) DEFAULT NULL,
+  storage_bucket VARCHAR(50) DEFAULT NULL,
+  storage_key TEXT DEFAULT NULL,
+  mime_type VARCHAR(100) DEFAULT NULL,
   size_bytes BIGINT DEFAULT 0,
-  checksum_sha256 VARCHAR(64),
-  media_status VARCHAR(30) DEFAULT 'READY',
-  CONSTRAINT fk_lesson_section FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE CASCADE
+  checksum_sha256 VARCHAR(64) DEFAULT NULL,
+  media_status VARCHAR(30) DEFAULT NULL,
+  CONSTRAINT fk_lesson_section FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE CASCADE,
+  CONSTRAINT chk_lessons_media_status CHECK (media_status IS NULL OR media_status IN ('READY', 'UPLOADING', 'PROCESSING', 'MISSING_SOURCE', 'FAILED', 'PENDING_AUDIT'))
 );
 
 -- 7. Tạo bảng User Progress (Tiến độ học tập)
@@ -237,16 +238,17 @@ CREATE TABLE IF NOT EXISTS lesson_materials (
   file_type VARCHAR(50) DEFAULT 'application/pdf',
   file_size_kb INT DEFAULT 0,
   pdf_version INT DEFAULT 1,
-  storage_provider VARCHAR(50) DEFAULT 'supabase',
-  storage_bucket VARCHAR(50) DEFAULT 'documents',
-  storage_key TEXT,
+  storage_provider VARCHAR(50) DEFAULT NULL,
+  storage_bucket VARCHAR(50) DEFAULT NULL,
+  storage_key TEXT DEFAULT NULL,
   mime_type VARCHAR(100) DEFAULT 'application/pdf',
   size_bytes BIGINT DEFAULT 0,
-  checksum_sha256 VARCHAR(64),
-  media_status VARCHAR(30) DEFAULT 'READY',
+  checksum_sha256 VARCHAR(64) DEFAULT NULL,
+  media_status VARCHAR(30) DEFAULT NULL,
   uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_lesson_materials_media_status CHECK (media_status IS NULL OR media_status IN ('READY', 'UPLOADING', 'PROCESSING', 'MISSING_SOURCE', 'FAILED', 'PENDING_AUDIT'))
 );
 CREATE INDEX IF NOT EXISTS idx_lesson_materials_lesson_id ON lesson_materials(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_lesson_materials_storage_key ON lesson_materials(storage_key);
