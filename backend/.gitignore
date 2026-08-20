@@ -12,5 +12,6 @@ build/
 *gcp-key*.json
 *.pem
 *.key
-*.p12
-application_default_credentials.json
+# Backups & Temp data
+backups/
+

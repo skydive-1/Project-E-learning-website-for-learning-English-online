@@ -151,10 +151,25 @@ class CoursesService {
     const speakingSentences = lessonData.speakingSentences || lessonData.speaking_sentences || '';
     const speakingQuestions = lessonData.speakingQuestions || lessonData.speaking_questions || '';
 
+    const isPdf = contentType === 'pdf' || contentUrl.endsWith('.pdf');
+    const storageKey = lessonData.storageKey || (contentUrl && !contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('http') ? contentUrl : null);
+    const storageBucket = lessonData.storageBucket || (isPdf ? 'documents' : 'videos');
+    const storageProvider = lessonData.storageProvider || (storageKey ? 'supabase' : (contentUrl.startsWith('/uploads/') ? 'local' : 'external'));
+    const mimeType = lessonData.mimeType || (isPdf ? 'application/pdf' : 'video/mp4');
+    const sizeBytes = lessonData.sizeBytes || 0;
+    const checksumSha256 = lessonData.checksumSha256 || null;
+    const mediaStatus = lessonData.mediaStatus || 'READY';
+
     await client.query(`
-      INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [sectionId, lessonData.title, contentType, contentUrl, orderIndex, speakingSentences, speakingQuestions]);
+      INSERT INTO lessons (
+        section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions,
+        storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    `, [
+      sectionId, lessonData.title, contentType, contentUrl, orderIndex, speakingSentences, speakingQuestions,
+      storageProvider, storageBucket, storageKey, mimeType, sizeBytes, checksumSha256, mediaStatus
+    ]);
   }
 
   async getLessonById(lessonId) {
@@ -366,6 +381,16 @@ class CoursesService {
               const contentUrl = les.contentUrl || '';
               const speakingSentences = les.speakingSentences || les.speaking_sentences || '';
               const speakingQuestions = les.speakingQuestions || les.speaking_questions || '';
+
+              const isPdf = contentType === 'pdf' || contentUrl.endsWith('.pdf');
+              const storageKey = les.storageKey || (contentUrl && !contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('http') ? contentUrl : null);
+              const storageBucket = les.storageBucket || (isPdf ? 'documents' : 'videos');
+              const storageProvider = les.storageProvider || (storageKey ? 'supabase' : (contentUrl.startsWith('/uploads/') ? 'local' : 'external'));
+              const mimeType = les.mimeType || (isPdf ? 'application/pdf' : 'video/mp4');
+              const sizeBytes = les.sizeBytes || 0;
+              const checksumSha256 = les.checksumSha256 || null;
+              const mediaStatus = les.mediaStatus || 'READY';
+
               let lesId;
 
               const isExistingLesson = les.id && Number.isInteger(Number(les.id)) && Number(les.id) < 1000000000;
@@ -376,17 +401,34 @@ class CoursesService {
                 await client.query(
                   `UPDATE lessons 
                    SET title = $1, content_type = $2, content_url = $3, order_index = $4, 
-                       speaking_sentences = $5, speaking_questions = $6 
-                   WHERE lesson_id = $7`,
-                  [les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions, lesId]
+                       speaking_sentences = $5, speaking_questions = $6,
+                       storage_provider = COALESCE($7, storage_provider),
+                       storage_bucket = COALESCE($8, storage_bucket),
+                       storage_key = COALESCE($9, storage_key),
+                       mime_type = COALESCE($10, mime_type),
+                       size_bytes = CASE WHEN $11 > 0 THEN $11 ELSE size_bytes END,
+                       checksum_sha256 = COALESCE($12, checksum_sha256),
+                       media_status = COALESCE($13, media_status)
+                   WHERE lesson_id = $14`,
+                  [
+                    les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions,
+                    storageProvider, storageBucket, storageKey, mimeType, sizeBytes, checksumSha256, mediaStatus,
+                    lesId
+                  ]
                 );
               } else {
                 // Insert new lesson
                 const insertLesRes = await client.query(
-                  `INSERT INTO lessons (section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)
+                  `INSERT INTO lessons (
+                     section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions,
+                     storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
+                   )
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                    RETURNING lesson_id`,
-                  [secId, les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions]
+                  [
+                    secId, les.title, contentType, contentUrl, lessonOrder, speakingSentences, speakingQuestions,
+                    storageProvider, storageBucket, storageKey, mimeType, sizeBytes, checksumSha256, mediaStatus
+                  ]
                 );
                 lesId = insertLesRes.rows[0].lesson_id;
               }

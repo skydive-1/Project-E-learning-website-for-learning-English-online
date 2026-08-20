@@ -87,6 +87,13 @@ CREATE TABLE IF NOT EXISTS lessons (
   content_url TEXT,
   order_index INT NOT NULL,
   pdf_version INT DEFAULT 1,
+  storage_provider VARCHAR(50) DEFAULT 'supabase',
+  storage_bucket VARCHAR(50) DEFAULT 'videos',
+  storage_key TEXT,
+  mime_type VARCHAR(100) DEFAULT 'video/mp4',
+  size_bytes BIGINT DEFAULT 0,
+  checksum_sha256 VARCHAR(64),
+  media_status VARCHAR(30) DEFAULT 'READY',
   CONSTRAINT fk_lesson_section FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE CASCADE
 );
 
@@ -230,11 +237,20 @@ CREATE TABLE IF NOT EXISTS lesson_materials (
   file_type VARCHAR(50) DEFAULT 'application/pdf',
   file_size_kb INT DEFAULT 0,
   pdf_version INT DEFAULT 1,
+  storage_provider VARCHAR(50) DEFAULT 'supabase',
+  storage_bucket VARCHAR(50) DEFAULT 'documents',
+  storage_key TEXT,
+  mime_type VARCHAR(100) DEFAULT 'application/pdf',
+  size_bytes BIGINT DEFAULT 0,
+  checksum_sha256 VARCHAR(64),
+  media_status VARCHAR(30) DEFAULT 'READY',
   uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_lesson_materials_lesson_id ON lesson_materials(lesson_id);
+CREATE INDEX IF NOT EXISTS idx_lesson_materials_storage_key ON lesson_materials(storage_key);
+CREATE INDEX IF NOT EXISTS idx_lesson_materials_media_status ON lesson_materials(media_status);
 
 -- 19. Tạo bảng Ghi chú & Highlight PDF Cá nhân (pdf_notes) - TASK-PDF-SMART-NOTES-01 & 02
 CREATE TABLE IF NOT EXISTS pdf_notes (

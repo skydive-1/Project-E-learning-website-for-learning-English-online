@@ -273,14 +273,21 @@ exports.streamLessonVideo = async (req, res, next) => {
 /**
  * Helper định dạng URL tài liệu động theo host runtime
  */
-function resolveMaterialUrl(req, fileUrl) {
-  if (!fileUrl) return '';
+function resolveMaterialUrl(req, material) {
+  if (!material) return '';
+  const fileUrl = material.file_url || material.storage_key || '';
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
   const host = req.get('host');
   const protocol = req.protocol;
   const baseUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
+
+  // Đối với storage key bền vững trên Supabase hoặc local: Trả về endpoint preview được bảo vệ
+  if (material.material_id && material.lesson_id) {
+    return `${baseUrl.replace(/\/$/, '')}/api/lessons/${material.lesson_id}/materials/${material.material_id}/preview`;
+  }
+
   return `${baseUrl.replace(/\/$/, '')}/${fileUrl.replace(/^\//, '')}`;
 }
 
@@ -288,12 +295,84 @@ function formatMaterialItem(req, m) {
   return {
     id: m.material_id,
     name: m.file_name,
-    url: resolveMaterialUrl(req, m.file_url),
-    fileType: m.file_type || 'application/pdf',
-    sizeKb: m.file_size_kb || 0,
+    url: resolveMaterialUrl(req, m),
+    storageKey: m.storage_key || m.file_url,
+    storageBucket: m.storage_bucket || 'documents',
+    storageProvider: m.storage_provider || 'supabase',
+    mediaStatus: m.media_status || 'READY',
+    fileType: m.mime_type || m.file_type || 'application/pdf',
+    sizeKb: m.file_size_kb || Math.round((m.size_bytes || 0) / 1024) || 0,
+    sizeBytes: m.size_bytes || 0,
     createdAt: m.created_at
   };
 }
+
+/**
+ * Endpoint xem/tải tài liệu PDF an toàn (Giảng viên / Học viên đã đăng ký)
+ */
+exports.previewMaterial = async (req, res, next) => {
+  try {
+    const { lessonId, materialId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role || 3, 10);
+
+    // 1. Kiểm tra quyền truy cập bài học
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, userRole);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền truy cập tài liệu của bài học này.'
+      });
+    }
+
+    // 2. Lấy thông tin tài liệu
+    const db = require('../../../config/database');
+    const matRes = await db.query(
+      `SELECT * FROM lesson_materials WHERE material_id = $1 AND lesson_id = $2`,
+      [materialId, lessonId]
+    );
+
+    if (matRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tài liệu đính kèm.'
+      });
+    }
+
+    const mat = matRes.rows[0];
+    const storageKey = mat.storage_key || mat.file_url;
+    const storageBucket = mat.storage_bucket || 'documents';
+
+    // 3. Nếu là link trực tiếp CDN
+    if (storageKey && (storageKey.startsWith('http://') || storageKey.startsWith('https://'))) {
+      return res.redirect(storageKey);
+    }
+
+    // 4. Nếu là Supabase Storage Object
+    if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
+      const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600);
+      if (signedUrl) {
+        return res.redirect(signedUrl);
+      }
+    }
+
+    // 5. Nếu là file local legacy
+    const filePath = path.resolve(__dirname, '../../../../', (mat.file_url || '').replace(/^\//, ''));
+    if (fs.existsSync(filePath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(mat.file_name)}"`);
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    return res.status(404).json({
+      success: false,
+      code: 'MISSING_SOURCE',
+      message: 'Tài liệu không còn tồn tại trên máy chủ lưu trữ.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * Upload tài liệu đính kèm bài học (Giảng viên / Admin)

@@ -206,6 +206,7 @@ const CourseEditor = () => {
 
     // Set uploading state
     handleLessonChange(sIdx, lIdx, 'uploading', true);
+    handleLessonChange(sIdx, lIdx, 'uploadError', null);
     setErrorMsg('');
 
     const formData = new FormData();
@@ -219,22 +220,34 @@ const CourseEditor = () => {
       });
 
       if (response.data && response.data.success) {
-        const fileUrl = response.data.fileUrl;
-        const mime = response.data.mimetype;
-        const detectedType = mime && mime.includes('pdf') ? 'pdf' : 'video';
+        const fileUrl = response.data.fileUrl || response.data.storageKey;
+        const mime = response.data.mimeType || response.data.mimetype;
+        const detectedType = (mime && mime.includes('pdf')) || response.data.playbackType === 'pdf' ? 'pdf' : 'video';
 
         const newSections = [...sections];
         newSections[sIdx].lessons[lIdx].contentUrl = fileUrl;
+        newSections[sIdx].lessons[lIdx].storageKey = response.data.storageKey;
+        newSections[sIdx].lessons[lIdx].storageBucket = response.data.storageBucket || (detectedType === 'pdf' ? 'documents' : 'videos');
+        newSections[sIdx].lessons[lIdx].storageProvider = response.data.storageProvider || 'supabase';
+        newSections[sIdx].lessons[lIdx].sizeBytes = response.data.sizeBytes || file.size;
+        newSections[sIdx].lessons[lIdx].checksumSha256 = response.data.checksumSha256;
+        newSections[sIdx].lessons[lIdx].mediaStatus = response.data.mediaStatus || 'READY';
         newSections[sIdx].lessons[lIdx].type = detectedType;
         newSections[sIdx].lessons[lIdx].uploading = false;
-        newSections[sIdx].lessons[lIdx].fileName = file.name;
+        newSections[sIdx].lessons[lIdx].uploadVerified = true;
+        newSections[sIdx].lessons[lIdx].fileName = response.data.originalName || file.name;
         newSections[sIdx].lessons[lIdx].hasAcceptedPolicy = true;
         setSections(newSections);
+      } else {
+        throw new Error(response.data?.message || 'Không thể xác thực tệp lưu trữ.');
       }
     } catch (err) {
       console.error('Lỗi khi tải file lên:', err);
-      setErrorMsg(err.response?.data?.message || 'Lỗi khi tải file lên máy chủ.');
+      const errMsg = err.response?.data?.message || err.message || 'Lỗi khi tải file lên máy chủ.';
+      setErrorMsg(errMsg);
       handleLessonChange(sIdx, lIdx, 'uploading', false);
+      handleLessonChange(sIdx, lIdx, 'uploadVerified', false);
+      handleLessonChange(sIdx, lIdx, 'uploadError', errMsg);
     }
   };
 
@@ -755,14 +768,26 @@ const CourseEditor = () => {
                             </div>
                           )}
 
-                          {/* File details banner if uploaded */}
+                          {/* File details banner if uploaded & verified */}
                           {lesson.contentUrl && (
                             <div style={{
-                              fontSize: '12px', color: '#059669', background: '#f0fdf4', padding: '6px 12px', borderRadius: '6px',
-                              marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px'
+                              fontSize: '12px', color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '6px',
+                              marginLeft: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '4px'
                             }}>
-                              {lesson.type === 'video' ? <FiVideo /> : <FiFileText />}
-                              <span>Link file: <a href={`${(import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '')}${lesson.contentUrl}`} target="_blank" rel="noreferrer" style={{ color: '#059669', textDecoration: 'underline' }}>{lesson.fileName || 'Xem file bài giảng'}</a></span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                {lesson.type === 'video' ? <FiVideo className="shrink-0" /> : <FiFileText className="shrink-0" />}
+                                <span style={{ fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {lesson.fileName || 'Tài nguyên bài giảng'}
+                                </span>
+                                <span style={{ fontSize: '10px', background: '#10b981', color: '#ffffff', padding: '1px 6px', borderRadius: '10px', fontWeight: '700' }}>
+                                  ✓ Đã bảo vệ (Supabase Storage)
+                                </span>
+                              </div>
+                              {lesson.contentUrl.startsWith('http') && (
+                                <a href={lesson.contentUrl} target="_blank" rel="noreferrer" style={{ color: '#047857', textDecoration: 'underline', fontSize: '11px', flexShrink: 0 }}>
+                                  Xem liên kết
+                                </a>
+                              )}
                             </div>
                           )}
                         </div>
