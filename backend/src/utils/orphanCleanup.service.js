@@ -269,8 +269,8 @@ class OrphanCleanupService {
         )
         VALUES ('supabase', $1, $2, 1, $3, 'PENDING_RETRY', CURRENT_TIMESTAMP + INTERVAL '5 minutes', $4)
         ON CONFLICT (storage_provider, storage_bucket, storage_key) DO UPDATE
-        SET status = 'PENDING_RETRY', last_error = EXCLUDED.last_error,
-            next_retry_at = LEAST(failed_storage_deletions.next_retry_at, EXCLUDED.next_retry_at),
+        SET status = 'PENDING_RETRY', retry_count = 1, last_error = EXCLUDED.last_error,
+            next_retry_at = EXCLUDED.next_retry_at, resolved_at = NULL,
             pending_upload_id = COALESCE(EXCLUDED.pending_upload_id, failed_storage_deletions.pending_upload_id)
       `, [storageBucket || 'videos', storageKey, errorMsg || 'Unknown deletion error', pendingUploadId]);
     } catch (e) {
@@ -374,7 +374,7 @@ class OrphanCleanupService {
         FROM pending_media_uploads 
         WHERE (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
            OR (status = 'CLEANING'
-               AND cleaning_started_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+               AND COALESCE(cleaning_started_at, created_at) < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
                AND NOT EXISTS (
                  SELECT 1 FROM failed_storage_deletions d
                  WHERE d.pending_upload_id = pending_media_uploads.upload_id

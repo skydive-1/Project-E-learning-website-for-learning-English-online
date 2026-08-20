@@ -7,7 +7,7 @@ import { AuthProvider } from '../src/context/AuthContext';
 import * as lessonsService from '../src/modules/lessons/services/lessons.service';
 import apiClient from '../src/config/api.config';
 import LessonDetailPage from '../src/modules/lessons/pages/LessonDetailPage';
-import { isMediaReadyForPublish } from '../src/modules/instructor/pages/CourseEditor';
+import { applySuccessfulUploadToLesson, isMediaReadyForPublish } from '../src/modules/instructor/pages/CourseEditor';
 
 // Mock Shaka Player
 vi.mock('shaka-player', () => {
@@ -69,12 +69,16 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
   });
 
   it('cho phép submit pending upload hợp lệ để backend claim, nhưng chặn pending thiếu metadata', () => {
-    const pending = {
-      contentUrl: 'courses/2/id/video.mp4', storageKey: 'courses/2/id/video.mp4',
+    const uploadResponse = {
+      success: true, fileUrl: 'courses/2/id/video.mp4', storageKey: 'courses/2/id/video.mp4',
       storageBucket: 'videos', mimeType: 'video/mp4', sizeBytes: 2048,
       checksumSha256: 'a'.repeat(64), pendingUploadId: 'pending-id',
-      mediaStatus: 'PENDING', uploadVerified: true
+      mediaStatus: 'PENDING', originalName: 'video.mp4'
     };
+    const pending = applySuccessfulUploadToLesson({ title: 'Lesson', uploading: true }, uploadResponse, { name: 'video.mp4', size: 2048 });
+    expect(pending.mimeType).toBe('video/mp4');
+    expect(pending.pendingUploadId).toBe('pending-id');
+    expect(pending.uploadVerified).toBe(true);
     expect(isMediaReadyForPublish(pending)).toBe(true);
     expect(isMediaReadyForPublish({ ...pending, pendingUploadId: null })).toBe(false);
     expect(isMediaReadyForPublish({ ...pending, checksumSha256: null })).toBe(false);

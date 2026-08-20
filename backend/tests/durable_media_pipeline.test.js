@@ -17,6 +17,7 @@ const ragIngestionService = require('../src/modules/lessons/services/ragIngestio
 const db = require('../src/config/database');
 
 describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suite', () => {
+  const ORIGINAL_JWT_SECRET = process.env.JWT_SECRET;
   const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-for-development-only-min-32-chars';
   const testOutputDir = path.join(__dirname, 'temp_test_media');
 
@@ -71,6 +72,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
   };
 
   before(() => {
+    process.env.JWT_SECRET = JWT_SECRET;
     if (!fs.existsSync(testOutputDir)) {
       fs.mkdirSync(testOutputDir, { recursive: true });
     }
@@ -112,6 +114,8 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
   });
 
   after(() => {
+    if (ORIGINAL_JWT_SECRET === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = ORIGINAL_JWT_SECRET;
     supabaseStorage.uploadVideoToSupabase = origUploadVideo;
     supabaseStorage.uploadDocumentToSupabase = origUploadDoc;
     supabaseStorage.checkObjectExists = origCheckObject;

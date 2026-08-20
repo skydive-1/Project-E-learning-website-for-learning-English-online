@@ -51,6 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_status_expires ON pending_m
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_instructor ON pending_media_uploads(instructor_id);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
 ALTER TABLE pending_media_uploads ADD COLUMN IF NOT EXISTS cleaning_started_at TIMESTAMP WITH TIME ZONE;
+UPDATE pending_media_uploads
+SET cleaning_started_at = COALESCE(cleaning_started_at, claimed_at, created_at, CURRENT_TIMESTAMP)
+WHERE status = 'CLEANING' AND cleaning_started_at IS NULL;
 
 -- 4. CREATE failed_storage_deletions TABLE FOR RETRY QUEUE & AUDIT
 CREATE TABLE IF NOT EXISTS failed_storage_deletions (
@@ -68,6 +71,21 @@ CREATE TABLE IF NOT EXISTS failed_storage_deletions (
 
 CREATE INDEX IF NOT EXISTS idx_failed_storage_deletions_retry ON failed_storage_deletions(status, next_retry_at);
 ALTER TABLE failed_storage_deletions ADD COLUMN IF NOT EXISTS pending_upload_id UUID REFERENCES pending_media_uploads(upload_id) ON DELETE SET NULL;
+DELETE FROM failed_storage_deletions d
+USING (
+  SELECT deletion_id
+  FROM (
+    SELECT deletion_id,
+           ROW_NUMBER() OVER (
+             PARTITION BY storage_provider, storage_bucket, storage_key
+             ORDER BY CASE WHEN status = 'PENDING_RETRY' THEN 0 WHEN status = 'FAILED_PERMANENT' THEN 1 ELSE 2 END,
+                      deletion_id DESC
+           ) AS duplicate_rank
+    FROM failed_storage_deletions
+  ) ranked
+  WHERE duplicate_rank > 1
+) duplicates
+WHERE d.deletion_id = duplicates.deletion_id;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_failed_storage_deletions_object
   ON failed_storage_deletions(storage_provider, storage_bucket, storage_key);
 

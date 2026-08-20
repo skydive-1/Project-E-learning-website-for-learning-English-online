@@ -23,6 +23,29 @@ export const isMediaReadyForPublish = (lesson) => {
   return Boolean(hasClaimablePending || isExistingReady);
 };
 
+export const applySuccessfulUploadToLesson = (lesson, upload, file = {}) => {
+  const fileUrl = upload.fileUrl || upload.storageKey;
+  const mimeType = upload.mimeType || upload.mimetype;
+  const detectedType = mimeType?.includes('pdf') || upload.playbackType === 'pdf' ? 'pdf' : 'video';
+  return {
+    ...lesson,
+    contentUrl: fileUrl,
+    storageKey: upload.storageKey,
+    storageBucket: upload.storageBucket || (detectedType === 'pdf' ? 'documents' : 'videos'),
+    storageProvider: upload.storageProvider || 'supabase',
+    mimeType,
+    sizeBytes: upload.sizeBytes || file.size,
+    checksumSha256: upload.checksumSha256,
+    mediaStatus: upload.mediaStatus || 'PENDING_AUDIT',
+    pendingUploadId: upload.pendingUploadId,
+    type: detectedType,
+    uploading: false,
+    uploadVerified: true,
+    fileName: upload.originalName || file.name,
+    hasAcceptedPolicy: true
+  };
+};
+
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
   if (!token) return null;
@@ -250,24 +273,10 @@ const CourseEditor = () => {
             !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
           throw new Error('Phản hồi upload thiếu metadata pending bắt buộc. Vui lòng tải lại tệp.');
         }
-        const fileUrl = response.data.fileUrl || response.data.storageKey;
-        const mime = response.data.mimeType || response.data.mimetype;
-        const detectedType = (mime && mime.includes('pdf')) || response.data.playbackType === 'pdf' ? 'pdf' : 'video';
-
         const newSections = [...sections];
-        newSections[sIdx].lessons[lIdx].contentUrl = fileUrl;
-        newSections[sIdx].lessons[lIdx].storageKey = response.data.storageKey;
-        newSections[sIdx].lessons[lIdx].storageBucket = response.data.storageBucket || (detectedType === 'pdf' ? 'documents' : 'videos');
-        newSections[sIdx].lessons[lIdx].storageProvider = response.data.storageProvider || 'supabase';
-        newSections[sIdx].lessons[lIdx].sizeBytes = response.data.sizeBytes || file.size;
-        newSections[sIdx].lessons[lIdx].checksumSha256 = response.data.checksumSha256;
-        newSections[sIdx].lessons[lIdx].mediaStatus = response.data.mediaStatus || 'PENDING_AUDIT';
-        newSections[sIdx].lessons[lIdx].pendingUploadId = response.data.pendingUploadId;
-        newSections[sIdx].lessons[lIdx].type = detectedType;
-        newSections[sIdx].lessons[lIdx].uploading = false;
-        newSections[sIdx].lessons[lIdx].uploadVerified = true;
-        newSections[sIdx].lessons[lIdx].fileName = response.data.originalName || file.name;
-        newSections[sIdx].lessons[lIdx].hasAcceptedPolicy = true;
+        newSections[sIdx].lessons[lIdx] = applySuccessfulUploadToLesson(
+          newSections[sIdx].lessons[lIdx], response.data, file
+        );
         setSections(newSections);
       } else {
         throw new Error(response.data?.message || 'Không thể xác thực tệp lưu trữ.');
