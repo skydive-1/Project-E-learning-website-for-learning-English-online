@@ -2,11 +2,7 @@ const gamificationService = require('../services/gamification.service');
 
 const getStreak = async (req, res) => {
   try {
-    const userId = req.user?.user_id || req.user?.id || req.query.user_id;
-    if (!userId) {
-      return res.status(400).json({ message: 'user_id is required' });
-    }
-
+    const userId = req.user.id;
     const streakInfo = await gamificationService.calculateStreak(userId);
 
     return res.status(200).json({ data: streakInfo });
@@ -18,7 +14,7 @@ const getStreak = async (req, res) => {
 
 const getBadges = async (req, res) => {
   try {
-    const userId = req.user?.user_id || req.user?.id || req.query.user_id;
+    const userId = req.user.id;
     const badges = await gamificationService.getUserBadges(userId);
     return res.status(200).json({ badges });
   } catch (error) {
