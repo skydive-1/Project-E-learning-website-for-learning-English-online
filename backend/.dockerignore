@@ -1,0 +1,5 @@
+node_modules
+.git
+.env*
+uploads/videos/*.mp4
+uploads/materials/*.pdf
