@@ -72,7 +72,7 @@ const upload = multer({
   storage: storage,
   fileFilter: generalFileFilter,
   limits: {
-    fileSize: 100 * 1024 * 1024 // 100 MB
+    fileSize: 50 * 1024 * 1024 // 50 MB — Phù hợp Supabase Storage 1GB free plan (~20 video)
   }
 });
 
