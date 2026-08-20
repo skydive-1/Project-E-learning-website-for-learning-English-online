@@ -122,7 +122,7 @@ class CoursesService {
       if (['quiz', 'text', 'speaking'].includes(String(lesson.content_type).toLowerCase())) continue;
       const validExternal = lesson.storage_provider === 'external' && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
       const validInternal = lesson.storage_provider === 'supabase' && lesson.storage_bucket && lesson.storage_key &&
-        lesson.mime_type && Number(lesson.size_bytes) > 0 && lesson.checksum_sha256 && lesson.media_status === 'READY';
+        lesson.mime_type && lesson.media_status === 'READY';
       if (!validExternal && !validInternal) {
         const err = new Error(`Bài học "${lesson.title || lesson.lesson_id}" có media chưa được xác thực.`);
         err.status = 400; err.code = 'UNVERIFIED_MEDIA_ASSETS'; throw err;
