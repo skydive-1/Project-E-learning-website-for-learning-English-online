@@ -85,7 +85,19 @@ class LessonsService {
         finalSpeakingSentences, 
         finalSpeakingQuestions
       ]);
-      return result.rows[0];
+      const createdLesson = result.rows[0];
+
+      // Auto-trigger RAG ingestion neu bai hoc moi co san video (non-blocking)
+      if (finalContentType === 'video' && finalContentUrl && !finalContentUrl.startsWith('/uploads/') && !finalContentUrl.startsWith('http')) {
+        const { triggerLessonRagIngestion } = require('./lessonRagIngestion.service');
+        triggerLessonRagIngestion(createdLesson.lesson_id, finalContentUrl, 'lesson-created').catch(() => {});
+      } else if (createdLesson?.lesson_id) {
+        // Ingest metadata bat ke content_type
+        const { triggerLessonRagIngestion } = require('./lessonRagIngestion.service');
+        triggerLessonRagIngestion(createdLesson.lesson_id, null, 'lesson-created-no-video').catch(() => {});
+      }
+
+      return createdLesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi tạo bài giảng mới');
     }
@@ -160,7 +172,23 @@ class LessonsService {
         RETURNING *
       `;
       const result = await db.query(queryText, values);
-      return result.rows[0];
+      const updatedLesson = result.rows[0];
+
+      // Auto-trigger RAG ingestion neu content_url thay doi (non-blocking)
+      const newContentUrl = contentUrl !== undefined ? contentUrl : content_url;
+      if (newContentUrl && updatedLesson?.lesson_id) {
+        const { triggerLessonRagIngestion } = require('./lessonRagIngestion.service');
+        const isSupabaseKey = typeof newContentUrl === 'string'
+          && !newContentUrl.startsWith('/uploads/')
+          && !newContentUrl.startsWith('http');
+        triggerLessonRagIngestion(
+          updatedLesson.lesson_id,
+          isSupabaseKey ? newContentUrl : null,
+          'video-assigned'
+        ).catch(() => {});
+      }
+
+      return updatedLesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi cập nhật bài giảng');
     }
