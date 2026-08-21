@@ -14,7 +14,6 @@ import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import CaptionOverlay from '../components/CaptionOverlay';
-import InteractiveTranscript from '../components/InteractiveTranscript';
 const PdfStudyViewer = React.lazy(() => import('../components/PdfStudyViewer'));
 const PdfNotesPanel = React.lazy(() => import('../components/PdfNotesPanel'));
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
@@ -83,7 +82,6 @@ const LessonDetailPage = () => {
   const [subtitleData, setSubtitleData] = useState(null);
   const [captionMode, setCaptionMode] = useState('off'); // 'off' | 'en' | 'vi' | 'bilingual' (Mặc định tắt phụ đề, người dùng bật khi có nhu cầu)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
-  const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
 
 
@@ -337,7 +335,7 @@ const LessonDetailPage = () => {
       } else if (e.type === 'keyup') {
         isCapturingKeysRef.current.clear();
         if (isCaptureAttempt || isPrtScn) {
-          // Hết nhấn/hết chụp -> NHẢ VIDEO NGAY LẬP TỨC
+          // Hết nhấn/hết chụp -> NHẢ VIDEO NGAY LẬP TỤC
           restoreDrmVideo();
         }
       }
@@ -576,11 +574,10 @@ const LessonDetailPage = () => {
   useEffect(() => {
     if (isPdfLesson) {
       if (activeRightTab === 'transcript') {
-        setActiveRightTab('notes');
+        setActiveRightTab('ai');
       }
-    } else {
       if (activeRightTab === 'notes') {
-        setActiveRightTab('transcript');
+        setActiveRightTab('ai');
       }
     }
   }, [isPdfLesson, activeRightTab]);
@@ -712,22 +709,7 @@ const LessonDetailPage = () => {
     });
   }, [currentLesson?.id]);
 
-  // Kích hoạt Gemini 2.5 Flash tạo lại phụ đề
-  const handleGenerateSubtitles = async () => {
-    if (!currentLesson?.id || isGeneratingSubtitles) return;
-    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
-    setIsGeneratingSubtitles(true);
-    try {
-      const data = await subtitlesService.generateSubtitles(rawLessonId);
-      if (data) {
-        setSubtitleData(data);
-      }
-    } catch (err) {
-      console.error("Lỗi sinh phụ đề AI Gemini:", err);
-    } finally {
-      setIsGeneratingSubtitles(false);
-    }
-  };
+
 
   const sanitizeUrl = (url) => {
     if (!url) return '';
@@ -1735,21 +1717,7 @@ const LessonDetailPage = () => {
                         </span>
                       )}
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setActiveRightTab("transcript")}
-                      style={{
-                        borderBottomColor: activeRightTab === "transcript" ? "#14b8a6" : "transparent",
-                        color: activeRightTab === "transcript" ? "#14b8a6" : "var(--text-light)",
-                        backgroundColor: activeRightTab === "transcript" ? "var(--card-bg)" : "var(--bg-color)",
-                      }}
-                      className="flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
-                    >
-                      <FiGlobe className="text-[12px]" />
-                      <span>Phụ đề AI</span>
-                    </button>
-                  )}
+
 
                   <button
                     type="button"
@@ -1882,19 +1850,6 @@ const LessonDetailPage = () => {
                     </div>
                   )}
 
-                  {/* Smart AI Interactive Transcript View */}
-                  {activeRightTab === "transcript" && !isPdfLesson && (
-                    <div className="h-full p-2">
-                      <InteractiveTranscript
-                        cues={subtitleData?.cues || []}
-                        currentTime={videoCurrentTime}
-                        onSeek={handleSeekVideo}
-                        onGenerateSubtitles={handleGenerateSubtitles}
-                        isGenerating={isGeneratingSubtitles}
-                        lessonTitle={currentLesson?.title || ''}
-                      />
-                    </div>
-                  )}
 
                   {/* AI Assistant ChatBox View */}
                   {activeRightTab === "ai" && (
