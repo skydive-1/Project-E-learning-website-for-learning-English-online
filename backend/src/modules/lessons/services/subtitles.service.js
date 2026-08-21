@@ -233,6 +233,31 @@ class SubtitlesService {
   }
 
   /**
+   * Cố gắng salvage các cue object hoàn chỉnh từ JSON bị truncate
+   * Dùng khi Gemini cắt response giữa chừng do token limit
+   */
+  tryParsePartialJson(rawText) {
+    const cues = [];
+    // Regex trích từng object cue hoàn chỉnh — dừng khi gặp object dở
+    const cueRegex = /\{\s*"id"\s*:\s*(\d+)\s*,\s*"start"\s*:\s*([\d.]+)\s*,\s*"end"\s*:\s*([\d.]+)\s*,\s*"startFormatted"\s*:\s*"([^"]+)"\s*,\s*"endFormatted"\s*:\s*"([^"]+)"\s*,\s*"en"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"vi"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g;
+    let match;
+    while ((match = cueRegex.exec(rawText)) !== null) {
+      try {
+        cues.push({
+          id: parseInt(match[1], 10),
+          start: parseFloat(match[2]),
+          end: parseFloat(match[3]),
+          startFormatted: match[4],
+          endFormatted: match[5],
+          en: match[6].replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
+          vi: match[7].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+        });
+      } catch (_) { /* bỏ qua cue lỗi */ }
+    }
+    return cues;
+  }
+
+  /**
    * Gửi 1 file audio tới Gemini 3.7 Flash để bóc băng và dịch thuật
    */
   async transcribeAudioWithGemini(audioFilePath, timeOffset = 0) {
@@ -264,6 +289,7 @@ Quy tắc:
 - Mốc thời gian (start, end) tính bằng giây, khớp chính xác theo từng câu giọng nói của giảng viên trong audio.
 - en: Phiên âm chính xác từng từ tiếng Anh của người nói (không tóm tắt, không lược bớt).
 - vi: Bản dịch tiếng Việt tự nhiên, chuẩn nghĩa sư phạm cho người học.
+- QUAN TRọNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 `;
 
     console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên Gemini 3.7 Flash...`);
@@ -284,15 +310,33 @@ Quy tắc:
       ],
       generationConfig: {
         temperature: 0.1,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 65536, // Tăng tối đa để tránh JSON bị truncate với audio dài
         responseMimeType: "application/json"
       }
     });
 
     const responseText = response?.response?.text() || '';
     const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```$/, '').trim();
-    const parsed = JSON.parse(cleanJson);
-    const cues = parsed.cues || [];
+
+    let cues = [];
+
+    // Lớp 1: Parse JSON hoàn chỉnh (happy path)
+    try {
+      const parsed = JSON.parse(cleanJson);
+      cues = parsed.cues || [];
+      console.log(`[Gemini Multimodal Audio] ✅ Parse JSON hoàn chỉnh: ${cues.length} cues`);
+    } catch (parseErr) {
+      // Lớp 2: JSON bị truncate — salvage các cue object hoàn chỉnh bằng regex
+      console.warn(`[Gemini Multimodal Audio] ⚠️ JSON parse thất bại (${parseErr.message.substring(0, 80)}). Thử salvage partial JSON...`);
+      const partialCues = this.tryParsePartialJson(cleanJson);
+      if (partialCues.length > 0) {
+        cues = partialCues;
+        console.warn(`[Gemini Multimodal Audio] ⚠️ Salvaged ${cues.length} cues từ JSON bị truncate (một số cue cuối có thể bị thiếu).`);
+      } else {
+        // Lớp 3: Không salvage được gì — throw để pipeline thử lại hoặc báo lỗi
+        throw new Error(`Gemini trả về JSON không parse được và không salvage được cue nào. Parse error: ${parseErr.message}`);
+      }
+    }
 
     return cues.map((c, idx) => {
       const realStart = Number(c.start || 0) + timeOffset;
