@@ -1698,7 +1698,7 @@ const LessonDetailPage = () => {
                     <span>Bài học</span>
                   </button>
 
-                  {isPdfLesson ? (
+                  {isPdfLesson && (
                     <button
                       type="button"
                       onClick={() => setActiveRightTab("notes")}
@@ -1717,6 +1717,7 @@ const LessonDetailPage = () => {
                         </span>
                       )}
                     </button>
+                  )}
 
 
                   <button
