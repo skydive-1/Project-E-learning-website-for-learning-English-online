@@ -310,29 +310,124 @@ Quy tắc:
   }
 
   /**
+   * Tải video từ URL (Signed URL Supabase) về file tạm cục bộ để FFmpeg xử lý
+   * @param {string} signedUrl - URL tạm của Supabase Storage (có thời hạn)
+   * @param {string} lessonId - ID bài học (dùng đặt tên file tạm)
+   * @returns {Promise<string>} Đường dẫn file tạm trên disk
+   */
+  async downloadVideoToTemp(signedUrl, lessonId) {
+    const https = require('https');
+    const http = require('http');
+    const os = require('os');
+    const crypto = require('crypto');
+
+    const tempDir = os.tmpdir();
+    const uniqueId = crypto.randomUUID();
+    const tempFilePath = path.join(tempDir, `subtitle_video_${lessonId}_${uniqueId}.mp4`);
+
+    return new Promise((resolve, reject) => {
+      const protocol = signedUrl.startsWith('https://') ? https : http;
+      const fileStream = fs.createWriteStream(tempFilePath);
+
+      const request = protocol.get(signedUrl, (response) => {
+        if (response.statusCode !== 200) {
+          fileStream.close();
+          fs.unlink(tempFilePath, () => {});
+          return reject(new Error(`Tải video từ Supabase thất bại: HTTP ${response.statusCode}`));
+        }
+        response.pipe(fileStream);
+        fileStream.on('finish', () => {
+          fileStream.close();
+          resolve(tempFilePath);
+        });
+      });
+
+      request.on('error', (err) => {
+        fileStream.close();
+        fs.unlink(tempFilePath, () => {});
+        reject(new Error(`Lỗi kết nối tải video tạm: ${err.message}`));
+      });
+
+      // Timeout 5 phút cho video lớn
+      request.setTimeout(300000, () => {
+        request.destroy();
+        fileStream.close();
+        fs.unlink(tempFilePath, () => {});
+        reject(new Error('Tải video từ Supabase bị timeout (>5 phút)'));
+      });
+    });
+  }
+
+  /**
    * Pipeline Tự động: Trích xuất Audio -> Gửi Gemini 3.7 Flash phân tích giọng nói thật -> Sinh Phụ đề Song ngữ
+   * Hỗ trợ 3 nguồn video:
+   *   - Path C (legacy): /uploads/... — file local còn sót trên disk
+   *   - Supabase storage key: courses/xxx/uuid/video.mp4 — tải tạm về qua Signed URL
+   *   - Signed HTTPS URL: https://...supabase.co/... — tải tạm trực tiếp
    */
   async generateSubtitlesWithGemini(lessonId) {
-    const lesson = await lessonsService.getLessonById(lessonId);
-    if (!lesson) {
+    // Query raw content_url từ DB trực tiếp, KHÔNG dùng getLessonById()
+    // vì getLessonById() đã overwrite content_url thành Signed URL có thời hạn — đây là nguồn thật.
+    const rawResult = await db.query(
+      'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
+      [parseInt(lessonId, 10)]
+    );
+    if (rawResult.rows.length === 0) {
       throw new Error(`Không tìm thấy bài học có ID ${lessonId}`);
     }
+    const rawLesson = rawResult.rows[0];
 
-    const contentUrl = lesson.content_url || lesson.contentUrl || '';
-    
-    // Tìm đường dẫn file video cục bộ trên máy chủ nếu có
-    let videoFilePath = null;
-    if (contentUrl && contentUrl.startsWith('/uploads/')) {
-      const candidatePath = path.join(__dirname, '../../../../', contentUrl);
-      if (fs.existsSync(candidatePath)) {
-        videoFilePath = candidatePath;
-      }
+    if (rawLesson.content_type !== 'video') {
+      throw new Error(`Bài học ${lessonId} không phải là video (content_type = ${rawLesson.content_type})`);
     }
 
-    let generatedCues = [];
+    const rawContentUrl = rawLesson.content_url || '';
+    let videoFilePath = null;
+    let tempVideoPath = null; // File tạm cần xóa sau khi xử lý xong
 
-    // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python
-    if (videoFilePath && fs.existsSync(videoFilePath)) {
+    try {
+      // --- Nhận diện nguồn video ---
+      if (rawContentUrl.startsWith('/uploads/')) {
+        // PATH C (legacy): Video cũ còn nằm trên local disk
+        const candidatePath = path.join(__dirname, '../../../../', rawContentUrl);
+        if (fs.existsSync(candidatePath)) {
+          videoFilePath = candidatePath;
+          console.log(`[Subtitles] Bài học ${lessonId}: Dùng file local (Path C) tại ${videoFilePath}`);
+        } else {
+          console.warn(`[Subtitles] Bài học ${lessonId}: /uploads/ path không còn trên disk (đã bị xóa sau deploy). Bỏ qua.`);
+        }
+      } else if (rawContentUrl && !rawContentUrl.startsWith('http://') && !rawContentUrl.startsWith('https://')) {
+        // Supabase storage key dạng: courses/123/uuid/video.mp4
+        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện Supabase storage key. Đang tạo Signed URL để tải tạm...`);
+        const { generateSignedUrl } = require('../../../utils/supabaseStorage');
+        const signedUrl = await generateSignedUrl(rawContentUrl, 'videos', 3600);
+        if (!signedUrl) {
+          throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối Supabase.`);
+        }
+        console.log(`[Subtitles] Bài học ${lessonId}: Đang tải video tạm về từ Supabase (có thể mất vài giây với video lớn)...`);
+        tempVideoPath = await this.downloadVideoToTemp(signedUrl, lessonId);
+        videoFilePath = tempVideoPath;
+        console.log(`[Subtitles] Bài học ${lessonId}: ✅ Đã tải video tạm về ${tempVideoPath} (${Math.round(fs.statSync(tempVideoPath).size / (1024 * 1024))}MB). Bắt đầu pipeline FFmpeg...`);
+      } else if (rawContentUrl.startsWith('http://') || rawContentUrl.startsWith('https://')) {
+        // Signed URL HTTPS đầy đủ (vd: đã được resolve trước) hoặc URL ngoài
+        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện HTTPS URL. Đang tải video tạm...`);
+        tempVideoPath = await this.downloadVideoToTemp(rawContentUrl, lessonId);
+        videoFilePath = tempVideoPath;
+        console.log(`[Subtitles] Bài học ${lessonId}: ✅ Đã tải video tạm về ${tempVideoPath}. Bắt đầu pipeline FFmpeg...`);
+      }
+
+      // Tại điểm này, videoFilePath là đường dẫn local hợp lệ (hoặc null nếu không resolve được)
+      if (!videoFilePath || !fs.existsSync(videoFilePath)) {
+        throw new Error(
+          `Không thể truy cập file video cho bài học ${lessonId}. ` +
+          `content_url="${rawContentUrl}". ` +
+          `Đảm bảo video đã được upload lên Supabase Storage hoặc còn tồn tại trên server.`
+        );
+      }
+
+      let generatedCues = [];
+
+      // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python
       try {
         console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
         const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
@@ -343,107 +438,122 @@ Quy tắc:
       } catch (vadErr) {
         console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
       }
-    }
 
-    // ƯU TIÊN 2: Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio (CHỈ chạy khi Ưu tiên 1 thất bại / không có cues)
-    if ((!generatedCues || generatedCues.length === 0) && videoFilePath && fs.existsSync(videoFilePath)) {
-      console.log(`[Ưu tiên 2 - Gemini Direct Audio] Kích hoạt bóc băng audio cho bài học ${lessonId}...`);
-      const tempAudioDir = path.join(__dirname, '../../../../uploads/temp_audio');
-      if (!fs.existsSync(tempAudioDir)) {
-        fs.mkdirSync(tempAudioDir, { recursive: true });
-      }
+      // ƯU TIÊN 2: Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio (CHỈ chạy khi Ưu tiên 1 thất bại / không có cues)
+      if (!generatedCues || generatedCues.length === 0) {
+        console.log(`[Ưu tiên 2 - Gemini Direct Audio] Kích hoạt bóc băng audio cho bài học ${lessonId}...`);
+        const os = require('os');
+        const tempAudioDir = path.join(os.tmpdir(), 'elearn_temp_audio');
+        if (!fs.existsSync(tempAudioDir)) {
+          fs.mkdirSync(tempAudioDir, { recursive: true });
+        }
 
-      try {
-        let totalDuration = 0;
         try {
-          totalDuration = await this.getVideoDuration(videoFilePath);
-        } catch (probeErr) {
-          console.warn(`[FFprobe Warning]: Không thể đo thời lượng video (${probeErr.message}), tiến hành trích xuất toàn bộ audio.`);
-        }
-
-        console.log(`[FFmpeg Audio Pipeline] Thời lượng video: ${totalDuration > 0 ? `${totalDuration.toFixed(1)}s` : 'Toàn bộ file'}`);
-
-        if (totalDuration <= 600) {
-          // Video <= 10 phút: Trích xuất và bóc băng toàn bộ một lần
-          const tempAudioPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_${Date.now()}.mp3`);
+          let totalDuration = 0;
           try {
-            await this.extractAudio(videoFilePath, tempAudioPath);
-            const cues = await this.transcribeAudioWithGemini(tempAudioPath, 0);
-            if (cues && cues.length > 0) {
-              generatedCues = cues;
-              console.log(`[Gemini Multimodal Audio] ✅ Đã bóc băng thành công ${generatedCues.length} câu phụ đề từ giọng nói thật của video!`);
-            }
-          } finally {
-            if (fs.existsSync(tempAudioPath)) {
-              try { fs.unlinkSync(tempAudioPath); } catch (_) {}
-            }
+            totalDuration = await this.getVideoDuration(videoFilePath);
+          } catch (probeErr) {
+            console.warn(`[FFprobe Warning]: Không thể đo thời lượng video (${probeErr.message}), tiến hành trích xuất toàn bộ audio.`);
           }
-        } else {
-          // Video > 10 phút: Chia chunk 8-10 phút (500s mỗi chunk)
-          const chunkSize = 500;
-          const numChunks = Math.ceil(totalDuration / chunkSize);
-          console.log(`[Gemini Multimodal Audio] Video dài (${totalDuration.toFixed(1)}s), chia thành ${numChunks} chunks ${chunkSize}s...`);
 
-          let allCues = [];
-          for (let i = 0; i < numChunks; i++) {
-            const seek = i * chunkSize;
-            const duration = Math.min(chunkSize, totalDuration - seek);
-            const tempChunkPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_chunk_${i}_${Date.now()}.mp3`);
+          console.log(`[FFmpeg Audio Pipeline] Thời lượng video: ${totalDuration > 0 ? `${totalDuration.toFixed(1)}s` : 'Toàn bộ file'}`);
 
+          if (totalDuration <= 600) {
+            // Video <= 10 phút: Trích xuất và bóc băng toàn bộ một lần
+            const tempAudioPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_${Date.now()}.mp3`);
             try {
-              console.log(`[FFmpeg Audio Pipeline] Đang trích xuất chunk ${i + 1}/${numChunks} (từ ${seek}s đến ${seek + duration}s)...`);
-              await this.extractAudio(videoFilePath, tempChunkPath, { seek, duration });
-              const chunkCues = await this.transcribeAudioWithGemini(tempChunkPath, seek);
-              if (chunkCues && chunkCues.length > 0) {
-                allCues = allCues.concat(chunkCues);
+              await this.extractAudio(videoFilePath, tempAudioPath);
+              const cues = await this.transcribeAudioWithGemini(tempAudioPath, 0);
+              if (cues && cues.length > 0) {
+                generatedCues = cues;
+                console.log(`[Gemini Multimodal Audio] ✅ Đã bóc băng thành công ${generatedCues.length} câu phụ đề từ giọng nói thật của video!`);
               }
-            } catch (chunkErr) {
-              console.warn(`[Gemini Audio Chunk ${i + 1} Warning]: ${chunkErr.message}`);
             } finally {
-              if (fs.existsSync(tempChunkPath)) {
-                try { fs.unlinkSync(tempChunkPath); } catch (_) {}
+              if (fs.existsSync(tempAudioPath)) {
+                try { fs.unlinkSync(tempAudioPath); } catch (_) {}
               }
             }
-          }
+          } else {
+            // Video > 10 phút: Chia chunk 8-10 phút (500s mỗi chunk)
+            const chunkSize = 500;
+            const numChunks = Math.ceil(totalDuration / chunkSize);
+            console.log(`[Gemini Multimodal Audio] Video dài (${totalDuration.toFixed(1)}s), chia thành ${numChunks} chunks ${chunkSize}s...`);
 
-          if (allCues.length > 0) {
-            generatedCues = allCues;
-            console.log(`[Gemini Multimodal Audio] ✅ Đã ghép hoàn chỉnh ${generatedCues.length} câu phụ đề cho toàn bộ video dài!`);
+            let allCues = [];
+            for (let i = 0; i < numChunks; i++) {
+              const seek = i * chunkSize;
+              const duration = Math.min(chunkSize, totalDuration - seek);
+              const tempChunkPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_chunk_${i}_${Date.now()}.mp3`);
+
+              try {
+                console.log(`[FFmpeg Audio Pipeline] Đang trích xuất chunk ${i + 1}/${numChunks} (từ ${seek}s đến ${seek + duration}s)...`);
+                await this.extractAudio(videoFilePath, tempChunkPath, { seek, duration });
+                const chunkCues = await this.transcribeAudioWithGemini(tempChunkPath, seek);
+                if (chunkCues && chunkCues.length > 0) {
+                  allCues = allCues.concat(chunkCues);
+                }
+              } catch (chunkErr) {
+                console.warn(`[Gemini Audio Chunk ${i + 1} Warning]: ${chunkErr.message}`);
+              } finally {
+                if (fs.existsSync(tempChunkPath)) {
+                  try { fs.unlinkSync(tempChunkPath); } catch (_) {}
+                }
+              }
+            }
+
+            if (allCues.length > 0) {
+              generatedCues = allCues;
+              console.log(`[Gemini Multimodal Audio] ✅ Đã ghép hoàn chỉnh ${generatedCues.length} câu phụ đề cho toàn bộ video dài!`);
+            }
           }
+        } catch (audioErr) {
+          console.warn(`[Gemini Audio Pipeline Warning]: Lỗi bóc băng audio (${audioErr.message}).`);
         }
-      } catch (audioErr) {
-        console.warn(`[Gemini Audio Pipeline Warning]: Lỗi bóc băng audio (${audioErr.message}).`);
+      }
+
+      // Nếu cả Ưu tiên 1 và Ưu tiên 2 đều thất bại -> Ném lỗi rõ ràng, KHÔNG trả về phụ đề giả
+      if (!generatedCues || generatedCues.length === 0) {
+        throw new Error(`Không thể tự động sinh phụ đề từ audio video bài học ${lessonId}. Vui lòng thử lại hoặc tải lên phụ đề thủ công.`);
+      }
+
+      // Chuẩn hóa định dạng mốc thời gian
+      generatedCues = generatedCues.map((c, idx) => ({
+        id: c.id || idx + 1,
+        start: Number(c.start || idx * 4.5),
+        end: Number(c.end || (idx + 1) * 4.5),
+        startFormatted: c.startFormatted || formatVttTimestamp(Number(c.start || idx * 4.5)),
+        endFormatted: c.endFormatted || formatVttTimestamp(Number(c.end || (idx + 1) * 4.5)),
+        en: c.en || `Lesson practice line ${idx + 1}`,
+        vi: c.vi || `Nội dung bài học ${idx + 1}`
+      }));
+
+      const enVtt = buildVttFromCues(generatedCues, 'en');
+      const viVtt = buildVttFromCues(generatedCues, 'vi');
+      const bilingualVtt = buildVttFromCues(generatedCues, 'bilingual');
+
+      const savedResult = await this.saveSubtitles(lessonId, {
+        en_vtt: enVtt,
+        vi_vtt: viVtt,
+        bilingual_vtt: bilingualVtt,
+        cues: generatedCues
+      });
+
+      // Tự động nạp transcript vào Pinecone RAG Vector DB (chạy nền non-blocking)
+      const { ingestLessonTranscript } = require('./ragIngestion.service');
+      ingestLessonTranscript(lessonId, generatedCues);
+
+      return savedResult;
+    } finally {
+      // Dọn dẹp file video tạm nếu đã tải từ Supabase — LUÔN chạy dù thành công hay thất bại
+      if (tempVideoPath && fs.existsSync(tempVideoPath)) {
+        try {
+          fs.unlinkSync(tempVideoPath);
+          console.log(`[Subtitles Cleanup] ✅ Đã xóa file video tạm: ${tempVideoPath}`);
+        } catch (cleanupErr) {
+          console.warn(`[Subtitles Cleanup] ⚠️ Không thể xóa file video tạm ${tempVideoPath}: ${cleanupErr.message}`);
+        }
       }
     }
-
-    // Nếu cả Ưu tiên 1 và Ưu tiên 2 đều thất bại -> Ném lỗi rõ ràng, KHÔNG trả về phụ đề giả
-    if (!generatedCues || generatedCues.length === 0) {
-      throw new Error(`Không thể tự động sinh phụ đề từ audio video bài học ${lessonId}. Vui lòng thử lại hoặc tải lên phụ đề thủ công.`);
-    }
-
-    // Chuẩn hóa định dạng mốc thời gian
-    generatedCues = generatedCues.map((c, idx) => ({
-      id: c.id || idx + 1,
-      start: Number(c.start || idx * 4.5),
-      end: Number(c.end || (idx + 1) * 4.5),
-      startFormatted: c.startFormatted || formatVttTimestamp(Number(c.start || idx * 4.5)),
-      endFormatted: c.endFormatted || formatVttTimestamp(Number(c.end || (idx + 1) * 4.5)),
-      en: c.en || `Lesson practice line ${idx + 1}`,
-      vi: c.vi || `Nội dung bài học ${idx + 1}`
-    }));
-
-    const savedResult = await this.saveSubtitles(lessonId, {
-      en_vtt: enVtt,
-      vi_vtt: viVtt,
-      bilingual_vtt: bilingualVtt,
-      cues: generatedCues
-    });
-
-    // Tự động nạp transcript vào Pinecone RAG Vector DB (chạy nền non-blocking)
-    const { ingestLessonTranscript } = require('./ragIngestion.service');
-    ingestLessonTranscript(lessonId, generatedCues);
-
-    return savedResult;
   }
 }
 

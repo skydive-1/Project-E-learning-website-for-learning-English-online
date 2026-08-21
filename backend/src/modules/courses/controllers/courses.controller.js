@@ -113,6 +113,18 @@ exports.uploadFile = async (req, res, next) => {
       // Đăng ký pending upload vào cơ sở dữ liệu
       const pendingUploadId = await registerUploadedObject(req, uploadResult, 'videos', 'video/mp4');
 
+      // [DRM] Ghi nhận chủ đích: video mới hiện phát không mã hóa DRM.
+      // Shaka Packager ĐÃ được cài đặt trong Dockerfile (/usr/local/bin/shaka-packager).
+      // Quyết định tạm tắt DRM inline là có chủ đích: đóng gói DASH tốn 30–120s,
+      // nếu chạy đồng bộ trong request sẽ timeout. DRM async background là bước tiếp theo
+      // khi hệ thống đã ổn định hoàn toàn — xem task DRM-ASYNC-INTEGRATION.
+      console.info(
+        `[DRM] Video storageKey="${uploadResult.storageKey}" (pendingUploadId=${pendingUploadId}) ` +
+        `hiện đang phát không mã hóa — DRM tạm thời tắt có chủ đích: ` +
+        `đóng gói DASH cần chạy async background, chưa tích hợp. ` +
+        `isDrmProtected=false là quyết định rõ ràng, KHÔNG phải lỗi bị bỏ quên.`
+      );
+
       return res.status(200).json({
         success: true,
         message: 'Tải video lên Supabase Storage thành công',

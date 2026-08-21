@@ -7,14 +7,19 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Đường dẫn lưu file upload
+// Đường dẫn lưu file upload (CHỈ dùng cho file TẠM của luồng courses/upload)
+// File tạm này sẽ bị xóa NGAY SAU khi upload lên Supabase Storage qua finally block
+// trong coursesController.uploadFile — KHÔNG phải nơi lưu trữ lâu dài.
 const uploadDir = path.join(__dirname, '../../uploads');
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Cấu hình lưu trữ disk storage
+// Cấu hình disk storage — CHỈ dùng cho route POST /api/courses/upload
+// (uploadFile trong courses.controller.js). File được đọc từ req.file.path,
+// upload lên Supabase, rồi bị XÓA ngay bởi fs.unlinkSync trong finally block.
+// KHÔNG dùng diskStorage cho bất kỳ route nào khác để tránh ghi file lâu dài vào local.
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -200,6 +205,11 @@ const verifyAudioMagicBytes = (req, res, next) => {
 };
 
 // Cấu hình tải tài liệu bài học (Lesson Material PDF)
+// SỬ DỤNG memoryStorage — file PDF tài liệu đính kèm được giữ trong RAM buffer,
+// KHÔNG ghi ra local disk. lessonsService.uploadLessonMaterial đọc file.path từ
+// diskStorage cũ; sau khi chuyển sang memoryStorage thì service đọc file.buffer.
+// File được upload thẳng lên Supabase Storage bucket 'documents' và xóa khỏi RAM
+// sau khi hàm trả về — đảm bảo KHÔNG có file PDF nào tồn tại lâu dài trên local.
 const materialPdfFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
   const isPdfMime = file.mimetype === 'application/pdf';
@@ -212,8 +222,9 @@ const materialPdfFilter = (req, file, cb) => {
   }
 };
 
+// Dùng memoryStorage thay vì diskStorage để tuyệt đối không ghi PDF tài liệu vào local disk.
 const uploadMaterialPdf = multer({
-  storage: storage,
+  storage: memoryStorage,
   fileFilter: materialPdfFilter,
   limits: {
     fileSize: 20 * 1024 * 1024 // 20 MB limit
