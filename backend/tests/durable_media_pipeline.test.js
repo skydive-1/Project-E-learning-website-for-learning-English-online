@@ -328,7 +328,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
 
       try {
         await lessonsService.uploadLessonMaterial(1, {
-          path: tempPdf,
+          buffer: createMockValidPdfBuffer(),
           originalname: 'OrphanDoc.pdf',
           mimetype: 'application/pdf',
           size: 200
@@ -630,7 +630,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       fs.writeFileSync(tempPath, createMockValidPdfBuffer());
 
       const material = await lessonsService.uploadLessonMaterial(1, {
-        path: tempPath,
+        buffer: fs.readFileSync(tempPath),
         originalname: 'AttachedGuide.pdf',
         mimetype: 'application/pdf',
         size: 800
@@ -736,7 +736,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       fs.writeFileSync(tempPath, createMockValidPdfBuffer());
 
       const mat = await lessonsService.uploadLessonMaterial(1, {
-        path: tempPath,
+        buffer: fs.readFileSync(tempPath),
         originalname: 'RagFailDoc.pdf',
         mimetype: 'application/pdf',
         size: 300

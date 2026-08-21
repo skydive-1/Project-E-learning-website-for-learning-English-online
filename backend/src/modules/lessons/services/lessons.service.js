@@ -211,7 +211,8 @@ class LessonsService {
    * Upload tài liệu đính kèm (PDF), trích xuất text và nạp vào Pinecone RAG
    */
   async uploadLessonMaterial(lessonId, file, userId, userRole) {
-    let tempFilePath = null;
+    // Lưu ý: uploadMaterialPdf middleware dùng memoryStorage — file KHÔNG ghi ra local disk.
+    // file.buffer chứa toàn bộ nội dung PDF trong RAM; không có file.path để cleanup.
     let uploadedStorageKey = null;
 
     try {
@@ -229,11 +230,12 @@ class LessonsService {
         throw error;
       }
 
-      tempFilePath = file.path;
+      // file.buffer là Buffer trong RAM (memoryStorage) — không ghi local disk
+      const fileInput = file.buffer;
 
-      // 1. Validate PDF file
+      // 1. Validate PDF file (validatePdfFile hỗ trợ Buffer trực tiếp)
       const { validatePdfFile } = require('../../../utils/pdfValidator.util');
-      const validation = await validatePdfFile(file.path);
+      const validation = await validatePdfFile(fileInput);
       if (!validation.isValid) {
         const error = new Error(validation.message || 'Tệp tải lên không phải là định dạng PDF hợp lệ.');
         error.status = 400;
@@ -241,7 +243,7 @@ class LessonsService {
         throw error;
       }
 
-      // 2. Upload lên Supabase Storage bucket 'documents'
+      // 2. Upload lên Supabase Storage bucket 'documents' (uploadDocumentToSupabase hỗ trợ Buffer)
       const { uploadDocumentToSupabase, deleteStorageObject } = require('../../../utils/supabaseStorage');
       const crypto = require('crypto');
       const ext = path.extname(file.originalname).toLowerCase();
@@ -250,7 +252,7 @@ class LessonsService {
       const assetId = crypto.randomUUID();
       const objectKey = `courses/materials/${cleanLessonId}/${assetId}/${safeBaseName}.pdf`;
 
-      const uploadResult = await uploadDocumentToSupabase(file.path, objectKey, 'application/pdf');
+      const uploadResult = await uploadDocumentToSupabase(fileInput, objectKey, 'application/pdf');
       if (!uploadResult.success) {
         const error = new Error(`Tải tài liệu PDF lên Supabase Storage thất bại: ${uploadResult.error || 'Lỗi không xác định'}`);
         error.status = 500;
@@ -300,9 +302,9 @@ class LessonsService {
         throw dbErr;
       }
 
-      // 4. Trích xuất text từ tệp PDF và nạp vào Pinecone RAG
+      // 4. Trích xuất text từ tệp PDF và nạp vào Pinecone RAG (extractTextFromPdf hỗ trợ Buffer)
       const { extractTextFromPdf } = require('../../../utils/pdfExtractor.util');
-      const extractedText = await extractTextFromPdf(file.path);
+      const extractedText = await extractTextFromPdf(fileInput);
 
       if (extractedText && extractedText.trim()) {
         const { ingestPdfDocument } = require('./ragIngestion.service');
@@ -315,16 +317,8 @@ class LessonsService {
       return material;
     } catch (error) {
       handleServiceError(error, 'Lỗi tải lên tài liệu bài học');
-    } finally {
-      // Dọn dẹp file tạm Multer
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        try {
-          fs.unlinkSync(tempFilePath);
-        } catch (cleanupErr) {
-          console.warn('⚠️ Lỗi dọn dẹp file tạm Multer:', cleanupErr.message);
-        }
-      }
     }
+    // Không cần finally cleanup: memoryStorage không tạo file tạm trên disk
   }
 
   /**
