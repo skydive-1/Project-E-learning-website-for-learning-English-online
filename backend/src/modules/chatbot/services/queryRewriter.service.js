@@ -42,41 +42,38 @@ function shouldRewrite(question) {
 
 /**
  * 2. Lấy lịch sử hội thoại gần nhất của học viên từ PostgreSQL
- * - Cô lập phạm vi theo khóa học (Cross-Course Context Isolation)
- * - Hỗ trợ liên thông bài học trong cùng khóa học (Same-Course Cross-Lesson Continuity)
- * - Cô lập Chatbot toàn cục (Global Chatbot Isolation)
- * - Tích hợp Stale History Protection (mặc định giới hạn trong vòng 30 phút gần nhất)
- * - Đảm bảo Zero-Trust User Isolation (chỉ truy xuất dữ liệu thuộc về req.user.id)
+ * - Cô lập phạm vi theo bài học (Per-Lesson Context Isolation): Khi có lessonId cụ thể,
+ *   chỉ lấy lịch sử hội thoại của ĐÚNG bài học đó, ngăn chặn rò rỉ ngữ cảnh giữa các bài học khác nhau trong cùng khóa học.
+ * - Hỗ trợ liên thông ở cấp độ khóa học (Course-Level Context) khi không gắn lessonId cụ thể (lessonId null/0).
+ * - Cô lập Chatbot toàn cục (Global Chatbot Isolation) khi không có lessonId và không có courseId.
+ * - Tích hợp Stale History Protection (mặc định giới hạn trong vòng 30 phút gần nhất).
+ * - Đảm bảo Zero-Trust User Isolation (chỉ truy xuất dữ liệu thuộc về req.user.id).
  */
 async function getRecentConversationHistory(userId, lessonId, limit = 6, options = {}) {
   if (!userId) return [];
   try {
     const sessionMinutes = options.sessionWindowMinutes || 30; // Giới hạn phiên học 30 phút
-    let targetCourseId = options.courseId;
-
-    // Nếu chưa có courseId nhưng có lessonId hợp lệ, truy vấn course_id từ DB PostgreSQL
-    if (!targetCourseId && lessonId && Number(lessonId) > 0) {
-      try {
-        const cRes = await db.query(`
-          SELECT s.course_id 
-          FROM lessons l
-          JOIN sections s ON l.section_id = s.section_id
-          WHERE l.lesson_id = $1
-          LIMIT 1
-        `, [Number(lessonId)]);
-        if (cRes.rows.length > 0) {
-          targetCourseId = cRes.rows[0].course_id;
-        }
-      } catch (e) {
-        console.warn('[Query Rewriter] Lỗi phân giải course_id:', e.message);
-      }
-    }
+    const parsedLessonId = Number(lessonId);
+    const hasSpecificLesson = !isNaN(parsedLessonId) && parsedLessonId > 0;
 
     let query;
     let params;
 
-    if (targetCourseId) {
-      // 1. Ngữ cảnh trong khóa học: Lấy các tin nhắn thuộc các bài học trong cùng courseId và trong session 30 phút
+    if (hasSpecificLesson) {
+      // 1. Ngữ cảnh trong một BÀI HỌC CỤ THỂ:
+      // Lọc TRỰC TIẾP theo lesson_id = $2 và trong session 30 phút của user
+      query = `
+        SELECT sender_type, title, lesson_id, created_at
+        FROM ai_chat
+        WHERE student_id = $1
+          AND lesson_id = $2
+          AND created_at >= NOW() - ($3 || ' minutes')::INTERVAL
+        ORDER BY created_at DESC
+        LIMIT $4
+      `;
+      params = [userId, parsedLessonId, sessionMinutes.toString(), limit];
+    } else if (options.courseId && Number(options.courseId) > 0) {
+      // 2. Ngữ cảnh ở cấp độ TOÀN KHÓA HỌC (chỉ khi không có lessonId cụ thể, ví dụ chat ở trang khóa học):
       query = `
         SELECT ac.sender_type, ac.title, ac.lesson_id, ac.created_at
         FROM ai_chat ac
@@ -88,18 +85,18 @@ async function getRecentConversationHistory(userId, lessonId, limit = 6, options
         ORDER BY ac.created_at DESC
         LIMIT $4
       `;
-      params = [userId, targetCourseId, sessionMinutes.toString(), limit];
+      params = [userId, Number(options.courseId), sessionMinutes.toString(), limit];
     } else {
-      // 2. Ngữ cảnh Chatbot toàn cục (Global Chatbot): Chỉ lấy tin nhắn độc lập (lesson_id IS NULL)
+      // 3. Ngữ cảnh Chatbot toàn cục (Global Chatbot - không gắn lessonId hay courseId):
       query = `
         SELECT sender_type, title, lesson_id, created_at
         FROM ai_chat
         WHERE student_id = $1
           AND lesson_id IS NULL
-          AND ac_created.created_at >= NOW() - ($2 || ' minutes')::INTERVAL
+          AND created_at >= NOW() - ($2 || ' minutes')::INTERVAL
         ORDER BY created_at DESC
         LIMIT $3
-      `.replace('ac_created.', '');
+      `;
       params = [userId, sessionMinutes.toString(), limit];
     }
 
