@@ -218,3 +218,57 @@ exports.resetTokensByRole = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * POST /api/admin/rag/backfill - Nạp RAG & Phụ đề hàng loạt cho bài học có video
+ */
+exports.backfillRag = async (req, res, next) => {
+  try {
+    const { targetLessonId } = req.body || {};
+    const { triggerLessonRagIngestion } = require('../../lessons/services/lessonRagIngestion.service');
+
+    let query = `
+      SELECT l.lesson_id, l.title, l.content_url, l.content_type, s.title AS section_title, c.course_name
+      FROM lessons l
+      JOIN sections s ON l.section_id = s.section_id
+      JOIN courses c ON s.course_id = c.course_id
+      WHERE l.content_url IS NOT NULL AND l.content_url != ''
+    `;
+    let params = [];
+
+    if (targetLessonId && Number(targetLessonId) > 0) {
+      query += ' AND l.lesson_id = $1';
+      params.push(Number(targetLessonId));
+    }
+
+    query += ' ORDER BY l.lesson_id ASC';
+
+    const result = await db.query(query, params);
+    const lessons = result.rows;
+
+    // Chạy trigger non-blocking nền
+    setImmediate(async () => {
+      console.log(`[Admin RAG Backfill] 🚀 Bắt đầu backfill ${lessons.length} bài học...`);
+      for (let i = 0; i < lessons.length; i++) {
+        const l = lessons[i];
+        try {
+          await triggerLessonRagIngestion(l.lesson_id, l.content_url, 'admin-backfill');
+        } catch (err) {
+          console.warn(`[Admin RAG Backfill Error] Bài học ${l.lesson_id}:`, err.message);
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      console.log(`[Admin RAG Backfill] ✅ Đã hoàn tất kích hoạt nạp RAG cho ${lessons.length} bài học.`);
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Đã kích hoạt tiến trình nạp RAG nền cho ${lessons.length} bài học. Hệ thống đang tự động trích xuất phụ đề và nạp Vector DB.`,
+      totalLessons: lessons.length,
+      lessons: lessons.map(l => ({ id: l.lesson_id, title: l.title, course: l.course_name }))
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -280,6 +280,43 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
       .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
       .filter(Boolean)
       .join("\n");
+
+    // 2.C. PostgreSQL Grounding Fallback: Nếu Pinecone rỗng hoặc chưa nạp vector cho bài học này,
+    // tự động truy vấn trực tiếp thông tin bài học & phụ đề từ PostgreSQL để AI luôn hiểu rõ bài học
+    if (!contextText && lessonId && Number(lessonId) > 0) {
+      try {
+        const parsedId = Number(lessonId);
+        const hierarchyRes = await db.query(`
+          SELECT l.lesson_id, l.title as lesson_title, s.title as section_title, c.course_name, c.description as course_description
+          FROM lessons l
+          JOIN sections s ON l.section_id = s.section_id
+          JOIN courses c ON s.course_id = c.course_id
+          WHERE l.lesson_id = $1 LIMIT 1
+        `, [parsedId]);
+
+        if (hierarchyRes.rows.length > 0) {
+          const row = hierarchyRes.rows[0];
+          let subText = '';
+          try {
+            const subRes = await db.query('SELECT cues FROM lesson_subtitles WHERE lesson_id = $1 LIMIT 1', [parsedId]);
+            if (subRes.rows.length > 0 && subRes.rows[0].cues) {
+              const cues = Array.isArray(subRes.rows[0].cues) ? subRes.rows[0].cues : JSON.parse(subRes.rows[0].cues);
+              if (cues && cues.length > 0) {
+                subText = cues.slice(0, 35).map(c => `[${c.startFormatted || c.start}s] (EN) ${c.en || ''} - (VI) ${c.vi || ''}`).join('\n');
+              }
+            }
+          } catch (_) {}
+
+          contextText = [
+            `[BÀI HỌC]: "${row.lesson_title}" | [CHƯƠNG]: "${row.section_title}" | [KHÓA HỌC]: "${row.course_name}"`,
+            row.course_description ? `[Mô tả khóa học]: ${row.course_description}` : '',
+            subText ? `\n[NỘI DUNG LỜI THOẠI BÀI HỌC]:\n${subText}` : ''
+          ].filter(Boolean).join('\n');
+        }
+      } catch (dbErr) {
+        console.warn('[PostgreSQL Grounding Fallback Warning]:', dbErr.message);
+      }
+    }
   }
 
   return { contextText, matches, rankedLessons };
