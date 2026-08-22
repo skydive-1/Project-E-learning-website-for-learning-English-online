@@ -26,6 +26,9 @@ router.post('/users/:userId/reset-token', adminController.resetUserToken);
 // POST /api/admin/users/reset-tokens - Reset token hàng loạt theo Role
 router.post('/users/reset-tokens', adminController.resetTokensByRole);
 
+// POST /api/admin/rag/backfill - Kích hoạt nạp RAG Pinecone và Phụ đề PostgreSQL cho toàn bộ bài học
+router.post('/rag/backfill', adminController.backfillRag);
+
 /**
  * @swagger
  * tags:
