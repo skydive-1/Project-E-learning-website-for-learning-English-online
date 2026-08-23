@@ -42,10 +42,11 @@ function shouldRewrite(question) {
 
 /**
  * 2. Lấy lịch sử hội thoại gần nhất của học viên từ PostgreSQL
- * - Cô lập phạm vi theo bài học (Per-Lesson Context Isolation): Khi có lessonId cụ thể,
- *   chỉ lấy lịch sử hội thoại của ĐÚNG bài học đó, ngăn chặn rò rỉ ngữ cảnh giữa các bài học khác nhau trong cùng khóa học.
- * - Hỗ trợ liên thông ở cấp độ khóa học (Course-Level Context) khi không gắn lessonId cụ thể (lessonId null/0).
- * - Cô lập Chatbot toàn cục (Global Chatbot Isolation) khi không có lessonId và không có courseId.
+ * - Cô lập phạm vi theo bài học (Strict Per-Lesson Context Isolation): Khi có lessonId cụ thể (> 0),
+ *   CHỈ lấy lịch sử hội thoại của ĐÚNG bài học đó (WHERE lesson_id = $2), ngăn chặn 100% rò rỉ ngữ cảnh giữa các bài học khác nhau trong cùng khóa học.
+ * - Cô lập Chatbot toàn cục / ngoài bài học (Global Chatbot Isolation): Khi không có lessonId hoặc lessonId = 0/null,
+ *   CHỈ lấy lịch sử hội thoại toàn cục (WHERE lesson_id IS NULL), tuyệt đối KHÔNG kéo tin nhắn của các bài học cụ thể vào.
+ * - Tự động bóc tách chuỗi JSON của bot message (nếu có lưu kèm sources) để chỉ lấy text thuần túy trả lời, chống ô nhiễm JSON metadata vào prompt của LLM.
  * - Tích hợp Stale History Protection (mặc định giới hạn trong vòng 30 phút gần nhất).
  * - Đảm bảo Zero-Trust User Isolation (chỉ truy xuất dữ liệu thuộc về req.user.id).
  */
@@ -72,22 +73,9 @@ async function getRecentConversationHistory(userId, lessonId, limit = 6, options
         LIMIT $4
       `;
       params = [userId, parsedLessonId, sessionMinutes.toString(), limit];
-    } else if (options.courseId && Number(options.courseId) > 0) {
-      // 2. Ngữ cảnh ở cấp độ TOÀN KHÓA HỌC (chỉ khi không có lessonId cụ thể, ví dụ chat ở trang khóa học):
-      query = `
-        SELECT ac.sender_type, ac.title, ac.lesson_id, ac.created_at
-        FROM ai_chat ac
-        JOIN lessons l ON ac.lesson_id = l.lesson_id
-        JOIN sections s ON l.section_id = s.section_id
-        WHERE ac.student_id = $1
-          AND s.course_id = $2
-          AND ac.created_at >= NOW() - ($3 || ' minutes')::INTERVAL
-        ORDER BY ac.created_at DESC
-        LIMIT $4
-      `;
-      params = [userId, Number(options.courseId), sessionMinutes.toString(), limit];
     } else {
-      // 3. Ngữ cảnh Chatbot toàn cục (Global Chatbot - không gắn lessonId hay courseId):
+      // 2. Ngữ cảnh Chatbot toàn cục / ngoài bài học (lessonId null hoặc 0):
+      // Chỉ lấy lịch sử hội thoại toàn cục (lesson_id IS NULL), KHÔNG lôi tin nhắn của các bài học cụ thể vào
       query = `
         SELECT sender_type, title, lesson_id, created_at
         FROM ai_chat
@@ -102,12 +90,24 @@ async function getRecentConversationHistory(userId, lessonId, limit = 6, options
 
     const res = await db.query(query, params);
     
-    // Đảo ngược lại theo thứ tự thời gian tăng dần (cũ -> mới)
-    return res.rows.reverse().map(r => ({
-      role: r.sender_type === 'user' ? 'User' : 'Assistant',
-      content: r.title,
-      lessonId: r.lesson_id
-    }));
+    // Đảo ngược lại theo thứ tự thời gian tăng dần (cũ -> mới) và làm sạch JSON
+    return res.rows.reverse().map(r => {
+      let content = r.title || '';
+      // Bóc tách text thuần nếu bot lưu cấu trúc JSON { answer, sources, actions }
+      if (r.sender_type === 'bot' && typeof content === 'string' && content.startsWith('{') && content.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(content);
+          if (parsed && typeof parsed.answer === 'string') {
+            content = parsed.answer;
+          }
+        } catch (_) {}
+      }
+      return {
+        role: r.sender_type === 'user' ? 'User' : 'Assistant',
+        content: content.trim(),
+        lessonId: r.lesson_id
+      };
+    });
   } catch (err) {
     console.warn(`[Query Rewriter Warning] Lỗi đọc lịch sử ai_chat:`, err.message);
     return [];
@@ -231,7 +231,7 @@ async function contextualizeQuery(question, customHistory = null, options = {}) 
   // 2. Lấy lịch sử hội thoại (Ưu tiên customHistory truyền vào cho test/eval, hoặc query từ DB)
   let history = customHistory;
   if (!history && options.userId) {
-    history = await getRecentConversationHistory(options.userId, options.lessonId, 6);
+    history = await getRecentConversationHistory(options.userId, options.lessonId, 6, options);
   }
 
   // 3. Thực hiện Rewrite với lịch sử
