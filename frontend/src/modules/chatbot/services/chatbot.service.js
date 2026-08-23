@@ -25,11 +25,28 @@ export const askChatbot = async (question, lessonId, scope = 'lesson', currentTi
     throw error;
   }
 };
-
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend dạng SSE Stream.
+ * 
+ * 💡 THIẾT KẾ KIẾN TRÚC CLIENT-SIDE RENDERING THROTTLE:
+ * Cơ chế này áp dụng "Client-side character buffer queue & adaptive throttle loop" 
+ * để mô phỏng hiệu ứng gõ chữ (typing effect) mượt mà như Claude / ChatGPT.
+ * Đây là giải pháp phân tách độc lập giữa "Tốc độ nhận dữ liệu từ mạng" và "Tốc độ hiển thị UI":
+ * - Luồng mạng (Network Reader) đọc dữ liệu từ server ở tốc độ tối đa không bị chặn.
+ * - Luồng hiển thị (Display Ticker) lấy từng cụm ký tự nhỏ từ hàng đợi đệm và gọi onChunk đều đặn.
+ * - Thuật toán Adaptive Catch-up tự động tăng tốc độ nhả chữ khi hàng đợi bị tồn đọng nhiều ký tự,
+ *   đảm bảo câu trả lời dài không bị kéo dài tổng thời gian hoàn tất.
+ * - KHÔNG PHẢI thay đổi cách AI sinh văn bản hay làm chậm tiến trình xử lý của backend.
  */
-export const askChatbotStream = async (question, lessonId, onChunk, scope = 'lesson', currentTime = null, quickAction = null) => {
+export const askChatbotStream = async (
+  question,
+  lessonId,
+  onChunk,
+  scope = 'lesson',
+  currentTime = null,
+  quickAction = null,
+  options = {}
+) => {
   const token = localStorage.getItem('token');
   const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = envUrl.replace(/\/+$/, '');
@@ -48,7 +65,8 @@ export const askChatbotStream = async (question, lessonId, onChunk, scope = 'les
       'Content-Type': 'application/json',
       'Authorization': token ? `Bearer ${token}` : ''
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    signal: options.signal
   });
 
   if (!response.ok) {
@@ -62,70 +80,193 @@ export const askChatbotStream = async (question, lessonId, onChunk, scope = 'les
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
-  let done = false;
-  let fullText = '';
+
+  // --- Client-Side Buffer Queue & Display Ticker State ---
+  let rawFullText = '';       // Toàn bộ text đã nhận được từ server
+  let displayedText = '';     // Text đã hiển thị ra UI
   let metadata = null;
   let sources = [];
   let actions = [];
-  let buffer = '';
+  let isNetworkDone = false;  // Server đã gửi xong ([DONE] hoặc stream closed)
+  let networkError = null;    // Lỗi xảy ra trong quá trình đọc stream (nếu có)
+  let tickerIntervalId = null;
 
-  while (!done) {
-    const { value, done: doneReading } = await reader.read();
-    done = doneReading;
-    if (value) {
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // giữ lại phần chưa hoàn thành
+  // Trả về Promise hoàn tất khi toàn bộ dữ liệu đã được hiển thị hết ra UI
+  return new Promise((resolve, reject) => {
+    // Helper dọn dẹp ticker
+    const cleanup = () => {
+      if (tickerIntervalId) {
+        clearInterval(tickerIntervalId);
+        tickerIntervalId = null;
+      }
+    };
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data:')) continue;
-        const dataStr = trimmed.replace(/^data:\s*/, '');
-        if (dataStr === '[DONE]') {
-          done = true;
-          break;
+    // Hỗ trợ AbortSignal hủy luồng stream & ticker khi component unmount hoặc gửi câu hỏi mới
+    if (options.signal) {
+      if (options.signal.aborted) {
+        cleanup();
+        try { reader.cancel(); } catch (_) {}
+        return reject(new DOMException('Aborted', 'AbortError'));
+      }
+      options.signal.addEventListener('abort', () => {
+        cleanup();
+        try { reader.cancel(); } catch (_) {}
+        reject(new DOMException('Aborted', 'AbortError'));
+      });
+    }
+
+    // 1. DISPLAY TICKER LOOP (Chạy độc lập mỗi 18-20ms để cập nhật UI mượt mà)
+    const TICK_MS = 20; // ~50 fps
+    tickerIntervalId = setInterval(() => {
+      // Nếu có lỗi từ mạng và chưa kịp hiển thị gì
+      if (networkError && displayedText.length === 0) {
+        cleanup();
+        return reject(networkError);
+      }
+
+      const remainingChars = rawFullText.length - displayedText.length;
+
+      if (remainingChars > 0) {
+        // Thuật toán Adaptive Speed (Điều chỉnh số ký tự hiển thị mỗi tick dựa trên độ dài hàng đợi đệm):
+        // - Khi hàng đợi ít: nhả 1-2 ký tự/tick để tạo cảm giác gõ chữ tự nhiên, mượt mà.
+        // - Khi hàng đợi tồn đọng nhiều: tự động tăng tốc tỷ lệ thuận để không bị trễ thời gian tổng thể.
+        let step = 1;
+        if (remainingChars > 300) {
+          step = Math.ceil(remainingChars / 10); // ~30+ ký tự/tick
+        } else if (remainingChars > 150) {
+          step = Math.ceil(remainingChars / 15); // ~10-20 ký tự/tick
+        } else if (remainingChars > 60) {
+          step = Math.ceil(remainingChars / 20); // ~3-7 ký tự/tick
+        } else if (remainingChars > 20) {
+          step = 2;
+        } else {
+          // 1 đến 2 ký tự ngẫu nhiên nhẹ nhàng
+          step = Math.random() > 0.4 ? 2 : 1;
         }
-        try {
-          const parsed = JSON.parse(dataStr);
-          if (parsed.type === 'metadata') {
-            metadata = parsed;
-          } else if (parsed.type === 'sources') {
-            const rawSources = Array.isArray(parsed.sources) ? parsed.sources : [];
-            const seenIds = new Set();
-            const dedupedSources = [];
-            for (const s of rawSources) {
-              if (s && s.lessonId && !seenIds.has(s.lessonId)) {
-                seenIds.add(s.lessonId);
-                dedupedSources.push(s);
-              }
-            }
-            sources = dedupedSources;
-            actions = Array.isArray(parsed.actions) ? parsed.actions : [];
-          } else if (parsed.type === 'token' || parsed.text) {
-            const tokenText = parsed.text || '';
-            fullText += tokenText;
-            if (onChunk) onChunk(fullText, { sources, actions, metadata });
-          } else if (parsed.error) {
-            throw new Error(parsed.error);
-          }
-        } catch (e) {
-          if (e.message && !e.message.includes('JSON')) {
-            throw e;
-          }
+
+        step = Math.min(step, remainingChars);
+        displayedText = rawFullText.slice(0, displayedText.length + step);
+
+        if (onChunk) {
+          onChunk(displayedText, {
+            sources,
+            actions,
+            metadata,
+            isTyping: true,
+            isComplete: false
+          });
         }
       }
-    }
-  }
 
-  if (fullText) {
-    return {
-      reply: fullText,
-      sources,
-      actions,
-      metadata
-    };
-  }
-  throw new Error('Empty response from stream');
+      // Kiểm tra điều kiện hoàn tất thực sự:
+      // Server đã gửi xong toàn bộ ([DONE]) VÀ toàn bộ text trong hàng đợi đã được hiển thị hết
+      if (isNetworkDone && displayedText.length >= rawFullText.length) {
+        cleanup();
+
+        if (onChunk) {
+          onChunk(displayedText, {
+            sources,
+            actions,
+            metadata,
+            isTyping: false,
+            isComplete: true
+          });
+        }
+
+        if (networkError) {
+          return reject(networkError);
+        }
+
+        if (!displayedText && !rawFullText) {
+          return reject(new Error('Empty response from stream'));
+        }
+
+        return resolve({
+          reply: displayedText,
+          sources,
+          actions,
+          metadata
+        });
+      }
+    }, TICK_MS);
+
+    // 2. NETWORK READER LOOP (Đọc dữ liệu từ Server ở tốc độ mạng tối đa không bị chặn)
+    (async () => {
+      let buffer = '';
+      try {
+        while (!isNetworkDone) {
+          const { value, done: doneReading } = await reader.read();
+          if (doneReading) {
+            isNetworkDone = true;
+            break;
+          }
+
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Giữ lại phần dòng chưa hoàn chỉnh
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || !trimmed.startsWith('data:')) continue;
+              const dataStr = trimmed.replace(/^data:\s*/, '');
+              if (dataStr === '[DONE]') {
+                isNetworkDone = true;
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.type === 'metadata') {
+                  metadata = parsed;
+                } else if (parsed.type === 'sources') {
+                  const rawSources = Array.isArray(parsed.sources) ? parsed.sources : [];
+                  const seenIds = new Set();
+                  const dedupedSources = [];
+                  for (const s of rawSources) {
+                    if (s && s.lessonId && !seenIds.has(s.lessonId)) {
+                      seenIds.add(s.lessonId);
+                      dedupedSources.push(s);
+                    }
+                  }
+                  sources = dedupedSources;
+                  actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+                } else if (parsed.type === 'quiz' && parsed.quizData) {
+                  // Sự kiện Quick Quiz: gửi thẳng lên callback UI
+                  if (onChunk) {
+                    onChunk('', {
+                      type: 'quiz',
+                      quizData: parsed.quizData,
+                      title: parsed.title,
+                      sources,
+                      actions,
+                      metadata
+                    });
+                  }
+                } else if (parsed.type === 'token' || parsed.text) {
+                  const tokenText = parsed.text || '';
+                  rawFullText += tokenText;
+                  // Đẩy vào rawFullText, KHÔNG gọi onChunk ngay lập tức ở đây
+                  // Display Ticker Loop sẽ nhả mượt từng chữ!
+                } else if (parsed.error) {
+                  throw new Error(parsed.error);
+                }
+              } catch (e) {
+                if (e.message && !e.message.includes('JSON')) {
+                  throw e;
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          networkError = err;
+        }
+        isNetworkDone = true;
+      }
+    })();
+  });
 };
 
 /**

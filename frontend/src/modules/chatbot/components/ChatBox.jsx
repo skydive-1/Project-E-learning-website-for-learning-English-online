@@ -52,27 +52,50 @@ const ChatBox = ({
   const messagesEndRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
   const toastTimeoutRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const isMountedRef = useRef(true);
   const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
 
-  // Helper gõ chữ từng từ mượt mà
+  // Lifecycle theo dõi mount/unmount để dọn dẹp các luồng stream & timer
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current);
+      }
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Helper gõ chữ từng từ mượt mà (dành cho tin nhắn chào mừng hoặc kết quả Audio)
   const streamTextWordByWord = async (aiMessageId, fullText, extraProps = {}) => {
+    if (!isMountedRef.current) return;
     if (!fullText) {
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: false, ...extraProps } : m));
       return;
     }
 
     setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: true, ...extraProps } : m));
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 200));
 
     let currentAccumulated = '';
     const words = fullText.split(/(\s+)/);
     for (let i = 0; i < words.length; i++) {
+      if (!isMountedRef.current) return;
       currentAccumulated += words[i];
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentAccumulated, isStreaming: true, ...extraProps } : m));
-      await new Promise(r => setTimeout(r, Math.random() * 12 + 14));
+      await new Promise(r => setTimeout(r, Math.random() * 10 + 12));
     }
 
-    setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: fullText, isStreaming: false, ...extraProps } : m));
+    if (isMountedRef.current) {
+      setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: fullText, isStreaming: false, ...extraProps } : m));
+    }
   };
 
   const handleStartAudioRecording = async () => {
@@ -221,6 +244,13 @@ const ChatBox = ({
 
     if (textToSend === null) setInputText("");
 
+    // Hủy bỏ request stream trước đó nếu có (chống race-condition)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const currentAbortController = new AbortController();
+    abortControllerRef.current = currentAbortController;
+
     const userMessage = {
       id: `msg-${Date.now()}-user`,
       sender: "user",
@@ -253,29 +283,41 @@ const ChatBox = ({
           ? Number(currentTime)
           : null;
 
-        const streamRes = await askChatbotStream(text, lessonId, (accumulatedText, eventPayload) => {
-          if (eventPayload?.type === 'quiz' && eventPayload?.quizData) {
+        const streamRes = await askChatbotStream(
+          text,
+          lessonId,
+          (accumulatedText, eventPayload) => {
+            if (!isMountedRef.current) return;
+
+            if (eventPayload?.type === 'quiz' && eventPayload?.quizData) {
+              setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+                ...m,
+                text: "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức bài học này:",
+                quizData: eventPayload.quizData,
+                isStreaming: false
+              } : m));
+              return;
+            }
+
+            if (eventPayload?.sources && eventPayload.sources.length > 0) {
+              finalSources = eventPayload.sources;
+              finalActions = eventPayload.actions || [];
+            }
             setMessages(prev => prev.map(m => m.id === aiMessageId ? {
               ...m,
-              text: "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức bài học này:",
-              quizData: eventPayload.quizData,
-              isStreaming: false
+              text: accumulatedText,
+              isStreaming: true,
+              sources: finalSources,
+              actions: finalActions
             } : m));
-            return;
-          }
+          },
+          'lesson',
+          validCurrentTime,
+          quickAction,
+          { signal: currentAbortController.signal }
+        );
 
-          if (eventPayload?.sources && eventPayload.sources.length > 0) {
-            finalSources = eventPayload.sources;
-            finalActions = eventPayload.actions || [];
-          }
-          setMessages(prev => prev.map(m => m.id === aiMessageId ? {
-            ...m,
-            text: accumulatedText,
-            isStreaming: true,
-            sources: finalSources,
-            actions: finalActions
-          } : m));
-        }, 'lesson', validCurrentTime, quickAction);
+        if (!isMountedRef.current) return;
 
         const finalAnswerText = typeof streamRes === 'string' ? streamRes : (streamRes.reply || '');
         if (streamRes && streamRes.sources) {
@@ -298,6 +340,11 @@ const ChatBox = ({
         }
       }
     } catch (error) {
+      if (error.name === 'AbortError') {
+        // Luồng stream bị hủy chủ động do chuyển câu hỏi hoặc unmount -> Bỏ qua không báo lỗi
+        return;
+      }
+
       console.error('⚠️ Lỗi phản hồi chatbot:', error);
       let errorMsg = "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.";
 
@@ -315,14 +362,18 @@ const ChatBox = ({
         errorMsg = error.message;
       }
 
-      setMessages(prev => prev.map(m => m.id === aiMessageId ? {
-        ...m,
-        text: errorMsg,
-        isStreaming: false,
-        isError: true
-      } : m));
+      if (isMountedRef.current) {
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+          ...m,
+          text: errorMsg,
+          isStreaming: false,
+          isError: true
+        } : m));
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
