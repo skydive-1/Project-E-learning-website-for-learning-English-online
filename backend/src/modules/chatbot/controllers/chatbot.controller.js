@@ -236,3 +236,24 @@ exports.getTokenBalance = async (req, res, next) => {
   }
 };
 
+/**
+ * Lấy danh sách 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
+ * GET /api/chatbot/suggested-questions/:lessonId
+ */
+exports.getSuggestedQuestions = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const suggestedQuestionsService = require('../../lessons/services/suggestedQuestions.service');
+    const questions = await suggestedQuestionsService.getSuggestedQuestionsByLessonId(lessonId);
+
+    res.status(200).json({
+      success: true,
+      lessonId: parseInt(lessonId, 10) || 0,
+      questions
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+

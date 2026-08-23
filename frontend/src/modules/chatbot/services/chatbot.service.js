@@ -440,4 +440,24 @@ export const getTokenBalance = async (userId) => {
   }
 };
 
+/**
+ * Lấy 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
+ * @param {number|string} lessonId
+ * @returns {Promise<Array<string>>}
+ */
+export const getSuggestedQuestions = async (lessonId) => {
+  if (!lessonId || Number(lessonId) <= 0) return [];
+  try {
+    const response = await apiClient.get(`/chatbot/suggested-questions/${lessonId}`);
+    if (response.data && response.data.success && Array.isArray(response.data.questions)) {
+      return response.data.questions;
+    }
+    return [];
+  } catch (error) {
+    console.warn(`⚠️ Lỗi lấy câu hỏi gợi ý cho lessonId=${lessonId}:`, error.message);
+    return [];
+  }
+};
+
+
 
