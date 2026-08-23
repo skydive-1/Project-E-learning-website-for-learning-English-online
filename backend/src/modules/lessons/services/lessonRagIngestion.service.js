@@ -47,7 +47,7 @@ async function ingestLessonMetadata(lessonId) {
   }
 }
 
-// ─── Phase 2: Video Transcript & Subtitles (Background Async) ────────────────
+// ─── Phase 2: Video Transcript & Subtitles & Suggested Questions (Background Async) ───
 
 async function ingestVideoTranscript(lessonId) {
   try {
@@ -55,6 +55,15 @@ async function ingestVideoTranscript(lessonId) {
     const subtitlesService = require('./subtitles.service');
     const result = await subtitlesService.generateSubtitlesWithGemini(lessonId);
     console.log(`[LessonRAG] ✅ Phase 2 hoàn tất cho lessonId=${lessonId}: Đã lưu PostgreSQL + Pinecone!`);
+
+    // Tự động sinh 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
+    try {
+      const { generateAndSaveSuggestedQuestions } = require('./suggestedQuestions.service');
+      await generateAndSaveSuggestedQuestions(lessonId, result?.cues || []);
+    } catch (suggestErr) {
+      console.warn(`[LessonRAG] ⚠️ Lỗi sinh câu hỏi gợi ý cho lessonId=${lessonId} (không ảnh hưởng RAG):`, suggestErr.message);
+    }
+
     return result;
   } catch (err) {
     console.error(`[LessonRAG] ❌ Phase 2 thất bại cho lessonId=${lessonId}:`, err.message);

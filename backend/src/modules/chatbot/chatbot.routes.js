@@ -23,6 +23,10 @@ router.post('/generate-quiz', authenticate, checkTokenLimit, chatbotController.g
 // API Kiểm tra ví Token AI còn lại
 router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBalance);
 
+// API Lấy 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
+router.get('/suggested-questions/:lessonId', authenticate, chatbotController.getSuggestedQuestions);
+
+
 // API Lịch sử Chat (Độc lập, nhận trực tiếp userId/lessonId từ Frontend)
 router.post('/history', chatbotController.saveHistory);
 router.get('/history/:userId/:lessonId', chatbotController.getHistory);
