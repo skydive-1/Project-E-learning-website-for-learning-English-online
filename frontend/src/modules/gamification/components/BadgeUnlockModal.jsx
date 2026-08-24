@@ -1,9 +1,11 @@
 import React from 'react';
 import { FiAward, FiCheck, FiShare2, FiX } from 'react-icons/fi';
 import { useGamification } from '../../../context/GamificationContext';
+import { useToast } from '../../../context/ToastContext';
 
 const BadgeUnlockModal = () => {
   const { activeBadgePopup, closeBadgePopup } = useGamification();
+  const showToast = useToast();
 
   if (!activeBadgePopup) return null;
 
@@ -15,7 +17,7 @@ const BadgeUnlockModal = () => {
         url: window.location.href,
       }).catch(err => console.warn("Share error:", err));
     } else {
-      alert(`Đã sao chép liên kết chia sẻ huy hiệu "${activeBadgePopup.title}" vào bộ nhớ tạm!`);
+      showToast(`Đã sao chép liên kết chia sẻ huy hiệu "${activeBadgePopup.title}" vào bộ nhớ tạm!`, 'success');
     }
   };
 

@@ -16,6 +16,7 @@ import {
 } from '../services/quizzes.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useToast } from '../../../context/ToastContext';
 
 // Component Skeleton Loading cho thẻ Quiz
 const QuizCardSkeleton = () => {
@@ -42,6 +43,7 @@ const QuizzesListPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const showToast = useToast();
   const userRole = user ? parseInt(user.roleId || user.role_id || user.role, 10) : null;
   const isInstructorOrAdmin = userRole === 1 || userRole === 2;
 
@@ -107,12 +109,12 @@ const QuizzesListPage = () => {
     }
     try {
       await deleteQuizById(quizId);
-      alert('Đã xóa đề thi thành công!');
+      showToast('Đã xóa đề thi thành công!', 'success');
       loadManagedQuizzes();
       loadQuizzes();
     } catch (err) {
       console.error("Lỗi khi xóa đề thi:", err);
-      alert(err.response?.data?.message || 'Không thể xóa đề thi!');
+      showToast(err.response?.data?.message || 'Không thể xóa đề thi!', 'error');
     }
   };
 
@@ -186,11 +188,18 @@ const QuizzesListPage = () => {
 
   const handleCreateQuiz = async (e) => {
     e.preventDefault();
-    if (!quizTitle.trim()) return alert('Vui lòng nhập tiêu đề đề thi!');
-    if (isPrivateQuiz && (!quizPinCode.trim() || quizPinCode.trim().length < 4)) {
-      return alert('Đề thi riêng tư yêu cầu Mã PIN từ 4 đến 20 ký tự!');
+    if (!quizTitle.trim()) {
+      showToast('Vui lòng nhập tiêu đề đề thi!', 'warning');
+      return;
     }
-    if (questionsList.length === 0) return alert('Vui lòng thêm ít nhất một câu hỏi!');
+    if (isPrivateQuiz && (!quizPinCode.trim() || quizPinCode.trim().length < 4)) {
+      showToast('Đề thi riêng tư yêu cầu Mã PIN từ 4 đến 20 ký tự!', 'warning');
+      return;
+    }
+    if (questionsList.length === 0) {
+      showToast('Vui lòng thêm ít nhất một câu hỏi!', 'warning');
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -204,9 +213,11 @@ const QuizzesListPage = () => {
         questions: questionsList
       };
       await createQuiz(payload);
-      alert(isPrivateQuiz 
+      showToast(isPrivateQuiz
         ? `Tạo đề thi riêng tư thành công! Mã PIN của đề thi là: ${quizPinCode.trim()}` 
-        : 'Tạo đề thi tự luyện công khai mới thành công!');
+        : 'Tạo đề thi tự luyện công khai mới thành công!', 'success', {
+          duration: isPrivateQuiz ? 7000 : 3500
+        });
       setShowCreateModal(false);
       // Reset form states
       setQuizTitle('');
@@ -220,21 +231,25 @@ const QuizzesListPage = () => {
       await loadQuizzes();
     } catch (err) {
       console.error("Lỗi tạo đề thi:", err);
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi tạo đề thi!');
+      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi tạo đề thi!', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleGenerateQuestionsWithAi = async () => {
-    if (!aiTopic.trim()) return alert('Vui lòng nhập chủ đề sinh câu hỏi!');
+    if (!aiTopic.trim()) {
+      showToast('Vui lòng nhập chủ đề sinh câu hỏi!', 'warning');
+      return;
+    }
     
     const selectedTypes = Object.entries(aiTypes)
       .filter(([_, checked]) => checked)
       .map(([type]) => type);
 
     if (selectedTypes.length === 0) {
-      return alert('Vui lòng chọn ít nhất một dạng câu hỏi để AI sinh đề!');
+      showToast('Vui lòng chọn ít nhất một dạng câu hỏi để AI sinh đề!', 'warning');
+      return;
     }
 
     try {
@@ -255,11 +270,11 @@ const QuizzesListPage = () => {
         }));
         setQuestionsList(prev => [...prev, ...newQuestions]);
         setAiTopic('');
-        alert(`Đã tự động tạo và thêm ${newQuestions.length} câu hỏi thành công từ AI! Bạn có thể chỉnh sửa thêm bên dưới.`);
+        showToast(`Đã tự động tạo và thêm ${newQuestions.length} câu hỏi thành công từ AI! Bạn có thể chỉnh sửa thêm bên dưới.`, 'success');
       }
     } catch (error) {
       console.error("Lỗi khi sinh câu hỏi AI:", error);
-      alert(error.response?.data?.message || 'Có lỗi xảy ra khi trợ lý AI đang sinh câu hỏi!');
+      showToast(error.response?.data?.message || 'Có lỗi xảy ra khi trợ lý AI đang sinh câu hỏi!', 'error');
     } finally {
       setAiGenerating(false);
     }

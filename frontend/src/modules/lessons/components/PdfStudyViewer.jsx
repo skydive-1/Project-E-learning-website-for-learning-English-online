@@ -22,6 +22,7 @@ import {
 import PdfHighlightOverlay from './PdfHighlightOverlay';
 import PdfSelectionPopover from './PdfSelectionPopover';
 import { mergePdfSelectionRects } from '../utils/pdfSelectionRects';
+import { useToast } from '../../../context/ToastContext';
 
 // Cấu hình Bundled Worker cục bộ tương thích hoàn toàn với Vite và không phụ thuộc CDN bên ngoài
 if (typeof window !== 'undefined') {
@@ -57,6 +58,7 @@ export default function PdfStudyViewer({
   onCreateNote,
   onSelectNote
 }) {
+  const showToast = useToast();
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(activePage || 1);
   const [scale, setScale] = useState(1.15); // Zoom 115% mặc định
@@ -390,7 +392,7 @@ export default function PdfStudyViewer({
 
     // Guard bảo vệ: Nếu sau khi gộp vẫn vượt quá 50 rects (vùng chọn quá dài)
     if (normalizedRects.length > 50) {
-      alert('Đoạn được chọn quá dài. Vui lòng chia thành các ghi chú nhỏ hơn.');
+      showToast('Đoạn được chọn quá dài. Vui lòng chia thành các ghi chú nhỏ hơn.', 'warning');
       return;
     }
 

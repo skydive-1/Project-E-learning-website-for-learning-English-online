@@ -4,10 +4,12 @@ import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import { loginUser, loginWithGoogle, googleConfirmRole } from '../services/auth.service';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const showToast = useToast();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -91,7 +93,7 @@ const LoginPage = () => {
       });
       client.requestAccessToken();
     } else {
-      alert('Đang tải thư viện đăng nhập của Google, vui lòng thử lại sau vài giây!');
+      showToast('Đang tải thư viện đăng nhập của Google, vui lòng thử lại sau vài giây!', 'warning');
     }
   };
 
@@ -110,7 +112,7 @@ const LoginPage = () => {
       }
     } catch (error) {
       console.error('Lỗi xác nhận vai trò Google:', error);
-      alert(error.response?.data?.message || 'Lỗi thiết lập vai trò người dùng.');
+      showToast(error.response?.data?.message || 'Lỗi thiết lập vai trò người dùng.', 'error');
     } finally {
       setIsLoading(false);
     }

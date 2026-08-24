@@ -20,6 +20,7 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useToast } from '../../../context/ToastContext';
 import { 
   getFreeQuizById, 
   submitQuizAttempt, 
@@ -63,6 +64,7 @@ const PlayQuizPage = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { t } = useLanguage();
+  const showToast = useToast();
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -308,7 +310,7 @@ const PlayQuizPage = () => {
       }
     } catch (err) {
       console.error("Lỗi nộp bài tự luận:", err);
-      alert("Đã xảy ra lỗi khi chấm điểm bài viết bằng AI. Vui lòng thử lại!");
+      showToast("Đã xảy ra lỗi khi chấm điểm bài viết bằng AI. Vui lòng thử lại!", 'error');
     } finally {
       setAiLoading(false);
     }
@@ -317,7 +319,7 @@ const PlayQuizPage = () => {
   const handleAudioStart = async () => {
     try {
       if (!navigator.mediaDevices || !window.MediaRecorder) {
-        alert("Trình duyệt của bạn không hỗ trợ tính năng thu âm HTML5 MediaRecorder.");
+        showToast("Trình duyệt của bạn không hỗ trợ tính năng thu âm HTML5 MediaRecorder.", 'error');
         return;
       }
       
@@ -363,7 +365,7 @@ const PlayQuizPage = () => {
       setAudioBlob(null);
     } catch (err) {
       console.error("Lỗi khởi động ghi âm:", err);
-      alert("Không thể truy cập microphone. Vui lòng kiểm tra và cấp quyền Microphone cho trang web trong Cài đặt trình duyệt!");
+      showToast("Không thể truy cập microphone. Vui lòng kiểm tra và cấp quyền Microphone cho trang web trong Cài đặt trình duyệt!", 'error');
     }
   };
 
@@ -376,11 +378,11 @@ const PlayQuizPage = () => {
 
   const handleAudioSubmit = async () => {
     if (!audioBlob) {
-      alert("Vui lòng ghi âm giọng nói trước khi nộp bài!");
+      showToast("Vui lòng ghi âm giọng nói trước khi nộp bài!", 'warning');
       return;
     }
     if (audioBlob.size < 1500) {
-      alert("Thời gian ghi âm quá ngắn hoặc chưa có âm thanh. Vui lòng ghi âm lại và phát âm to, rõ ràng hơn!");
+      showToast("Thời gian ghi âm quá ngắn hoặc chưa có âm thanh. Vui lòng ghi âm lại và phát âm to, rõ ràng hơn!", 'warning');
       return;
     }
     setAiLoading(true);
@@ -404,7 +406,7 @@ const PlayQuizPage = () => {
       }
     } catch (err) {
       console.error("Lỗi nộp bài phát âm:", err);
-      alert("Đã xảy ra lỗi khi chấm điểm phát âm bằng AI. Vui lòng thử lại!");
+      showToast("Đã xảy ra lỗi khi chấm điểm phát âm bằng AI. Vui lòng thử lại!", 'error');
     } finally {
       setAiLoading(false);
     }

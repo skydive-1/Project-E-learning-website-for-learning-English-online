@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 import ChatBox from '../../chatbot/components/ChatBox';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
@@ -43,6 +44,7 @@ const WATERMARK_POSITIONS = [
 
 const LessonDetailPage = () => {
   const navigate = useNavigate();
+  const showToast = useToast();
   const { lessonId } = useParams();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -622,7 +624,7 @@ const LessonDetailPage = () => {
       if (context?.previousNotes) {
         queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
       }
-      alert('Không thể tạo ghi chú: ' + (err?.response?.data?.message || err.message));
+      showToast('Không thể tạo ghi chú: ' + (err?.response?.data?.message || err.message), 'error');
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });

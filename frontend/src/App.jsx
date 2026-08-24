@@ -27,6 +27,7 @@ import OfflineIndicator from './components/common/OfflineIndicator';
 import MobileBottomNav from './components/common/MobileBottomNav';
 import AnalyticsDashboardPage from './modules/analytics/pages/AnalyticsDashboardPage';
 import { GamificationProvider } from './context/GamificationContext';
+import { ToastProvider } from './context/ToastContext';
 import BadgeUnlockModal from './modules/gamification/components/BadgeUnlockModal';
 
 const queryClient = new QueryClient({
@@ -56,10 +57,11 @@ function App() {
       <ErrorBoundary>
         <ThemeProvider>
           <LanguageProvider>
-            <BrowserRouter>
-              <AuthTokenRedirectHandler />
-              <AuthProvider>
-                <GamificationProvider>
+            <ToastProvider>
+              <BrowserRouter>
+                <AuthTokenRedirectHandler />
+                <AuthProvider>
+                  <GamificationProvider>
                   <Routes>
                     {/* Public Landing Route */}
                     <Route path="/" element={<HomePage />} />
@@ -166,9 +168,10 @@ function App() {
                   <MobileBottomNav />
                   <BadgeUnlockModal />
                   <OfflineIndicator />
-                </GamificationProvider>
-              </AuthProvider>
-            </BrowserRouter>
+                  </GamificationProvider>
+                </AuthProvider>
+              </BrowserRouter>
+            </ToastProvider>
           </LanguageProvider>
         </ThemeProvider>
       </ErrorBoundary>

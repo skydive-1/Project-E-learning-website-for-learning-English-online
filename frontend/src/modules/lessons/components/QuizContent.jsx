@@ -7,9 +7,11 @@ import {
   submitQuizAttempt
 } from '../../quizzes/services/quizzes.service';
 import { useGamification } from '../../../context/GamificationContext';
+import { useToast } from '../../../context/ToastContext';
 
 const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const { triggerBadgeUnlock } = useGamification() || {};
+  const showToast = useToast();
   const [questions, setQuestions] = useState([]);
   const [quizTitle, setQuizTitle] = useState("Bài tập Trắc nghiệm");
   const [timeLimit, setTimeLimit] = useState(10); // minutes
@@ -100,7 +102,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   };
 
   const handleAutoSubmit = () => {
-    alert("Hết giờ làm bài! Hệ thống tự động nộp bài của bạn.");
+    showToast("Hết giờ làm bài! Hệ thống tự động nộp bài của bạn.", 'warning', { duration: 6500 });
     calculateAndSubmit();
   };
 

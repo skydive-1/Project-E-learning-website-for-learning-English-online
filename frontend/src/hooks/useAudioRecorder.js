@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-export const useAudioRecorder = ({ onAutoStop } = {}) => {
+export const useAudioRecorder = ({ onAutoStop, onError } = {}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [lastRecordedBlob, setLastRecordedBlob] = useState(null);
@@ -11,10 +11,15 @@ export const useAudioRecorder = ({ onAutoStop } = {}) => {
   const timerIntervalRef = useRef(null);
   const isStoppingRef = useRef(false);
   const onAutoStopRef = useRef(onAutoStop);
+  const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onAutoStopRef.current = onAutoStop;
   }, [onAutoStop]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   // Expose WebAudio API hooks for visualizer
   const audioContextRef = useRef(null);
@@ -170,7 +175,7 @@ export const useAudioRecorder = ({ onAutoStop } = {}) => {
 
     } catch (error) {
       console.error("Lỗi khởi động ghi âm Web Audio API:", error);
-      alert("Không thể khởi động ghi âm. Vui lòng kiểm tra thiết bị Micro và cấp quyền truy cập ghi âm cho trang web.");
+      onErrorRef.current?.("Không thể khởi động ghi âm. Vui lòng kiểm tra thiết bị Micro và cấp quyền truy cập ghi âm cho trang web.");
       throw error;
     }
   };

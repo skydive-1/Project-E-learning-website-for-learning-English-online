@@ -11,6 +11,7 @@ import {
 } from '../services/chatbot.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useToast } from '../../../context/ToastContext';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 
 import ChatHeader from './ChatHeader';
@@ -35,6 +36,7 @@ const ChatBox = ({
 }) => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const showToast = useToast();
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState([]);
@@ -43,18 +45,18 @@ const ChatBox = ({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [quizStates, setQuizStates] = useState({});
 
-  // Custom Delete Modal & Toast State
+  // Custom Delete Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeletingChat, setIsDeletingChat] = useState(false);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
-  const [toastMessage, setToastMessage] = useState(null);
 
   const messagesEndRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
-  const toastTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
   const isMountedRef = useRef(true);
-  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder();
+  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
+    onError: (message) => showToast(message, 'error')
+  });
 
   // Lifecycle theo dõi mount/unmount để dọn dẹp các luồng stream & timer
   useEffect(() => {
@@ -66,9 +68,6 @@ const ChatBox = ({
       }
       if (recordingTimeoutRef.current) {
         clearTimeout(recordingTimeoutRef.current);
-      }
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
       }
     };
   }, []);
@@ -229,14 +228,6 @@ const ChatBox = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading, isHistoryLoading]);
-
-  const showInternalToast = (msg) => {
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToastMessage(msg);
-    toastTimeoutRef.current = setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
 
   const handleSendMessage = async (textToSend = null, quickAction = null) => {
     const text = (textToSend !== null ? textToSend : inputText).trim();
@@ -409,7 +400,7 @@ const ChatBox = ({
       ]);
 
       setIsDeleteModalOpen(false);
-      showInternalToast("Đã xóa lịch sử trò chuyện thành công.");
+      showToast("Đã xóa lịch sử trò chuyện thành công.", 'success');
     } catch (err) {
       console.error('⚠️ Lỗi khi xóa lịch sử chat:', err);
       setDeleteErrorMessage("Không thể xóa lịch sử lúc này. Vui lòng thử lại sau.");
@@ -457,20 +448,6 @@ const ChatBox = ({
         isLoading={isLoading}
         t={t}
       />
-
-      {/* Internal Success Toast Notification */}
-      {toastMessage && (
-        <div className="absolute top-14 left-4 right-4 z-40 p-2.5 rounded-xl bg-emerald-500 text-white text-xs font-semibold shadow-lg flex items-center justify-between animate-fade-in">
-          <span>✓ {toastMessage}</span>
-          <button 
-            type="button"
-            onClick={() => setToastMessage(null)}
-            className="text-white/80 hover:text-white text-sm font-bold ml-2 cursor-pointer"
-          >
-            ×
-          </button>
-        </div>
-      )}
 
       {/* 2. Main Conversation Area / Empty State */}
       {messages.length === 1 && !isLoading && !isHistoryLoading ? (

@@ -13,6 +13,7 @@ import Footer from '../../../components/common/Footer';
 import '../styles/instructor.scss';
 import { getCourseQuizQuestions, saveCourseQuizQuestions } from '../../quizzes/services/quizzes.service';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Cell } from 'recharts';
+import { useToast } from '../../../context/ToastContext';
 
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
@@ -44,6 +45,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 const InstructorDashboard = () => {
   const navigate = useNavigate();
+  const showToast = useToast();
   const currentUserId = getUserIdFromToken();
 
   // Navigation State
@@ -88,10 +90,10 @@ const InstructorDashboard = () => {
     try {
       await apiClient.delete(`/courses/${courseId}`);
       setCourses(prev => prev.filter(c => c.course_id !== courseId));
-      alert('Xóa khóa học thành công!');
+      showToast('Xóa khóa học thành công!', 'success');
     } catch (err) {
       console.error('Lỗi khi xóa khóa học:', err);
-      alert(err.response?.data?.message || 'Lỗi khi xóa khóa học.');
+      showToast(err.response?.data?.message || 'Lỗi khi xóa khóa học.', 'error');
     }
   };
 
@@ -190,8 +192,14 @@ const InstructorDashboard = () => {
 
   const handleGenerateAiQuiz = async (e) => {
     e.preventDefault();
-    if (!aiTopic.trim()) return alert('Vui lòng nhập chủ đề trắc nghiệm.');
-    if (!createLessonId) return alert('Vui lòng chọn bài học để gán câu hỏi.');
+    if (!aiTopic.trim()) {
+      showToast('Vui lòng nhập chủ đề trắc nghiệm.', 'warning');
+      return;
+    }
+    if (!createLessonId) {
+      showToast('Vui lòng chọn bài học để gán câu hỏi.', 'warning');
+      return;
+    }
 
     setAiGenerating(true);
     try {
@@ -216,13 +224,13 @@ const InstructorDashboard = () => {
         setQuizQuestions(generatedQuestions);
         setQuizMode('edit');
 
-        alert('Đã tạo thành công bộ câu hỏi trắc nghiệm bằng AI (Gemini)!');
+        showToast('Đã tạo thành công bộ câu hỏi trắc nghiệm bằng AI (Gemini)!', 'success');
       } else {
-        alert('Không thể tạo câu hỏi trắc nghiệm bằng AI. Vui lòng thử lại.');
+        showToast('Không thể tạo câu hỏi trắc nghiệm bằng AI. Vui lòng thử lại.', 'error');
       }
     } catch (error) {
       console.error('Lỗi khi gọi AI Quiz Generator:', error);
-      alert(error.response?.data?.message || 'Có lỗi xảy ra khi kết nối máy chủ để sinh câu hỏi.');
+      showToast(error.response?.data?.message || 'Có lỗi xảy ra khi kết nối máy chủ để sinh câu hỏi.', 'error');
     } finally {
       setAiGenerating(false);
       setShowAiModal(false);
@@ -232,7 +240,10 @@ const InstructorDashboard = () => {
 
   const handleCreateNewQuiz = (e) => {
     e.preventDefault();
-    if (!createLessonId) return alert('Vui lòng chọn bài học.');
+    if (!createLessonId) {
+      showToast('Vui lòng chọn bài học.', 'warning');
+      return;
+    }
     setSelectedQuizCourseId(createCourseId);
     setSelectedQuizLessonId(createLessonId);
     const existing = getCourseQuizQuestions(createLessonId);
@@ -253,7 +264,7 @@ const InstructorDashboard = () => {
     saveCourseQuizQuestions(item.id, []);
     // Force reload by refreshing course data locally
     setAllLessons(prev => prev.map(l => l.id === item.id ? { ...l } : l));
-    alert('Đã xóa bộ trắc nghiệm thành công!');
+    showToast('Đã xóa bộ trắc nghiệm thành công!', 'success');
   };
 
   // Question editing form states
@@ -382,13 +393,19 @@ const InstructorDashboard = () => {
     updated.splice(idx, 1);
     setQuizQuestions(updated);
     saveCourseQuizQuestions(selectedQuizLessonId, updated);
-    alert('Xóa câu hỏi thành công!');
+    showToast('Xóa câu hỏi thành công!', 'success');
   };
 
   const handleSaveQuestion = (e) => {
     e.preventDefault();
-    if (!questionText.trim()) return alert('Vui lòng nhập nội dung câu hỏi.');
-    if (options.some(opt => !opt.trim())) return alert('Vui lòng điền đủ 4 phương án trả lời.');
+    if (!questionText.trim()) {
+      showToast('Vui lòng nhập nội dung câu hỏi.', 'warning');
+      return;
+    }
+    if (options.some(opt => !opt.trim())) {
+      showToast('Vui lòng điền đủ 4 phương án trả lời.', 'warning');
+      return;
+    }
 
     const newQuestion = {
       id: isEditingIdx !== null ? quizQuestions[isEditingIdx].id : `q-${selectedQuizLessonId}-${Date.now()}`,
@@ -408,7 +425,7 @@ const InstructorDashboard = () => {
 
     setQuizQuestions(updated);
     saveCourseQuizQuestions(selectedQuizLessonId, updated);
-    alert(isEditingIdx !== null ? 'Cập nhật câu hỏi thành công!' : 'Thêm câu hỏi mới thành công!');
+    showToast(isEditingIdx !== null ? 'Cập nhật câu hỏi thành công!' : 'Thêm câu hỏi mới thành công!', 'success');
     handleCancelEdit();
   };
 
@@ -1003,7 +1020,10 @@ const InstructorDashboard = () => {
                   <button 
                     type="button" 
                     onClick={() => {
-                      if (myCourses.length === 0) return alert('Vui lòng tạo khóa học trước.');
+                      if (myCourses.length === 0) {
+                        showToast('Vui lòng tạo khóa học trước.', 'warning');
+                        return;
+                      }
                       setCreateCourseId(String(myCourses[0].course_id));
                       setShowAiModal(true);
                     }}
@@ -1028,7 +1048,10 @@ const InstructorDashboard = () => {
                   <button 
                     type="button"
                     onClick={() => {
-                      if (myCourses.length === 0) return alert('Vui lòng tạo khóa học trước.');
+                      if (myCourses.length === 0) {
+                        showToast('Vui lòng tạo khóa học trước.', 'warning');
+                        return;
+                      }
                       setCreateCourseId(String(myCourses[0].course_id));
                       setShowCreateModal(true);
                     }}
