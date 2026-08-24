@@ -7,6 +7,7 @@ const router = express.Router();
 const coursesController = require('./controllers/courses.controller');
 const { authenticate, optionalAuthenticate, authorize } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
+const { uploadLimiter } = require('../../middleware/rateLimit.middleware');
 
 // GET /api/courses - Lấy danh sách khóa học công khai (published) hoặc tất cả (nếu admin/instructor)
 router.get('/', optionalAuthenticate, coursesController.getAllCourses);
@@ -21,7 +22,7 @@ router.get('/:courseId', coursesController.getCourseById);
 router.get('/lessons/:lessonId', authenticate, coursesController.getLessonById);
 
 // POST /api/courses/upload - Tải lên bài giảng (video/pdf)
-router.post('/upload', authenticate, authorize([1, 2]), upload.single('file'), coursesController.uploadFile);
+router.post('/upload', authenticate, authorize([1, 2]), uploadLimiter, upload.single('file'), coursesController.uploadFile);
 
 // POST /api/courses - Tạo mới khóa học kèm chương và bài học
 router.post('/', authenticate, authorize([1, 2]), coursesController.createCourse);

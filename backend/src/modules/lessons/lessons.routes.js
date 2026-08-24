@@ -5,6 +5,12 @@ const subtitlesController = require('./controllers/subtitles.controller');
 const pdfNotesController = require('./controllers/pdfNotes.controller');
 const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
 const upload = require('../../middleware/upload.middleware');
+const {
+  aiLimiter,
+  mediaTicketLimiter,
+  streamingLimiter,
+  uploadLimiter
+} = require('../../middleware/rateLimit.middleware');
 
 // Ghi chú & Highlight PDF Cá nhân (TASK-PDF-SMART-NOTES-01)
 router.get('/:lessonId/pdf-notes', authenticate, pdfNotesController.getNotes);
@@ -13,26 +19,26 @@ router.put('/:lessonId/pdf-notes/:noteId', authenticate, pdfNotesController.upda
 router.delete('/:lessonId/pdf-notes/:noteId', authenticate, pdfNotesController.deleteNote);
 
 // GET /api/lessons/video/ticket/:lessonId - Lấy Video Ticket thời hạn ngắn 60s (Chống tải lậu)
-router.get('/video/ticket/:lessonId', authenticate, lessonsController.getVideoTicket);
+router.get('/video/ticket/:lessonId', authenticate, mediaTicketLimiter, lessonsController.getVideoTicket);
 
 // GET /api/lessons/video/stream/:lessonId - Stream video bảo mật
-router.get('/video/stream/:lessonId', authenticateVideoToken, lessonsController.streamLessonVideo);
+router.get('/video/stream/:lessonId', authenticateVideoToken, streamingLimiter, lessonsController.streamLessonVideo);
 
 // GET /api/lessons/dash/:lessonId/manifest.mpd - Stream DASH MPD manifest có bảo vệ ticket
-router.get('/dash/:lessonId/manifest.mpd', authenticateVideoToken, lessonsController.streamDashManifest);
+router.get('/dash/:lessonId/manifest.mpd', authenticateVideoToken, streamingLimiter, lessonsController.streamDashManifest);
 
 // GET /api/lessons/dash/:lessonId/:segmentFile - Stream DASH media/audio segments có bảo vệ ticket
-router.get('/dash/:lessonId/:segmentFile', authenticateVideoToken, lessonsController.streamDashSegment);
+router.get('/dash/:lessonId/:segmentFile', authenticateVideoToken, streamingLimiter, lessonsController.streamDashSegment);
 
 // Tài liệu đính kèm bài học (Lesson Materials / Resources PDF)
-router.post('/:lessonId/materials', authenticate, authorize([1, 2]), upload.materialPdf.single('file'), lessonsController.uploadMaterial);
+router.post('/:lessonId/materials', authenticate, authorize([1, 2]), uploadLimiter, upload.materialPdf.single('file'), lessonsController.uploadMaterial);
 router.get('/:lessonId/materials', authenticate, lessonsController.getMaterialsByLesson);
 router.get('/:lessonId/materials/:materialId/preview', authenticate, lessonsController.previewMaterial);
 router.delete('/:lessonId/materials/:materialId', authenticate, authorize([1, 2]), lessonsController.deleteMaterial);
 
 // Phụ đề thông minh & Kịch bản tương tác (Smart AI Subtitles & Interactive Transcript)
-router.get('/:lessonId/subtitles', subtitlesController.getSubtitles);
-router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), subtitlesController.generateSubtitles);
+router.get('/:lessonId/subtitles', aiLimiter, subtitlesController.getSubtitles);
+router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), aiLimiter, subtitlesController.generateSubtitles);
 router.put('/:lessonId/subtitles', authenticate, authorize([1, 2]), subtitlesController.updateSubtitles);
 
 // Kiểm tra tình trạng vector RAG của bài học (Chỉ Admin / Instructor)

@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('./controllers/admin.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const { aiLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Tất cả các endpoints trong module admin yêu cầu đăng nhập và có quyền Admin (roleId = 1)
 router.use(authenticate);
@@ -27,7 +28,7 @@ router.post('/users/:userId/reset-token', adminController.resetUserToken);
 router.post('/users/reset-tokens', adminController.resetTokensByRole);
 
 // POST /api/admin/rag/backfill - Kích hoạt nạp RAG Pinecone và Phụ đề PostgreSQL cho toàn bộ bài học
-router.post('/rag/backfill', adminController.backfillRag);
+router.post('/rag/backfill', aiLimiter, adminController.backfillRag);
 
 /**
  * @swagger

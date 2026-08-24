@@ -7,6 +7,11 @@ const router = express.Router();
 const authController = require('./controllers/auth.controller');
 const { authenticate } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validation.middleware');
+const {
+  authLimiter,
+  passwordResetLimiter,
+  registrationLimiter
+} = require('../../middleware/rateLimit.middleware');
 
 // Schemas Validation
 const registerSchema = {
@@ -75,7 +80,7 @@ const updateProfileSchema = {
  *         description: Đăng ký thành công
  */
 // Routes
-router.post('/register', validate(registerSchema), authController.register);
+router.post('/register', registrationLimiter, validate(registerSchema), authController.register);
 
 /**
  * @swagger
@@ -98,18 +103,18 @@ router.post('/register', validate(registerSchema), authController.register);
  *       200:
  *         description: Đăng nhập thành công và trả về token
  */
-router.post('/login', validate(loginSchema), authController.login);
+router.post('/login', authLimiter, validate(loginSchema), authController.login);
 router.post('/logout', authenticate, authController.logout);
 router.get('/profile', authenticate, authController.getProfile);
 router.put('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.put('/profile', authenticate, validate(updateProfileSchema), authController.updateProfile);
 
 // Google Sign-In Endpoints
-router.post('/google', authController.googleLogin);
-router.post('/google/confirm-role', authController.googleConfirmRole);
+router.post('/google', authLimiter, authController.googleLogin);
+router.post('/google/confirm-role', authLimiter, authController.googleConfirmRole);
 
 // Password Reset Endpoints
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password', authController.resetPassword);
+router.post('/forgot-password', passwordResetLimiter, authController.forgotPassword);
+router.post('/reset-password', passwordResetLimiter, authController.resetPassword);
 
 module.exports = router;
