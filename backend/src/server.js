@@ -42,10 +42,16 @@ if (!process.env.JWT_SECRET) {
 // ===== 2. IMPORT MIDDLEWARE =====
 const errorHandler = require('./middleware/error.middleware');
 const loggerMiddleware = require('./middleware/logger.middleware');
+const {
+  apiLimiter,
+  configureTrustProxy,
+  globalLimiter
+} = require('./middleware/rateLimit.middleware');
 
 // ===== 3. KHỞI TẠO EXPRESS APP =====
 const app = express();
 const PORT = process.env.PORT || 5000;
+configureTrustProxy(app);
 
 // ===== 4. GLOBAL MIDDLEWARE =====
 
@@ -71,6 +77,9 @@ app.use(cors({
   credentials: true
 }));
 
+// Rate limit every endpoint before parsing request bodies or serving files.
+app.use(globalLimiter);
+
 // Giới hạn payload JSON và urlencoded ở mức 10mb (điều chỉnh cho metadata khóa học lớn)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -88,6 +97,9 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Logging middleware
 app.use(loggerMiddleware);
+
+// Apply the API-wide policy before every /api endpoint, including /api/health.
+app.use('/api', apiLimiter);
 
 // ===== 5. HEALTH CHECK ENDPOINTS =====
 const healthHandler = (req, res) => {
