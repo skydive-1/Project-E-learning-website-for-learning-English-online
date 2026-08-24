@@ -5,6 +5,7 @@ import {
   FiCheck, FiRefreshCw 
 } from 'react-icons/fi';
 import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
+import { useToast } from '../../../context/ToastContext';
 import AudioVisualizer from '../../../components/ui/AudioVisualizer';
 import { askChatbotAudio } from '../../chatbot/services/chatbot.service';
 
@@ -73,6 +74,7 @@ const DEFAULT_QA_DATA = [
 ];
 
 const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onComplete }) => {
+  const showToast = useToast();
   const cleanLessonId = String(lessonId).replace('quiz-', '');
   
   // Tab chính: 'pronunciation' (Luyện phát âm theo mẫu) hoặc 'qa' (Hỏi đáp phản xạ)
@@ -155,7 +157,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     }
 
     if (audioBlob.size < 500) {
-      alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.");
+      showToast("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu rồi nhấn Dừng & Chấm điểm.", 'warning');
       return;
     }
 
@@ -199,7 +201,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     }
 
     if (audioBlob.size < 500) {
-      alert("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu trả lời rồi nhấn Dừng & Nộp.");
+      showToast("Thời gian ghi âm quá ngắn. Vui lòng phát âm đầy đủ câu trả lời rồi nhấn Dừng & Nộp.", 'warning');
       return;
     }
 
@@ -237,19 +239,20 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     if (activeIdx !== null && sentences[activeIdx]) {
       const currentSentence = sentences[activeIdx];
       setActiveIdx(null);
-      alert("Đã đạt giới hạn 120 giây. Hệ thống đang tự động nộp bài đọc của bạn để chấm điểm.");
+      showToast("Đã đạt giới hạn 120 giây. Hệ thống đang tự động nộp bài đọc của bạn để chấm điểm.", 'warning', { duration: 6500 });
       await submitEvaluation(currentSentence.id, currentSentence.text, blob);
     } else if (activeQAIdx !== null && qaQuestions[activeQAIdx]) {
       const currentQuestion = qaQuestions[activeQAIdx];
       setActiveQAIdx(null);
-      alert("Đã đạt giới hạn 120 giây. Hệ thống đang tự động nộp câu trả lời Q&A của bạn để chấm điểm.");
+      showToast("Đã đạt giới hạn 120 giây. Hệ thống đang tự động nộp câu trả lời Q&A của bạn để chấm điểm.", 'warning', { duration: 6500 });
       await submitQAEvaluation(currentQuestion.id, currentQuestion.text, blob);
     }
   };
 
   // Hook ghi âm chung với Auto-stop callback
   const { isRecording, recordingTime, startRecording, stopRecording, analyserRef } = useAudioRecorder({
-    onAutoStop: handleAutoStopCallback
+    onAutoStop: handleAutoStopCallback,
+    onError: (message) => showToast(message, 'error')
   });
 
   // Đọc âm thanh mẫu (TTS)
@@ -262,7 +265,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
       utterance.rate = 0.85;
       window.speechSynthesis.speak(utterance);
     } else {
-      alert("Trình duyệt của bạn không hỗ trợ công cụ Đọc tự động.");
+      showToast("Trình duyệt của bạn không hỗ trợ công cụ Đọc tự động.", 'error');
     }
   };
 

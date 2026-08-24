@@ -131,4 +131,19 @@ describe('useAudioRecorder Hook Tests (TASK-AI-SPEAKING-01-HOTFIX-R2)', () => {
 
     expect(blob).toBeNull();
   });
+
+  it('5. should report microphone startup errors through onError and still reject', async () => {
+    const onErrorMock = vi.fn();
+    const microphoneError = new Error('Permission denied');
+    navigator.mediaDevices.getUserMedia.mockRejectedValueOnce(microphoneError);
+    const { result } = renderHook(() => useAudioRecorder({ onError: onErrorMock }));
+
+    await act(async () => {
+      await expect(result.current.startRecording()).rejects.toThrow('Permission denied');
+    });
+
+    expect(onErrorMock).toHaveBeenCalledWith(
+      'Không thể khởi động ghi âm. Vui lòng kiểm tra thiết bị Micro và cấp quyền truy cập ghi âm cho trang web.'
+    );
+  });
 });

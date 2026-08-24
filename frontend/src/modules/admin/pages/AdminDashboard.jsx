@@ -38,10 +38,12 @@ import {
 } from 'recharts';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const showToast = useToast();
   
   const isSuperAdmin = currentUser?.email === 'quocanh26012004@gmail.com';
   
@@ -191,12 +193,12 @@ const AdminDashboard = () => {
     try {
       const response = await apiClient.put(`/admin/users/${userId}/role`, { roleId: targetRoleId });
       if (response.data && response.data.success) {
-        alert('Cập nhật vai trò người dùng thành công!');
+        showToast('Cập nhật vai trò người dùng thành công!', 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi thay đổi role:', err);
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi đổi vai trò');
+      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi đổi vai trò', 'error');
     }
   };
 
@@ -208,12 +210,12 @@ const AdminDashboard = () => {
     try {
       const response = await apiClient.delete(`/admin/users/${userId}`);
       if (response.data && response.data.success) {
-        alert('Đã xóa người dùng thành công!');
+        showToast('Đã xóa người dùng thành công!', 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi xóa user:', err);
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi xóa người dùng');
+      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi xóa người dùng', 'error');
     }
   };
 
@@ -225,12 +227,12 @@ const AdminDashboard = () => {
     try {
       const response = await apiClient.post(`/admin/users/${userId}/reset-token`);
       if (response.data && response.data.success) {
-        alert(`Đã reset thành công hạn mức Token AI của "${username}"!`);
+        showToast(`Đã reset thành công hạn mức Token AI của "${username}"!`, 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi reset token:', err);
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi reset token');
+      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi reset token', 'error');
     }
   };
 
@@ -243,12 +245,12 @@ const AdminDashboard = () => {
     try {
       const response = await apiClient.post('/admin/users/reset-tokens', { roleId });
       if (response.data && response.data.success) {
-        alert(response.data.message || `Đã reset thành công hạn mức Token AI của toàn bộ ${roleName}!`);
+        showToast(response.data.message || `Đã reset thành công hạn mức Token AI của toàn bộ ${roleName}!`, 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi reset token hàng loạt:', err);
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi reset token');
+      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi reset token', 'error');
     }
   };
 
@@ -268,7 +270,7 @@ const AdminDashboard = () => {
 
   const handleRemoveQuestion = (index) => {
     if (questions.length === 1) {
-      alert('Phải có ít nhất 1 câu hỏi trong bộ đề!');
+      showToast('Phải có ít nhất 1 câu hỏi trong bộ đề!', 'warning');
       return;
     }
     const newQuestions = [...questions];
@@ -305,17 +307,17 @@ const AdminDashboard = () => {
 
     // Validate chung
     if (questions.some(q => !q.question.trim())) {
-      alert('Vui lòng điền nội dung cho tất cả các câu hỏi!');
+      showToast('Vui lòng điền nội dung cho tất cả các câu hỏi!', 'warning');
       return;
     }
     if (questions.some(q => q.options.some(opt => !opt.trim()))) {
-      alert('Vui lòng nhập đầy đủ 4 đáp án lựa chọn cho tất cả các câu hỏi!');
+      showToast('Vui lòng nhập đầy đủ 4 đáp án lựa chọn cho tất cả các câu hỏi!', 'warning');
       return;
     }
 
     if (quizType === 'standalone') {
       if (!quizTitle.trim() || !quizDesc.trim()) {
-        alert('Vui lòng nhập Tiêu đề và Mô tả cho bài Quiz tự do!');
+        showToast('Vui lòng nhập Tiêu đề và Mô tả cho bài Quiz tự do!', 'warning');
         return;
       }
       
@@ -335,7 +337,7 @@ const AdminDashboard = () => {
       };
 
       saveFreeQuiz(newQuiz);
-      alert(`🎉 Đã tạo thành công bài Quiz tự do "${quizTitle}"! Bài học đã được đưa vào Kho Trắc Nghiệm.`);
+      showToast(`🎉 Đã tạo thành công bài Quiz tự do "${quizTitle}"! Bài học đã được đưa vào Kho Trắc Nghiệm.`, 'success');
       
       // Reset form
       setQuizTitle('');
@@ -354,7 +356,7 @@ const AdminDashboard = () => {
     } else {
       // Quiz bài học
       if (!selectedCourseId || !selectedLessonId) {
-        alert('Vui lòng chọn Khóa học và Bài học!');
+        showToast('Vui lòng chọn Khóa học và Bài học!', 'warning');
         return;
       }
 
@@ -367,7 +369,7 @@ const AdminDashboard = () => {
       }));
 
       saveCourseQuizQuestions(selectedLessonId, formattedQuestions);
-      alert('🎉 Đã tạo/cập nhật bộ đề trắc nghiệm cho bài học thành công!');
+      showToast('🎉 Đã tạo/cập nhật bộ đề trắc nghiệm cho bài học thành công!', 'success');
       
       // Reset form
       setSelectedCourseId('');
@@ -401,7 +403,7 @@ const AdminDashboard = () => {
 
     if (topicInput === null) return;
     if (!topicInput.trim()) {
-      alert('Vui lòng nhập chủ đề câu hỏi!');
+      showToast('Vui lòng nhập chủ đề câu hỏi!', 'warning');
       return;
     }
 
@@ -435,13 +437,13 @@ const AdminDashboard = () => {
           if (!quizDesc.trim()) setQuizDesc(`Bài kiểm tra trắc nghiệm được tạo tự động bởi AI Gemini về chủ đề: ${topicInput}.`);
         }
 
-        alert('🎉 Đã tự động tạo và tải 5 câu hỏi từ AI Gemini thành công!');
+        showToast('🎉 Đã tự động tạo và tải 5 câu hỏi từ AI Gemini thành công!', 'success');
       } else {
-        alert('Không thể tạo câu hỏi từ AI. Vui lòng thử lại.');
+        showToast('Không thể tạo câu hỏi từ AI. Vui lòng thử lại.', 'error');
       }
     } catch (err) {
       console.error('Lỗi sinh câu hỏi từ AI:', err);
-      alert(err.response?.data?.message || 'Có lỗi xảy ra khi gọi AI Gemini để tạo câu hỏi.');
+      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi gọi AI Gemini để tạo câu hỏi.', 'error');
     } finally {
       setAiGenerating(false);
     }

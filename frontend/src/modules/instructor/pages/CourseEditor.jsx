@@ -10,6 +10,7 @@ import Footer from '../../../components/common/Footer';
 import { DateRangePicker, SingleDatePicker } from '../../../components/ui';
 import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPolicyModal';
 import { subtitlesService } from '../../lessons/services/subtitles.service';
+import { useToast } from '../../../context/ToastContext';
 import '../styles/instructor.scss';
 
 const isAllowedExternalMediaUrl = (url = '') => /^https?:\/\//i.test(url) && !/\.supabase\.co(?:\/|$)/i.test(url);
@@ -71,6 +72,7 @@ const getNextYearCivilDate = () => {
 
 const CourseEditor = () => {
   const navigate = useNavigate();
+  const showToast = useToast();
   const { courseId } = useParams();
   const fileInputRef = useRef({});
   const isEditMode = !!courseId;
@@ -202,7 +204,7 @@ const CourseEditor = () => {
 
   const handleDeleteSection = (sIdx) => {
     if (sections.length === 1) {
-      alert('Phải có ít nhất 1 chương học.');
+      showToast('Phải có ít nhất 1 chương học.', 'warning');
       return;
     }
     const newSections = sections.filter((_, idx) => idx !== sIdx);
@@ -859,9 +861,9 @@ const CourseEditor = () => {
                                   try {
                                     setLoading(true);
                                     const result = await subtitlesService.generateSubtitles(lesson.id);
-                                    alert(`✅ Đã tạo thành công ${result?.cues?.length || 0} câu phụ đề song ngữ bằng AI Gemini 2.5 Flash!`);
+                                    showToast(`✅ Đã tạo thành công ${result?.cues?.length || 0} câu phụ đề song ngữ bằng AI Gemini 2.5 Flash!`, 'success');
                                   } catch (err) {
-                                    alert(`❌ Lỗi tạo phụ đề AI: ${err.message}`);
+                                    showToast(`❌ Lỗi tạo phụ đề AI: ${err.message}`, 'error');
                                   } finally {
                                     setLoading(false);
                                   }
