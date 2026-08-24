@@ -195,5 +195,4 @@ Thực thi các câu lệnh SQL trong file [backend/schema.sql](file:///d:/BACKU
 *   **Triết lý thiết kế và giao diện (Design Guidelines):** [DESIGN.md](file:///d:/BACKUP/DO%20AN%20TOT%20NGHIEP%28MAIN%29/Project-E-learning-website-for-learning-English-online/DESIGN.md)
 *   **Định vị sản phẩm & Phân khúc khách hàng:** [PRODUCT.md](file:///d:/BACKUP/DO%20AN%20TOT%20NGHIEP%28MAIN%29/Project-E-learning-website-for-learning-English-online/PRODUCT.md)
 
----
-*Chúc các thành viên nhóm hoàn thành tốt đồ án tốt nghiệp!*
+
