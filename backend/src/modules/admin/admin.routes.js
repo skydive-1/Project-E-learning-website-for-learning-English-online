@@ -33,6 +33,12 @@ router.post('/users/reset-tokens', adminController.resetTokensByRole);
 // POST /api/admin/rag/backfill - Kích hoạt nạp RAG Pinecone và Phụ đề PostgreSQL cho toàn bộ bài học
 router.post('/rag/backfill', aiLimiter, adminController.backfillRag);
 
+// GET /api/admin/rate-limit - Lấy trạng thái hệ thống Rate Limiting
+router.get('/rate-limit', adminController.getRateLimitStatus);
+
+// POST /api/admin/rate-limit/toggle - Bật/Tắt hệ thống Rate Limiting động
+router.post('/rate-limit/toggle', adminController.toggleRateLimit);
+
 /**
  * @swagger
  * tags:

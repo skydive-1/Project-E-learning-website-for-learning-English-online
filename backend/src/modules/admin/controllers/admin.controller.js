@@ -290,3 +290,44 @@ exports.backfillRag = async (req, res, next) => {
   }
 };
 
+/**
+ * Lấy trạng thái hiện tại của hệ thống Rate Limiting
+ */
+exports.getRateLimitStatus = async (req, res, next) => {
+  try {
+    const { isRateLimitEnabled } = require('../../../middleware/rateLimit.middleware');
+    const enabled = isRateLimitEnabled();
+    res.status(200).json({
+      success: true,
+      enabled,
+      message: `Hệ thống Rate Limiting hiện đang ${enabled ? 'BẬT (Active)' : 'TẮT (Disabled)'}`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Bật/Tắt hệ thống Rate Limiting động
+ */
+exports.toggleRateLimit = async (req, res, next) => {
+  try {
+    const { isRateLimitEnabled, setRateLimitEnabled, toggleRateLimit } = require('../../../middleware/rateLimit.middleware');
+    const { enabled } = req.body;
+    let newState;
+    if (typeof enabled === 'boolean') {
+      newState = setRateLimitEnabled(enabled);
+    } else {
+      newState = toggleRateLimit();
+    }
+
+    res.status(200).json({
+      success: true,
+      enabled: newState,
+      message: `Đã ${newState ? 'BẬT' : 'TẮT'} Hệ thống Rate Limiting thành công.`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
