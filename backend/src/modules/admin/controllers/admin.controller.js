@@ -38,6 +38,24 @@ exports.getAllUsers = async (req, res, next) => {
 };
 
 /**
+ * Lấy dashboard tiến trình người dùng và sức khỏe hệ thống cho Admin.
+ */
+exports.getAnalyticsDashboard = async (req, res, next) => {
+  try {
+    const requestedRange = Number.parseInt(req.query.range, 10);
+    const rangeDays = [7, 30, 90, 365].includes(requestedRange) ? requestedRange : 30;
+    const dashboard = await adminService.getAnalyticsDashboard(rangeDays);
+
+    res.status(200).json({
+      success: true,
+      data: dashboard
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Cập nhật vai trò cho người dùng
  */
 exports.updateUserRole = async (req, res, next) => {
