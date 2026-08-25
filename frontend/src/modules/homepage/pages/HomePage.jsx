@@ -8,6 +8,7 @@ import {
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import TeamMarquee from '../../../components/common/TeamMarquee';
+import DolHeroSection from '../../../components/common/DolHeroSection';
 import apiClient from '../../../config/api.config';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -91,57 +92,8 @@ const HomePage = () => {
       <Header />
 
       <main className="homepage-main">
-        {/* HERO SECTION */}
-        <section id="hero" className="hero-section">
-          <div className="container hero-container">
-            <div className="hero-content scroll-animate">
-              <span className="badge-ai">{t('heroBadge')}</span>
-              <h1 className="hero-title">
-                {t('heroTitlePrefix')} <br />
-                <span>{t('heroTitleSuffix')}</span>
-              </h1>
-              <p className="hero-subtitle">
-                {t('heroSubtitle')}
-              </p>
-              <div className="hero-actions">
-                <button className="btn-primary-orange" onClick={() => navigate('/courses')}>
-                  {t('btnStartLearning')}
-                </button>
-                <button className="btn-secondary-outline" onClick={() => navigate('/academy')} style={{ marginLeft: '12px' }}>
-                  {t('btnViewRoadmap')}
-                </button>
-              </div>
-              
-              <div className="hero-trust">
-                <div className="trust-badge">
-                  <FiAward className="trust-icon" />
-                  <span>{t('aiTutorSubtitle')}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="hero-visual scroll-animate">
-              <div className="visual-wrapper">
-                <img 
-                  src="/images/hero_illustration.png" 
-                  alt="Học tiếng Anh thông minh cùng AI" 
-                  className="hero-image"
-                  onError={(e) => {
-                    // Fallback to high quality SVG pattern if image fails to load
-                    e.target.style.display = 'none';
-                    e.target.nextSibling.style.display = 'flex';
-                  }}
-                />
-                <div className="svg-fallback" style={{ display: 'none' }}>
-                  <div className="abstract-shape"></div>
-                  <div className="float-pill-ai">
-                    <FiMessageSquare /> <span>AI Tutor Active</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* DOL-INSPIRED HERO SECTION WITH CURVED PHOTO ARC & 2X2 FLOATING CARD */}
+        <DolHeroSection />
 
 
         {/* FEATURES SECTION (Nói nhiều hơn - Học nhanh hơn) */}

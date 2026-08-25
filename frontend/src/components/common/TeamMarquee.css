@@ -41,8 +41,8 @@
   align-items: center;
   gap: 1.25rem;
   will-change: transform;
-  /* Continuous natural standard speed (30s infinite linear) */
-  animation: team-marquee-glide 30s linear infinite;
+  /* Continuous smooth, comfortable speed (55s infinite linear) */
+  animation: team-marquee-glide 55s linear infinite;
 }
 
 /* User preference: Do NOT pause on hover, maintain natural continuous glide */
