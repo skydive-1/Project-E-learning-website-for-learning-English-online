@@ -13,32 +13,15 @@ import {
   FiFileText, 
   FiArrowUp, 
   FiArrowDown,
-  FiBookOpen,
   FiAlertTriangle,
   FiRefreshCw,
   FiShield,
-  FiTrendingUp,
-  FiCpu,
-  FiActivity,
-  FiUserPlus,
-  FiDollarSign
+  FiTrendingUp
 } from 'react-icons/fi';
-import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip as RechartsTooltip, 
-  AreaChart, 
-  Area, 
-  PieChart, 
-  Pie, 
-  Cell 
-} from 'recharts';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
+import UserAnalyticsDashboard from '../components/UserAnalyticsDashboard';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -47,8 +30,11 @@ const AdminDashboard = () => {
   
   const isSuperAdmin = currentUser?.email === 'quocanh26012004@gmail.com';
   
-  // Tab active: 'users' (Quản lý tài khoản) hoặc 'quizzes' (Tạo đề trắc nghiệm)
-  const [activeTab, setActiveTab] = useState('users');
+  // Cho phép mở thẳng một tab từ URL, ví dụ /admin/dashboard?tab=analytics.
+  const [activeTab, setActiveTab] = useState(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    return ['users', 'quizzes', 'security', 'analytics'].includes(requestedTab) ? requestedTab : 'users';
+  });
 
   // State Cấu hình bảo mật
   const [securityConfig, setSecurityConfig] = useState({
@@ -494,15 +480,15 @@ const AdminDashboard = () => {
               <FiAlertTriangle className="inline mr-2" /> Cấu hình bảo mật
             </button>
             <button 
-              className={`admin-tab ${activeTab === 'analytics' ? 'active' : ''}`}
+              className={`admin-tab analytics-tab ${activeTab === 'analytics' ? 'active' : ''}`}
               onClick={() => setActiveTab('analytics')}
             >
-              <FiTrendingUp className="inline mr-2" /> Thống kê hệ thống (System Analytics)
+              <FiTrendingUp className="inline mr-2" /> User Analytics
             </button>
           </div>
 
           {/* Tab Content */}
-          <div className="admin-content">
+          <div className={`admin-content ${activeTab === 'analytics' ? 'is-analytics' : ''}`}>
             
             {/* TAB 1: USER MANAGEMENT */}
             {activeTab === 'users' && (
@@ -553,7 +539,7 @@ const AdminDashboard = () => {
 
                 {loadingUsers ? (
                   <div className="text-center py-10">
-                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto"></div>
+                    <FiRefreshCw className="animate-spin h-8 w-8 text-indigo-600 mx-auto" aria-hidden="true" />
                     <p className="text-slate-500 mt-4 text-sm">Đang tải dữ liệu người dùng...</p>
                   </div>
                 ) : errorUsers ? (
@@ -967,180 +953,9 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {/* TAB 4: SYSTEM ANALYTICS (ADMIN OVERVIEW) */}
-            {activeTab === 'analytics' && (
-              <div className="space-y-6">
-                
-                {/* Admin Top System KPI Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Người dùng mới</span>
-                      <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-smart-indigo dark:text-indigo-400">
-                        <FiUserPlus className="text-lg" />
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <span className="text-2xl font-black text-slate-800 dark:text-slate-100">1,280</span>
-                      <span className="text-xs font-bold text-emerald-500 ml-2">↑ +14.2%</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 block mt-1">Đã đăng ký tài khoản</span>
-                  </div>
+            {/* TAB 4: USER & SYSTEM ANALYTICS */}
+            {activeTab === 'analytics' && <UserAnalyticsDashboard />}
 
-                  <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">AI Credit tiêu thụ</span>
-                      <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
-                        <FiCpu className="text-lg" />
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <span className="text-2xl font-black text-slate-800 dark:text-slate-100">1,425,800</span>
-                      <span className="text-xs font-bold text-emerald-500 ml-2">Credits</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 block mt-1">Sử dụng trên toàn hệ thống</span>
-                  </div>
-
-                  <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lượt gọi AI Assistant</span>
-                      <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400">
-                        <FiActivity className="text-lg" />
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <span className="text-2xl font-black text-slate-800 dark:text-slate-100">18,450</span>
-                      <span className="text-xs font-bold text-purple-500 ml-2">Requests</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 block mt-1">Thời gian phản hồi TB: 1.2s</span>
-                  </div>
-
-                  <div className="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ước tính chi phí API</span>
-                      <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-500">
-                        <FiDollarSign className="text-lg" />
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <span className="text-2xl font-black text-slate-800 dark:text-slate-100">$1.42</span>
-                      <span className="text-xs font-bold text-slate-400 ml-2">USD</span>
-                    </div>
-                    <span className="text-[11px] text-slate-400 block mt-1">Gemini 2.5 Flash API Tier</span>
-                  </div>
-                </div>
-
-                {/* Main Admin Charts Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  
-                  {/* Left 7 Cols: Monthly User Registrations */}
-                  <div className="lg:col-span-7 p-6 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="px-2.5 py-1 rounded bg-indigo-50 dark:bg-indigo-950/40 text-smart-indigo dark:text-indigo-400 text-[11px] font-black uppercase tracking-wider block mb-1">
-                          👥 Thống kê người dùng
-                        </span>
-                        <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                          Lượng tài khoản mới đăng ký theo từng tháng (2026)
-                        </h3>
-                      </div>
-                    </div>
-
-                    <div className="h-[260px] w-full pt-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={[
-                          { month: 'Tháng 1', users: 120, students: 105, instructors: 15 },
-                          { month: 'Tháng 2', users: 180, students: 160, instructors: 20 },
-                          { month: 'Tháng 3', users: 240, students: 215, instructors: 25 },
-                          { month: 'Tháng 4', users: 310, students: 280, instructors: 30 },
-                          { month: 'Tháng 5', users: 450, students: 405, instructors: 45 },
-                          { month: 'Tháng 6', users: 620, students: 560, instructors: 60 },
-                          { month: 'Tháng 7', users: 890, students: 810, instructors: 80 },
-                          { month: 'Tháng 8', users: 1280, students: 1160, instructors: 120 }
-                        ]}>
-                          <defs>
-                            <linearGradient id="userGrad" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0}/>
-                            </linearGradient>
-                          </defs>
-                          <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                          <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#fff', fontSize: '12px' }} />
-                          <Area type="monotone" dataKey="users" name="Tổng người dùng đăng ký" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#userGrad)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  {/* Right 5 Cols: Gemini Token Consumption by Feature */}
-                  <div className="lg:col-span-5 p-6 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                    <div>
-                      <span className="px-2.5 py-1 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[11px] font-black uppercase tracking-wider block mb-1">
-                        🤖 AI API Usage & RAG Infrastructure
-                      </span>
-                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                        Phân bổ AI Credit tiêu thụ theo tính năng
-                      </h3>
-                    </div>
-
-                    <div className="h-[220px] w-full flex items-center justify-center relative">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={[
-                              { name: 'Trợ lý AI RAG Chatbot', value: 55, color: '#6366f1' },
-                              { name: 'Chấm điểm Luyện nói AI', value: 25, color: '#10b981' },
-                              { name: 'Tạo đề Quiz tự động', value: 20, color: '#f59e0b' }
-                            ]}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={55}
-                            outerRadius={85}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {[
-                              { color: '#6366f1' },
-                              { color: '#10b981' },
-                              { color: '#f59e0b' }
-                            ].map((entry, index) => (
-                              <Cell key={`ai-cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#fff', fontSize: '12px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span className="text-xl font-black text-slate-800 dark:text-slate-100">1.42M</span>
-                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Credits</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-700 text-xs">
-                      {[
-                        { label: 'Trợ lý AI RAG Chatbot', percent: '55%', model: 'Gemini 2.5 Flash', color: '#6366f1' },
-                        { label: 'Chấm điểm Luyện nói AI', percent: '25%', model: 'Gemini 2.5 Flash Audio', color: '#10b981' },
-                        { label: 'Tạo đề Quiz & Vector Indexing', percent: '20%', model: 'gemini-embedding-001', color: '#f59e0b' }
-                      ].map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900/60">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></span>
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">{item.label}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400 font-mono">{item.model}</span>
-                            <span className="font-extrabold text-slate-800 dark:text-slate-100">{item.percent}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-
-              </div>
-            )}
 
           </div>
 

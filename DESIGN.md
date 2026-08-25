@@ -28,3 +28,10 @@ Hệ thống thiết kế tập trung vào sự rõ ràng, hiện đại và ti�
 - **Easing:** Sử dụng `cubic-bezier(0.165, 0.84, 0.44, 1)` cho các hiệu ứng hover.
 - **Rule:** Không animate hình ảnh trên hover; tập trung vào thay đổi background hoặc border.
 - **Reduced Motion:** Tất cả animations phải có phương án thay thế cho người dùng chọn chế độ giảm chuyển động.
+
+## Admin Analytics Surface
+- **Operating scene:** Một công cụ quản trị ưu tiên can thiệp, dùng bề mặt vận hành tối và kiểu chữ `Outfit` để giữ dữ liệu dày rõ ràng, dễ quét; đây là ngoại lệ tối có chủ đích so với nền học tập sáng mặc định.
+- **Anchor:** Một dải `Smart Indigo` đặc, toàn chiều rộng gom nhịp hệ thống; không tách KPI thành lưới card đồng dạng, không dùng gradient hay biểu đồ doughnut trang trí.
+- **First viewport and flow:** Controls gọn nằm trên dải nhịp; tiếp theo là biểu đồ xu hướng rộng cùng attention rail hẹp, với bảng học viên bắt đầu ngay bên dưới. Luồng đọc đi từ nhịp nền tảng, qua xu hướng và tín hiệu cần xử lý, tới thao tác trên hồ sơ học viên, rồi kết thúc bằng sức khỏe khóa học.
+- **Analytical surfaces:** Panel phẳng dùng border 1px và radius 16px, không kết hợp border với shadow. Biểu đồ dùng xanh cho học viên hoạt động và cam cho bài học hoàn thành.
+- **Operational states:** Xanh lá biểu thị đang hoạt động, amber biểu thị cần chú ý, slate biểu thị không hoạt động. Trên mobile, controls wrap, các vùng phân tích xếp chồng, dải nhịp chuyển sang bố cục 2 cột gọn, và bảng desktop trở thành danh sách học viên có chi tiết mở rộng.

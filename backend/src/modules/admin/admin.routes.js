@@ -15,6 +15,9 @@ router.use(authorize([1]));
 // GET /api/admin/users - Lấy danh sách toàn bộ người dùng
 router.get('/users', adminController.getAllUsers);
 
+// GET /api/admin/analytics - Tiến trình toàn bộ học viên và sức khỏe hệ thống
+router.get('/analytics', adminController.getAnalyticsDashboard);
+
 // PUT /api/admin/users/:userId/role - Thay đổi vai trò người dùng
 router.put('/users/:userId/role', adminController.updateUserRole);
 
