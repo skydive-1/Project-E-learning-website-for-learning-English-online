@@ -55,15 +55,27 @@ exports.askStream = async (req, res, next) => {
 exports.saveHistory = async (req, res, next) => {
   try {
     // Tiếp nhận các trường dữ liệu theo API Contract
-    const { user_id, lesson_id, question, answer, sources, actions } = req.body;
+    const { user_id, userId, lesson_id, question, answer, sources, actions } = req.body;
+    const targetUserId = user_id || userId;
 
-    if (!user_id || !question || !answer) {
+    if (!targetUserId || !question || !answer) {
       const err = new Error("Dữ liệu không đầy đủ. Yêu cầu các trường: user_id, question, answer");
       err.status = 400;
       throw err;
     }
 
-    const result = await chatbotService.saveHistory(user_id, lesson_id, question, answer, sources, actions);
+    const currentUserId = req.user?.id || req.user?.userId;
+    const isOwner = currentUserId && String(currentUserId) === String(targetUserId);
+    const isAdmin = req.user?.roleId === 1 || req.user?.role_id === 1;
+
+    if (!isOwner && !isAdmin) {
+      const err = new Error("Bạn không có quyền lưu lịch sử chat của người dùng khác");
+      err.status = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
+    const result = await chatbotService.saveHistory(targetUserId, lesson_id, question, answer, sources, actions);
     res.status(201).json({
       success: true,
       message: "Lưu lịch sử tin nhắn thành công",
@@ -84,6 +96,17 @@ exports.getHistory = async (req, res, next) => {
       throw err;
     }
 
+    const currentUserId = req.user?.id || req.user?.userId;
+    const isOwner = currentUserId && String(currentUserId) === String(userId);
+    const isAdmin = req.user?.roleId === 1 || req.user?.role_id === 1;
+
+    if (!isOwner && !isAdmin) {
+      const err = new Error("Bạn không có quyền truy cập lịch sử chat của người dùng khác");
+      err.status = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
     const data = await chatbotService.getHistory(userId, lessonId);
     // Trả về trực tiếp mảng JSON theo quy chuẩn API Contract
     res.status(200).json(data);
@@ -94,13 +117,24 @@ exports.getHistory = async (req, res, next) => {
 
 exports.clearHistory = async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) {
+    const currentUserId = req.user?.id || req.user?.userId;
+    if (!currentUserId) {
       return res.status(401).json({ success: false, message: 'Người dùng chưa xác thực' });
     }
 
+    const targetUserId = req.params.userId || req.body.userId || req.query.userId || currentUserId;
+    const isOwner = String(currentUserId) === String(targetUserId);
+    const isAdmin = req.user?.roleId === 1 || req.user?.role_id === 1;
+
+    if (!isOwner && !isAdmin) {
+      const err = new Error("Bạn không có quyền xóa lịch sử chat của người dùng khác");
+      err.status = 403;
+      err.code = "FORBIDDEN";
+      throw err;
+    }
+
     const lessonId = req.params.lessonId !== undefined ? req.params.lessonId : (req.query.lessonId !== undefined ? req.query.lessonId : req.body.lessonId);
-    const result = await chatbotService.clearHistory(userId, lessonId);
+    const result = await chatbotService.clearHistory(targetUserId, lessonId);
     res.status(200).json({
       success: true,
       message: result.message
