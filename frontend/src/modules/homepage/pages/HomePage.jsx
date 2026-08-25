@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
+import TeamMarquee from '../../../components/common/TeamMarquee';
 import apiClient from '../../../config/api.config';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -21,19 +22,19 @@ const HomePage = () => {
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
 
-  // Intersection Observer for scroll animations
+  // Intersection Observer for scroll animations with safety fallback
   useEffect(() => {
     const observerOptions = {
       root: null,
-      rootMargin: '0px',
-      threshold: 0.15
+      rootMargin: '60px',
+      threshold: 0.05
     };
 
     const handleIntersect = (entries, observer) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           entry.target.classList.add('animate-in');
-          observer.unobserve(entry.target); // Trigger once
+          observer.unobserve(entry.target);
         }
       });
     };
@@ -42,7 +43,15 @@ const HomePage = () => {
     const animElements = document.querySelectorAll('.scroll-animate');
     animElements.forEach(el => observer.observe(el));
 
+    // Safety fallback: Ensure all components are revealed
+    const fallbackTimer = setTimeout(() => {
+      document.querySelectorAll('.scroll-animate').forEach(el => {
+        el.classList.add('animate-in');
+      });
+    }, 500);
+
     return () => {
+      clearTimeout(fallbackTimer);
       animElements.forEach(el => observer.unobserve(el));
     };
   }, []);
@@ -376,53 +385,55 @@ const HomePage = () => {
         </section>
 
         {/* FUN QUIZZES SECTION */}
-        <section id="fun-quizzes-sec" className="courses-section" style={{ backgroundColor: '#f8fafc', paddingTop: '64px', paddingBottom: '64px', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+        <section id="fun-quizzes-sec" className="courses-section py-16 bg-transparent">
           <div className="container">
             <div className="section-title scroll-animate">
               <h2>{t('Luyện trắc nghiệm vui giải trí')}</h2>
               <p>{t('Thử thách phản xạ tiếng Anh nhanh với các đề trắc nghiệm chủ đề Tiếng lóng, Idioms, Từ vựng đời sống')}</p>
             </div>
 
-            <div className="courses-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginTop: '32px' }}>
-              <div className="course-card scroll-animate" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '24px', backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <span className="course-tag grammar" style={{ backgroundColor: '#e0e7ff', color: '#4338ca', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '750' }}>IDIOMS</span>
-                    <h4 style={{ marginTop: '12px', fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>English Slangs & Idioms Quiz</h4>
-                    <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>{t('Thử thách hiểu biết của bạn về tiếng lóng và các thành ngữ tiếng Anh giao tiếp thông dụng hàng ngày của người bản xứ.')}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+              <div className="glass-card scroll-animate flex flex-col justify-between h-full p-6 sm:p-7">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="inline-block bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 text-[11px] font-bold px-2.5 py-0.5 rounded-md">IDIOMS</span>
+                    <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                      <FiClock className="w-3.5 h-3.5 text-slate-400" /> 5 câu hỏi • 5 phút
+                    </span>
                   </div>
-                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>5 câu hỏi • 5 phút</span>
-                    <button 
-                      onClick={() => navigate('/quizzes/play/fun-1')}
-                      style={{ padding: '8px 16px', backgroundColor: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
-                      onMouseOver={(e) => e.target.style.backgroundColor = '#1e40af'}
-                      onMouseOut={(e) => e.target.style.backgroundColor = '#1d4ed8'}
-                    >
-                      {t('Bắt đầu thi')}
-                    </button>
-                  </div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white">English Slangs & Idioms Quiz</h4>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">{t('Thử thách hiểu biết của bạn về tiếng lóng và các thành ngữ tiếng Anh giao tiếp thông dụng hàng ngày của người bản xứ.')}</p>
+                </div>
+                <div className="border-t border-slate-200/80 dark:border-slate-800/80 pt-4 mt-6 flex justify-end items-center">
+                  <button 
+                    onClick={() => navigate('/quizzes/play/fun-1')}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/10 transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                  >
+                    <FiPlayCircle className="w-4 h-4" />
+                    <span>{t('Bắt đầu thi')}</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="course-card scroll-animate" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '24px', backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <span className="course-tag grammar" style={{ backgroundColor: '#ecfdf5', color: '#047857', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '750' }}>TRAVEL</span>
-                    <h4 style={{ marginTop: '12px', fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>Travel English Essentials</h4>
-                    <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>Trang bị các mẫu câu giao tiếp tiếng Anh thiết thực tại sân bay, khách sạn, nhà hàng khi đi du lịch nước ngoài.</p>
+              <div className="glass-card scroll-animate flex flex-col justify-between h-full p-6 sm:p-7">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="inline-block bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-bold px-2.5 py-0.5 rounded-md">TRAVEL</span>
+                    <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+                      <FiClock className="w-3.5 h-3.5 text-slate-400" /> 5 câu hỏi • 8 phút
+                    </span>
                   </div>
-                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px', marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>5 câu hỏi • 8 phút</span>
-                    <button 
-                      onClick={() => navigate('/quizzes/play/fun-2')}
-                      style={{ padding: '8px 16px', backgroundColor: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
-                      onMouseOver={(e) => e.target.style.backgroundColor = '#1e40af'}
-                      onMouseOut={(e) => e.target.style.backgroundColor = '#1d4ed8'}
-                    >
-                      {t('Bắt đầu thi')}
-                    </button>
-                  </div>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white">Travel English Essentials</h4>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">Trang bị các mẫu câu giao tiếp tiếng Anh thiết thực tại sân bay, khách sạn, nhà hàng khi đi du lịch nước ngoài.</p>
+                </div>
+                <div className="border-t border-slate-200/80 dark:border-slate-800/80 pt-4 mt-6 flex justify-end items-center">
+                  <button 
+                    onClick={() => navigate('/quizzes/play/fun-2')}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/10 transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                  >
+                    <FiPlayCircle className="w-4 h-4" />
+                    <span>{t('Bắt đầu thi')}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -532,6 +543,9 @@ const HomePage = () => {
             </div>
           </div>
         </section>
+
+        {/* CORE ARCHITECTURE & TEAM MARQUEE */}
+        <TeamMarquee />
 
         {/* QUICK CONTACT / CONSULTATION FORM WITH PARALLAX */}
         <section className="consultation-section parallax-container">

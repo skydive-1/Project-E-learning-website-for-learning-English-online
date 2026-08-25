@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FiBookOpen, FiGlobe, FiCode, FiDatabase, FiShield, FiHeart } from 'react-icons/fi';
+import { FiBookOpen, FiGlobe, FiHeart, FiCpu, FiShield } from 'react-icons/fi';
 import { useLanguage } from '../../context/LanguageContext';
 
 const Footer = () => {
@@ -11,19 +11,22 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           {/* Brand Col */}
-          <div className="md:col-span-1 space-y-4">
+          <div className="md:col-span-2 space-y-4">
             <Link to="/" className="inline-flex items-center gap-2.5 text-xl font-extrabold text-teal-400 hover:text-teal-300 transition-colors">
               <div className="p-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-400">
                 <FiBookOpen className="w-5 h-5" />
               </div>
               <span className="tracking-tight">EngLearn Pro</span>
             </Link>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs text-slate-400 leading-relaxed max-w-md">
               {t('Nền tảng học tiếng Anh trực tuyến thế hệ mới tích hợp Trợ lý AI cá nhân hóa, phương pháp ghi nhớ phản xạ chủ động.')}
             </p>
             <div className="flex items-center space-x-3 text-slate-400">
               <span className="inline-flex items-center text-xs bg-teal-500/10 text-teal-400 border border-teal-500/20 px-2.5 py-1 rounded-full font-medium">
                 <FiGlobe className="mr-1.5 w-3.5 h-3.5" /> Global English 2026
+              </span>
+              <span className="inline-flex items-center text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-full font-medium">
+                <FiCpu className="mr-1.5 w-3.5 h-3.5" /> AI Powered Platform
               </span>
             </div>
           </div>
@@ -39,31 +42,20 @@ const Footer = () => {
             </ul>
           </div>
 
-          {/* Team Members & Roles (Mandatory Rule) */}
-          <div className="md:col-span-2">
-            <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4 flex items-center gap-2">
-              <FiCode className="text-teal-400" /> {t('Đội Ngũ Thực Hiện Đồ Án')}
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 hover:border-teal-500/40 transition-colors">
-                <p className="text-xs font-bold text-teal-300">NGUYỄN DŨNG QUỐC ANH</p>
-                <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-                  <FiCode className="w-3 h-3 text-teal-400 shrink-0" /> Frontend & AI UI Integration
-                </p>
-              </div>
-              <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 hover:border-teal-500/40 transition-colors">
-                <p className="text-xs font-bold text-teal-300">NGUYỄN THANH LIÊM</p>
-                <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-                  <FiShield className="w-3 h-3 text-emerald-400 shrink-0" /> Backend & Security
-                </p>
-              </div>
-              <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 hover:border-teal-500/40 transition-colors">
-                <p className="text-xs font-bold text-teal-300">LÊ ĐÌNH CHƯƠNG</p>
-                <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-                  <FiDatabase className="w-3 h-3 text-amber-400 shrink-0" /> Database & Infrastructure
-                </p>
-              </div>
-            </div>
+          {/* Technology & Security */}
+          <div>
+            <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4">{t('Nền Tảng')}</h3>
+            <ul className="space-y-2.5 text-xs text-slate-400">
+              <li className="flex items-center gap-1.5 text-slate-300">
+                <FiCpu className="w-3.5 h-3.5 text-teal-400 shrink-0" /> Trợ lý AI RAG 24/7
+              </li>
+              <li className="flex items-center gap-1.5 text-slate-300">
+                <FiShield className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> Bảo mật DRM Stream Video
+              </li>
+              <li className="flex items-center gap-1.5 text-slate-300">
+                <FiGlobe className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Khung chuẩn CEFR Quốc Tế
+              </li>
+            </ul>
           </div>
         </div>
 

@@ -741,7 +741,7 @@ body {
 // ---------------- FEATURES INTRO (Nói nhiều hơn - Học nhanh hơn) ----------------
 .features-intro-section {
   padding: 80px 0;
-  background-color: #ffffff;
+  background-color: transparent;
 
   .features-intro-container {
     display: flex;
@@ -901,7 +901,7 @@ body {
 // ---------------- WHY CHOOSE US ----------------
 .why-choose-section {
   padding: 80px 0;
-  background-color: $light-blue-bg;
+  background-color: transparent;
 
   .why-grid {
     display: grid;
@@ -982,7 +982,7 @@ body {
 // ---------------- ROADMAP SIMPLE (Lộ trình học tập rõ ràng) ----------------
 .roadmap-simple-section {
   padding: 80px 0;
-  background-color: #ffffff;
+  background-color: transparent;
 
   .roadmap-steps-grid {
     display: flex;
@@ -1193,7 +1193,7 @@ body {
 // ---------------- AI LEARNING TOOLS ----------------
 .ai-tools-section {
   padding: 80px 0;
-  background-color: #ffffff;
+  background-color: transparent;
 
   .tools-grid {
     display: grid;
@@ -1260,7 +1260,7 @@ body {
 // ---------------- DETAILED ROADMAP (Redesigned Grid) ----------------
 .detailed-roadmap-section {
   padding: 100px 0;
-  background-color: #f8fafc;
+  background-color: transparent;
 
   .roadmap-grid-modern {
     display: grid;
@@ -2068,21 +2068,7 @@ html.dark {
   }
 
   #fun-quizzes-sec {
-    background-color: var(--bg-color) !important;
-    border-top-color: var(--border-color) !important;
-    border-bottom-color: var(--border-color) !important;
-    
-    .course-card {
-      background-color: var(--card-bg) !important;
-      border-color: var(--border-color) !important;
-      
-      h4 {
-        color: var(--text-color) !important;
-      }
-      p {
-        color: var(--text-light) !important;
-      }
-    }
+    background-color: transparent !important;
   }
 
   .main-header {
