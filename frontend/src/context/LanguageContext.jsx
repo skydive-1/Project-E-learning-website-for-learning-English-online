@@ -301,7 +301,6 @@ const directPhraseMap = {
   "Lộ trình Academy": "Academy Roadmap",
   "Quiz & Trắc nghiệm": "Quizzes & Tests",
   "Khóa học của tôi": "My Enrolled Courses",
-  "Đội Ngũ Thực Hiện Đồ Án": "Project Development Team",
   "Phát triển với": "Developed with",
   "cho trải nghiệm học chuẩn Impeccable & UI-UX Pro Max": "for an Impeccable & UI-UX Pro Max learning experience",
   "Tất cả môn học": "All Subjects",

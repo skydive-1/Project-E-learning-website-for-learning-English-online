@@ -1,0 +1,66 @@
+/* ==========================================================================
+   Infinite Team Marquee Component (Minimalist Pill Edition)
+   Hardware-accelerated 60fps, continuous linear flow, gradient fade masks
+   ========================================================================== */
+
+@keyframes team-marquee-glide {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.team-marquee-wrapper {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  user-select: none;
+  /* Smooth edge gradient mask for seamless fading on both edges */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 1) 8%,
+    rgba(0, 0, 0, 1) 92%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 1) 8%,
+    rgba(0, 0, 0, 1) 92%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.team-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 1.25rem;
+  will-change: transform;
+  /* Continuous natural standard speed (30s infinite linear) */
+  animation: team-marquee-glide 30s linear infinite;
+}
+
+/* User preference: Do NOT pause on hover, maintain natural continuous glide */
+.team-marquee-track:hover {
+  animation-play-state: running !important;
+}
+
+/* Accessibility: Fallback for users requesting reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .team-marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
+  .team-marquee-wrapper {
+    overflow-x: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+    justify-content: center;
+    padding-bottom: 0.5rem;
+  }
+}
