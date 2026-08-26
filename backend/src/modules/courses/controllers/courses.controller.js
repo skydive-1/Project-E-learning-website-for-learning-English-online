@@ -6,6 +6,7 @@ const supabaseStorage = require('../../../utils/supabaseStorage');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const { sanitizeLessonMediaForClient } = require('../../../utils/videoSecurity.util');
 const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
+const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
 
 async function registerUploadedObject(req, uploadResult, storageBucket, mimeType) {
   const pendingUploadId = crypto.randomUUID();
@@ -416,7 +417,8 @@ exports.deleteCourse = async (req, res, next) => {
     const { courseId } = req.params;
     const userId = req.user?.id || req.user?.userId;
     const userRole = req.user?.roleId || req.user?.role || 2;
-    const result = await coursesService.deleteCourse(courseId, userId, userRole);
+    const canDeleteAnyCourse = isSuperAdminUser(req.user);
+    const result = await coursesService.deleteCourse(courseId, userId, userRole, canDeleteAnyCourse);
     if (!result) {
       return res.status(404).json({
         success: false,

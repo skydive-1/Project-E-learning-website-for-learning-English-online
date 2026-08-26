@@ -29,11 +29,13 @@ const AdminDashboard = () => {
   const showToast = useToast();
   
   const isAdmin = currentUser?.role === 'admin' || currentUser?.roleId === 1 || currentUser?.role_id === 1;
+  // Backend là nguồn sự thật về đặc quyền; frontend chỉ dùng cờ này để hiển thị UI.
+  const isSuperAdmin = currentUser?.isSuperAdmin === true || currentUser?.is_super_admin === true;
   
   // Cho phép mở thẳng một tab từ URL, ví dụ /admin/dashboard?tab=analytics.
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
-    return ['users', 'quizzes', 'security', 'analytics'].includes(requestedTab) ? requestedTab : 'users';
+    return ['users', 'courses', 'quizzes', 'security', 'analytics'].includes(requestedTab) ? requestedTab : 'users';
   });
 
   // State Cấu hình bảo mật
@@ -81,6 +83,12 @@ const AdminDashboard = () => {
 
   // State Tạo đề trắc nghiệm
   const [courses, setCourses] = useState([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+  const [errorCourses, setErrorCourses] = useState('');
+  const [courseSearch, setCourseSearch] = useState('');
+  const [courseStatusFilter, setCourseStatusFilter] = useState('all');
+  const [pendingDeleteCourse, setPendingDeleteCourse] = useState(null);
+  const [deletingCourseId, setDeletingCourseId] = useState(null);
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [lessons, setLessons] = useState([]);
   const [selectedLessonId, setSelectedLessonId] = useState('');
@@ -109,12 +117,18 @@ const AdminDashboard = () => {
     }
   }, [activeTab]);
 
-  // Fetch danh sách khóa học khi mở tab quizzes
+  // Fetch danh sách khóa học khi tạo quiz hoặc khi Super Admin quản lý khóa học.
   useEffect(() => {
-    if (activeTab === 'quizzes') {
+    if (activeTab === 'quizzes' || (activeTab === 'courses' && isSuperAdmin)) {
       fetchCourses();
     }
-  }, [activeTab]);
+  }, [activeTab, isSuperAdmin]);
+
+  useEffect(() => {
+    if (activeTab === 'courses' && !isSuperAdmin) {
+      setActiveTab('users');
+    }
+  }, [activeTab, isSuperAdmin]);
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
@@ -135,13 +149,39 @@ const AdminDashboard = () => {
   };
 
   const fetchCourses = async () => {
+    setLoadingCourses(true);
+    setErrorCourses('');
     try {
       const response = await apiClient.get('/courses?includeDrafts=true');
       if (response.data && response.data.courses) {
         setCourses(response.data.courses || []);
+      } else {
+        setCourses([]);
+        setErrorCourses('Không lấy được danh sách khóa học.');
       }
     } catch (err) {
       console.error('Lỗi fetch courses:', err);
+      setErrorCourses(err.response?.data?.message || 'Không thể kết nối máy chủ để tải khóa học.');
+    } finally {
+      setLoadingCourses(false);
+    }
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!pendingDeleteCourse || !isSuperAdmin) return;
+
+    const courseId = pendingDeleteCourse.course_id;
+    setDeletingCourseId(courseId);
+    try {
+      await apiClient.delete(`/courses/${courseId}`);
+      setCourses((current) => current.filter((course) => course.course_id !== courseId));
+      setPendingDeleteCourse(null);
+      showToast(`Đã xóa khóa học “${pendingDeleteCourse.course_name}”.`, 'success');
+    } catch (err) {
+      console.error('Lỗi xóa khóa học:', err);
+      showToast(err.response?.data?.message || 'Không thể xóa khóa học. Vui lòng thử lại.', 'error');
+    } finally {
+      setDeletingCourseId(null);
     }
   };
 
@@ -444,6 +484,20 @@ const AdminDashboard = () => {
     return true;
   });
 
+  const normalizedCourseSearch = courseSearch.trim().toLowerCase();
+  const filteredAdminCourses = courses.filter((course) => {
+    const matchesSearch = !normalizedCourseSearch || [
+      course.course_name,
+      course.instructor_name,
+      course.subject_name
+    ].some((value) => String(value || '').toLowerCase().includes(normalizedCourseSearch));
+    const isPublished = Number(course.status) === 1 || course.status === 'published';
+    const matchesStatus = courseStatusFilter === 'all' ||
+      (courseStatusFilter === 'published' && isPublished) ||
+      (courseStatusFilter === 'draft' && !isPublished);
+    return matchesSearch && matchesStatus;
+  });
+
   return (
     <>
       <Header />
@@ -454,9 +508,9 @@ const AdminDashboard = () => {
           <div className="admin-header">
             <div>
               <h1>Hệ Thống Quản Trị E-Learn Academy</h1>
-              <p className="text-slate-500 text-sm mt-1">Quản lý cơ sở dữ liệu người dùng và kiểm soát kho câu hỏi học tập</p>
+              <p className="text-slate-500 text-sm mt-1">Quản lý tài khoản, khóa học và vận hành nội dung học tập</p>
             </div>
-            <span className="admin-badge">System Admin Role</span>
+            <span className="admin-badge">{isSuperAdmin ? 'Super Admin' : 'System Admin Role'}</span>
           </div>
 
           {/* Tab Navigation */}
@@ -467,6 +521,14 @@ const AdminDashboard = () => {
             >
               <FiUsers className="inline mr-2" /> Quản lý tài khoản
             </button>
+            {isSuperAdmin && (
+              <button
+                className={`admin-tab ${activeTab === 'courses' ? 'active' : ''}`}
+                onClick={() => setActiveTab('courses')}
+              >
+                <FiFolder className="inline mr-2" /> Quản lý khóa học
+              </button>
+            )}
             <button 
               className={`admin-tab ${activeTab === 'quizzes' ? 'active' : ''}`}
               onClick={() => setActiveTab('quizzes')}
@@ -575,7 +637,9 @@ const AdminDashboard = () => {
                               user.role_id === 1 ? 'role-admin' : 
                               user.role_id === 2 ? 'role-instructor' : 'role-student'
                             }`}>
-                              {user.role_name || (user.role_id === 1 ? 'Admin' : user.role_id === 2 ? 'Instructor' : 'Student')}
+                              {user.is_super_admin
+                                ? 'Super Admin'
+                                : (user.role_name || (user.role_id === 1 ? 'Admin' : user.role_id === 2 ? 'Instructor' : 'Student'))}
                             </span>
                           </td>
                           <td className="text-xs text-slate-500">
@@ -583,7 +647,7 @@ const AdminDashboard = () => {
                           </td>
                           <td>
                             <div className="action-buttons">
-                              {((user.role_id !== 1 || isSuperAdmin) && user.user_id !== currentUser?.userId) ? (
+                              {(!user.is_super_admin && (user.role_id !== 1 || isSuperAdmin) && user.user_id !== currentUser?.userId) ? (
                                 <>
                                   {/* Nâng lên Admin (chỉ hiển thị cho Super Admin khi user chưa phải Admin) */}
                                   {isSuperAdmin && user.role_id !== 1 && (
@@ -634,7 +698,9 @@ const AdminDashboard = () => {
                                 </>
                               ) : (
                                 <span className="text-xs text-slate-400 font-semibold italic">
-                                  {user.user_id === currentUser?.userId ? 'Tài khoản của bạn' : 'Không thể tác động'}
+                                  {user.is_super_admin
+                                    ? 'Super Admin được bảo vệ'
+                                    : (user.user_id === currentUser?.userId ? 'Tài khoản của bạn' : 'Không thể tác động')}
                                 </span>
                               )}
                             </div>
@@ -645,6 +711,162 @@ const AdminDashboard = () => {
                   </table>
                 )}
               </div>
+            )}
+
+            {/* SUPER ADMIN: COURSE MANAGEMENT */}
+            {activeTab === 'courses' && isSuperAdmin && (
+              <section className="course-management" aria-labelledby="course-management-title">
+                <div className="course-management__heading">
+                  <div>
+                    <h2 id="course-management-title">Quản lý khóa học</h2>
+                    <p>Xem toàn bộ khóa học và xóa nội dung không còn phù hợp. Thao tác xóa sẽ loại bỏ cả chương, bài học và tài nguyên liên quan.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="course-refresh-button"
+                    onClick={fetchCourses}
+                    disabled={loadingCourses}
+                  >
+                    <FiRefreshCw className={loadingCourses ? 'is-spinning' : ''} aria-hidden="true" />
+                    Làm mới
+                  </button>
+                </div>
+
+                <div className="course-management__controls">
+                  <label className="course-search">
+                    <span>Tìm khóa học</span>
+                    <input
+                      type="search"
+                      value={courseSearch}
+                      onChange={(event) => setCourseSearch(event.target.value)}
+                      placeholder="Tên khóa học, giảng viên hoặc chủ đề"
+                    />
+                  </label>
+                  <label className="course-status-filter">
+                    <span>Trạng thái</span>
+                    <select value={courseStatusFilter} onChange={(event) => setCourseStatusFilter(event.target.value)}>
+                      <option value="all">Tất cả</option>
+                      <option value="published">Đã xuất bản</option>
+                      <option value="draft">Bản nháp</option>
+                    </select>
+                  </label>
+                  <div className="course-result-count" aria-live="polite">
+                    <strong>{filteredAdminCourses.length}</strong>
+                    <span>khóa học hiển thị</span>
+                  </div>
+                </div>
+
+                {loadingCourses ? (
+                  <div className="course-management__state" role="status">
+                    <FiRefreshCw className="is-spinning" aria-hidden="true" />
+                    <span>Đang tải danh sách khóa học…</span>
+                  </div>
+                ) : errorCourses ? (
+                  <div className="course-management__state is-error" role="alert">
+                    <FiAlertTriangle aria-hidden="true" />
+                    <div>
+                      <strong>Không thể tải khóa học</strong>
+                      <span>{errorCourses}</span>
+                    </div>
+                    <button type="button" onClick={fetchCourses}>Thử lại</button>
+                  </div>
+                ) : filteredAdminCourses.length === 0 ? (
+                  <div className="course-management__state">
+                    <FiFolder aria-hidden="true" />
+                    <div>
+                      <strong>Không tìm thấy khóa học</strong>
+                      <span>Hãy đổi từ khóa hoặc bộ lọc trạng thái.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="course-table-wrap">
+                    <table className="course-table">
+                      <thead>
+                        <tr>
+                          <th>Khóa học</th>
+                          <th>Giảng viên</th>
+                          <th>Chủ đề</th>
+                          <th>Trạng thái</th>
+                          <th>Ngày tạo</th>
+                          <th className="course-table__action-heading">Hành động</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredAdminCourses.map((course) => {
+                          const isPublished = Number(course.status) === 1 || course.status === 'published';
+                          return (
+                            <tr key={course.course_id}>
+                              <td data-label="Khóa học">
+                                <div className="course-identity">
+                                  <strong>{course.course_name}</strong>
+                                  <span>#{course.course_id} · {Number(course.price || 0).toLocaleString('vi-VN')}₫</span>
+                                </div>
+                              </td>
+                              <td data-label="Giảng viên">{course.instructor_name || 'Chưa phân công'}</td>
+                              <td data-label="Chủ đề">{course.subject_name || 'Chưa phân loại'}</td>
+                              <td data-label="Trạng thái">
+                                <span className={`course-status ${isPublished ? 'is-published' : 'is-draft'}`}>
+                                  {isPublished ? 'Đã xuất bản' : 'Bản nháp'}
+                                </span>
+                              </td>
+                              <td data-label="Ngày tạo">{course.created_at ? new Date(course.created_at).toLocaleDateString('vi-VN') : '—'}</td>
+                              <td data-label="Hành động" className="course-table__action-cell">
+                                <button
+                                  type="button"
+                                  className="course-delete-button"
+                                  onClick={() => setPendingDeleteCourse(course)}
+                                  aria-label={`Xóa khóa học ${course.course_name}`}
+                                >
+                                  <FiTrash2 aria-hidden="true" />
+                                  Xóa
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {pendingDeleteCourse && (
+                  <div className="course-delete-dialog-backdrop" role="presentation" onMouseDown={() => !deletingCourseId && setPendingDeleteCourse(null)}>
+                    <div
+                      className="course-delete-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="course-delete-title"
+                      aria-describedby="course-delete-description"
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <div className="course-delete-dialog__icon"><FiTrash2 aria-hidden="true" /></div>
+                      <h3 id="course-delete-title">Xóa khóa học này?</h3>
+                      <p id="course-delete-description">
+                        <strong>“{pendingDeleteCourse.course_name}”</strong> cùng toàn bộ chương, bài học và tài nguyên liên quan sẽ bị xóa vĩnh viễn.
+                      </p>
+                      <div className="course-delete-dialog__actions">
+                        <button
+                          type="button"
+                          className="course-dialog-cancel"
+                          onClick={() => setPendingDeleteCourse(null)}
+                          disabled={Boolean(deletingCourseId)}
+                          autoFocus
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          className="course-dialog-confirm"
+                          onClick={handleDeleteCourse}
+                          disabled={Boolean(deletingCourseId)}
+                        >
+                          {deletingCourseId ? <><FiRefreshCw className="is-spinning" /> Đang xóa…</> : <><FiTrash2 /> Xóa vĩnh viễn</>}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </section>
             )}
 
             {/* TAB 2: QUIZ CREATOR */}

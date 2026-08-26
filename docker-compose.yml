@@ -41,6 +41,7 @@ services:
       - ENABLE_DRM_PACKAGING=${ENABLE_DRM_PACKAGING:-true}
       - MEDIA_CLEANUP_INTERVAL_MS=${MEDIA_CLEANUP_INTERVAL_MS:-300000}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-this}
+      - SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-quocanh26012004@gmail.com}
       - JWT_EXPIRE=${JWT_EXPIRE:-7d}
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - PINECONE_ENV=${PINECONE_ENV:-us-east-1-aws}

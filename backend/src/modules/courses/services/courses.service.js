@@ -709,7 +709,7 @@ class CoursesService {
     }
   }
 
-  async deleteCourse(courseId, userId, userRole = 2) {
+  async deleteCourse(courseId, userId, userRole = 2, canDeleteAnyCourse = false) {
     const client = await db.pool.connect();
     let assetsToCleanup = [];
 
@@ -729,10 +729,14 @@ class CoursesService {
         }
 
         const existingCourse = ownerCheckRes.rows[0];
-        const isAdmin = userRole === 1 || userRole === '1';
-        if (!isAdmin && Number(existingCourse.instructor_id) !== Number(userId)) {
-          const error = new Error('Bạn không có quyền xóa khóa học của giảng viên khác.');
+        const isOwner = Number(existingCourse.instructor_id) === Number(userId);
+        if (!canDeleteAnyCourse && !isOwner) {
+          const isAdmin = userRole === 1 || userRole === '1';
+          const error = new Error(isAdmin
+            ? 'Chỉ Super Admin mới có quyền xóa khóa học của giảng viên khác.'
+            : 'Bạn không có quyền xóa khóa học của giảng viên khác.');
           error.status = 403;
+          error.code = isAdmin ? 'SUPER_ADMIN_REQUIRED' : 'COURSE_OWNERSHIP_REQUIRED';
           throw error;
         }
       }
