@@ -19,6 +19,8 @@ const supabaseStorage = require('../src/utils/supabaseStorage');
 const { isValidMp4 } = supabaseStorage;
 const coursesService = require('../src/modules/courses/services/courses.service');
 const lessonsController = require('../src/modules/lessons/controllers/lessons.controller');
+const drmController = require('../src/modules/drm/drm.controller');
+const { resolveBoundedRange, sanitizeLessonMediaForClient } = require('../src/utils/videoSecurity.util');
 
 describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', () => {
   const sampleMp4Path = path.join(__dirname, '../uploads/videos/valid_test_video.mp4');
@@ -28,6 +30,7 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
   let originalGetLessonById;
   let originalCanAccess;
   let originalGenerateSignedUrl;
+  let originalFetchPrivateObject;
   const originalJwtSecret = process.env.JWT_SECRET;
   const testSecret = 'test-video-ticket-secret-key-123456';
 
@@ -42,6 +45,7 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     originalGetLessonById = coursesService.getLessonById;
     originalCanAccess = coursesService.canUserAccessLesson;
     originalGenerateSignedUrl = supabaseStorage.generateSignedUrl;
+    originalFetchPrivateObject = supabaseStorage.fetchPrivateObject;
 
     // Mock DB for auth middleware user lookup
     db.query = async (sqlText, params = []) => {
@@ -77,7 +81,12 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
           lesson_id: 44,
           title: 'Supabase Cloud Lesson 44',
           content_type: 'video',
-          content_url: 'courses/5/eb5f9f73-a9c4-4fb3-9a71-57e2f8c1c752/lesson44.mp4'
+          content_url: 'courses/5/eb5f9f73-a9c4-4fb3-9a71-57e2f8c1c752/lesson44.mp4',
+          storage_key: 'courses/5/eb5f9f73-a9c4-4fb3-9a71-57e2f8c1c752/lesson44.mp4',
+          storage_provider: 'supabase',
+          storage_bucket: 'videos',
+          size_bytes: 4096,
+          media_status: 'READY'
         };
       }
       if (numId === 456) {
@@ -106,6 +115,21 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
       }
       return null;
     };
+    supabaseStorage.fetchPrivateObject = async (filePath, bucket, rangeHeader) => {
+      const match = /^bytes=(\d+)-(\d+)$/.exec(rangeHeader || '');
+      const start = match ? Number(match[1]) : 0;
+      const end = match ? Math.min(Number(match[2]), 4095) : 4095;
+      const body = Buffer.alloc(Math.max(0, end - start + 1), 7);
+      return new Response(body, {
+        status: 206,
+        headers: {
+          'Content-Type': 'video/mp4',
+          'Content-Length': String(body.length),
+          'Content-Range': `bytes ${start}-${end}/4096`,
+          'Accept-Ranges': 'bytes'
+        }
+      });
+    };
 
     // Express app using authentic production middlewares
     const app = express();
@@ -130,6 +154,7 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     coursesService.getLessonById = originalGetLessonById;
     coursesService.canUserAccessLesson = originalCanAccess;
     supabaseStorage.generateSignedUrl = originalGenerateSignedUrl;
+    supabaseStorage.fetchPrivateObject = originalFetchPrivateObject;
     process.env.JWT_SECRET = originalJwtSecret;
     if (server) {
       await new Promise((resolve) => server.close(resolve));
@@ -167,13 +192,17 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     assert.strictEqual(data.success, true);
     assert.strictEqual(typeof data.ticket, 'string');
     assert.strictEqual(data.expiresIn, 60);
-    assert.strictEqual(data.streamUrl, `/api/lessons/video/stream/123?ticket=${data.ticket}`);
+    assert.strictEqual(data.streamUrl, '/api/lessons/video/stream/123');
+    assert.match(res.headers.get('set-cookie') || '', /video_playback_ticket=.*HttpOnly/i);
+    assert.strictEqual(data.streamUrl.includes('ticket='), false);
 
     // Verify ticket payload contains proper fields
     const decodedTicket = jwt.verify(data.ticket, testSecret);
     assert.strictEqual(decodedTicket.type, 'video_stream_ticket');
     assert.strictEqual(Number(decodedTicket.lessonId), 123);
     assert.strictEqual(Number(decodedTicket.id), 1);
+    assert.strictEqual(typeof decodedTicket.jti, 'string');
+    assert.strictEqual(typeof decodedTicket.clientHash, 'string');
   });
 
   test('4. Case 2: User without lesson access receives 403 FORBIDDEN when requesting ticket', async () => {
@@ -201,7 +230,9 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
       { expiresIn: '7d' }
     );
 
-    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${sessionToken}`);
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { 'X-Video-Ticket': sessionToken }
+    });
     const data = await res.json();
 
     assert.strictEqual(res.status, 403);
@@ -216,8 +247,10 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
       { expiresIn: '60s' }
     );
 
-    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`);
-    assert.strictEqual(res.status, 200);
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { 'X-Video-Ticket': validTicket }
+    });
+    assert.strictEqual(res.status, 206);
     assert.strictEqual(res.headers.get('content-type'), 'video/mp4');
     assert.strictEqual(res.headers.get('accept-ranges'), 'bytes');
   });
@@ -229,7 +262,9 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
       { expiresIn: '60s' }
     );
 
-    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${mismatchedTicket}`);
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { 'X-Video-Ticket': mismatchedTicket }
+    });
     const data = await res.json();
 
     assert.strictEqual(res.status, 403);
@@ -244,14 +279,16 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
       { expiresIn: -10 }
     );
 
-    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${expiredTicket}`);
+    const res = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { 'X-Video-Ticket': expiredTicket }
+    });
     const data = await res.json();
 
     assert.strictEqual(res.status, 401);
     assert.strictEqual(data.code, 'TOKEN_EXPIRED');
   });
 
-  test('9. Case 7: Supabase storage key (Lesson 44) returns valid signed 302 redirect', async () => {
+  test('9. Case 7: Supabase storage key is proxied and never leaks a signed redirect', async () => {
     const sessionToken = jwt.sign(
       { id: 1, email: 'student@example.com', roleId: 3 },
       testSecret,
@@ -266,16 +303,19 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     assert.strictEqual(ticketRes.status, 200);
     assert.strictEqual(ticketData.success, true);
 
-    // 2. Stream request for lesson 44 with redirect manual
+    // 2. Stream request stays on the backend and returns only a bounded range.
     const streamRes = await fetch(`${baseUrl}${ticketData.streamUrl}`, {
-      redirect: 'manual'
+      redirect: 'manual',
+      headers: {
+        'X-Video-Ticket': ticketData.ticket,
+        Range: 'bytes=0-1023'
+      }
     });
 
-    // Supabase key triggers 302 redirect to signed URL
-    assert.strictEqual(streamRes.status, 302);
-    const location = streamRes.headers.get('location');
-    assert.ok(location, 'Must return a redirect Location header');
-    assert.match(location, /^https?:\/\//);
+    assert.strictEqual(streamRes.status, 206);
+    assert.strictEqual(streamRes.headers.get('location'), null);
+    assert.strictEqual(streamRes.headers.get('content-range'), 'bytes 0-1023/4096');
+    assert.strictEqual((await streamRes.arrayBuffer()).byteLength, 1024);
   });
 
   test('10. Case 8: Local MP4 stream supports 206 Partial Content and 416 Out of Range', async () => {
@@ -288,23 +328,25 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     const fileSize = fs.statSync(sampleMp4Path).size;
 
     // Range Request 0-1023 -> 206
-    const rangeRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`, {
-      headers: { Range: 'bytes=0-1023' }
+    const rangeRes = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { Range: 'bytes=0-1023', 'X-Video-Ticket': validTicket }
     });
     assert.strictEqual(rangeRes.status, 206);
     assert.strictEqual(rangeRes.headers.get('content-range'), `bytes 0-1023/${fileSize}`);
     assert.strictEqual(rangeRes.headers.get('content-type'), 'video/mp4');
 
     // Out of range -> 416
-    const oofRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`, {
-      headers: { Range: `bytes=${fileSize + 500}-${fileSize + 1000}` }
+    const oofRes = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { Range: `bytes=${fileSize + 500}-${fileSize + 1000}`, 'X-Video-Ticket': validTicket }
     });
     assert.strictEqual(oofRes.status, 416);
   });
 
   test('11. Case 9: Error responses are clean JSON, video responses are media/redirect', async () => {
     // Error response check
-    const errRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=invalid-garbage`);
+    const errRes = await fetch(`${baseUrl}/api/lessons/video/stream/123`, {
+      headers: { 'X-Video-Ticket': 'invalid-garbage' }
+    });
     assert.strictEqual(errRes.headers.get('content-type')?.includes('application/json'), true);
     const errData = await errRes.json();
     assert.strictEqual(errData.success, false);
@@ -321,5 +363,77 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     const pdfData = await pdfRes.json();
     assert.strictEqual(pdfRes.status, 400);
     assert.strictEqual(pdfData.code, 'INVALID_RESOURCE_TYPE');
+  });
+
+  test('12. Query-string tickets are rejected by default and ranges are capped', async () => {
+    const validTicket = jwt.sign(
+      { id: 1, userId: 1, roleId: 3, lessonId: 123, type: 'video_stream_ticket' },
+      testSecret,
+      { expiresIn: '60s' }
+    );
+
+    const queryRes = await fetch(`${baseUrl}/api/lessons/video/stream/123?ticket=${validTicket}`);
+    const queryData = await queryRes.json();
+    assert.strictEqual(queryRes.status, 401);
+    assert.strictEqual(queryData.code, 'QUERY_TICKET_DISABLED');
+
+    const bounded = resolveBoundedRange('bytes=0-99999999', 100000000);
+    assert.strictEqual(bounded.valid, true);
+    assert.strictEqual(bounded.length, 8 * 1024 * 1024);
+  });
+
+  test('13. Client metadata redacts external source URLs', () => {
+    const safeLesson = sanitizeLessonMediaForClient({
+      lesson_id: 46,
+      content_type: 'video',
+      content_url: 'https://cdn.example.com/private-course.mp4',
+      storage_key: 'https://cdn.example.com/private-course.mp4'
+    });
+    assert.strictEqual(safeLesson.content_url, 'protected-video-source');
+    assert.strictEqual(safeLesson.storage_key, null);
+    assert.strictEqual(JSON.stringify(safeLesson).includes('cdn.example.com'), false);
+  });
+
+  test('14. DRM info never returns a decryption key and mismatched KID is rejected', async () => {
+    const createRes = () => ({
+      statusCode: 200,
+      headers: {},
+      payload: null,
+      setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
+      status(code) { this.statusCode = code; return this; },
+      json(payload) { this.payload = payload; return this; },
+      end() { return this; }
+    });
+
+    const previousGetLessonById = coursesService.getLessonById;
+    coursesService.getLessonById = async (lessonId) => ({
+      lesson_id: Number(lessonId),
+      content_type: 'video',
+      content_url: '/uploads/videos/test_drm.mpd'
+    });
+
+    try {
+      const infoRes = createRes();
+      await drmController.getLessonDrmInfo({
+        params: { lessonId: '123' },
+        user: { id: 1, roleId: 3 }
+      }, infoRes);
+      assert.strictEqual(infoRes.statusCode, 200);
+      assert.strictEqual(JSON.stringify(infoRes.payload).includes('secretKey'), false);
+      assert.strictEqual(JSON.stringify(infoRes.payload).includes('keyIdHex'), false);
+
+      const licenseRes = createRes();
+      await drmController.getClearKeyLicense({
+        method: 'POST',
+        params: { lessonId: '123' },
+        query: {},
+        body: { kids: ['not-the-key-for-this-lesson'] },
+        user: { id: 1, roleId: 3, email: 'student@example.com' }
+      }, licenseRes);
+      assert.strictEqual(licenseRes.statusCode, 403);
+      assert.strictEqual(licenseRes.payload.code, 'DRM_KEY_ID_MISMATCH');
+    } finally {
+      coursesService.getLessonById = previousGetLessonById;
+    }
   });
 });

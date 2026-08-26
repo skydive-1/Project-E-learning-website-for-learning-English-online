@@ -104,7 +104,7 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
     vi.spyOn(lessonsService, 'getCourseDetails').mockResolvedValue(mockCourse);
     vi.spyOn(lessonsService, 'getVideoTicket').mockResolvedValue({
       ticket: 'ticket-101',
-      streamUrl: '/api/lessons/video/stream/101?ticket=ticket-101'
+      streamUrl: '/api/lessons/video/stream/101'
     });
 
     let resolveLessonDetail;
@@ -196,7 +196,7 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
 
     const ticketSpy = vi.spyOn(lessonsService, 'getVideoTicket').mockResolvedValue({
       ticket: 'ticket-dash-201',
-      streamUrl: '/api/lessons/video/stream/201?ticket=ticket-dash-201'
+      streamUrl: '/api/lessons/video/stream/201'
     });
 
     render(

@@ -5,6 +5,14 @@
 
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
+const {
+  createClientFingerprint,
+  getRequestSourceOrigin,
+  getVideoTicketFromRequest,
+  isAllowedMediaSource,
+  isAutomatedDownloader,
+  registerTicketRequest
+} = require('../utils/videoSecurity.util');
 
 /**
  * Middleware xác thực người dùng đã đăng nhập (kiểm tra JWT & CSDL thực tế)
@@ -208,51 +216,40 @@ const authorize = (roles = []) => {
 };
 
 /**
- * Middleware xác thực video qua query parameter token / ticket (Chống IDM, Hotlink & Tải lậu)
+ * Middleware xác thực video qua cookie HttpOnly hoặc X-Video-Ticket.
  */
 const authenticateVideoToken = (req, res, next) => {
   try {
-    // 🔒 1. Chặn các công cụ download tự động bên ngoài
-    const userAgent = (req.headers['user-agent'] || '').toLowerCase();
-    if (
-      userAgent.includes('idm') ||
-      userAgent.includes('internet download manager') ||
-      userAgent.includes('freedownloadmanager') ||
-      userAgent.includes('aria2') ||
-      userAgent.includes('wget') ||
-      userAgent.includes('curl')
-    ) {
+    // Lớp nhận diện nhanh. Đây chỉ là tín hiệu phụ; vé ràng buộc client/cookie và
+    // giới hạn kết nối song song ở dưới mới là lớp bảo vệ chính.
+    if (isAutomatedDownloader(req)) {
       return res.status(403).json({
         success: false,
-        code: 'FORBIDDEN',
+        code: 'DOWNLOAD_MANAGER_BLOCKED',
         message: 'Forbidden: Automated download managers are strictly prohibited.'
       });
     }
 
-    // 🔒 2. Chặn Hotlink & Xác thực Referer / Origin
-    const origin = req.headers.origin;
-    const referer = req.headers.referer;
-    const sourceHeader = origin || referer || '';
-
-    if (sourceHeader) {
-      const allowedPatterns = ['localhost', '127.0.0.1', 'vercel.app', 'railway.app'];
-      const isAllowed = allowedPatterns.some(pattern => sourceHeader.includes(pattern));
-      if (!isAllowed) {
-        return res.status(403).json({
-          success: false,
-          code: 'FORBIDDEN',
-          message: 'Hotlink Protection: Yêu cầu truy cập tài nguyên bị từ chối do không thuộc tên miền chính thức.'
-        });
-      }
+    // Chỉ chấp nhận Origin/Referer khớp chính xác FRONTEND_URL. Không dùng so
+    // khớp chuỗi kiểu "*.vercel.app" vì một domain của kẻ khác cũng có thể khớp.
+    if (!isAllowedMediaSource(req)) {
+      return res.status(403).json({
+        success: false,
+        code: 'HOTLINK_BLOCKED',
+        message: 'Hotlink Protection: nguồn yêu cầu không thuộc tên miền frontend đã cấu hình.'
+      });
     }
 
-    // 🔒 3. Xác thực Token / Ticket (Ưu tiên Header X-Video-Ticket, hỗ trợ fallback query param ?ticket=)
-    const token = req.headers['x-video-ticket'] || req.query.ticket || req.query.token;
+    // Native <video> dùng cookie HttpOnly; Shaka dùng X-Video-Ticket. Query ticket
+    // bị tắt mặc định để IDM và access log không lấy được vé từ URL.
+    const { token, transport } = getVideoTicketFromRequest(req);
     if (!token) {
       return res.status(401).json({
         success: false,
-        code: 'AUTH_REQUIRED',
-        message: 'Không có token/ticket xác thực, quyền truy cập video bị từ chối'
+        code: transport === 'disabled-query' ? 'QUERY_TICKET_DISABLED' : 'AUTH_REQUIRED',
+        message: transport === 'disabled-query'
+          ? 'Vé xem video trên URL không được chấp nhận.'
+          : 'Không có vé xác thực trong cookie/header, quyền truy cập video bị từ chối.'
       });
     }
 
@@ -264,7 +261,7 @@ const authenticateVideoToken = (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     // Kiểm tra loại token để đảm bảo đây là video ticket hợp lệ, chứ không phải session token dài hạn
     if (decoded.type !== 'video_stream_ticket') {
@@ -284,7 +281,33 @@ const authenticateVideoToken = (req, res, next) => {
       });
     }
 
+    if (decoded.clientHash && decoded.clientHash !== createClientFingerprint(req)) {
+      return res.status(403).json({
+        success: false,
+        code: 'CLIENT_MISMATCH',
+        message: 'Vé xem video không thuộc phiên trình duyệt hiện tại.'
+      });
+    }
+
+    const requestOrigin = getRequestSourceOrigin(req);
+    if (decoded.origin && requestOrigin && decoded.origin !== requestOrigin) {
+      return res.status(403).json({
+        success: false,
+        code: 'ORIGIN_MISMATCH',
+        message: 'Nguồn phát video không khớp với nguồn đã cấp vé.'
+      });
+    }
+
+    if (!registerTicketRequest(req, res, decoded)) {
+      return res.status(429).json({
+        success: false,
+        code: 'PARALLEL_STREAM_LIMIT',
+        message: 'Quá nhiều kết nối tải video song song cho cùng một vé phát.'
+      });
+    }
+
     req.user = decoded;
+    req.videoTicketTransport = transport;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

@@ -410,8 +410,8 @@ Quy tắc:
    *   - Signed HTTPS URL: https://...supabase.co/... — tải tạm trực tiếp
    */
   async generateSubtitlesWithGemini(lessonId) {
-    // Query raw content_url từ DB trực tiếp, KHÔNG dùng getLessonById()
-    // vì getLessonById() đã overwrite content_url thành Signed URL có thời hạn — đây là nguồn thật.
+    // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
+    // server-side; URL/khoá nguồn này không được trả về player phía client.
     const rawResult = await db.query(
       'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
       [parseInt(lessonId, 10)]
@@ -433,7 +433,13 @@ Quy tắc:
       // --- Nhận diện nguồn video ---
       if (rawContentUrl.startsWith('/uploads/')) {
         // PATH C (legacy): Video cũ còn nằm trên local disk
-        const candidatePath = path.join(__dirname, '../../../../', rawContentUrl);
+        let localSourceUrl = rawContentUrl;
+        if (rawContentUrl.endsWith('.mpd')) {
+          localSourceUrl = rawContentUrl.includes('_drm.mpd')
+            ? rawContentUrl.replace(/_drm\.mpd$/i, '.mp4')
+            : path.posix.join(path.posix.dirname(rawContentUrl), 'source.mp4');
+        }
+        const candidatePath = path.join(__dirname, '../../../../', localSourceUrl);
         if (fs.existsSync(candidatePath)) {
           videoFilePath = candidatePath;
           console.log(`[Subtitles] Bài học ${lessonId}: Dùng file local (Path C) tại ${videoFilePath}`);
@@ -444,7 +450,10 @@ Quy tắc:
         // Supabase storage key dạng: courses/123/uuid/video.mp4
         console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện Supabase storage key. Đang tạo Signed URL để tải tạm...`);
         const { generateSignedUrl } = require('../../../utils/supabaseStorage');
-        const signedUrl = await generateSignedUrl(rawContentUrl, 'videos', 3600);
+        const sourceStorageKey = rawContentUrl.endsWith('.mpd')
+          ? path.posix.join(path.posix.dirname(rawContentUrl), 'source.mp4')
+          : rawContentUrl;
+        const signedUrl = await generateSignedUrl(sourceStorageKey, 'videos', 3600);
         if (!signedUrl) {
           throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối Supabase.`);
         }

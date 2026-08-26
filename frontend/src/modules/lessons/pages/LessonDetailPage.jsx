@@ -792,7 +792,7 @@ const LessonDetailPage = () => {
   const renewalPromiseRef = useRef(null);
   const dashGenerationRef = useRef(0);
 
-  // Video loading state — Lấy Video Ticket 60s cho internal MP4 / Khởi tạo Shaka Player cho DASH DRM / Phát trực tiếp external MP4
+  // Mọi video đều qua ticket; DASH dùng Shaka, MP4 dùng cookie HttpOnly.
   // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Short-Lived 60s Video Ticket & W3C ClearKey DASH DRM)
   useEffect(() => {
     const rawVideoUrl = currentLesson?.videoUrl;
@@ -826,8 +826,6 @@ const LessonDetailPage = () => {
     const isDash = currentLesson?.playbackType === 'dash' ||
                    currentLesson?.isDrmProtected === true ||
                    (typeof rawVideoUrl === 'string' && rawVideoUrl.includes('.mpd'));
-
-    const isExternal = !isDash && (rawVideoUrl.startsWith('http://') || rawVideoUrl.startsWith('https://'));
 
     // -------------------------------------------------------------
     // LUỒNG 1: Video Mã hóa DASH / W3C ClearKey DRM -> Sử dụng Shaka Player
@@ -896,6 +894,7 @@ const LessonDetailPage = () => {
           const LICENSE = shaka?.net?.NetworkingEngine?.RequestType?.LICENSE ?? 1;
 
           player.getNetworkingEngine().registerRequestFilter((type, request) => {
+            request.allowCrossSiteCredentials = true;
             if (type === LICENSE) {
               const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
               if (token) {
@@ -928,7 +927,7 @@ const LessonDetailPage = () => {
           player.addEventListener?.('error', shakaErrorHandler);
         }
 
-        const licenseUrl = `${API_BASE_URL}/drm/license?lessonId=${rawLessonId}`;
+        const licenseUrl = `${API_BASE_URL}/drm/license/${rawLessonId}`;
         shakaPlayerRef.current?.configure({
           drm: { servers: { 'org.w3.clearkey': licenseUrl } }
         });
@@ -992,20 +991,25 @@ const LessonDetailPage = () => {
     }
 
     // -------------------------------------------------------------
-    // LUỒNG 2: Video Ngoài / CDN Trực tiếp -> Phát trực tiếp không qua ticket
-    // -------------------------------------------------------------
-    if (isExternal) {
-      setTicketPlaybackUrl(rawVideoUrl);
-      setVideoLoading(false);
-      return () => {
-        active = false;
-      };
-    }
-
-    // -------------------------------------------------------------
-    // LUỒNG 3: Video Nội bộ Bảo mật / Supabase Storage -> Lấy Video Ticket 60s
+    // LUỒNG 2: MP4 private -> cookie HttpOnly + URL không chứa ticket.
+    // Nguồn external cũng phải đi qua backend; backend sẽ từ chối nguồn không
+    // thể bảo vệ thay vì để lộ URL trực tiếp cho IDM.
     // -------------------------------------------------------------
     const rawLessonId = String(currentLesson.id).replace(/^(quiz|speaking)-/, '');
+    const scheduleMp4TicketRenewal = (expiresIn = 60) => {
+      if (renewalTimerRef.current) clearTimeout(renewalTimerRef.current);
+      const delayMs = Math.max(15000, (Number(expiresIn) - 15) * 1000);
+      renewalTimerRef.current = setTimeout(async () => {
+        if (!active) return;
+        try {
+          const renewed = await getVideoTicket(rawLessonId);
+          if (active) scheduleMp4TicketRenewal(renewed?.expiresIn || expiresIn);
+        } catch (error) {
+          console.warn('⚠️ [MP4 Ticket Renewal Error]:', error?.message || error);
+        }
+      }, delayMs);
+    };
+
     getVideoTicket(rawLessonId)
       .then((res) => {
         if (!active) return;
@@ -1016,6 +1020,7 @@ const LessonDetailPage = () => {
             ? res.streamUrl
             : `${backendHost}${res.streamUrl.startsWith('/') ? '' : '/'}${res.streamUrl}`;
           setTicketPlaybackUrl(fullStreamUrl);
+          scheduleMp4TicketRenewal(res.expiresIn || 60);
         } else {
           setVideoError({
             code: 403,
@@ -1049,6 +1054,10 @@ const LessonDetailPage = () => {
 
     return () => {
       active = false;
+      if (renewalTimerRef.current) {
+        clearTimeout(renewalTimerRef.current);
+        renewalTimerRef.current = null;
+      }
     };
   }, [currentLesson?.id, currentLesson?.videoUrl, currentLesson?.type, currentLesson?.playbackType, currentLesson?.isDrmProtected, reloadKey]);
 
@@ -1506,6 +1515,7 @@ const LessonDetailPage = () => {
 
                                 <video
                                   ref={videoRef}
+                                  crossOrigin="use-credentials"
                                   src={ticketPlaybackUrl || undefined}
                                   controls
                                   autoPlay

@@ -177,6 +177,49 @@ const uploadVideoToSupabase = async (fileInput, objectKey, mimeType = 'video/mp4
 };
 
 /**
+ * Upload asset nội bộ đã được tạo bởi DRM packager. Hàm này không dùng cho file
+ * do người dùng tải trực tiếp, vì các file đầu vào phải được validate trước khi
+ * đóng gói.
+ */
+const uploadPrivateObject = async (fileInput, objectKey, bucketName = 'videos', contentType = 'application/octet-stream') => {
+  try {
+    if (!objectKey || !fileInput) {
+      return { success: false, code: 'MISSING_OBJECT_DATA', error: 'Thiếu dữ liệu asset DRM.' };
+    }
+    const fileBuffer = Buffer.isBuffer(fileInput)
+      ? fileInput
+      : (typeof fileInput === 'string' && fs.existsSync(fileInput) ? fs.readFileSync(fileInput) : null);
+    if (!fileBuffer?.length) {
+      return { success: false, code: 'FILE_NOT_FOUND', error: 'Không tìm thấy asset DRM để upload.' };
+    }
+
+    await ensureBucketExists(bucketName, { fileSizeLimit: 524288000 });
+    const cleanObjectKey = objectKey.replace(/^\/+/, '');
+    const { error } = await supabaseAdmin.storage
+      .from(bucketName)
+      .upload(cleanObjectKey, fileBuffer, {
+        contentType,
+        upsert: true
+      });
+    if (error) {
+      return { success: false, code: 'STORAGE_UPLOAD_ERROR', error: error.message };
+    }
+
+    invalidateSignedUrlCache(cleanObjectKey, bucketName);
+    return {
+      success: true,
+      storageKey: cleanObjectKey,
+      storageBucket: bucketName,
+      mimeType: contentType,
+      sizeBytes: fileBuffer.length,
+      checksumSha256: computeSha256(fileBuffer)
+    };
+  } catch (error) {
+    return { success: false, code: 'STORAGE_EXCEPTION', error: error.message };
+  }
+};
+
+/**
  * Upload tài liệu PDF trực tiếp lên Supabase Storage bucket 'documents'
  * @param {string|Buffer} fileInput - Đường dẫn file cục bộ hoặc Buffer
  * @param {string} objectKey - Đường dẫn lưu trữ (ví dụ: 'courses/1/uuid/document.pdf')
@@ -386,6 +429,24 @@ const generateSignedUrl = async (filePath, bucketName = 'videos', expiresIn = 36
 };
 
 /**
+ * Đọc object private từ server-side để endpoint phát video có thể proxy dữ liệu
+ * mà không bao giờ gửi signed URL của Supabase về trình duyệt.
+ */
+const fetchPrivateObject = async (filePath, bucketName = 'videos', rangeHeader = null) => {
+  const signedUrl = await generateSignedUrl(filePath, bucketName, 90);
+  if (!signedUrl) return null;
+
+  const headers = {};
+  if (rangeHeader) headers.Range = rangeHeader;
+
+  return fetch(signedUrl, {
+    method: 'GET',
+    headers,
+    redirect: 'error'
+  });
+};
+
+/**
  * Xóa cache theo filePath cụ thể (dùng khi upload file mới)
  * @param {string} filePath
  * @param {string} bucketName
@@ -414,10 +475,12 @@ module.exports = {
   ensureVideosBucketExists,
   ensureDocumentsBucketExists,
   uploadVideoToSupabase,
+  uploadPrivateObject,
   uploadDocumentToSupabase,
   checkObjectExists,
   deleteStorageObject,
   generateSignedUrl,
+  fetchPrivateObject,
   invalidateSignedUrlCache,
   clearSignedUrlCache
 };

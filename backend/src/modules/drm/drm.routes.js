@@ -18,11 +18,8 @@ router.options('/license', mediaTicketLimiter, getClearKeyLicense);
 router.options('/license/:lessonId', mediaTicketLimiter, getClearKeyLicense);
 router.post('/license', authenticate, mediaTicketLimiter, rawBodyParser, getClearKeyLicense);
 router.post('/license/:lessonId', authenticate, mediaTicketLimiter, rawBodyParser, getClearKeyLicense);
-router.get('/license', authenticate, mediaTicketLimiter, getClearKeyLicense);
-router.get('/license/:lessonId', authenticate, mediaTicketLimiter, getClearKeyLicense);
 
-// Protected DRM Info Endpoint for registered students/instructors
-router.options('/info/:lessonId', mediaTicketLimiter, getClearKeyLicense);
+// Endpoint chỉ trả metadata công khai cần cho player; không bao giờ trả secret key.
 router.get('/info/:lessonId', authenticate, mediaTicketLimiter, getLessonDrmInfo);
 
 module.exports = router;

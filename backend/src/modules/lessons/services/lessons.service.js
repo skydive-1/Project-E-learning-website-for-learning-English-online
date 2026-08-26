@@ -451,10 +451,6 @@ class LessonsService {
       const lesson = result.rows[0];
       if (!lesson) return null;
 
-      if (lesson.content_type === 'video' && lesson.content_url) {
-        lesson.content_url = await require('../../../utils/supabaseStorage').generateSignedUrl(lesson.content_url, 'videos', 3600);
-      }
-
       // Lấy danh sách tài liệu đính kèm từ bảng lesson_materials
       const materialsRes = await db.query(
         'SELECT material_id, file_name, file_url, file_type, file_size_kb, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',

@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { exec, spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { generateLessonDrmKeys } = require('./drm.util');
 
 /**
@@ -18,14 +18,19 @@ function findShakaPackagerExecutable() {
     return process.env.SHAKA_PACKAGER_PATH;
   }
 
-  const localCandidates = [
-    path.resolve(__dirname, '../../bin/packager-win-x64.exe'),
-    path.resolve(__dirname, '../../bin/shaka-packager.exe'),
-    path.resolve(__dirname, '../../bin/packager-linux-x64'),
-    path.resolve(__dirname, '../../bin/shaka-packager'),
-    path.resolve(__dirname, '../../../bin/packager-win-x64.exe'),
-    path.resolve(__dirname, '../../../bin/shaka-packager.exe')
-  ];
+  const localCandidates = process.platform === 'win32'
+    ? [
+        path.resolve(__dirname, '../../bin/packager-win-x64.exe'),
+        path.resolve(__dirname, '../../bin/shaka-packager.exe'),
+        path.resolve(__dirname, '../../../bin/packager-win-x64.exe'),
+        path.resolve(__dirname, '../../../bin/shaka-packager.exe')
+      ]
+    : [
+        path.resolve(__dirname, '../../bin/packager-linux-x64'),
+        path.resolve(__dirname, '../../bin/shaka-packager'),
+        path.resolve(__dirname, '../../../bin/packager-linux-x64'),
+        path.resolve(__dirname, '../../../bin/shaka-packager')
+      ];
 
   for (const candidate of localCandidates) {
     if (fs.existsSync(candidate)) {
@@ -74,7 +79,7 @@ function checkShakaPackagerInstalled() {
  * Đóng gói file MP4 sang chuẩn MPEG-DASH CENC Encrypted (.mpd) cho W3C ClearKey DRM
  * @param {string} inputMp4Path Đường dẫn tuyệt đối đến file MP4 gốc
  * @param {number|string} lessonId ID bài học
- * @returns {Promise<{ success: boolean, mpdUrl?: string, mpdPath?: string, error?: string, isSimulated: boolean }>}
+ * @returns {Promise<{ success: boolean, mpdUrl?: string, mpdPath?: string, encryptedVideoPath?: string, encryptedAudioPath?: string, error?: string, isSimulated: boolean }>}
  */
 async function packageVideoToDrmDash(inputMp4Path, lessonId) {
   return new Promise((resolve) => {
@@ -101,30 +106,46 @@ async function packageVideoToDrmDash(inputMp4Path, lessonId) {
     const outputVideoPath = path.join(videoDir, `${baseName}_enc_video.mp4`);
     const outputAudioPath = path.join(videoDir, `${baseName}_enc_audio.mp4`);
 
-    // Lệnh Shaka Packager tiêu chuẩn W3C CENC ClearKey
-    const packagerCmd = `"${packagerBin}" \
-      input="${inputMp4Path}",stream=video,output="${outputVideoPath}" \
-      input="${inputMp4Path}",stream=audio,output="${outputAudioPath}" \
-      --enable_raw_key_encryption \
-      --keys label=:key_id=${keyId}:key=${secretKey} \
-      --mpd_output "${outputMpdPath}"`;
+    // Truyền argument trực tiếp, không ghép shell command. Cách này hoạt động
+    // nhất quán trên Windows/Linux và tránh lỗi escape hoặc command injection.
+    const packagerArgs = [
+      `input=${inputMp4Path},stream=video,output=${outputVideoPath}`,
+      `input=${inputMp4Path},stream=audio,output=${outputAudioPath}`,
+      '--enable_raw_key_encryption',
+      '--keys', `label=:key_id=${keyId}:key=${secretKey}`,
+      '--mpd_output', outputMpdPath
+    ];
+    const child = spawn(packagerBin, packagerArgs, {
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+    let stderr = '';
+    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
 
-    exec(packagerCmd, (error, stdout, stderr) => {
-      if (!error && fs.existsSync(outputMpdPath)) {
+    child.once('error', (error) => {
+      return resolve({ success: false, error: error.message, isSimulated: false });
+    });
+
+    child.once('close', (exitCode) => {
+      if (exitCode === 0 && fs.existsSync(outputMpdPath)) {
         console.log(`✅ [DRM Packager]: Đóng gói DRM MPEG-DASH thành công cho Lesson ${lessonId}`);
-        const relativeUrl = outputMpdPath.substring(
-          outputMpdPath.indexOf('/uploads') !== -1 ? outputMpdPath.indexOf('/uploads') : outputMpdPath.indexOf('\\uploads')
-        ).replace(/\\/g, '/');
+        const normalizedPath = outputMpdPath.replace(/\\/g, '/');
+        const uploadsIndex = normalizedPath.lastIndexOf('/uploads/');
+        const relativeUrl = uploadsIndex >= 0
+          ? normalizedPath.slice(uploadsIndex)
+          : normalizedPath;
 
         return resolve({
           success: true,
           mpdPath: outputMpdPath,
           mpdUrl: relativeUrl,
+          encryptedVideoPath: outputVideoPath,
+          encryptedAudioPath: outputAudioPath,
           isSimulated: false
         });
       }
 
-      const failureReason = error ? error.message : (stderr || 'Không thể tạo file MPD');
+      const failureReason = stderr.trim() || `Shaka Packager thoát với mã ${exitCode}`;
       console.error(`❌ [DRM Packager Failed]: Lỗi đóng gói DRM cho Lesson ${lessonId}:`, failureReason);
 
       return resolve({

@@ -314,6 +314,7 @@ const CourseEditor = () => {
 
     try {
       const response = await apiClient.post('/courses/upload', formData, {
+        timeout: 300000,
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {

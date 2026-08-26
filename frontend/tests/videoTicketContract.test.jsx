@@ -161,7 +161,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
             success: true,
             ticket: 'ticket-44-shortlived-token',
             expiresIn: 60,
-            streamUrl: '/api/lessons/video/stream/44?ticket=ticket-44-shortlived-token'
+            streamUrl: '/api/lessons/video/stream/44'
           }
         };
       }
@@ -171,9 +171,20 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
             success: true,
             ticket: 'ticket-45-shortlived-token',
             expiresIn: 60,
-            streamUrl: '/api/lessons/video/stream/45?ticket=ticket-45-shortlived-token'
+            streamUrl: '/api/lessons/video/stream/45'
           }
         };
+      }
+      if (url.includes('/lessons/video/ticket/46')) {
+        const error = new Error('External video is not protectable');
+        error.response = {
+          status: 409,
+          data: {
+            code: 'UNPROTECTED_EXTERNAL_VIDEO',
+            message: 'Video ngoài không thể được bảo vệ khỏi tải trực tiếp.'
+          }
+        };
+        throw error;
       }
       if (url.includes('/courses/5')) {
         return { data: { success: true, course: mockCourseData } };
@@ -268,7 +279,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
     await waitFor(() => {
       const video = document.querySelector('video');
       expect(video).toBeTruthy();
-      expect(video.src).toContain('/api/lessons/video/stream/44?ticket=ticket-44-shortlived-token');
+      expect(video.src).toContain('/api/lessons/video/stream/44');
     });
 
     expect(ticketSpy).toHaveBeenCalledTimes(1);
@@ -285,7 +296,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
       expect(video.src).toBeTruthy();
       expect(video.src).not.toContain('mock-session-jwt-token-xyz');
       expect(video.src).not.toContain('token=');
-      expect(video.src).toContain('ticket=ticket-44-shortlived-token');
+      expect(video.src).not.toContain('ticket=');
     });
   });
 
@@ -297,7 +308,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
 
     await waitFor(() => {
       const video = document.querySelector('video');
-      expect(video?.src).toContain('ticket-44-shortlived-token');
+      expect(video?.src).toContain('/api/lessons/video/stream/44');
     });
 
     expect(ticketSpy).toHaveBeenCalledWith('44');
@@ -309,7 +320,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
 
     await waitFor(() => {
       const video = document.querySelector('video');
-      expect(video?.src).toContain('ticket-45-shortlived-token');
+      expect(video?.src).toContain('/api/lessons/video/stream/45');
     });
 
     expect(ticketSpy).toHaveBeenCalledWith('45');
@@ -324,14 +335,14 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
           resolveTicketA = () => resolve({
             success: true,
             ticket: 'late-ticket-44',
-            streamUrl: '/api/lessons/video/stream/44?ticket=late-ticket-44'
+            streamUrl: '/api/lessons/video/stream/44'
           });
         });
       }
       return Promise.resolve({
         success: true,
         ticket: 'fast-ticket-45',
-        streamUrl: '/api/lessons/video/stream/45?ticket=fast-ticket-45'
+        streamUrl: '/api/lessons/video/stream/45'
       });
     });
 
@@ -344,7 +355,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
 
     await waitFor(() => {
       const video = document.querySelector('video');
-      expect(video?.src).toContain('fast-ticket-45');
+      expect(video?.src).toContain('/api/lessons/video/stream/45');
     });
 
     // Now resolve late ticket A
@@ -354,11 +365,11 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
       });
     }
 
-    // Video must still be lesson 45's ticket, not overwritten by late ticket A
+    // Video must still be lesson 45, not overwritten by late response of lesson A.
     await new Promise(r => setTimeout(r, 50));
     const video = document.querySelector('video');
-    expect(video?.src).toContain('fast-ticket-45');
-    expect(video?.src).not.toContain('late-ticket-44');
+    expect(video?.src).toContain('/api/lessons/video/stream/45');
+    expect(video?.src).not.toContain('/api/lessons/video/stream/44');
   });
 
   // Test 5: Retry only requests ticket at most once on error
@@ -377,7 +388,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
     const video = document.querySelector('video');
     // Simulate video playback error (triggering handleVideoError)
     act(() => {
-      fireEvent.error(video, { target: { error: { code: 4, message: 'Format error' } } });
+      fireEvent.error(video, { target: { error: { code: 2, message: 'Network error' } } });
     });
 
     // Auto-retry should fire once
@@ -386,8 +397,9 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
     });
 
     // Second error should not auto-retry again (prevents infinite loop)
+    const retriedVideo = document.querySelector('video');
     act(() => {
-      fireEvent.error(video, { target: { error: { code: 4, message: 'Format error again' } } });
+      fireEvent.error(retriedVideo, { target: { error: { code: 2, message: 'Network error again' } } });
     });
 
     // Wait a bit to ensure no further auto-retries occur
@@ -395,7 +407,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
     expect(ticketSpy).toHaveBeenCalledTimes(2);
 
     // Error UI with retry button should be visible
-    expect(screen.getByText(/Không thể tải hoặc giải mã video/)).toBeTruthy();
+    expect(screen.getByText(/Lỗi mạng khi tải video/)).toBeTruthy();
     const retryBtn = screen.getByText(/Thử tải lại video/);
     expect(retryBtn).toBeTruthy();
 
@@ -409,20 +421,18 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
     });
   });
 
-  // Test 6: External video does not call ticket endpoint
-  it('6. Video external does not call ticket endpoint', async () => {
+  // Test 6: External sources are not rendered directly because that leaks the URL.
+  it('6. Video external is rejected instead of bypassing protected playback', async () => {
     const ticketSpy = vi.spyOn(lessonsService, 'getVideoTicket');
 
     renderLessonPage('/lessons/46');
 
     await waitFor(() => {
-      const video = document.querySelector('video');
-      expect(video).toBeTruthy();
-      expect(video.src).toBe('https://cdn.example.com/external-video.mp4');
+      expect(screen.getByText(/Không thể lấy vé phát video bài học/)).toBeTruthy();
     });
 
-    // Should NOT call ticket endpoint for external video
-    expect(ticketSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('video')).toBeNull();
+    expect(ticketSpy).toHaveBeenCalledWith('46');
   });
 
   // Test 7: Playlist prefetch does not generate tickets

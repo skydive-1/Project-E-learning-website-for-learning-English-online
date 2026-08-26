@@ -52,6 +52,17 @@ function generateLessonDrmKeys(lessonId) {
 }
 
 /**
+ * Video DRM mới dùng UUID thư mục asset làm key reference để có thể mã hóa ngay
+ * khi upload, trước khi lessonId được tạo. Video legacy đã migrate tiếp tục dùng
+ * lessonId nên không làm mất khả năng phát.
+ */
+function getLessonDrmKeyReference(lesson, fallbackLessonId) {
+  const source = String(lesson?.storage_key || lesson?.content_url || '');
+  const uuid = source.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
+  return uuid || fallbackLessonId;
+}
+
+/**
  * Đóng gói Payload phản hồi W3C EME ClearKey DRM License (JWK format)
  * @param {Array<{ keyId: string, secretKey: string }>} keyPairs 
  * @returns {object} Phản hồi chuẩn W3C ClearKey DRM
@@ -72,5 +83,6 @@ function buildClearKeyJwkResponse(keyPairs) {
 module.exports = {
   hexToBase64Url,
   generateLessonDrmKeys,
+  getLessonDrmKeyReference,
   buildClearKeyJwkResponse
 };
