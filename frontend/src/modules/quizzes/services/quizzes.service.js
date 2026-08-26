@@ -33,6 +33,8 @@ const mapQuizToFrontend = (quiz) => {
         options: Array.isArray(parsedOptions) ? parsedOptions : [],
         correctAnswer: q.correct_answer || '',
         explanation: q.explanation || '',
+        // Giữ trạng thái thiếu metadata để lớp phân loại có thể suy luận từ
+        // options/câu mẫu, thay vì gắn nhầm mọi câu sáng tạo thành trắc nghiệm.
         questionType: q.question_type || q.questionType || ''
       };
     })

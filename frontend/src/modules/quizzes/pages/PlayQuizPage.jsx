@@ -589,9 +589,15 @@ const PlayQuizPage = () => {
                         {effectiveQuestionType === 'writing' ? (
                           <><FiEdit3 aria-hidden="true" /><span>Viết luận</span></>
                         ) : effectiveQuestionType === 'pronunciation' ? (
-                          <><FiMic aria-hidden="true" /><span>Bài nói &amp; Phát âm</span></>
-                        ) : effectiveQuestionType === 'open_cloze' ? (
-                          <><FiGrid aria-hidden="true" /><span>Điền từ vào đoạn văn</span></>
+<>
+  <FiMic aria-hidden="true" />
+  <span>Bài nói &amp; Phát âm (AI Voice)</span>
+</>
+) : effectiveQuestionType === 'open_cloze' ? (
+<>
+  <FiGrid aria-hidden="true" />
+  <span>Điền từ vào đoạn văn</span>
+</>
                         ) : (
                           <><FiAward aria-hidden="true" /><span>Trắc nghiệm</span></>
                         )}
