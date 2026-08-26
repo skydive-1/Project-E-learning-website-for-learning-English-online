@@ -42,28 +42,40 @@ const questionTypes = [
     label: 'Trắc nghiệm', 
     icon: ListChecksIcon, 
     desc: 'Chọn 1 trong 4 đáp án A/B/C/D',
-    activeClass: 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300'
+    iconColor: 'text-blue-600 dark:text-blue-400',
+    iconBg: 'bg-blue-100/90 dark:bg-blue-950/80',
+    activeBorder: 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 text-blue-950 dark:text-blue-100 ring-1 ring-blue-500/30',
+    checkColor: 'bg-blue-600 text-white'
   },
   { 
     value: 'writing', 
     label: 'Tự luận (Writing)', 
     icon: FilePenLineIcon, 
     desc: 'Học viên viết đoạn văn, AI chấm chi tiết',
-    activeClass: 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300'
+    iconColor: 'text-purple-600 dark:text-purple-400',
+    iconBg: 'bg-purple-100/90 dark:bg-purple-950/80',
+    activeBorder: 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/40 text-purple-950 dark:text-purple-100 ring-1 ring-purple-500/30',
+    checkColor: 'bg-purple-600 text-white'
   },
   { 
     value: 'pronunciation', 
     label: 'Phát âm (Speaking)', 
     icon: Mic2Icon, 
     desc: 'Luyện đọc to câu tiếng Anh chuẩn giọng AI',
-    activeClass: 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    iconBg: 'bg-emerald-100/90 dark:bg-emerald-950/80',
+    activeBorder: 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 ring-1 ring-emerald-500/30',
+    checkColor: 'bg-emerald-600 text-white'
   },
   { 
     value: 'open_cloze', 
     label: 'Điền từ (Open Cloze)', 
     icon: Grid2X2CheckIcon, 
     desc: 'Đoạn văn điền từ vào vị trí {{1}}, {{2}}',
-    activeClass: 'border-amber-500 bg-amber-50/80 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    iconBg: 'bg-amber-100/90 dark:bg-amber-950/80',
+    activeBorder: 'border-amber-500 bg-amber-50/80 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 ring-1 ring-amber-500/30',
+    checkColor: 'bg-amber-600 text-white'
   }
 ];
 
@@ -299,7 +311,7 @@ const CreateQuizDialog = ({
   onAiTopicChange,
   aiCount,
   onAiCountChange,
-  aiTypes = ['multiple_choice', 'writing', 'pronunciation', 'open_cloze'],
+  aiTypes = [],
   onAiTypesChange,
   aiGenerating,
   onGenerateAi,
@@ -322,13 +334,13 @@ const CreateQuizDialog = ({
   const toggleAiType = (typeKey) => {
     if (!Array.isArray(aiTypes) || !onAiTypesChange) return;
     if (aiTypes.includes(typeKey)) {
-      if (aiTypes.length > 1) {
-        onAiTypesChange(aiTypes.filter(t => t !== typeKey));
-      }
+      onAiTypesChange(aiTypes.filter(t => t !== typeKey));
     } else {
       onAiTypesChange([...aiTypes, typeKey]);
     }
   };
+
+  const selectedCount = Array.isArray(aiTypes) ? aiTypes.length : 0;
 
   return (
     <div 
@@ -642,7 +654,7 @@ const CreateQuizDialog = ({
                       key={tag}
                       type="button"
                       onClick={() => onAiTopicChange(tag)}
-                      className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/60 hover:text-purple-600 transition-colors"
+                      className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/60 hover:text-purple-600 transition-colors cursor-pointer"
                     >
                       + {tag}
                     </button>
@@ -671,11 +683,17 @@ const CreateQuizDialog = ({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    Dạng câu hỏi AI được phép tạo <span className="text-red-500">*</span>
+                    CÁC DẠNG CÂU HỎI <span className="text-red-500">*</span>
                   </label>
-                  <span className="text-xs text-slate-400">
-                    Đã chọn {Array.isArray(aiTypes) ? aiTypes.length : 0}/4 dạng
-                  </span>
+                  {selectedCount === 0 ? (
+                    <span className="text-xs text-amber-500 dark:text-amber-400 font-medium">
+                      ⚠️ Chưa chọn dạng nào
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      Đã chọn {selectedCount}/4 dạng
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -688,26 +706,33 @@ const CreateQuizDialog = ({
                         key={t.value}
                         type="button"
                         onClick={() => toggleAiType(t.value)}
-                        className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
+                        className={`group relative flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
                           isSelected 
-                            ? t.activeClass + ' shadow-xs ring-1 ring-inset ring-current/20' 
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
+                            ? t.activeBorder + ' shadow-sm' 
+                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
-                        <div className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${
-                          isSelected 
-                            ? 'bg-current text-white dark:text-slate-900' 
-                            : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
-                        }`}>
-                          {isSelected ? <CheckIcon className="size-4" /> : <Icon className="size-4" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-bold flex items-center justify-between">
-                            <span>{t.label}</span>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${t.iconBg} ${t.iconColor}`}>
+                            <Icon className="size-5" />
                           </div>
-                          <p className="text-[11px] opacity-80 mt-0.5 leading-snug">
-                            {t.desc}
-                          </p>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              {t.label}
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug truncate">
+                              {t.desc}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Checkbox indicator */}
+                        <div className={`flex size-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                          isSelected 
+                            ? `${t.checkColor} border-transparent shadow-xs` 
+                            : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 group-hover:border-slate-400'
+                        }`}>
+                          {isSelected && <CheckIcon className="size-3.5 stroke-[3]" />}
                         </div>
                       </button>
                     );
@@ -718,7 +743,7 @@ const CreateQuizDialog = ({
               {/* Submit AI Generation */}
               <Button
                 type="button"
-                disabled={aiGenerating || !aiTopic.trim() || !Array.isArray(aiTypes) || aiTypes.length === 0}
+                disabled={aiGenerating || !aiTopic.trim() || selectedCount === 0}
                 onClick={onGenerateAi}
                 className="h-11 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
               >
@@ -727,10 +752,15 @@ const CreateQuizDialog = ({
                     <Spinner className="size-4" />
                     <span>Trợ lý AI đang soạn câu hỏi và đáp án...</span>
                   </>
+                ) : selectedCount === 0 ? (
+                  <>
+                    <WandSparklesIcon className="size-4" />
+                    <span>Vui lòng chọn ít nhất 1 dạng câu hỏi ở trên</span>
+                  </>
                 ) : (
                   <>
                     <WandSparklesIcon className="size-4" />
-                    <span>Bắt đầu tạo câu hỏi bằng AI ({Array.isArray(aiTypes) ? aiTypes.length : 0} dạng đã chọn)</span>
+                    <span>Bắt đầu tạo câu hỏi bằng AI ({selectedCount} dạng đã chọn)</span>
                   </>
                 )}
               </Button>

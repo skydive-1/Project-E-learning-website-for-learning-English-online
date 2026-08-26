@@ -137,11 +137,12 @@ CREATE TABLE IF NOT EXISTS questions (
   quiz_id INT NOT NULL,
   question_text TEXT NOT NULL,
   options JSONB NOT NULL,
-  correct_answer TEXT NOT NULL, -- A, B, C, D hoặc câu phát âm / đáp án mẫu
+  correct_answer TEXT, -- A, B, C, D hoặc câu phát âm / đáp án mẫu (rỗng với open_cloze/writing)
   explanation TEXT,
   question_type VARCHAR(50) DEFAULT 'multiple_choice',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_question_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE
+  CONSTRAINT fk_question_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE,
+  CONSTRAINT chk_question_type CHECK (question_type IS NULL OR question_type IN ('multiple_choice', 'writing', 'pronunciation', 'open_cloze'))
 );
 
 -- 10. Tạo bảng Quiz Attempts (Lịch sử làm bài trắc nghiệm)
