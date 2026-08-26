@@ -35,7 +35,7 @@ const ForgotPasswordPage = () => {
       await forgotPasswordApi({ email });
       setMessage({
         type: 'success',
-        text: 'Email khôi phục mật khẩu đã được gửi! Vui lòng kiểm tra hòm thư của bạn.'
+        text: 'Nếu email thuộc một tài khoản, liên kết khôi phục sẽ được gửi trong ít phút. Vui lòng kiểm tra cả thư rác.'
       });
       setEmail('');
     } catch (error) {

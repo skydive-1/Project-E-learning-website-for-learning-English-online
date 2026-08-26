@@ -2,6 +2,7 @@
 PINECONE_API_KEY=your-pinecone-api-key-here
 
 # Rate Limiting Settings
+RATE_LIMIT_ENABLED=false //thêm vào để ẩn rate limit
 # TRUST_PROXY=false khi backend nhận kết nối trực tiếp. Đặt bằng số hop proxy
 # tin cậy (thường là 1) khi deploy sau reverse proxy/load balancer.
 TRUST_PROXY=false

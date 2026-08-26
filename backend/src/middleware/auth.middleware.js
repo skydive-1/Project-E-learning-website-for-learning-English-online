@@ -105,13 +105,15 @@ const authenticate = async (req, res, next) => {
     }
 
     // Gán thông tin thực tế mới nhất từ CSDL vào req.user (đảm bảo lấy role_id mới nhất từ DB)
+    const roleName = dbUser.role_id === 1 ? 'admin' : (dbUser.role_id === 2 ? 'instructor' : 'student');
     req.user = {
       ...decoded,
       id: dbUser.user_id,
       email: dbUser.email,
       username: dbUser.username,
       fullName: dbUser.full_name,
-      roleId: dbUser.role_id
+      roleId: dbUser.role_id,
+      role: roleName
     };
     req.user.isSuperAdmin = isSuperAdminUser(req.user);
 
@@ -172,13 +174,15 @@ const optionalAuthenticate = async (req, res, next) => {
       return next();
     }
 
+    const roleName = dbUser.role_id === 1 ? 'admin' : (dbUser.role_id === 2 ? 'instructor' : 'student');
     req.user = {
       ...decoded,
       id: dbUser.user_id,
       email: dbUser.email,
       username: dbUser.username,
       fullName: dbUser.full_name,
-      roleId: dbUser.role_id
+      roleId: dbUser.role_id,
+      role: roleName
     };
     req.user.isSuperAdmin = isSuperAdminUser(req.user);
     next();
@@ -202,10 +206,16 @@ const authorize = (roles = []) => {
     // Nếu không truyền roles hoặc roles rỗng, cho phép tất cả đã đăng nhập
     if (roles.length === 0) return next();
 
-    // Chuyển role về số để so sánh chính xác
-    const userRole = parseInt(req.user.roleId, 10);
+    const userRoleId = parseInt(req.user.roleId, 10);
+    const userRoleName = req.user.role || (userRoleId === 1 ? 'admin' : (userRoleId === 2 ? 'instructor' : 'student'));
 
-    if (!roles.includes(userRole)) {
+    const isAuthorized = roles.some(role => {
+      if (typeof role === 'number') return role === userRoleId;
+      if (typeof role === 'string') return role.toLowerCase() === userRoleName.toLowerCase();
+      return false;
+    });
+
+    if (!isAuthorized) {
       return res.status(403).json({
         success: false,
         code: 'FORBIDDEN',

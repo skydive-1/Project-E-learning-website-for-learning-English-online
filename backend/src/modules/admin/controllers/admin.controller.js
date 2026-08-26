@@ -69,7 +69,7 @@ exports.updateUserRole = async (req, res, next) => {
       throw err;
     }
 
-    // 1. Kiểm tra email và role hiện tại của tài khoản mục tiêu
+    // 1. Kiểm tra sự tồn tại của người dùng mục tiêu
     const targetUserRes = await db.query('SELECT email, role_id FROM users WHERE user_id = $1', [userId]);
     if (targetUserRes.rows.length === 0) {
       const err = new Error('Không tìm thấy người dùng');
@@ -78,6 +78,14 @@ exports.updateUserRole = async (req, res, next) => {
     }
     const targetUser = targetUserRes.rows[0];
     const targetRole = targetUser.role_id;
+
+    // 2. Xác thực quyền Admin của người thực hiện
+    const isAdmin = req.user?.role === 'admin' || req.user?.roleId === 1 || req.user?.role_id === 1;
+    if (!isAdmin) {
+      const err = new Error('Bạn không có quyền thực hiện hành động quản trị này');
+      err.status = 403;
+      throw setForbiddenCode(err, 'FORBIDDEN');
+    }
 
     // RÀNG BUỘC 1: Không ai được phép sửa đổi vai trò của Super Admin
     if (isSuperAdminUser(targetUser)) {
@@ -90,7 +98,7 @@ exports.updateUserRole = async (req, res, next) => {
     const isSuperAdmin = isSuperAdminUser(req.user);
     if (!isSuperAdmin) {
       // Nếu tài khoản mục tiêu đang là Admin hoặc muốn nâng mục tiêu lên Admin
-      if (targetRole === 1 || parseInt(roleId, 10) === 1) {
+      if (targetRole === 1 || parsedRoleId === 1) {
         const err = new Error('Bạn không có quyền thay đổi vai trò sang Admin hoặc hạ quyền của một Admin khác. Chỉ Super Admin mới có quyền này.');
         err.status = 403;
         throw setForbiddenCode(err, 'SUPER_ADMIN_REQUIRED');
@@ -116,13 +124,13 @@ exports.deleteUser = async (req, res, next) => {
     const { userId } = req.params;
     
     // Ngăn chặn admin tự xóa tài khoản của chính họ
-    if (parseInt(userId) === parseInt(req.user.id)) {
+    if (parseInt(userId, 10) === parseInt(req.user?.id || req.user?.user_id, 10)) {
       const err = new Error('Bạn không thể tự xóa tài khoản của chính mình');
       err.status = 400;
       throw err;
     }
 
-    // 1. Kiểm tra thông tin người dùng cần xóa
+    // 1. Kiểm tra sự tồn tại của người dùng mục tiêu
     const targetUserRes = await db.query('SELECT email, role_id FROM users WHERE user_id = $1', [userId]);
     if (targetUserRes.rows.length === 0) {
       const err = new Error('Không tìm thấy người dùng');
@@ -131,6 +139,14 @@ exports.deleteUser = async (req, res, next) => {
     }
     const targetUser = targetUserRes.rows[0];
     const targetRole = targetUser.role_id;
+
+    // 2. Xác thực quyền Admin của người thực hiện
+    const isAdmin = req.user?.role === 'admin' || req.user?.roleId === 1 || req.user?.role_id === 1;
+    if (!isAdmin) {
+      const err = new Error('Bạn không có quyền thực hiện hành động quản trị này');
+      err.status = 403;
+      throw setForbiddenCode(err, 'FORBIDDEN');
+    }
 
     // RÀNG BUỘC 1: Không ai được phép xóa tài khoản Super Admin
     if (isSuperAdminUser(targetUser)) {
@@ -165,7 +181,7 @@ exports.resetUserToken = async (req, res, next) => {
   try {
     const { userId } = req.params;
 
-    // 1. Kiểm tra thông tin người dùng mục tiêu
+    // 1. Kiểm tra sự tồn tại của người dùng mục tiêu
     const targetUserRes = await db.query('SELECT email, role_id FROM users WHERE user_id = $1', [userId]);
     if (targetUserRes.rows.length === 0) {
       const err = new Error('Không tìm thấy người dùng');
@@ -173,6 +189,14 @@ exports.resetUserToken = async (req, res, next) => {
       throw err;
     }
     const targetUser = targetUserRes.rows[0];
+
+    // 2. Xác thực quyền Admin của người thực hiện
+    const isAdmin = req.user?.role === 'admin' || req.user?.roleId === 1 || req.user?.role_id === 1;
+    if (!isAdmin) {
+      const err = new Error('Bạn không có quyền thực hiện hành động quản trị này');
+      err.status = 403;
+      throw setForbiddenCode(err, 'FORBIDDEN');
+    }
 
     // RÀNG BUỘC 1: Không thể reset token cho Super Admin
     if (isSuperAdminUser(targetUser)) {
@@ -283,6 +307,47 @@ exports.backfillRag = async (req, res, next) => {
       message: `Đã kích hoạt tiến trình nạp RAG nền cho ${lessons.length} bài học. Hệ thống đang tự động trích xuất phụ đề và nạp Vector DB.`,
       totalLessons: lessons.length,
       lessons: lessons.map(l => ({ id: l.lesson_id, title: l.title, course: l.course_name }))
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Lấy trạng thái hiện tại của hệ thống Rate Limiting
+ */
+exports.getRateLimitStatus = async (req, res, next) => {
+  try {
+    const { isRateLimitEnabled } = require('../../../middleware/rateLimit.middleware');
+    const enabled = isRateLimitEnabled();
+    res.status(200).json({
+      success: true,
+      enabled,
+      message: `Hệ thống Rate Limiting hiện đang ${enabled ? 'BẬT (Active)' : 'TẮT (Disabled)'}`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Bật/Tắt hệ thống Rate Limiting động
+ */
+exports.toggleRateLimit = async (req, res, next) => {
+  try {
+    const { isRateLimitEnabled, setRateLimitEnabled, toggleRateLimit } = require('../../../middleware/rateLimit.middleware');
+    const { enabled } = req.body;
+    let newState;
+    if (typeof enabled === 'boolean') {
+      newState = setRateLimitEnabled(enabled);
+    } else {
+      newState = toggleRateLimit();
+    }
+
+    res.status(200).json({
+      success: true,
+      enabled: newState,
+      message: `Đã ${newState ? 'BẬT' : 'TẮT'} Hệ thống Rate Limiting thành công.`
     });
   } catch (error) {
     next(error);

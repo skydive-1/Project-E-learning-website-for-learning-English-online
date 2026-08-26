@@ -8,12 +8,33 @@ const readPositiveInteger = (name, fallback) => {
   return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 };
 
-// Rate limiting may only be disabled explicitly outside production. This keeps a
-// forgotten development flag from disabling protection in a deployed system.
-const isRateLimitDisabled = () => (
-  process.env.NODE_ENV !== 'production'
-  && String(process.env.DISABLE_RATE_LIMIT).toLowerCase() === 'true'
-);
+let runtimeRateLimitEnabled = null;
+
+const setRateLimitEnabled = (enabled) => {
+  runtimeRateLimitEnabled = Boolean(enabled);
+  return runtimeRateLimitEnabled;
+};
+
+const isRateLimitEnabled = () => {
+  if (runtimeRateLimitEnabled !== null) {
+    return runtimeRateLimitEnabled;
+  }
+  if (process.env.RATE_LIMIT_ENABLED !== undefined) {
+    const val = String(process.env.RATE_LIMIT_ENABLED).toLowerCase();
+    return val === 'true' || val === '1';
+  }
+  if (process.env.DISABLE_RATE_LIMIT !== undefined && process.env.NODE_ENV !== 'production') {
+    return String(process.env.DISABLE_RATE_LIMIT).toLowerCase() !== 'true';
+  }
+  return true;
+};
+
+const toggleRateLimit = () => {
+  const current = isRateLimitEnabled();
+  return setRateLimitEnabled(!current);
+};
+
+const isRateLimitDisabled = () => !isRateLimitEnabled();
 
 const isStreamingRequest = (req) => (
   /^\/api\/lessons\/(?:dash\/|video\/stream\/)/.test(req.originalUrl || req.url)
@@ -60,12 +81,11 @@ const globalLimiter = createRateLimiter({
   keyGenerator: clientKey
 });
 
-// Applies to every /api route. Streaming is handled by streamingLimiter below
-// because DASH players legitimately request many small segments.
+// Applies to every /api route (100 req / 15 minutes / IP). Streaming is skipped
 const apiLimiter = createRateLimiter({
   name: 'api',
   windowMs: readPositiveInteger('RATE_LIMIT_API_WINDOW_MS', FIFTEEN_MINUTES),
-  limit: readPositiveInteger('RATE_LIMIT_API_MAX', 300),
+  limit: readPositiveInteger('RATE_LIMIT_API_MAX', 100),
   keyGenerator: clientKey,
   skip: isStreamingRequest
 });
@@ -95,7 +115,7 @@ const passwordResetLimiter = createRateLimiter({
 const aiLimiter = createRateLimiter({
   name: 'ai',
   windowMs: readPositiveInteger('RATE_LIMIT_AI_WINDOW_MS', FIFTEEN_MINUTES),
-  limit: readPositiveInteger('RATE_LIMIT_AI_MAX', 30),
+  limit: readPositiveInteger('RATE_LIMIT_AI_MAX', 10),
   keyGenerator: authenticatedUserKey
 });
 
@@ -155,10 +175,13 @@ module.exports = {
   consultationLimiter,
   createRateLimiter,
   globalLimiter,
+  isRateLimitEnabled,
   mediaTicketLimiter,
   passwordResetLimiter,
   quizLimiter,
   registrationLimiter,
+  setRateLimitEnabled,
   streamingLimiter,
+  toggleRateLimit,
   uploadLimiter
 };

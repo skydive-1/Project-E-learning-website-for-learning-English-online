@@ -28,9 +28,9 @@ router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBal
 router.get('/suggested-questions/:lessonId', authenticate, chatbotController.getSuggestedQuestions);
 
 
-// API Lịch sử Chat (Độc lập, nhận trực tiếp userId/lessonId từ Frontend)
-router.post('/history', chatbotController.saveHistory);
-router.get('/history/:userId/:lessonId', chatbotController.getHistory);
+// API Lịch sử Chat (Yêu cầu xác thực JWT)
+router.post('/history', authenticate, chatbotController.saveHistory);
+router.get('/history/:userId/:lessonId', authenticate, chatbotController.getHistory);
 router.delete('/history/:lessonId', authenticate, chatbotController.clearHistory);
 router.delete('/history', authenticate, chatbotController.clearHistory);
 

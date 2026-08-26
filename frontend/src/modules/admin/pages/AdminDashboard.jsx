@@ -28,6 +28,7 @@ const AdminDashboard = () => {
   const { user: currentUser } = useAuth();
   const showToast = useToast();
   
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.roleId === 1 || currentUser?.role_id === 1;
   // Backend là nguồn sự thật về đặc quyền; frontend chỉ dùng cờ này để hiển thị UI.
   const isSuperAdmin = currentUser?.isSuperAdmin === true || currentUser?.is_super_admin === true;
   

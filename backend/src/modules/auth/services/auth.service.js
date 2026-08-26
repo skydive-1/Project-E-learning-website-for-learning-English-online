@@ -10,6 +10,37 @@ const { supabaseAdmin, supabaseClient } = require('../../../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
 
+const parseTimeout = (name, fallback) => {
+  const value = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(value) && value >= 1000 ? value : fallback;
+};
+
+const withTimeout = (promise, timeoutMs, operation) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    const error = new Error(`${operation} timed out after ${timeoutMs}ms`);
+    error.code = 'UPSTREAM_TIMEOUT';
+    reject(error);
+  }, timeoutMs);
+
+  Promise.resolve(promise).then(
+    (value) => {
+      clearTimeout(timer);
+      resolve(value);
+    },
+    (error) => {
+      clearTimeout(timer);
+      reject(error);
+    }
+  );
+});
+
+const escapeHtml = (value) => String(value || '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
 class AuthService {
   async register({ email, username, password, fullName, roleId }) {
     try {
@@ -661,19 +692,43 @@ class AuthService {
 
       const user = userRes.rows[0];
 
-      // 2. Tạo JWT Reset Token có thời hạn 1 giờ
+      const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+      const redirectTo = `${frontendUrl}/reset-password`;
+      const providerTimeoutMs = parseTimeout('PASSWORD_RESET_PROVIDER_TIMEOUT_MS', 10000);
+
+      // Tài khoản hiện được đồng bộ với Supabase Auth. Ưu tiên recovery email của
+      // Supabase để không phụ thuộc kết nối SMTP outbound của Railway.
+      if (user.supabase_uid && supabaseClient?.auth?.resetPasswordForEmail) {
+        try {
+          const { error: supabaseError } = await withTimeout(
+            supabaseClient.auth.resetPasswordForEmail(cleanEmail, { redirectTo }),
+            providerTimeoutMs,
+            'Supabase password recovery'
+          );
+
+          if (!supabaseError) {
+            return true;
+          }
+
+          console.warn('[Password Reset]: Supabase recovery thất bại, chuyển sang SMTP fallback:', supabaseError.message);
+        } catch (supabaseError) {
+          console.warn('[Password Reset]: Supabase recovery timeout/lỗi, chuyển sang SMTP fallback:', supabaseError.message);
+        }
+      }
+
+      // SMTP chỉ là fallback cho tài khoản cũ hoặc khi Supabase tạm thời lỗi.
       const resetToken = jwt.sign(
         { id: user.user_id, email: user.email, supabaseUid: user.supabase_uid, type: 'reset_password' },
         process.env.JWT_SECRET,
         { expiresIn: '1h' }
       );
 
-      // 3. Tạo link reset mật khẩu trực tiếp trỏ về Frontend
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const resetLink = `${frontendUrl}/reset-password?access_token=${resetToken}`;
 
-      // 4. Gửi Email thật qua Nodemailer Gmail SMTP
       const { sendEmail } = require('../../../utils/email.util');
+      const safeDisplayName = escapeHtml(user.full_name || user.username || 'bạn');
+      const safeEmail = escapeHtml(user.email);
+      const safeResetLink = escapeHtml(resetLink);
       const emailHtml = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 32px; border-radius: 16px; border: 1px solid #1e293b;">
           <div style="text-align: center; margin-bottom: 24px;">
@@ -683,17 +738,17 @@ class AuthService {
           <div style="background-color: #1e293b; padding: 24px; border-radius: 12px; margin-bottom: 24px;">
             <h2 style="color: #f1f5f9; font-size: 18px; margin-top: 0;">Khôi phục Mật khẩu Tài khoản</h2>
             <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
-              Xin chào <strong>${user.full_name || user.username}</strong>,<br/><br/>
-              Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <code>${user.email}</code>. Nhấp vào nút bên dưới để tiến hành thiết lập mật khẩu mới:
+              Xin chào <strong>${safeDisplayName}</strong>,<br/><br/>
+              Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <code>${safeEmail}</code>. Nhấp vào nút bên dưới để tiến hành thiết lập mật khẩu mới:
             </p>
             <div style="text-align: center; margin: 28px 0;">
-              <a href="${resetLink}" style="background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);">
+              <a href="${safeResetLink}" style="background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);">
                 ĐẶT LẠI MẬT KHẨU NGAY
               </a>
             </div>
             <p style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
               Hoặc bạn có thể sao chép liên kết sau dán vào trình duyệt:<br/>
-              <a href="${resetLink}" style="color: #38bdf8; word-break: break-all;">${resetLink}</a>
+              <a href="${safeResetLink}" style="color: #38bdf8; word-break: break-all;">${safeResetLink}</a>
             </p>
           </div>
           <div style="text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #1e293b; padding-top: 16px;">
@@ -703,17 +758,16 @@ class AuthService {
         </div>
       `;
 
-      await sendEmail({
+      const emailSent = await sendEmail({
         to: user.email,
         subject: '[E-Learn Academy] Khôi phục Mật khẩu Tài khoản của bạn',
         html: emailHtml
       });
 
-      // Thử gọi thêm Supabase reset nếu có
-      if (supabaseClient) {
-        try {
-          await supabaseClient.auth.resetPasswordForEmail(cleanEmail, { redirectTo: `${frontendUrl}/reset-password` });
-        } catch (e) {}
+      if (!emailSent) {
+        // Giữ response chung để không biến endpoint thành công cụ dò email.
+        // Lỗi chi tiết chỉ xuất hiện trong server log/monitoring.
+        console.error(`[Password Reset]: Không nhà cung cấp email nào nhận yêu cầu cho user_id=${user.user_id}`);
       }
 
       return true;
@@ -743,7 +797,11 @@ class AuthService {
         if (err.status === 400) throw err;
         // Fallback thử với Supabase client nếu là token Supabase
         if (supabaseClient && supabaseAdmin) {
-          const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
+          const { data: { user }, error: userError } = await withTimeout(
+            supabaseClient.auth.getUser(accessToken),
+            parseTimeout('PASSWORD_RESET_PROVIDER_TIMEOUT_MS', 10000),
+            'Supabase recovery token validation'
+          );
           if (!userError && user) {
             decoded = { id: user.id, email: user.email, supabaseUid: user.id };
           }
@@ -769,9 +827,13 @@ class AuthService {
       // 4. Đồng bộ mật khẩu mới sang Supabase Auth nếu có supabaseAdmin
       if (supabaseAdmin && decoded.supabaseUid) {
         try {
-          await supabaseAdmin.auth.admin.updateUserById(decoded.supabaseUid, {
-            password: newPassword
-          });
+          await withTimeout(
+            supabaseAdmin.auth.admin.updateUserById(decoded.supabaseUid, {
+              password: newPassword
+            }),
+            parseTimeout('PASSWORD_RESET_PROVIDER_TIMEOUT_MS', 10000),
+            'Supabase password synchronization'
+          );
         } catch (sErr) {
           console.warn('[Supabase Sync Warning]: Không thể sync pass sang Supabase Auth:', sErr.message);
         }
