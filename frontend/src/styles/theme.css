@@ -1,0 +1,381 @@
+/* ---------------------------------------------------------------------------
+ * BoardUI theme tokens
+ * --------------------------------------------------------------------------- */
+
+:root {
+  /* Color primitives */
+  --color-slate-200:   #ebeff5;
+  --color-neutral-50:  #fafafa;
+  --color-neutral-100: #f7f7f7;
+  --color-neutral-200: #ebebeb;
+  --color-neutral-300: #d4d4d4;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #737373;
+  --color-neutral-600: #525252;
+  --color-neutral-700: #404040;
+  --color-neutral-800: #262626;
+  --color-neutral-900: #171717;
+  --color-neutral-925: #121212;
+  --color-neutral-950: #0a0a0a;
+  --color-white:       #ffffff;
+  --color-black:       #000000;
+  --color-zinc-800:    #27272a;
+
+  --color-blue-50:  #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #3392ff;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+
+  --color-red-50:  #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+
+  --color-lime-100: #ecfccb;
+  --color-lime-200: #d9f99d;
+  --color-lime-400: #a3e635;
+  --color-lime-500: #84cc16;
+  --color-lime-600: #65a30d;
+  --color-lime-700: #4d7c0f;
+  --color-lime-800: #3f6212;
+  --color-lime-950: #1a2e05;
+
+  --color-rose-100: #ffe4e6;
+  --color-rose-200: #fecdd3;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
+  --color-rose-800: #9f1239;
+  --color-rose-950: #4c0519;
+
+  --color-yellow-100: #fef9c3;
+  --color-yellow-200: #fef08a;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+  --color-yellow-600: #ca8a04;
+  --color-yellow-800: #854d0e;
+  --color-yellow-950: #422006;
+
+  --color-cyan-100: #cffafe;
+  --color-cyan-200: #a5f3fc;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-600: #0891b2;
+  --color-cyan-800: #155e75;
+  --color-cyan-950: #083344;
+
+  --color-purple-50:  #faf5ff;
+  --color-purple-100: #f3e8ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  --color-purple-700: #7e22ce;
+  --color-purple-800: #6b21a8;
+  --color-purple-900: #581c87;
+  --color-purple-950: #3b0764;
+
+  --color-green-100: #dcfce7;
+  --color-green-500: #22c55e;
+  --color-green-800: #166534;
+
+  --color-indigo-100: #e0e7ff;
+  --color-indigo-500: #6366f1;
+  --color-indigo-800: #3730a3;
+
+  --color-pink-100: #fce7f3;
+  --color-pink-400: #f472b6;
+  --color-pink-500: #ec4899;
+  --color-pink-700: #be185d;
+  --color-pink-950: #500724;
+
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+
+  --color-emerald-100: #d1fae5;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #065f46;
+  --color-emerald-950: #022c22;
+
+  --color-teal-400: #2dd4bf;
+  --color-teal-500: #14b8a6;
+
+  /* Accent ramp */
+  --color-accent-50:  var(--color-blue-50);
+  --color-accent-100: var(--color-blue-100);
+  --color-accent-200: var(--color-blue-200);
+  --color-accent-300: var(--color-blue-300);
+  --color-accent-400: var(--color-blue-400);
+  --color-accent-500: var(--color-blue-500);
+  --color-accent-600: var(--color-blue-600);
+  --color-accent-700: var(--color-blue-700);
+  --color-accent-800: var(--color-blue-800);
+  --color-accent-900: var(--color-blue-900);
+  --color-accent-950: var(--color-blue-950);
+
+  /* Radii */
+  --radius-2lg: 10px;
+  --radius-notification-card: 10px;
+
+  /* Shadows */
+  --shadow-2xs: 0 1px rgb(0 0 0 / 0.05);
+  --shadow-xs:  0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.10);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.06), 0 4px 6px -1px rgb(0 0 0 / 0.10);
+  --shadow-lg: 0 4px 6px -2px rgb(0 0 0 / 0.05), 0 10px 15px -3px rgb(0 0 0 / 0.10);
+  --shadow-xl: 0 10px 10px -5px rgb(0 0 0 / 0.04), 0 20px 25px -5px rgb(0 0 0 / 0.10);
+  --shadow-card: 0 1px 1px 0 rgb(0 0 0 / 0.05);
+  --shadow-dropdown: 0 1px 1px 0 rgb(0 0 0 / 0.04), 0 4px 4px 0 rgb(0 0 0 / 0.02);
+  --shadow-sidebar: 0 1px 0 0 rgb(0 0 0 / 0.0196), 0 1px 12px 0 rgb(0 0 0 / 0.0588), 0 0 1px 0 rgb(0 0 0 / 0.3216);
+
+  --button-transition-ms: 150ms;
+  --input-transition-ms:  150ms;
+
+  /* Semantic tokens — light mode */
+  --color-foreground-full:               var(--color-white);
+  --color-foreground-icon-primary:       var(--color-neutral-950);
+  --color-foreground-icon-hover:         var(--color-black);
+  --color-foreground-icon-secondary:     var(--color-neutral-500);
+  --color-foreground-icon-tertiary:      var(--color-neutral-400);
+  --color-foreground-icon-quaternary:    var(--color-neutral-300);
+  --color-foreground-icon-error:         var(--color-red-600);
+  --color-foreground-icon-disabled:      var(--color-neutral-300);
+  --color-foreground-disabled:           var(--color-neutral-400);
+  --color-foreground-disabled-danger:    var(--color-red-300);
+  --color-input-disabled-foreground:     var(--color-neutral-300);
+  --color-icon-button-disabled-foreground: var(--color-neutral-300);
+  --color-button-primary-disabled-foreground: var(--color-neutral-400);
+
+  /* Text */
+  --color-text-primary:         var(--color-neutral-950);
+  --color-text-secondary:       var(--color-neutral-500);
+  --color-text-tertiary:        var(--color-neutral-400);
+  --color-text-disabled:        var(--color-neutral-300);
+  --color-text-disabled-danger: var(--color-red-300);
+  --color-text-placeholder:     var(--color-neutral-400);
+  --color-text-error-primary:   var(--color-red-500);
+  --color-input-disabled-text:  var(--color-neutral-300);
+  --color-text-white:           var(--color-white);
+
+  /* Background */
+  --color-background-full:              var(--color-white);
+  --color-background-primary-default:   var(--color-white);
+  --color-background-inner-default:     var(--color-white);
+  --color-background-primary-hover:     var(--color-neutral-100);
+  --color-background-primary-active:    var(--color-neutral-200);
+  --color-background-primary-disabled:  var(--color-neutral-100);
+  --color-input-disabled-background:    var(--color-neutral-100);
+  --color-background-secondary-default: var(--color-neutral-100);
+  --color-background-secondary-hover:   var(--color-neutral-200);
+  --color-background-tertiary-default:  var(--color-neutral-200);
+  --color-background-tertiary-hover:    var(--color-neutral-300);
+  --color-background-tertiary-error:    var(--color-red-100);
+  --color-avatar-neutral-background:    var(--color-neutral-300);
+  --color-background-quaternary-default: var(--color-neutral-300);
+  --color-background-quaternary-hover:   var(--color-neutral-400);
+
+  /* Border */
+  --color-border-button-default:   var(--color-neutral-200);
+  --color-border-button-hover:     var(--color-neutral-300);
+  --color-border-button-active:    var(--color-neutral-400);
+  --color-border-button-white:     var(--color-white);
+  --color-border-error-default:    var(--color-red-500);
+  --color-border-table:            var(--color-neutral-200);
+  --color-border-button-group:     var(--color-neutral-200);
+  --color-separator-border:        var(--color-neutral-200);
+  --color-separator-border-strong: var(--color-neutral-200);
+  --color-border-focus-ring:       var(--color-accent-500);
+
+  /* State */
+  --color-stat-card-icon-background:            var(--color-white);
+  --color-segmented-control-background:          var(--color-neutral-100);
+  --color-segmented-control-selected-background: var(--color-white);
+  --color-theme-toggle-sidebar-background:       var(--color-neutral-200);
+  --color-theme-toggle-sidebar-selected-background: var(--color-white);
+  --color-button-ghost-background:                var(--color-accent-100);
+  --color-button-ghost-hover:                     var(--color-accent-200);
+  --color-button-ghost-active:                    var(--color-accent-300);
+  --color-button-ghost-disabled:                  var(--color-accent-50);
+  --color-button-ghost-foreground:                var(--color-accent-700);
+  --color-dropdown-item-hover-background:        var(--color-neutral-100);
+
+  /* Table & Chip Status */
+  --color-status-lime-background:   var(--color-lime-200);
+  --color-status-lime-text:         var(--color-lime-800);
+  --color-status-yellow-background: var(--color-yellow-200);
+  --color-status-yellow-text:       var(--color-yellow-800);
+  --color-status-rose-background:   var(--color-rose-200);
+  --color-status-rose-text:         var(--color-rose-800);
+  --color-status-cyan-background:   var(--color-cyan-200);
+  --color-status-cyan-text:         var(--color-cyan-800);
+  --color-status-blue-background:   var(--color-blue-200);
+  --color-status-blue-text:         var(--color-blue-800);
+  --color-status-purple-background: var(--color-purple-100);
+  --color-status-purple-text:       var(--color-purple-600);
+  --color-status-dot-green-halo:    var(--color-green-100);
+  --color-status-dot-yellow-halo:   var(--color-yellow-200);
+  --color-status-dot-indigo-halo:   var(--color-indigo-100);
+
+  /* Button Gradients */
+  --gradient-button-primary-default:  linear-gradient(180deg, var(--color-accent-500) 0%, var(--color-accent-600) 100%);
+  --gradient-button-primary-hover:    linear-gradient(180deg, var(--color-accent-400) 0%, var(--color-accent-500) 100%);
+  --gradient-button-primary-active:   linear-gradient(180deg, var(--color-accent-600) 0%, var(--color-accent-700) 100%);
+  --gradient-button-primary-disabled: linear-gradient(180deg, var(--color-neutral-200) 0%, var(--color-neutral-300) 100%);
+
+  --gradient-button-danger-default:   linear-gradient(180deg, var(--color-red-500) 0%, var(--color-red-600) 100%);
+  --gradient-button-danger-hover:     linear-gradient(180deg, var(--color-red-400) 0%, var(--color-red-500) 100%);
+  --gradient-button-danger-active:    linear-gradient(180deg, var(--color-red-600) 0%, var(--color-red-700) 100%);
+  --gradient-button-danger-disabled:  linear-gradient(180deg, var(--color-red-100) 0%, var(--color-red-200) 100%);
+}
+
+.dark {
+  --color-foreground-full:            var(--color-neutral-700);
+  --color-foreground-icon-primary:    var(--color-neutral-50);
+  --color-foreground-icon-hover:      var(--color-white);
+  --color-foreground-icon-error:      var(--color-red-400);
+  --color-foreground-icon-secondary:  var(--color-neutral-400);
+  --color-foreground-icon-tertiary:   var(--color-neutral-600);
+  --color-foreground-icon-quaternary: var(--color-neutral-700);
+  --color-foreground-icon-disabled:   var(--color-neutral-800);
+  --color-foreground-disabled:        var(--color-neutral-700);
+
+  --color-text-primary:  var(--color-neutral-50);
+  --color-text-secondary: var(--color-neutral-400);
+  --color-text-tertiary: var(--color-neutral-600);
+  --color-text-disabled: var(--color-neutral-800);
+  --color-text-error-primary: var(--color-red-400);
+
+  --color-background-full:              var(--color-neutral-925);
+  --color-background-primary-default:   var(--color-neutral-800);
+  --color-background-inner-default:     #1e293b;
+  --color-background-primary-hover:     #334155;
+  --color-background-primary-active:    var(--color-neutral-800);
+  --color-background-secondary-default: var(--color-neutral-900);
+  --color-background-secondary-hover:   var(--color-neutral-800);
+  --color-background-tertiary-default:  var(--color-neutral-800);
+  --color-background-tertiary-hover:    var(--color-neutral-700);
+
+  --color-border-button-default:   var(--color-neutral-700);
+  --color-border-button-hover:     var(--color-neutral-500);
+  --color-border-table:            var(--color-neutral-800);
+  --color-separator-border:        var(--color-neutral-800);
+
+  --color-stat-card-icon-background:            var(--color-neutral-800);
+  --color-segmented-control-background:          var(--color-neutral-925);
+  --color-segmented-control-selected-background: var(--color-neutral-800);
+
+  --color-status-lime-background:   #14532d;
+  --color-status-lime-text:         #86efac;
+  --color-status-yellow-background: #713f12;
+  --color-status-yellow-text:       #fde047;
+  --color-status-rose-background:   #881337;
+  --color-status-rose-text:         #fda4af;
+  --color-status-cyan-background:   #164e63;
+  --color-status-cyan-text:         #67e8f9;
+  --color-status-blue-background:   #1e3a8a;
+  --color-status-blue-text:         #93c5fd;
+  --color-status-purple-background: #581c87;
+  --color-status-purple-text:       #d8b4fe;
+}
+
+/* Button & UI utilities */
+.button-press-motion {
+  transition:
+    background-color var(--button-transition-ms, 150ms) ease,
+    border-color var(--button-transition-ms, 150ms) ease,
+    box-shadow var(--button-transition-ms, 150ms) ease,
+    color var(--button-transition-ms, 150ms) ease,
+    transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.button-press-motion:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: scale(0.98);
+  transition-duration: 150ms, 150ms, 150ms, 150ms, 220ms;
+}
+.button-press-motion:disabled,
+.button-press-motion[aria-disabled="true"] {
+  transform: none;
+}
+
+.bg-button-primary {
+  position: relative;
+  isolation: isolate;
+  background-image: var(--gradient-button-primary-default);
+}
+.bg-button-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: var(--gradient-button-primary-hover);
+  opacity: 0;
+  transition: opacity var(--button-transition-ms, 150ms) ease;
+}
+.bg-button-primary:hover:not(:disabled):not([aria-disabled="true"])::before {
+  opacity: 1;
+}
+.bg-button-primary:active:not(:disabled):not([aria-disabled="true"]) {
+  background-image: var(--gradient-button-primary-active);
+}
+.bg-button-primary:active:not(:disabled):not([aria-disabled="true"])::before {
+  opacity: 0;
+}
+.bg-button-primary:disabled,
+.bg-button-primary[aria-disabled="true"] {
+  background-image: var(--gradient-button-primary-disabled);
+}
+.bg-button-primary:disabled::before,
+.bg-button-primary[aria-disabled="true"]::before {
+  display: none;
+}
+
+.bg-button-danger {
+  position: relative;
+  isolation: isolate;
+  background-image: var(--gradient-button-danger-default);
+}
+.bg-button-danger::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: var(--gradient-button-danger-hover);
+  opacity: 0;
+  transition: opacity var(--button-transition-ms, 150ms) ease;
+}
+.bg-button-danger:hover:not(:disabled):not([aria-disabled="true"])::before {
+  opacity: 1;
+}
+.bg-button-danger:active:not(:disabled):not([aria-disabled="true"]) {
+  background-image: var(--gradient-button-danger-active);
+}
+.bg-button-danger:active:not(:disabled):not([aria-disabled="true"])::before {
+  opacity: 0;
+}
+.bg-button-danger:disabled,
+.bg-button-danger[aria-disabled="true"] {
+  background-image: var(--gradient-button-danger-disabled);
+}
+.bg-button-danger:disabled::before,
+.bg-button-danger[aria-disabled="true"]::before {
+  display: none;
+}

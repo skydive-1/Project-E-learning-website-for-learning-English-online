@@ -1,67 +1,53 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
-  AlertCircle,
-  BookOpen,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Clock3,
-  RefreshCw,
-  Search,
-  UsersRound
-} from 'lucide-react';
+  RiUserFollowLine,
+  RiUserAddLine,
+  RiCheckboxCircleLine,
+  RiTimeLine,
+  RiAwardLine,
+  RiSparklingLine,
+  RiSearchLine,
+  RiRefreshLine,
+  RiDownload2Line,
+  RiArrowDownSLine,
+  RiArrowUpSLine,
+  RiAlertLine,
+  RiInformationLine,
+  RiBookOpenLine,
+  RiFlashlightLine,
+  RiArrowRightLine,
+  RiShieldUserLine,
+  RiChat3Line,
+  RiCheckLine,
+  RiCloseLine
+} from '@remixicon/react';
 import {
   Bar,
   CartesianGrid,
   ComposedChart,
   Line,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
   XAxis,
   YAxis
 } from 'recharts';
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent
-} from '@/components/ui/chart';
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle
-} from '@/components/ui/empty';
-import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Spinner } from '@/components/ui/spinner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '@/components/ui/table';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { cn } from '@/lib/utils';
+
+import apiClient from '../../../config/api.config';
+import { useToast } from '../../../context/ToastContext';
 import { getAdminAnalytics } from '../services/adminAnalytics.service';
+
+import { Button } from '@/components/base/buttons/button';
+import { Select, SelectItem } from '@/components/base/select/select';
+import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control';
+import { Chip } from '@/components/base/badges/chip';
+import { StatusDot } from '@/components/base/badges/status-dot';
+import { Badge } from '@/components/base/badges/badge';
+import { Avatar } from '@/components/base/avatar/avatar';
+import { Pagination } from '@/components/base/pagination/pagination';
+import { Tooltip, TooltipTrigger } from '@/components/base/tooltip/tooltip';
+import { Divider } from '@/components/base/divider/divider';
+import { cx } from '@/utils/cx';
+
 import '../styles/user-analytics.scss';
 
 const RANGE_OPTIONS = [
@@ -72,26 +58,17 @@ const RANGE_OPTIONS = [
 ];
 
 const STATUS_META = {
-  active: { label: 'Đang hoạt động', shortLabel: 'Hoạt động' },
-  attention: { label: 'Cần chú ý', shortLabel: 'Cần chú ý' },
-  inactive: { label: 'Không hoạt động', shortLabel: 'Không hoạt động' }
+  active: { label: 'Đang hoạt động', shortLabel: 'Hoạt động', chipColor: 'lime', dotColor: 'green' },
+  attention: { label: 'Cần chú ý', shortLabel: 'Cần chú ý', chipColor: 'yellow', dotColor: 'yellow' },
+  inactive: { label: 'Không hoạt động', shortLabel: 'Không hoạt động', chipColor: 'rose', dotColor: 'indigo' }
 };
 
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'Tất cả trạng thái' },
-  ...Object.entries(STATUS_META).map(([value, meta]) => ({ value, label: meta.label }))
+const STATUS_FILTER_ITEMS = [
+  { id: 'all', label: 'Tất cả trạng thái' },
+  { id: 'active', label: 'Đang hoạt động' },
+  { id: 'attention', label: 'Cần chú ý (8-30 ngày)' },
+  { id: 'inactive', label: 'Không hoạt động (>30 ngày)' }
 ];
-
-const CHART_CONFIG = {
-  active_learners: {
-    label: 'Học viên hoạt động',
-    color: 'var(--chart-1)'
-  },
-  completed_lessons: {
-    label: 'Bài hoàn thành',
-    color: 'var(--chart-2)'
-  }
-};
 
 const numberFormatter = new Intl.NumberFormat('vi-VN');
 const compactFormatter = new Intl.NumberFormat('vi-VN', {
@@ -114,7 +91,7 @@ const formatStudyTime = (minutes) => {
   if (value < 60) return `${numberFormatter.format(value)} phút`;
   const hours = Math.floor(value / 60);
   const rest = value % 60;
-  return rest ? `${numberFormatter.format(hours)}g ${rest}p` : `${numberFormatter.format(hours)} giờ`;
+  return rest ? `${numberFormatter.format(hours)}h ${rest}p` : `${numberFormatter.format(hours)} giờ`;
 };
 
 const formatRelativeActivity = (learner) => {
@@ -137,63 +114,63 @@ const getInitials = (learner) => {
     .toUpperCase();
 };
 
-const StatusBadge = ({ status }) => {
-  const safeStatus = STATUS_META[status] ? status : 'inactive';
-  return (
-    <Badge variant="outline" className={cn('aua-status-badge', `is-${safeStatus}`)}>
-      <span className="aua-status-dot" aria-hidden="true" />
-      {STATUS_META[safeStatus].shortLabel}
-    </Badge>
-  );
+/**
+ * Custom Recharts Tooltip matching BoardUI popover style
+ */
+const CustomChartTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-xl border border-border-button-default bg-background-primary-default p-3 shadow-dropdown">
+        <p className="mb-2 text-caption-1-semibold text-text-secondary">Ngày {label}</p>
+        <div className="flex flex-col gap-1.5">
+          {payload.map((entry, index) => (
+            <div key={`tooltip-${index}`} className="flex items-center justify-between gap-4 text-caption-1-medium">
+              <span className="flex items-center gap-1.5 text-text-secondary">
+                <span className="size-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                {entry.name}
+              </span>
+              <strong className="text-text-primary tabular-nums">
+                {numberFormatter.format(entry.value)}
+              </strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
 };
 
-const LearnerIdentity = ({ learner, expanded, onToggle }) => (
-  <Button
-    type="button"
-    variant="ghost"
-    className="aua-learner-trigger h-auto w-full justify-start gap-3 p-0 text-left hover:bg-transparent"
-    onClick={onToggle}
-    aria-expanded={expanded}
-  >
-    <Avatar size="lg">
-      {learner.profile_picture_url && (
-        <AvatarImage src={learner.profile_picture_url} alt="" />
-      )}
-      <AvatarFallback>{getInitials(learner)}</AvatarFallback>
-    </Avatar>
-    <span className="min-w-0 flex-1">
-      <strong className="block truncate font-medium text-foreground">
-        {learner.full_name || learner.username}
-      </strong>
-      <small className="block truncate text-xs text-muted-foreground">{learner.email}</small>
-    </span>
-    {expanded ? (
-      <ChevronUp aria-hidden="true" />
-    ) : (
-      <ChevronDown aria-hidden="true" />
-    )}
-  </Button>
-);
-
+/**
+ * Loading Skeleton matching BoardUI surfaces
+ */
 const DashboardSkeleton = () => (
-  <section className="user-analytics-shadcn flex flex-col gap-4" aria-busy="true" aria-label="Đang tải User Analytics">
-    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+  <section className="flex flex-col gap-6" aria-busy="true" aria-label="Đang tải User Analytics">
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
       <div className="flex flex-col gap-2">
-        <Skeleton className="h-8 w-52" />
-        <Skeleton className="h-4 w-[min(32rem,80vw)]" />
+        <div className="h-7 w-48 animate-pulse rounded-lg bg-background-secondary-hover" />
+        <div className="h-4 w-72 animate-pulse rounded-lg bg-background-secondary-hover" />
       </div>
-      <Skeleton className="h-9 w-80 max-w-full" />
+      <div className="h-9 w-64 animate-pulse rounded-2lg bg-background-secondary-hover" />
     </div>
-    <Skeleton className="h-44 w-full rounded-2xl" />
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.8fr)]">
-      <Skeleton className="h-[340px] w-full rounded-2xl" />
-      <Skeleton className="h-[340px] w-full rounded-2xl" />
+
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-32 animate-pulse rounded-2xl bg-background-secondary-default p-4" />
+      ))}
     </div>
-    <Skeleton className="h-[440px] w-full rounded-2xl" />
+
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(18rem,0.85fr)]">
+      <div className="h-[320px] animate-pulse rounded-2xl bg-background-secondary-default" />
+      <div className="h-[320px] animate-pulse rounded-2xl bg-background-secondary-default" />
+    </div>
+
+    <div className="h-[420px] animate-pulse rounded-2xl bg-background-secondary-default" />
   </section>
 );
 
 const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = null }) => {
+  const showToast = useToast();
   const [range, setRange] = useState(30);
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(!initialData);
@@ -203,6 +180,7 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [page, setPage] = useState(1);
+  const [resettingUserId, setResettingUserId] = useState(null);
 
   const loadAnalytics = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
@@ -262,455 +240,817 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
   const hasChartData = chartData.some((item) => item.active_learners || item.completed_lessons);
   const activeCourses = (data?.courses || []).filter((course) => toNumber(course.learners) > 0);
 
+  // Thao tác reset token AI trực tiếp từ bảng
+  const handleQuickResetToken = async (learner) => {
+    const name = learner.full_name || learner.username;
+    if (!window.confirm(`Bạn có chắc muốn Reset Token AI cho học viên "${name}" về 0?`)) {
+      return;
+    }
+
+    setResettingUserId(learner.user_id);
+    try {
+      const res = await apiClient.post(`/admin/users/${learner.user_id}/reset-token`);
+      if (res.data?.success) {
+        showToast?.(`Đã reset token AI cho ${name} thành công!`, 'success');
+        await loadAnalytics({ silent: true });
+      }
+    } catch (err) {
+      showToast?.(err.response?.data?.message || 'Có lỗi khi reset token', 'error');
+    } finally {
+      setResettingUserId(null);
+    }
+  };
+
+  // Xuất file CSV báo cáo Analytics
+  const handleExportCSV = () => {
+    if (!learners.length) return;
+    const headers = ['User ID', 'Họ tên', 'Username', 'Email', 'Trạng thái', 'Tiến độ (%)', 'Bài hoàn thành', 'Thời gian học (phút)', 'Điểm Quiz TB', 'Token AI dùng', 'Hoạt động cuối'];
+    const rows = learners.map((l) => [
+      l.user_id,
+      `"${l.full_name || ''}"`,
+      `"${l.username || ''}"`,
+      `"${l.email || ''}"`,
+      STATUS_META[l.engagement_status]?.label || l.engagement_status,
+      l.progress_percent,
+      l.completed_lessons,
+      l.study_minutes,
+      l.average_quiz_score,
+      l.used_tokens,
+      l.last_activity_at ? dateTimeFormatter.format(new Date(l.last_activity_at)) : 'Chưa có'
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `elearn_user_analytics_${range}d_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (loading) return <DashboardSkeleton />;
 
   if (error && !data) {
     return (
-      <section className="user-analytics-shadcn">
-        <Alert variant="destructive" className="min-h-28 items-center p-5">
-          <AlertCircle aria-hidden="true" />
-          <AlertTitle>Chưa thể mở User Analytics</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-          <AlertAction className="right-5 top-1/2 -translate-y-1/2">
-            <Button type="button" variant="outline" onClick={() => loadAnalytics()}>
-              Thử tải lại
-            </Button>
-          </AlertAction>
-        </Alert>
+      <section className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-border-button-default bg-background-secondary-default p-8 text-center">
+        <RiAlertLine className="size-10 text-status-rose-text" />
+        <h3 className="mt-3 text-headline-semibold text-text-primary">Chưa thể tải dữ liệu User Analytics</h3>
+        <p className="mt-1 max-w-md text-body-regular text-text-secondary">{error}</p>
+        <div className="mt-4">
+          <Button variant="primary" size="medium" onClick={() => loadAnalytics()}>
+            Thử tải lại
+          </Button>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="user-analytics-shadcn flex min-w-0 flex-col gap-4" aria-labelledby="user-analytics-title">
-      <header className="aua-page-header flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-2xl">
-          <h2 id="user-analytics-title" className="text-2xl font-semibold tracking-tight text-foreground">
-            User Analytics
-          </h2>
-          <p className="mt-1 text-sm leading-5 text-muted-foreground">
-            Hoạt động, tiến độ học tập và mức độ tương tác trên toàn hệ thống.
+    <section className="flex flex-col gap-6" aria-labelledby="user-analytics-main-title">
+      {/* 1. Header Toolbar */}
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <RiShieldUserLine className="size-5" />
+            </span>
+            <h2 id="user-analytics-main-title" className="text-title-1-semibold text-text-primary">
+              User Analytics & System Health
+            </h2>
+          </div>
+          <p className="mt-1 text-body-regular text-text-secondary">
+            Hoạt động, tiến độ học tập và mức độ tương tác học viên trên toàn hệ thống trong {range} ngày gần nhất.
           </p>
         </div>
 
-        <div className="aua-toolbar-actions flex min-w-0 flex-wrap items-center gap-2">
-          <ToggleGroup
-            value={[String(range)]}
-            onValueChange={(values) => {
-              const nextValue = values.at(-1);
-              if (nextValue) setRange(Number(nextValue));
-            }}
-            variant="outline"
-            size="sm"
-            spacing={0}
-            className="aua-range-toggle"
-            aria-label="Chọn khoảng thời gian"
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Segmented Control cho khoảng thời gian */}
+          <SegmentedControl
+            selectedKey={String(range)}
+            onSelectionChange={(key) => setRange(Number(key))}
+            variant="solid"
+            aria-label="Chọn khoảng thời gian phân tích"
           >
-            {RANGE_OPTIONS.map((option) => (
-              <ToggleGroupItem key={option.value} value={String(option.value)} aria-label={option.label}>
-                {option.label}
-              </ToggleGroupItem>
+            {RANGE_OPTIONS.map((opt) => (
+              <SegmentedControlItem key={opt.value} id={String(opt.value)}>
+                {opt.label}
+              </SegmentedControlItem>
             ))}
-          </ToggleGroup>
+          </SegmentedControl>
+
+          {/* Nút Làm mới */}
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => loadAnalytics({ silent: true })}
+            variant="secondary"
+            size="small"
+            leadingIcon={RiRefreshLine}
             disabled={refreshing}
+            onClick={() => loadAnalytics({ silent: true })}
             aria-label="Làm mới dữ liệu Analytics"
           >
-            {refreshing ? (
-              <Spinner data-icon="inline-start" aria-hidden="true" />
-            ) : (
-              <RefreshCw data-icon="inline-start" aria-hidden="true" />
-            )}
-            <span>{refreshing ? 'Đang cập nhật' : 'Làm mới'}</span>
+            {refreshing ? 'Đang cập nhật...' : 'Làm mới'}
+          </Button>
+
+          {/* Nút Xuất CSV */}
+          <Button
+            variant="secondary"
+            size="small"
+            leadingIcon={RiDownload2Line}
+            onClick={handleExportCSV}
+            aria-label="Xuất báo cáo CSV"
+          >
+            Xuất CSV
           </Button>
         </div>
       </header>
 
-      {error && (
-        <Alert variant="destructive" className="px-3 py-2">
-          <AlertCircle aria-hidden="true" />
-          <AlertTitle>Chưa cập nhật được dữ liệu mới</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <section className="aua-pulse-band" aria-labelledby="system-pulse-title">
-        <div className="aua-pulse-heading">
-          <div>
-            <h3 id="system-pulse-title">Nhịp hệ thống</h3>
-            <p>Tín hiệu học tập trong {range} ngày gần nhất.</p>
+      {/* 2. BoardUI KPI Stat Cards */}
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {/* Card 1: Học viên hoạt động */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-4 shadow-card transition-all duration-200 hover:border-border-button-hover">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-blue-500 text-white shadow-xs">
+              <RiUserFollowLine className="size-5" />
+            </span>
+            <Chip variant="bold" color="lime">
+              {activeRate}% hoạt động
+            </Chip>
           </div>
-          <Badge className="aua-pulse-badge">{activeRate}% đang hoạt động</Badge>
-        </div>
-        <div className="aua-pulse-layout">
-          <div className="aua-pulse-lead">
-            <span>Học viên hoạt động</span>
-            <strong>{numberFormatter.format(toNumber(overview.active_learners))}</strong>
-            <small>trên {numberFormatter.format(learnerCount)} học viên</small>
+          <div className="mt-3 flex flex-col gap-0.5">
+            <span className="text-caption-1-medium text-text-secondary">Học viên hoạt động</span>
+            <span className="text-title-1-bold text-text-primary tabular-nums">
+              {numberFormatter.format(toNumber(overview.active_learners))}
+            </span>
+            <small className="text-caption-2-regular text-text-tertiary">
+              trên {numberFormatter.format(learnerCount)} học viên
+            </small>
           </div>
-          <dl className="aua-pulse-metrics">
-            <div>
-              <dt>Đăng ký mới</dt>
-              <dd>+{numberFormatter.format(toNumber(overview.new_learners))}</dd>
-            </div>
-            <div>
-              <dt>Bài hoàn thành</dt>
-              <dd>{numberFormatter.format(toNumber(overview.lessons_completed))}</dd>
-            </div>
-            <div>
-              <dt>Thời gian học</dt>
-              <dd>{formatStudyTime(overview.study_minutes)}</dd>
-            </div>
-            <div>
-              <dt>Điểm quiz TB</dt>
-              <dd>{toNumber(overview.average_quiz_score)}%</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
+        </section>
 
-      <section className="aua-operations-panel order-3" aria-labelledby="learner-progress-title">
-        <header className="aua-panel-heading aua-users-header">
-          <div>
-            <h3 id="learner-progress-title">Tiến trình người dùng</h3>
-            <p>{numberFormatter.format(filteredLearners.length)} học viên phù hợp với bộ lọc.</p>
+        {/* Card 2: Đăng ký mới */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-4 shadow-card transition-all duration-200 hover:border-border-button-hover">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-purple-500 text-white shadow-xs">
+              <RiUserAddLine className="size-5" />
+            </span>
+            <Chip variant="bold" color="purple">
+              +{numberFormatter.format(toNumber(overview.new_learners))}
+            </Chip>
           </div>
-          <div className="aua-table-tools flex min-w-0 flex-col gap-2 md:flex-row">
-            <label className="relative block min-w-0">
-              <span className="sr-only">Tìm học viên</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tên hoặc email..."
-                className="w-full pl-9 md:w-60"
-              />
-            </label>
-            <Select items={STATUS_OPTIONS} value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-48" aria-label="Lọc theo trạng thái hoạt động">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+          <div className="mt-3 flex flex-col gap-0.5">
+            <span className="text-caption-1-medium text-text-secondary">Đăng ký mới</span>
+            <span className="text-title-1-bold text-text-primary tabular-nums">
+              {numberFormatter.format(toNumber(overview.new_learners))}
+            </span>
+            <small className="text-caption-2-regular text-text-tertiary">trong {range} ngày qua</small>
           </div>
-        </header>
+        </section>
 
-        <div className="aua-table-content">
-          {visibleLearners.length ? (
-            <>
-              <div className="hidden lg:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[29%] px-4">Học viên</TableHead>
-                      <TableHead className="w-[20%]">Tiến độ khóa học</TableHead>
-                      <TableHead>Thời gian học</TableHead>
-                      <TableHead>Quiz TB</TableHead>
-                      <TableHead>Hoạt động gần nhất</TableHead>
-                      <TableHead className="pr-4">Trạng thái</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleLearners.map((learner) => {
-                      const expanded = expandedUserId === learner.user_id;
-                      const progress = toNumber(learner.progress_percent);
-                      return (
-                        <Fragment key={learner.user_id}>
-                          <TableRow aria-expanded={expanded} className={cn(expanded && 'bg-muted/40')}>
-                            <TableCell className="px-4 py-2.5">
-                              <LearnerIdentity
-                                learner={learner}
-                                expanded={expanded}
-                                onToggle={() => setExpandedUserId(expanded ? null : learner.user_id)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex min-w-32 flex-col gap-2">
-                                <div className="flex items-center justify-between gap-3">
-                                  <strong className="text-sm tabular-nums">{progress}%</strong>
-                                  <span className="text-xs text-muted-foreground">
-                                    {toNumber(learner.completed_lessons)}/{toNumber(learner.available_lessons)} bài
-                                  </span>
-                                </div>
-                                <Progress value={progress} aria-label={`Tiến độ của ${learner.full_name || learner.username}`} />
-                              </div>
-                            </TableCell>
-                            <TableCell>{formatStudyTime(learner.study_minutes)}</TableCell>
-                            <TableCell>{toNumber(learner.quiz_attempts) ? `${toNumber(learner.average_quiz_score)}%` : 'Chưa có'}</TableCell>
-                            <TableCell title={learner.last_activity_at ? dateTimeFormatter.format(new Date(learner.last_activity_at)) : ''}>
-                              {formatRelativeActivity(learner)}
-                            </TableCell>
-                            <TableCell className="pr-4"><StatusBadge status={learner.engagement_status} /></TableCell>
-                          </TableRow>
-                          {expanded && (
-                            <TableRow className="aua-detail-row hover:bg-muted/40">
-                              <TableCell colSpan={6} className="px-4 py-3">
-                                <dl className="grid grid-cols-2 gap-4 xl:grid-cols-5">
-                                  <div><dt>Hoàn thành kỳ này</dt><dd>{toNumber(learner.period_completions)} bài</dd></div>
-                                  <div><dt>Lượt làm quiz</dt><dd>{toNumber(learner.quiz_attempts)}</dd></div>
-                                  <div><dt>Trao đổi với AI</dt><dd>{toNumber(learner.ai_messages)}</dd></div>
-                                  <div><dt>Token AI đã dùng</dt><dd>{numberFormatter.format(toNumber(learner.used_tokens))}</dd></div>
-                                  <div><dt>Ngày tham gia</dt><dd>{dateFormatter.format(new Date(learner.created_date))}</dd></div>
-                                </dl>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+        {/* Card 3: Bài học hoàn thành */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-4 shadow-card transition-all duration-200 hover:border-border-button-hover">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-xs">
+              <RiCheckboxCircleLine className="size-5" />
+            </span>
+            <Chip variant="bold" color="lime">
+              Tiến độ
+            </Chip>
+          </div>
+          <div className="mt-3 flex flex-col gap-0.5">
+            <span className="text-caption-1-medium text-text-secondary">Bài hoàn thành</span>
+            <span className="text-title-1-bold text-text-primary tabular-nums">
+              {numberFormatter.format(toNumber(overview.lessons_completed))}
+            </span>
+            <small className="text-caption-2-regular text-text-tertiary">
+              trên {numberFormatter.format(toNumber(overview.total_lessons))} tổng bài
+            </small>
+          </div>
+        </section>
 
-              <div className="flex flex-col lg:hidden">
-                {visibleLearners.map((learner, index) => {
-                  const expanded = expandedUserId === learner.user_id;
-                  const progress = toNumber(learner.progress_percent);
-                  return (
-                    <div key={learner.user_id}>
-                      {index > 0 && <Separator />}
-                      <article className="flex flex-col gap-4 p-4">
-                        <LearnerIdentity
-                          learner={learner}
-                          expanded={expanded}
-                          onToggle={() => setExpandedUserId(expanded ? null : learner.user_id)}
-                        />
-                        <div className="flex items-center justify-between gap-3">
-                          <StatusBadge status={learner.engagement_status} />
-                          <small className="text-xs text-muted-foreground">{formatRelativeActivity(learner)}</small>
-                        </div>
-                        <div className="aua-mobile-metrics grid grid-cols-3 gap-3 text-sm">
-                          <div><span>Tiến độ</span><strong>{progress}%</strong></div>
-                          <div><span>Thời gian</span><strong>{formatStudyTime(learner.study_minutes)}</strong></div>
-                          <div><span>Quiz TB</span><strong>{toNumber(learner.quiz_attempts) ? `${toNumber(learner.average_quiz_score)}%` : '-'}</strong></div>
-                        </div>
-                        <Progress value={progress} aria-label={`Tiến độ của ${learner.full_name || learner.username}`} />
-                        {expanded && (
-                          <dl className="aua-mobile-detail grid grid-cols-2 gap-3 bg-muted/60 p-4">
-                            <div><dt>Bài đã hoàn thành</dt><dd>{toNumber(learner.completed_lessons)}</dd></div>
-                            <div><dt>Hoàn thành kỳ này</dt><dd>{toNumber(learner.period_completions)}</dd></div>
-                            <div><dt>Trao đổi AI</dt><dd>{toNumber(learner.ai_messages)}</dd></div>
-                            <div><dt>Token AI đã dùng</dt><dd>{numberFormatter.format(toNumber(learner.used_tokens))}</dd></div>
-                          </dl>
-                        )}
-                      </article>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <Empty className="min-h-64">
-              <EmptyHeader>
-                <EmptyMedia variant="icon"><UsersRound aria-hidden="true" /></EmptyMedia>
-                <EmptyTitle>Không tìm thấy học viên phù hợp</EmptyTitle>
-                <EmptyDescription>Thử đổi từ khóa hoặc chọn một trạng thái khác.</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
-        </div>
+        {/* Card 4: Thời gian học */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-4 shadow-card transition-all duration-200 hover:border-border-button-hover">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-orange-500 text-white shadow-xs">
+              <RiTimeLine className="size-5" />
+            </span>
+            <Chip variant="bold" color="yellow">
+              Tích lũy
+            </Chip>
+          </div>
+          <div className="mt-3 flex flex-col gap-0.5">
+            <span className="text-caption-1-medium text-text-secondary">Thời gian học</span>
+            <span className="text-title-1-bold text-text-primary tabular-nums">
+              {formatStudyTime(overview.study_minutes)}
+            </span>
+            <small className="text-caption-2-regular text-text-tertiary">ghi nhận thực tế</small>
+          </div>
+        </section>
 
-        {visibleLearners.length > 0 && pageCount > 1 && (
-          <footer className="aua-pagination flex items-center justify-between gap-3">
-            <span className="text-xs text-muted-foreground">Trang {safePage}/{pageCount}</span>
-            <nav className="flex items-center gap-2" aria-label="Phân trang danh sách học viên">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                onClick={() => setPage(Math.max(1, safePage - 1))}
-                disabled={safePage === 1}
-                aria-label="Trang trước"
-              >
-                <ChevronLeft aria-hidden="true" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                onClick={() => setPage(Math.min(pageCount, safePage + 1))}
-                disabled={safePage === pageCount}
-                aria-label="Trang sau"
-              >
-                <ChevronRight aria-hidden="true" />
-              </Button>
-            </nav>
-          </footer>
-        )}
-      </section>
+        {/* Card 5: Điểm Quiz TB */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-4 shadow-card transition-all duration-200 hover:border-border-button-hover">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-pink-500 text-white shadow-xs">
+              <RiAwardLine className="size-5" />
+            </span>
+            <Chip variant="bold" color="blue">
+              {numberFormatter.format(toNumber(overview.quiz_attempts))} lượt
+            </Chip>
+          </div>
+          <div className="mt-3 flex flex-col gap-0.5">
+            <span className="text-caption-1-medium text-text-secondary">Điểm Quiz TB</span>
+            <span className="text-title-1-bold text-text-primary tabular-nums">
+              {toNumber(overview.average_quiz_score)}%
+            </span>
+            <small className="text-caption-2-regular text-text-tertiary">độ chính xác chung</small>
+          </div>
+        </section>
 
-      <div className="aua-analysis-grid order-2">
-        <section className="aua-chart-panel" aria-labelledby="activity-chart-title">
-          <header className="aua-panel-heading">
+        {/* Card 6: AI Chat & Token */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-4 shadow-card transition-all duration-200 hover:border-border-button-hover">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-sky-500 text-white shadow-xs">
+              <RiSparklingLine className="size-5" />
+            </span>
+            <Chip variant="bold" color="cyan">
+              {compactFormatter.format(toNumber(overview.ai_tokens_used))} Tok
+            </Chip>
+          </div>
+          <div className="mt-3 flex flex-col gap-0.5">
+            <span className="text-caption-1-medium text-text-secondary">Gia sư AI</span>
+            <span className="text-title-1-bold text-text-primary tabular-nums">
+              {numberFormatter.format(toNumber(overview.ai_messages))}
+            </span>
+            <small className="text-caption-2-regular text-text-tertiary">lượt trao đổi</small>
+          </div>
+        </section>
+      </div>
+
+      {/* 3. Grid: Trend Visualizer & Engagement Alert Rail */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(18rem,0.85fr)]">
+        {/* Trend Chart Card */}
+        <section className="flex flex-col rounded-2xl border border-separator-border bg-background-secondary-default p-5 shadow-card" aria-labelledby="trend-chart-title">
+          <header className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 id="activity-chart-title">Hoạt động hệ thống</h3>
-              <p>Học viên hoạt động và bài hoàn thành theo ngày.</p>
+              <h3 id="trend-chart-title" className="text-headline-semibold text-text-primary">
+                Nhịp học tập hệ thống theo ngày
+              </h3>
+              <p className="text-caption-1-regular text-text-secondary">
+                So sánh số lượng học viên hoạt động và số bài hoàn thành mỗi ngày.
+              </p>
             </div>
-            <Badge variant="outline">{range} ngày</Badge>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-caption-1-medium text-text-secondary">
+                <span className="size-2 rounded-full bg-blue-500" /> Học viên
+              </span>
+              <span className="flex items-center gap-1.5 text-caption-1-medium text-text-secondary">
+                <span className="size-2 rounded-full bg-emerald-500" /> Bài hoàn thành
+              </span>
+            </div>
           </header>
-          <div className="aua-chart-content">
+
+          <div className="mt-5 h-[260px] w-full">
             {hasChartData ? (
-              <div role="img" aria-label="Biểu đồ nhịp học theo ngày">
-                <p className="sr-only">
-                  Biểu đồ gồm {chartData.length} ngày, với tổng {numberFormatter.format(chartData.reduce((sum, item) => sum + item.active_learners, 0))} lượt học viên hoạt động theo ngày và {numberFormatter.format(chartData.reduce((sum, item) => sum + item.completed_lessons, 0))} bài học hoàn thành.
-                </p>
-                <ChartContainer config={CHART_CONFIG} className="h-[250px] w-full min-w-0 aspect-auto">
-                  <ComposedChart data={chartData} margin={{ top: 8, right: 2, left: -24, bottom: 0 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 6" />
-                    <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={28} />
-                    <YAxis yAxisId="left" axisLine={false} tickLine={false} allowDecimals={false} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} allowDecimals={false} />
-                    <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
-                    <ChartLegend content={<ChartLegendContent />} />
-                    <Bar
-                      yAxisId="right"
-                      dataKey="completed_lessons"
-                      fill="var(--color-completed_lessons)"
-                      maxBarSize={12}
-                      radius={[2, 2, 0, 0]}
-                      isAnimationActive={false}
-                    />
-                    <Line
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="active_learners"
-                      stroke="var(--color-active_learners)"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 3 }}
-                      isAnimationActive={false}
-                    />
-                  </ComposedChart>
-                </ChartContainer>
-              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-separator-border)" />
+                  <XAxis
+                    dataKey="label"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+                    minTickGap={24}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+                    allowDecimals={false}
+                  />
+                  <RechartsTooltip content={<CustomChartTooltip />} />
+                  <Bar
+                    yAxisId="right"
+                    dataKey="completed_lessons"
+                    name="Bài hoàn thành"
+                    fill="#10b981"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={16}
+                  />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="active_learners"
+                    name="Học viên hoạt động"
+                    stroke="#3b82f6"
+                    strokeWidth={2.5}
+                    dot={{ r: 3, fill: '#3b82f6' }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
             ) : (
-              <Empty className="min-h-[250px] border-0">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon"><Activity aria-hidden="true" /></EmptyMedia>
-                  <EmptyTitle>Chưa có hoạt động trong khoảng này</EmptyTitle>
-                  <EmptyDescription>Biểu đồ sẽ xuất hiện khi học viên bắt đầu học hoặc hoàn thành bài.</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
+              <div className="flex h-full flex-col items-center justify-center text-center">
+                <RiBookOpenLine className="size-8 text-text-tertiary" />
+                <p className="mt-2 text-caption-1-medium text-text-secondary">Chưa có dữ liệu hoạt động trong khoảng này</p>
+              </div>
             )}
           </div>
         </section>
 
-        <aside className="aua-attention-rail" aria-labelledby="engagement-title">
-          <header className="aua-panel-heading">
-            <div>
-              <h3 id="engagement-title">Tín hiệu cần xử lý</h3>
-              <p>Theo hoạt động gần nhất.</p>
+        {/* Attention & Engagement Rail */}
+        <section className="flex flex-col justify-between rounded-2xl border border-separator-border bg-background-secondary-default p-5 shadow-card" aria-labelledby="attention-rail-title">
+          <div>
+            <header className="flex items-center justify-between">
+              <div>
+                <h3 id="attention-rail-title" className="text-headline-semibold text-text-primary">
+                  Phân bổ tương tác
+                </h3>
+                <p className="text-caption-1-regular text-text-secondary">Theo mốc hoạt động gần nhất.</p>
+              </div>
+              <TooltipTrigger delay={150}>
+                <button
+                  type="button"
+                  aria-label="Thông tin phân bổ tương tác"
+                  className="text-text-tertiary hover:text-text-primary"
+                >
+                  <RiInformationLine className="size-4" />
+                </button>
+                <Tooltip size="md">
+                  Active: &lt;8 ngày · Attention: 8-30 ngày · Inactive: &gt;30 ngày
+                </Tooltip>
+              </TooltipTrigger>
+            </header>
+
+            {/* Alert banner for attention learners */}
+            <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-yellow-800 dark:text-yellow-300">
+              <RiAlertLine className="mt-0.5 size-4 shrink-0" />
+              <div className="text-caption-1-medium">
+                <strong>{numberFormatter.format(toNumber(engagement.attention))} học viên cần chú ý</strong>
+                <p className="text-caption-2-regular opacity-90">Không có hoạt động học tập từ 8 đến 30 ngày qua.</p>
+              </div>
             </div>
-          </header>
-          <div className="aua-attention-content">
-            <Alert className="aua-attention-alert">
-              <AlertCircle aria-hidden="true" />
-              <AlertTitle>{numberFormatter.format(toNumber(engagement.attention))} học viên cần chú ý</AlertTitle>
-              <AlertDescription>Không hoạt động từ 8 đến 30 ngày.</AlertDescription>
-            </Alert>
+
+            {/* Multi-segment Distribution Bar */}
             <div
-              className="aua-distribution-bar"
+              className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-background-tertiary-default p-0.5"
               role="img"
-              aria-label={`Phân bổ: ${toNumber(engagement.active)} đang hoạt động, ${toNumber(engagement.attention)} cần chú ý, ${toNumber(engagement.inactive)} không hoạt động`}
+              aria-label={`Phân bổ học viên: ${engagement.active} hoạt động, ${engagement.attention} chú ý, ${engagement.inactive} không hoạt động`}
             >
-              {Object.keys(STATUS_META).map((key) => (
-                <span
-                  key={key}
-                  className={`is-${key}`}
-                  style={{ width: `${(toNumber(engagement[key]) / totalLearners) * 100}%` }}
-                />
-              ))}
+              <div
+                className="h-full rounded-full bg-green-500 transition-all duration-300"
+                style={{ width: `${(toNumber(engagement.active) / totalLearners) * 100}%` }}
+                title={`Đang hoạt động: ${engagement.active}`}
+              />
+              <div
+                className="h-full rounded-full bg-yellow-500 transition-all duration-300"
+                style={{ width: `${(toNumber(engagement.attention) / totalLearners) * 100}%` }}
+                title={`Cần chú ý: ${engagement.attention}`}
+              />
+              <div
+                className="h-full rounded-full bg-rose-500 transition-all duration-300"
+                style={{ width: `${(toNumber(engagement.inactive) / totalLearners) * 100}%` }}
+                title={`Không hoạt động: ${engagement.inactive}`}
+              />
             </div>
-            <div className="flex flex-col gap-3">
+
+            {/* Interactive Status Rows */}
+            <div className="mt-4 flex flex-col gap-2">
               {Object.entries(STATUS_META).map(([key, meta]) => {
                 const count = toNumber(engagement[key]);
                 const percent = Math.round((count / totalLearners) * 100);
+                const isCurrentFilter = statusFilter === key;
                 return (
-                  <div key={key} className="aua-distribution-row">
-                    <span className={`aua-legend-mark is-${key}`} aria-hidden="true" />
-                    <span>{meta.label}</span>
-                    <strong>{numberFormatter.format(count)}</strong>
-                    <small>{percent}%</small>
-                  </div>
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStatusFilter(isCurrentFilter ? 'all' : key)}
+                    className={cx(
+                      'flex items-center justify-between rounded-xl px-3 py-2 text-left transition-colors duration-150',
+                      isCurrentFilter
+                        ? 'bg-background-primary-default border border-border-button-default shadow-xs'
+                        : 'hover:bg-background-secondary-hover'
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <StatusDot color={meta.dotColor} />
+                      <span className="text-body-2-medium text-text-primary">{meta.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <strong className="text-body-2-medium text-text-primary tabular-nums">
+                        {numberFormatter.format(count)}
+                      </strong>
+                      <span className="w-9 text-right text-caption-2-regular text-text-tertiary tabular-nums">
+                        {percent}%
+                      </span>
+                    </div>
+                  </button>
                 );
               })}
             </div>
-            <Separator />
-            <dl className="aua-secondary-stats">
-              <div><dt>Khóa đang mở</dt><dd>{toNumber(overview.published_courses)}</dd></div>
-              <div><dt>Trao đổi AI</dt><dd>{compactFormatter.format(toNumber(overview.ai_messages))}</dd></div>
-            </dl>
           </div>
-        </aside>
+
+          <div className="mt-4 border-t border-separator-border pt-3">
+            <div className="flex items-center justify-between text-caption-1-medium text-text-secondary">
+              <span>Khóa học mở: <strong className="text-text-primary">{toNumber(overview.published_courses)}</strong></span>
+              <span>Tổng bài học: <strong className="text-text-primary">{toNumber(overview.total_lessons)}</strong></span>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <section className="aua-operations-panel order-4" aria-labelledby="course-health-title">
-        <header className="aua-panel-heading">
+      {/* 4. Core BoardUI Data Table: Tiến trình Học viên */}
+      <section className="flex flex-col rounded-2xl border border-separator-border bg-background-secondary-default shadow-card" aria-labelledby="learner-table-title">
+        {/* Table Header & Controls */}
+        <header className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between border-b border-separator-border">
           <div>
-            <h3 id="course-health-title">Tiến độ theo khóa học</h3>
-            <p>Các khóa đang có người học, xếp theo quy mô tham gia.</p>
+            <div className="flex items-center gap-2">
+              <h3 id="learner-table-title" className="text-headline-semibold text-text-primary">
+                Bảng tiến trình học viên
+              </h3>
+              <Chip variant="bold" color="neutral">
+                {numberFormatter.format(filteredLearners.length)} học viên
+              </Chip>
+            </div>
+            <p className="mt-0.5 text-caption-1-regular text-text-secondary">
+              Danh sách chi tiết tiến độ, thời lượng học, điểm số và hạn mức sử dụng AI.
+            </p>
           </div>
-          <div>
-            <Badge variant="outline" className="hidden gap-1.5 sm:flex">
-              <BookOpen data-icon="inline-start" aria-hidden="true" />
-              {numberFormatter.format(toNumber(overview.total_lessons))} bài học
-            </Badge>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Search Box */}
+            <div className="relative min-w-[200px] flex-1 sm:w-64 sm:flex-initial">
+              <RiSearchLine className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-tertiary" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tìm tên, username, email..."
+                className="w-full rounded-2lg border border-border-button-default bg-background-primary-default py-1.5 pl-9 pr-3 text-body-medium text-text-primary shadow-xs outline-none transition-all placeholder:text-text-placeholder focus:border-border-focus-ring focus:ring-2 focus:ring-border-focus-ring"
+              />
+            </div>
+
+            {/* Status Select */}
+            <div className="w-44">
+              <Select
+                selectedKey={statusFilter}
+                onSelectionChange={(key) => setStatusFilter(String(key))}
+                size="sm"
+                aria-label="Lọc theo trạng thái học viên"
+              >
+                {STATUS_FILTER_ITEMS.map((item) => (
+                  <SelectItem key={item.id} id={item.id} textValue={item.label}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
           </div>
         </header>
-        <div className="aua-course-list">
-          {activeCourses.length ? (
-            <div className="flex flex-col">
-              {activeCourses.map((course, index) => {
-                const averageProgress = toNumber(course.average_progress);
-                return (
-                  <Fragment key={course.course_id}>
-                    {index > 0 && <Separator />}
-                    <div className="aua-course-row">
-                      <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_minmax(16rem,0.65fr)] md:gap-8">
-                        <div className="min-w-0">
-                          <strong className="block truncate text-sm font-medium text-foreground">{course.course_name}</strong>
-                          <span className="mt-1 block text-xs text-muted-foreground">
-                            {toNumber(course.learners)} học viên · {toNumber(course.completed_learners)} đã hoàn thành
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Progress value={averageProgress} className="flex-1" aria-label={`Tiến độ trung bình khóa ${course.course_name}`} />
-                          <strong className="w-11 text-right text-sm tabular-nums">{averageProgress}%</strong>
-                        </div>
+
+        {/* Table Body (Desktop View) */}
+        <div className="hidden lg:block overflow-x-auto">
+          {visibleLearners.length ? (
+            <table className="bui-table w-full">
+              <thead>
+                <tr>
+                  <th className="w-[28%] pl-5">Học viên</th>
+                  <th className="w-[18%]">Tiến độ khóa học</th>
+                  <th className="w-[14%]">Thời gian học</th>
+                  <th className="w-[12%]">Điểm Quiz TB</th>
+                  <th className="w-[14%]">Hoạt động gần nhất</th>
+                  <th className="w-[14%] pr-5">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleLearners.map((learner) => {
+                  const expanded = expandedUserId === learner.user_id;
+                  const progress = toNumber(learner.progress_percent);
+                  const statusInfo = STATUS_META[learner.engagement_status] || STATUS_META.inactive;
+
+                  return (
+                    <Fragment key={learner.user_id}>
+                      <tr
+                        className={cx(
+                          'cursor-pointer transition-colors hover:bg-background-secondary-hover',
+                          expanded && 'bg-background-primary-default'
+                        )}
+                        onClick={() => setExpandedUserId(expanded ? null : learner.user_id)}
+                      >
+                        <td className="pl-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <Avatar
+                              size="md"
+                              src={learner.profile_picture_url}
+                              initials={getInitials(learner)}
+                              alt={learner.full_name || learner.username}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <strong className="block truncate text-body-medium text-text-primary">
+                                {learner.full_name || learner.username}
+                              </strong>
+                              <small className="block truncate text-caption-1-regular text-text-secondary">
+                                {learner.email}
+                              </small>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-text-tertiary hover:text-text-primary p-1"
+                              aria-label={expanded ? 'Thu gọn chi tiết' : 'Mở rộng chi tiết'}
+                            >
+                              {expanded ? <RiArrowUpSLine className="size-4" /> : <RiArrowDownSLine className="size-4" />}
+                            </button>
+                          </div>
+                        </td>
+
+                        <td className="py-3">
+                          <div className="flex flex-col gap-1.5 pr-4">
+                            <div className="flex items-center justify-between text-caption-1-medium">
+                              <strong className="text-text-primary tabular-nums">{progress}%</strong>
+                              <span className="text-text-secondary">
+                                {toNumber(learner.completed_lessons)}/{toNumber(learner.available_lessons)} bài
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-background-tertiary-default">
+                              <div
+                                className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                                style={{ width: `${Math.min(100, progress)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 text-body-medium text-text-primary tabular-nums">
+                          {formatStudyTime(learner.study_minutes)}
+                        </td>
+
+                        <td className="py-3">
+                          {toNumber(learner.quiz_attempts) > 0 ? (
+                            <div className="flex items-center gap-1.5">
+                              <Chip variant="bold" color={toNumber(learner.average_quiz_score) >= 80 ? 'lime' : 'yellow'}>
+                                {toNumber(learner.average_quiz_score)}%
+                              </Chip>
+                              <span className="text-caption-2-regular text-text-tertiary">
+                                ({toNumber(learner.quiz_attempts)} lần)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-caption-1-regular text-text-tertiary">Chưa làm</span>
+                          )}
+                        </td>
+
+                        <td className="py-3">
+                          <TooltipTrigger delay={100}>
+                            <span className="text-body-2-medium text-text-secondary">
+                              {formatRelativeActivity(learner)}
+                            </span>
+                            <Tooltip size="md">
+                              {learner.last_activity_at
+                                ? dateTimeFormatter.format(new Date(learner.last_activity_at))
+                                : 'Chưa ghi nhận hoạt động'}
+                            </Tooltip>
+                          </TooltipTrigger>
+                        </td>
+
+                        <td className="pr-5 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <StatusDot color={statusInfo.dotColor} />
+                            <Chip variant="bold" color={statusInfo.chipColor}>
+                              {statusInfo.shortLabel}
+                            </Chip>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Accordion Sub-row */}
+                      {expanded && (
+                        <tr className="bg-background-primary-default">
+                          <td colSpan={6} className="px-5 py-4 border-b border-separator-border">
+                            <div className="flex flex-col gap-4 rounded-xl border border-border-button-default bg-background-secondary-default p-4">
+                              <div className="flex items-center justify-between">
+                                <span className="text-caption-1-semibold text-text-secondary">
+                                  CHI TIẾT TIẾN TRÌNH VÀ TƯƠNG TÁC AI CỦA HỌC VIÊN
+                                </span>
+                                <Button
+                                  variant="secondary"
+                                  size="xs"
+                                  leadingIcon={RiFlashlightLine}
+                                  disabled={resettingUserId === learner.user_id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleQuickResetToken(learner);
+                                  }}
+                                  aria-label={`Reset token AI cho ${learner.full_name || learner.username}`}
+                                >
+                                  {resettingUserId === learner.user_id ? 'Đang reset...' : 'Reset Token AI'}
+                                </Button>
+                              </div>
+
+                              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 text-caption-1-medium">
+                                <div className="flex flex-col gap-1 rounded-lg bg-background-primary-default p-2.5 border border-border-button-default">
+                                  <dt className="text-text-secondary">Hoàn thành kỳ này</dt>
+                                  <dd className="text-title-3-bold text-text-primary tabular-nums">
+                                    {toNumber(learner.period_completions)} bài
+                                  </dd>
+                                </div>
+                                <div className="flex flex-col gap-1 rounded-lg bg-background-primary-default p-2.5 border border-border-button-default">
+                                  <dt className="text-text-secondary">Lượt làm Quiz</dt>
+                                  <dd className="text-title-3-bold text-text-primary tabular-nums">
+                                    {toNumber(learner.quiz_attempts)} lượt
+                                  </dd>
+                                </div>
+                                <div className="flex flex-col gap-1 rounded-lg bg-background-primary-default p-2.5 border border-border-button-default">
+                                  <dt className="text-text-secondary">Trao đổi Gia sư AI</dt>
+                                  <dd className="text-title-3-bold text-text-primary tabular-nums">
+                                    {toNumber(learner.ai_messages)} tin
+                                  </dd>
+                                </div>
+                                <div className="flex flex-col gap-1 rounded-lg bg-background-primary-default p-2.5 border border-border-button-default">
+                                  <dt className="text-text-secondary">Token AI đã dùng</dt>
+                                  <dd className="text-title-3-bold text-text-primary tabular-nums">
+                                    {numberFormatter.format(toNumber(learner.used_tokens))}
+                                  </dd>
+                                </div>
+                                <div className="flex flex-col gap-1 rounded-lg bg-background-primary-default p-2.5 border border-border-button-default">
+                                  <dt className="text-text-secondary">Ngày tham gia</dt>
+                                  <dd className="text-body-medium text-text-primary">
+                                    {dateFormatter.format(new Date(learner.created_date))}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
+              <RiSearchLine className="size-8 text-text-tertiary" />
+              <p className="mt-2 text-headline-medium text-text-primary">Không tìm thấy học viên phù hợp</p>
+              <small className="text-caption-1-regular text-text-secondary">Thử thay đổi từ khóa hoặc bộ lọc trạng thái.</small>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile View: Cards fallback for small screens */}
+        <div className="flex flex-col lg:hidden divide-y divide-separator-border">
+          {visibleLearners.length ? (
+            visibleLearners.map((learner) => {
+              const expanded = expandedUserId === learner.user_id;
+              const progress = toNumber(learner.progress_percent);
+              const statusInfo = STATUS_META[learner.engagement_status] || STATUS_META.inactive;
+
+              return (
+                <article key={learner.user_id} className="flex flex-col gap-3 p-4">
+                  <div
+                    className="flex items-center justify-between cursor-pointer"
+                    onClick={() => setExpandedUserId(expanded ? null : learner.user_id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        size="md"
+                        src={learner.profile_picture_url}
+                        initials={getInitials(learner)}
+                        alt={learner.full_name || learner.username}
+                      />
+                      <div>
+                        <strong className="block text-body-medium text-text-primary">
+                          {learner.full_name || learner.username}
+                        </strong>
+                        <small className="block text-caption-1-regular text-text-secondary">
+                          {learner.email}
+                        </small>
                       </div>
                     </div>
-                  </Fragment>
-                );
-              })}
-            </div>
+                    <Chip variant="bold" color={statusInfo.chipColor}>
+                      {statusInfo.shortLabel}
+                    </Chip>
+                  </div>
+
+                  <div className="flex items-center justify-between text-caption-1-medium text-text-secondary">
+                    <span>Tiến độ: <strong className="text-text-primary">{progress}%</strong></span>
+                    <span>Học: <strong className="text-text-primary">{formatStudyTime(learner.study_minutes)}</strong></span>
+                    <span>Quiz TB: <strong className="text-text-primary">{toNumber(learner.quiz_attempts) ? `${toNumber(learner.average_quiz_score)}%` : '-'}</strong></span>
+                  </div>
+
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-background-tertiary-default">
+                    <div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(100, progress)}%` }} />
+                  </div>
+
+                  {expanded && (
+                    <div className="mt-2 rounded-xl bg-background-primary-default p-3 border border-border-button-default flex flex-col gap-2">
+                      <div className="grid grid-cols-2 gap-2 text-caption-1-medium">
+                        <div><span className="text-text-secondary">Bài hoàn thành:</span> <strong>{toNumber(learner.completed_lessons)}</strong></div>
+                        <div><span className="text-text-secondary">Lượt quiz:</span> <strong>{toNumber(learner.quiz_attempts)}</strong></div>
+                        <div><span className="text-text-secondary">Chat AI:</span> <strong>{toNumber(learner.ai_messages)}</strong></div>
+                        <div><span className="text-text-secondary">Token đã dùng:</span> <strong>{numberFormatter.format(toNumber(learner.used_tokens))}</strong></div>
+                      </div>
+                      <div className="pt-2 border-t border-separator-border flex justify-end">
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          leadingIcon={RiFlashlightLine}
+                          disabled={resettingUserId === learner.user_id}
+                          onClick={() => handleQuickResetToken(learner)}
+                        >
+                          Reset Token AI
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })
           ) : (
-            <Empty className="min-h-40 border">
-              <EmptyHeader>
-                <EmptyMedia variant="icon"><BookOpen aria-hidden="true" /></EmptyMedia>
-                <EmptyTitle>Chưa có tiến trình khóa học</EmptyTitle>
-                <EmptyDescription>Dữ liệu sẽ được tổng hợp khi học viên bắt đầu học.</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <div className="p-8 text-center text-caption-1-medium text-text-secondary">
+              Không tìm thấy học viên phù hợp.
+            </div>
+          )}
+        </div>
+
+        {/* Table Pagination */}
+        {pageCount > 1 && (
+          <footer className="flex items-center justify-between p-4 border-t border-separator-border">
+            <span className="text-caption-1-regular text-text-secondary">
+              Trang {safePage} / {pageCount} ({numberFormatter.format(filteredLearners.length)} học viên)
+            </span>
+            <div className="max-w-xs">
+              <Pagination page={safePage} totalPages={pageCount} onChange={setPage} />
+            </div>
+          </footer>
+        )}
+      </section>
+
+      {/* 5. Course Health Matrix */}
+      <section className="flex flex-col rounded-2xl border border-separator-border bg-background-secondary-default p-5 shadow-card" aria-labelledby="course-progress-title">
+        <header className="flex items-center justify-between border-b border-separator-border pb-3">
+          <div>
+            <h3 id="course-progress-title" className="text-headline-semibold text-text-primary">
+              Tiến độ theo khóa học trực tuyến
+            </h3>
+            <p className="text-caption-1-regular text-text-secondary">
+              Thống kê tỷ lệ hoàn thành trung bình và số lượng học viên theo từng khóa học.
+            </p>
+          </div>
+          <Badge variant="outline" className="hidden sm:flex">
+            {activeCourses.length} khóa đang hoạt động
+          </Badge>
+        </header>
+
+        <div className="mt-4 flex flex-col divide-y divide-separator-border">
+          {activeCourses.length ? (
+            activeCourses.map((course) => {
+              const avgProgress = toNumber(course.average_progress);
+              return (
+                <div key={course.course_id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <strong className="block truncate text-body-medium text-text-primary">
+                      {course.course_name}
+                    </strong>
+                    <span className="text-caption-2-regular text-text-secondary">
+                      {toNumber(course.learners)} học viên đăng ký · {toNumber(course.completed_learners)} đã hoàn thành
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 sm:w-64">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-background-tertiary-default">
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                        style={{ width: `${Math.min(100, avgProgress)}%` }}
+                      />
+                    </div>
+                    <strong className="w-10 text-right text-caption-1-semibold text-text-primary tabular-nums">
+                      {avgProgress}%
+                    </strong>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p className="py-6 text-center text-caption-1-medium text-text-secondary">
+              Chưa có dữ liệu tiến trình khóa học nào.
+            </p>
           )}
         </div>
       </section>
 
-      <footer className="order-5 flex items-start gap-2 px-1 text-xs leading-5 text-muted-foreground">
-        <Clock3 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      {/* 6. Footer Audit & Timestamp */}
+      <footer className="flex items-center justify-between px-1 text-caption-2-regular text-text-tertiary">
         <span>
-          Dữ liệu cập nhật lúc {data?.generatedAt ? dateTimeFormatter.format(new Date(data.generatedAt)) : '-'}. Trạng thái được tính theo lần học, làm quiz, hoàn thành bài hoặc dùng trợ lý AI gần nhất.
+          Dữ liệu đồng bộ lúc: {data?.generatedAt ? dateTimeFormatter.format(new Date(data.generatedAt)) : '-'}.
         </span>
+        <span>Phát triển theo Design System BoardUI tiêu chuẩn</span>
       </footer>
     </section>
   );
