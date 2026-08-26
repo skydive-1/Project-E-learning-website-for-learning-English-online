@@ -3,6 +3,7 @@ const TYPE_ALIASES = {
   written: 'writing',
   essay: 'writing',
   tu_luan: 'writing',
+  'tự_luận': 'writing',
   pronunciation: 'pronunciation',
   speaking: 'pronunciation',
   audio: 'pronunciation',
@@ -24,6 +25,11 @@ const normalizeType = (value) => {
   return TYPE_ALIASES[normalized] || '';
 };
 
+/**
+ * Chuẩn hóa loại câu hỏi từ metadata mới và dữ liệu quiz cũ.
+ * Hợp đồng dữ liệu: câu trắc nghiệm có options; câu phát âm thường có câu mẫu
+ * trong correctAnswer; câu viết không có options và không có đáp án cố định.
+ */
 export const getEffectiveQuestionType = (question) => {
   if (!question) return 'multiple_choice';
 
