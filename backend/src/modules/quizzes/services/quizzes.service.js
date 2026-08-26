@@ -34,7 +34,7 @@ class QuizzesService {
       // Lấy tất cả questions thuộc về danh sách quizzes trên
       const quizIds = quizzes.map(q => q.quiz_id);
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
         FROM questions
         WHERE quiz_id = ANY($1)
         ORDER BY question_id ASC
@@ -75,7 +75,7 @@ class QuizzesService {
       const quiz = quizResult.rows[0];
 
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
         FROM questions
         WHERE quiz_id = $1
         ORDER BY question_id ASC
@@ -106,7 +106,7 @@ class QuizzesService {
       const quiz = quizResult.rows[0];
 
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
         FROM questions
         WHERE quiz_id = $1
         ORDER BY question_id ASC

@@ -27,7 +27,7 @@ exports.getQuizzes = async (req, res, next) => {
         options: q.options,
         correct_answer: q.correct_answer,
         explanation: q.explanation,
-        question_type: q.question_type || 'multiple_choice'
+        question_type: q.question_type || null
       }))
     }));
 
@@ -151,7 +151,7 @@ exports.getQuizByPin = async (req, res, next) => {
         options: q.options,
         correct_answer: q.correct_answer,
         explanation: q.explanation,
-        question_type: q.question_type || 'multiple_choice'
+        question_type: q.question_type || null
       }))
     };
 
@@ -194,7 +194,7 @@ exports.getQuizById = async (req, res, next) => {
         options: q.options,
         correct_answer: q.correct_answer,
         explanation: q.explanation,
-        question_type: q.question_type || 'multiple_choice'
+        question_type: q.question_type || null
       }))
     };
 

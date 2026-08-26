@@ -33,7 +33,9 @@ const mapQuizToFrontend = (quiz) => {
         options: Array.isArray(parsedOptions) ? parsedOptions : [],
         correctAnswer: q.correct_answer || '',
         explanation: q.explanation || '',
-        questionType: q.question_type || 'multiple_choice'
+        // Giữ trạng thái thiếu metadata để lớp phân loại có thể suy luận từ
+        // options/câu mẫu, thay vì gắn nhầm mọi câu sáng tạo thành trắc nghiệm.
+        questionType: q.question_type || q.questionType || ''
       };
     })
   };
@@ -189,12 +191,13 @@ export const submitWritingAnswer = async (quizId, questionId, text) => {
 /**
  * Gửi file ghi âm của học viên lên backend để AI nhận diện và chấm điểm
  */
-export const submitAudioAnswer = async (quizId, questionId, audioFile) => {
+export const submitAudioAnswer = async (quizId, questionId, audioFile, expectedSentence = '') => {
   try {
     const formData = new FormData();
     formData.append('quizId', Number(quizId));
     formData.append('questionId', Number(questionId));
     formData.append('audio', audioFile);
+    formData.append('expectedSentence', expectedSentence);
 
     const response = await apiClient.post('/quizzes/submit-audio', formData, {
       headers: {
