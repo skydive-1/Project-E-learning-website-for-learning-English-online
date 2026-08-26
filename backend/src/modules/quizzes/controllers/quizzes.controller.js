@@ -1,5 +1,20 @@
 const quizzesService = require('../services/quizzes.service');
 const { geminiModel } = require('../../../utils/ai-clients');
+const { sanitizeOpenClozeGaps } = require('../utils/openCloze.util');
+
+const sanitizeQuestionForPlayer = (question) => {
+  const questionType = question.question_type || null;
+  const isOpenCloze = String(questionType || '').toLowerCase() === 'open_cloze';
+
+  return {
+    question_id: question.question_id,
+    question_text: question.question_text,
+    options: isOpenCloze ? sanitizeOpenClozeGaps(question.options) : question.options,
+    correct_answer: isOpenCloze ? '' : question.correct_answer,
+    explanation: question.explanation,
+    question_type: questionType
+  };
+};
 
 exports.getQuizzes = async (req, res, next) => {
   try {
@@ -21,14 +36,7 @@ exports.getQuizzes = async (req, res, next) => {
       description: quiz.description,
       difficulty: quiz.difficulty,
       time_limit: quiz.time_limit,
-      questions: quiz.questions.map(q => ({
-        question_id: q.question_id,
-        question_text: q.question_text,
-        options: q.options,
-        correct_answer: q.correct_answer,
-        explanation: q.explanation,
-        question_type: q.question_type || 'multiple_choice'
-      }))
+      questions: quiz.questions.map(sanitizeQuestionForPlayer)
     }));
 
     res.status(200).json({
@@ -121,6 +129,23 @@ exports.submitWriting = async (req, res, next) => {
   }
 };
 
+exports.submitOpenCloze = async (req, res, next) => {
+  try {
+    const { quizId, questionId, answers } = req.body;
+    if (!quizId || !questionId || !answers || typeof answers !== 'object') {
+      const error = new Error('Dữ liệu Open Cloze không hợp lệ. Yêu cầu quizId, questionId và answers.');
+      error.status = 400;
+      error.code = 'INVALID_OPEN_CLOZE_SUBMISSION';
+      throw error;
+    }
+
+    const evaluation = await quizzesService.evaluateOpenCloze(quizId, questionId, answers);
+    res.status(200).json({ success: true, data: evaluation });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getQuizByPin = async (req, res, next) => {
   try {
     const { pinCode } = req.params;
@@ -145,14 +170,7 @@ exports.getQuizByPin = async (req, res, next) => {
       time_limit: quiz.time_limit,
       is_private: quiz.is_private,
       pin_code: quiz.pin_code,
-      questions: quiz.questions.map(q => ({
-        question_id: q.question_id,
-        question_text: q.question_text,
-        options: q.options,
-        correct_answer: q.correct_answer,
-        explanation: q.explanation,
-        question_type: q.question_type || 'multiple_choice'
-      }))
+      questions: quiz.questions.map(sanitizeQuestionForPlayer)
     };
 
     res.status(200).json({
@@ -188,14 +206,7 @@ exports.getQuizById = async (req, res, next) => {
       time_limit: quiz.time_limit,
       is_private: quiz.is_private,
       pin_code: quiz.pin_code,
-      questions: quiz.questions.map(q => ({
-        question_id: q.question_id,
-        question_text: q.question_text,
-        options: q.options,
-        correct_answer: q.correct_answer,
-        explanation: q.explanation,
-        question_type: q.question_type || 'multiple_choice'
-      }))
+      questions: quiz.questions.map(sanitizeQuestionForPlayer)
     };
 
     res.status(200).json({
@@ -291,13 +302,18 @@ For each question:
 - If type is "pronunciation":
   The correctAnswer must be the exact English sentence that the user needs to read aloud (for example: "English has become a global language for communication.").
   Specify a detailed explanation/guide in Vietnamese on how to pronounce it with correct stress/intonation.
+- If type is "open_cloze":
+  Write one coherent English passage of 2-4 sentences and replace 3-6 target words with unique markers {{1}}, {{2}}, {{3}} in questionText.
+  Set options to an array of gap objects: [{ "id": "1", "answer": "changes", "acceptedAnswers": [], "hint": "verb" }].
+  Every marker must have exactly one matching gap object and every gap must have a non-empty answer.
+  Leave correctAnswer empty ("") and explain the grammar or vocabulary tested in Vietnamese.
 
 Return a JSON array of objects with the following schema:
 [
   {
-    "questionType": "multiple_choice / writing / pronunciation",
+    "questionType": "multiple_choice / writing / pronunciation / open_cloze",
     "questionText": "The question text or prompt",
-    "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"], // Empty array [] for writing and pronunciation
+    "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"], // Gap objects for open_cloze; empty for writing/pronunciation
     "correctAnswer": "A / or the pronunciation text string", // Empty string "" for writing
     "explanation": "Detailed guide/explanation in Vietnamese"
   }

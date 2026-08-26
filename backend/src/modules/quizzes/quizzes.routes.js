@@ -23,6 +23,9 @@ router.post('/submit', authenticate, quizLimiter, quizzesController.submitQuiz);
 // Route: POST /api/quizzes/submit-writing
 router.post('/submit-writing', authenticate, quizLimiter, aiLimiter, quizzesController.submitWriting);
 
+// Route: POST /api/quizzes/submit-cloze
+router.post('/submit-cloze', authenticate, quizLimiter, quizzesController.submitOpenCloze);
+
 // Route: POST /api/quizzes/submit-audio
 router.post('/submit-audio', authenticate, quizLimiter, aiLimiter, uploadLimiter, upload.memory.single('audio'), quizzesController.submitAudio);
 

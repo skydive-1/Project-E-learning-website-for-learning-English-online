@@ -1,5 +1,9 @@
 const db = require('../../../config/database');
 const { geminiModel } = require("../../../utils/ai-clients");
+const {
+  scoreOpenClozeAnswers,
+  validateOpenClozeQuestion
+} = require('../utils/openCloze.util');
 
 class QuizzesService {
   async getQuizzesByCourseId(courseId) {
@@ -34,7 +38,7 @@ class QuizzesService {
       // Lấy tất cả questions thuộc về danh sách quizzes trên
       const quizIds = quizzes.map(q => q.quiz_id);
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
         FROM questions
         WHERE quiz_id = ANY($1)
         ORDER BY question_id ASC
@@ -75,7 +79,7 @@ class QuizzesService {
       const quiz = quizResult.rows[0];
 
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
         FROM questions
         WHERE quiz_id = $1
         ORDER BY question_id ASC
@@ -106,7 +110,7 @@ class QuizzesService {
       const quiz = quizResult.rows[0];
 
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
         FROM questions
         WHERE quiz_id = $1
         ORDER BY question_id ASC
@@ -127,7 +131,7 @@ class QuizzesService {
     try {
       // 1. Lấy danh sách câu hỏi của đề thi
       const questionsQuery = `
-        SELECT question_id, correct_answer
+        SELECT question_id, correct_answer, question_type, options
         FROM questions
         WHERE quiz_id = $1
       `;
@@ -144,12 +148,26 @@ class QuizzesService {
       // 2. Tính điểm
       const questionMap = {};
       questions.forEach(q => {
-        questionMap[q.question_id] = q.correct_answer;
+        questionMap[q.question_id] = q;
       });
 
+      const uniqueAnswers = new Map();
       answers.forEach(ans => {
-        if (questionMap[ans.question_id] && questionMap[ans.question_id] === ans.answer) {
-          correctCount++;
+        const questionId = parseInt(ans?.question_id, 10);
+        if (!Number.isFinite(questionId) || !questionMap[questionId]) return;
+        uniqueAnswers.set(questionId, ans);
+      });
+
+      uniqueAnswers.forEach((ans, questionId) => {
+        const question = questionMap[questionId];
+        if (!question) return;
+
+        if (String(question.question_type || '').toLowerCase() === 'open_cloze') {
+          const clozeAnswers = ans.answer?.answers || ans.answer || {};
+          const result = scoreOpenClozeAnswers(question.options, clozeAnswers);
+          correctCount += result.score / 100;
+        } else if (question.correct_answer && question.correct_answer === ans.answer) {
+          correctCount += 1;
         }
       });
 
@@ -186,7 +204,7 @@ class QuizzesService {
 
       return {
         score,
-        correct_count: correctCount,
+        correct_count: Number(correctCount.toFixed(2)),
         total_questions: totalQuestions,
         attempt: attemptResult.rows[0]
       };
@@ -391,6 +409,40 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
     }
   }
 
+  async evaluateOpenCloze(quizId, questionId, answers) {
+    const questionResult = await db.query(`
+      SELECT question_id, quiz_id, question_text, options, explanation, question_type
+      FROM questions
+      WHERE question_id = $1 AND quiz_id = $2
+      LIMIT 1
+    `, [parseInt(questionId, 10), parseInt(quizId, 10)]);
+
+    if (questionResult.rows.length === 0) {
+      const error = new Error('Không tìm thấy câu hỏi điền từ trong đề thi này.');
+      error.status = 404;
+      error.code = 'CLOZE_QUESTION_NOT_FOUND';
+      throw error;
+    }
+
+    const question = questionResult.rows[0];
+    if (String(question.question_type || '').toLowerCase() !== 'open_cloze') {
+      const error = new Error('Câu hỏi được gửi không phải dạng điền từ Open Cloze.');
+      error.status = 400;
+      error.code = 'QUESTION_TYPE_MISMATCH';
+      throw error;
+    }
+
+    const { gaps } = validateOpenClozeQuestion({
+      questionText: question.question_text,
+      gaps: question.options
+    });
+
+    return {
+      ...scoreOpenClozeAnswers(gaps, answers),
+      explanation: question.explanation || ''
+    };
+  }
+
   async createQuiz(title, description, difficulty, timeLimit, questions, isPrivate = false, pinCode = null) {
     try {
       await db.query('BEGIN');
@@ -416,10 +468,16 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
             VALUES ($1, $2, $3::jsonb, $4, $5, $6)
           `;
           const qText = q.question_text || q.questionText || q.question || '';
-          const qCorr = q.correct_answer || q.correctAnswer || q.answer || 'A';
           const qExpl = q.explanation || '';
-          const qType = q.question_type || q.questionType || 'multiple_choice';
-          const opts = Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? [q.options] : []);
+          const qType = String(q.question_type || q.questionType || 'multiple_choice').toLowerCase();
+          let qCorr = q.correct_answer ?? q.correctAnswer ?? q.answer ?? (qType === 'multiple_choice' ? 'A' : '');
+          let opts = Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? [q.options] : []);
+
+          if (qType === 'open_cloze') {
+            const validated = validateOpenClozeQuestion({ questionText: qText, gaps: opts });
+            opts = validated.gaps;
+            qCorr = '';
+          }
 
           await db.query(insertQuestionQuery, [
             quizId,
