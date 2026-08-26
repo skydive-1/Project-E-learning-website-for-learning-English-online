@@ -161,7 +161,7 @@ exports.forgotPassword = async (req, res, next) => {
     await authService.forgotPassword(email);
     res.status(200).json({
       success: true,
-      message: 'Email khôi phục mật khẩu đã được gửi thành công'
+      message: 'Nếu email thuộc một tài khoản, liên kết khôi phục sẽ được gửi trong ít phút.'
     });
   } catch (error) {
     next(error);

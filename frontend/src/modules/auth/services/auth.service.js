@@ -60,7 +60,7 @@ export const googleConfirmRole = async ({ tempToken, roleId }) => {
  * Gửi yêu cầu khôi phục mật khẩu (Quên mật khẩu)
  */
 export const forgotPasswordApi = async ({ email }) => {
-  const response = await apiClient.post('/auth/forgot-password', { email });
+  const response = await apiClient.post('/auth/forgot-password', { email }, { timeout: 25000 });
   return response.data;
 };
 

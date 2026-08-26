@@ -5,6 +5,16 @@
 
 const nodemailer = require('nodemailer');
 
+const parseTimeout = (name, fallback) => {
+  const value = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(value) && value >= 1000 ? value : fallback;
+};
+
+const SMTP_CONNECTION_TIMEOUT_MS = () => parseTimeout('SMTP_CONNECTION_TIMEOUT_MS', 8000);
+const SMTP_GREETING_TIMEOUT_MS = () => parseTimeout('SMTP_GREETING_TIMEOUT_MS', 8000);
+const SMTP_SOCKET_TIMEOUT_MS = () => parseTimeout('SMTP_SOCKET_TIMEOUT_MS', 12000);
+const SMTP_SEND_TIMEOUT_MS = () => parseTimeout('SMTP_SEND_TIMEOUT_MS', 15000);
+
 const createTransporter = () => {
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
@@ -19,9 +29,31 @@ const createTransporter = () => {
     host,
     port,
     secure: port === 465,
-    auth: { user, pass }
+    auth: { user, pass },
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS(),
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS(),
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS()
   });
 };
+
+const sendMailWithTimeout = (transporter, message, timeoutMs) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => {
+    const error = new Error(`SMTP send timed out after ${timeoutMs}ms`);
+    error.code = 'SMTP_SEND_TIMEOUT';
+    reject(error);
+  }, timeoutMs);
+
+  transporter.sendMail(message).then(
+    (info) => {
+      clearTimeout(timer);
+      resolve(info);
+    },
+    (error) => {
+      clearTimeout(timer);
+      reject(error);
+    }
+  );
+});
 
 /**
  * Gửi email đến người nhận với định dạng HTML
@@ -37,13 +69,19 @@ const sendEmail = async ({ to, subject, html, text }) => {
 
     const from = process.env.EMAIL_FROM || `E-Learn Academy <${process.env.SMTP_USER}>`;
 
-    const info = await transporter.sendMail({
-      from,
-      to,
-      subject,
-      text: text || 'Vui lòng xem nội dung email định dạng HTML.',
-      html
-    });
+    let info;
+    try {
+      info = await sendMailWithTimeout(transporter, {
+        from,
+        to,
+        subject,
+        text: text || 'Vui lòng xem nội dung email định dạng HTML.',
+        html
+      }, SMTP_SEND_TIMEOUT_MS());
+    } finally {
+      // Không giữ socket SMTP sống sau khi request HTTP đã hoàn tất hoặc timeout.
+      transporter.close();
+    }
 
     console.log(`✅ [Email Service]: Đã gửi thành công email tới ${to} (Message ID: ${info.messageId})`);
     return true;
@@ -55,5 +93,6 @@ const sendEmail = async ({ to, subject, html, text }) => {
 
 module.exports = {
   createTransporter,
-  sendEmail
+  sendEmail,
+  sendMailWithTimeout
 };
