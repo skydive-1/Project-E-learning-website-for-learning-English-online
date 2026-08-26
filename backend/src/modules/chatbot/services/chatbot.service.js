@@ -766,7 +766,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
 
     // Kiểm tra an toàn (Guardrails) ngăn chặn lạm dụng AI để tìm cách hack hệ thống / gỡ bảo mật
     const checkSafety = question.toLowerCase();
-    const toxicKeywords = ['hack', 'bypass', 'bẻ khóa', 'gỡ bảo mật', 'quocanh26012004', 'super admin', 'superadmin', 'cướp quyền', 'lạm quyền', 'user_token_limits', 'tokenlimit', 'reset-token'];
+    const toxicKeywords = ['hack', 'bypass', 'bẻ khóa', 'gỡ bảo mật', 'super admin', 'superadmin', 'cướp quyền', 'lạm quyền', 'user_token_limits', 'tokenlimit', 'reset-token'];
     if (toxicKeywords.some(keyword => checkSafety.includes(keyword))) {
       return {
         success: true,

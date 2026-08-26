@@ -28,7 +28,7 @@ const AdminDashboard = () => {
   const { user: currentUser } = useAuth();
   const showToast = useToast();
   
-  const isSuperAdmin = currentUser?.email === 'quocanh26012004@gmail.com';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.roleId === 1 || currentUser?.role_id === 1;
   
   // Cho phép mở thẳng một tab từ URL, ví dụ /admin/dashboard?tab=analytics.
   const [activeTab, setActiveTab] = useState(() => {
