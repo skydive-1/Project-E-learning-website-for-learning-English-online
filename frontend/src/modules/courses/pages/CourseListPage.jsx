@@ -1,424 +1,490 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useLanguage } from '../../../context/LanguageContext';
-import { FiSearch, FiStar, FiUsers, FiPlayCircle, FiFilter, FiX, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
+import { 
+  FiBookOpen, 
+  FiBookmark, 
+  FiCheckCircle, 
+  FiPlus, 
+  FiLock, 
+  FiChevronRight, 
+  FiVolume2, 
+  FiSearch, 
+  FiX, 
+  FiAward, 
+  FiHelpCircle
+} from 'react-icons/fi';
+import { VOCABULARY_COLLECTIONS } from '../data/vocabularyCollections';
+import VocabularyFlashcardModal from '../components/VocabularyFlashcardModal';
+import AddWordModal from '../components/AddWordModal';
+import HowItWorksModal from '../components/HowItWorksModal';
+import TestsAndQuizzesPanel from '../components/TestsAndQuizzesPanel';
 import '../styles/courses.scss';
 
-// Hàm phụ trợ tự động phân loại trình độ tiếng Anh từ tiêu đề/môn học
-const getCourseLevel = (courseName, subjectName) => {
-  const name = `${courseName || ''} ${subjectName || ''}`.toLowerCase();
-  if (name.includes('căn bản') || name.includes('begin') || name.includes('cơ bản') || name.includes('nhập môn') || name.includes('elementary')) {
-    return 'Beginner';
-  }
-  if (name.includes('communication') || name.includes('giao tiếp') || name.includes('conversation') || name.includes('business')) {
-    return 'Intermediate';
-  }
-  if (name.includes('ielts') || name.includes('advanced') || name.includes('chuyên sâu') || name.includes('nâng cao') || name.includes('masterclass')) {
-    return 'Advanced';
-  }
-  return 'Intermediate';
-};
-
-// Hàm chuyển đổi tiếng Việt có dấu thành không dấu để tìm kiếm thông minh
-const removeVietnameseTones = (str) => {
-  if (!str) return '';
-  return str
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase();
-};
-
-const toOptionalNumber = value => {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-export const fetchCourses = async () => {
+// Fetch courses from Backend API for the "Course" tab
+export const fetchCoursesFromApi = async () => {
   try {
     const response = await apiClient.get('/courses');
-    const dbCourses = Array.isArray(response.data?.courses) ? response.data.courses : [];
-
-    return dbCourses.map(c => {
-      const price = toOptionalNumber(c.price);
-      const lessonsCount = toOptionalNumber(c.lessons_count);
-
-      return {
-        id: `db-${c.course_id}`,
-        title: c.course_name,
-        instructor: c.instructor_name || 'Hệ thống E-Learning',
-        rating: toOptionalNumber(c.rating),
-        reviews: toOptionalNumber(c.reviews_count ?? c.reviews),
-        students: toOptionalNumber(c.students_count ?? c.enrollment_count),
-        price: price && price > 0 ? `${price.toLocaleString('vi-VN')} ₫` : 'Miễn phí',
-        image: c.thumbnail_url || '/images/hero_illustration.png',
-        badge: c.badge || null,
-        level: getCourseLevel(c.course_name, c.subject_name),
-        subjectId: c.subject_id,
-        subjectName: c.subject_name,
-        duration: lessonsCount === null ? null : `${lessonsCount} bài giảng`,
-        startDate: c.start_date,
-        instructorId: c.instructor_id
-      };
-    });
+    return Array.isArray(response.data?.courses) ? response.data.courses : [];
   } catch (err) {
-    console.error('Lỗi fetch courses từ DB:', err);
-    throw err;
+    console.warn('Lỗi fetch courses từ DB:', err);
+    return [];
   }
 };
 
-// Skeleton Card Component
-const CourseCardSkeleton = () => {
-  return (
-    <div className="course-card-skeleton">
-      <div className="skeleton-thumb animate-pulse"></div>
-      <div className="skeleton-body">
-        <div className="skeleton-tags">
-          <span className="skeleton-tag animate-pulse"></span>
-          <span className="skeleton-tag animate-pulse"></span>
-        </div>
-        <div className="skeleton-title animate-pulse"></div>
-        <div className="skeleton-title short animate-pulse"></div>
-        <div className="skeleton-text animate-pulse"></div>
-        <div className="skeleton-rating animate-pulse"></div>
-        <div className="skeleton-meta animate-pulse"></div>
-      </div>
-    </div>
-  );
-};
-
-const CourseCard = ({ course }) => {
+const CourseListPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  const startDate = course.startDate ? new Date(course.startDate) : null;
-  const currentDate = new Date();
-  const hasNotStarted = startDate && startDate > currentDate;
-  const hasRating = Number.isFinite(course.rating);
-  const hasReviews = Number.isFinite(course.reviews);
-  const hasStudents = Number.isFinite(course.students);
+  // Navigation Hub Sub-tab: 'vocab' (Default) | 'course' | 'quizzes'
+  const [activeHubTab, setActiveHubTab] = useState('vocab');
 
-  const handleStartLearning = () => {
-    const dbId = course.id?.startsWith('db-') ? course.id.slice(3) : course.id;
-    navigate(`/lessons?courseId=${dbId}`);
+  // Modals & Active Selections
+  const [selectedCollection, setSelectedCollection] = useState(null);
+  const [isAddWordModalOpen, setIsAddWordModalOpen] = useState(false);
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [showPromoBanner, setShowPromoBanner] = useState(true);
+
+  // User Custom Words & Progress State (Persisted in localStorage)
+  const [customWords, setCustomWords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('elearn_custom_words');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [userProgressMap, setUserProgressMap] = useState(() => {
+    try {
+      const saved = localStorage.getItem('elearn_vocab_progress');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('elearn_custom_words', JSON.stringify(customWords));
+    } catch (e) {
+      console.warn('Failed to save custom words to localStorage', e);
+    }
+  }, [customWords]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('elearn_vocab_progress', JSON.stringify(userProgressMap));
+    } catch (e) {
+      console.warn('Failed to save progress to localStorage', e);
+    }
+  }, [userProgressMap]);
+
+  // Audio Pronunciation Helper
+  const speakWord = useCallback((text) => {
+    if (!text || typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn(e);
+    }
+  }, []);
+
+  // Update progress for a specific word
+  const handleUpdateWordProgress = (wordId, status) => {
+    setUserProgressMap(prev => ({
+      ...prev,
+      [wordId]: status
+    }));
   };
 
+  // Add custom word
+  const handleAddCustomWord = (newWord) => {
+    setCustomWords(prev => [newWord, ...prev]);
+    setUserProgressMap(prev => ({
+      ...prev,
+      [newWord.id]: 'learning'
+    }));
+  };
+
+  // Remove custom word
+  const handleRemoveCustomWord = (wordId) => {
+    setCustomWords(prev => prev.filter(w => w.id !== wordId));
+    setUserProgressMap(prev => {
+      const copy = { ...prev };
+      delete copy[wordId];
+      return copy;
+    });
+  };
+
+  // Calculate Progress Stats
+  const { learningCount, learnedCount, newCount } = useMemo(() => {
+    let learning = 0;
+    let learned = 0;
+    
+    // Count all preset words in collections
+    let totalPresetWords = 0;
+    VOCABULARY_COLLECTIONS.forEach(col => {
+      totalPresetWords += (col.words?.length || 0);
+    });
+    const totalWords = totalPresetWords + customWords.length;
+
+    Object.values(userProgressMap).forEach(status => {
+      if (status === 'learning') learning += 1;
+      if (status === 'learned') learned += 1;
+    });
+
+    const newWords = Math.max(0, totalWords - learning - learned);
+
+    return {
+      learningCount: learning,
+      learnedCount: learned,
+      newCount: newWords
+    };
+  }, [userProgressMap, customWords]);
+
+  // Query Backend Courses (When Course tab is selected)
+  const { data: dbCourses = [], isLoading: isCoursesLoading } = useQuery({
+    queryKey: ['courses'],
+    queryFn: fetchCoursesFromApi,
+    enabled: activeHubTab === 'course'
+  });
+
+  // Course Catalog Filter & Search States
+  const [courseSearch, setCourseSearch] = useState('');
+
+  const filteredDbCourses = useMemo(() => {
+    return dbCourses.filter(c => {
+      const matchSearch = !courseSearch || 
+        (c.course_name && c.course_name.toLowerCase().includes(courseSearch.toLowerCase())) ||
+        (c.subject_name && c.subject_name.toLowerCase().includes(courseSearch.toLowerCase()));
+      return matchSearch;
+    });
+  }, [dbCourses, courseSearch]);
+
   return (
-    <div className="course-card-premium scroll-animate" onClick={handleStartLearning}>
-      <div className="card-thumb">
-        <img src={course.image || '/images/hero_illustration.png'} alt={t(course.title)} />
-        {hasNotStarted ? (
-          <span className="badge-status" style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#fff', fontWeight: 'bold' }}>
-            {t('Sắp mở:')} {startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
-          </span>
-        ) : (
-          course.badge && <span className="badge-status">{t(course.badge)}</span>
-        )}
-        <div className="thumb-overlay">
-          <button className="btn-preview">{hasNotStarted ? t('Sắp mở') : t('Học ngay')}</button>
-        </div>
-      </div>
-      <div className="card-body">
-        <div className="card-tags">
-          <span className="tag-level">{t(course.level)}</span>
-          {course.subjectName && <span className="tag-subject">{t(course.subjectName)}</span>}
-        </div>
-        <h3 className="course-title">{t(course.title)}</h3>
-        <p className="instructor">{t(course.instructor)}</p>
-        {(hasRating || hasReviews) && (
-          <div className="rating-row">
-            {hasRating && (
+    <div className="learning-hub-page">
+      <Header />
+
+      <main className="hub-container">
+        <div className="hub-layout-grid">
+          
+          {/* ========================================================= */}
+          {/* 1. LEFT COLUMN: SUB-NAVIGATION HUB (Course, Vocab, Quizzes) */}
+          {/* ========================================================= */}
+          <aside className="hub-left-nav" aria-label="Learning Sub Navigation">
+            <ul className="subnav-list">
+              <li>
+                <button
+                  type="button"
+                  className={`subnav-item ${activeHubTab === 'course' ? 'active' : ''}`}
+                  onClick={() => setActiveHubTab('course')}
+                >
+                  <FiBookOpen className="item-icon" />
+                  <span>Course</span>
+                </button>
+              </li>
+
+              <li>
+                <button
+                  type="button"
+                  className={`subnav-item ${activeHubTab === 'vocab' ? 'active' : ''}`}
+                  onClick={() => setActiveHubTab('vocab')}
+                >
+                  <FiBookmark className="item-icon" />
+                  <span>Vocab</span>
+                </button>
+              </li>
+
+              <li>
+                <button
+                  type="button"
+                  className={`subnav-item ${activeHubTab === 'quizzes' ? 'active' : ''}`}
+                  onClick={() => setActiveHubTab('quizzes')}
+                >
+                  <FiCheckCircle className="item-icon" />
+                  <span>Tests & quizzes</span>
+                </button>
+              </li>
+            </ul>
+          </aside>
+
+          {/* ========================================================= */}
+          {/* 2. CENTER COLUMN: MAIN CONTENT (Vocab / Course / Quizzes) */}
+          {/* ========================================================= */}
+          <section className="hub-main-content">
+            
+            {/* VIEW 1: VOCABULARY HUB */}
+            {activeHubTab === 'vocab' && (
               <>
-                <span className="rating-score">{course.rating}</span>
-                <div className="stars">
-                  {[...Array(5)].map((_, i) => (
-                    <FiStar key={i} className={i < Math.floor(course.rating) ? 'star-filled' : 'star-empty'} />
+                {/* Section Title */}
+                <h1 className="section-vocab-title">Vocabulary</h1>
+
+                {/* Practice Exercises Card */}
+                <div 
+                  className="practice-exercise-card"
+                  onClick={() => setSelectedCollection(VOCABULARY_COLLECTIONS[0])}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div className="practice-left-block">
+                    <div className="practice-icon-box">
+                      <FiLock />
+                    </div>
+                    <div className="practice-info">
+                      <h3>Practice exercises</h3>
+                      <p>Add words from a popular collection to start practicing</p>
+                    </div>
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn-practice-action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedCollection(VOCABULARY_COLLECTIONS[0]);
+                    }}
+                  >
+                    Bắt đầu luyện
+                  </button>
+                </div>
+
+                {/* Words Section */}
+                <div className="words-header-row">
+                  <h3>Words</h3>
+                  <button 
+                    type="button" 
+                    className="btn-add-word"
+                    onClick={() => setIsAddWordModalOpen(true)}
+                  >
+                    <FiPlus /> Add
+                  </button>
+                </div>
+
+                {/* Words Container: Shows Custom Words or Clean Skeletons */}
+                <div className="personal-words-container">
+                  {customWords.length > 0 ? (
+                    <div className="user-words-tags-grid">
+                      {customWords.map(item => (
+                        <div key={item.id} className="user-word-chip">
+                          <span className="word-txt">{item.word}</span>
+                          <span className="word-ipa">{item.ipa}</span>
+                          <button 
+                            type="button" 
+                            className="btn-chip-audio"
+                            onClick={() => speakWord(item.word)}
+                            title="Nghe phát âm"
+                          >
+                            <FiVolume2 />
+                          </button>
+                          <button 
+                            type="button" 
+                            className="btn-remove-chip"
+                            onClick={() => handleRemoveCustomWord(item.id)}
+                            title="Xóa từ"
+                          >
+                            <FiX />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="skeleton-placeholder-box">
+                      <div className="skeleton-line short"></div>
+                      <div className="skeleton-line long"></div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Collections Section */}
+                <div className="collections-header-block">
+                  <h3>Collections</h3>
+                  <p>Words grouped by popular themes</p>
+                </div>
+
+                {/* 20 Themed Collections List (Matching Preply Layout) */}
+                <div className="collections-vertical-list">
+                  {VOCABULARY_COLLECTIONS.map(col => (
+                    <div 
+                      key={col.id}
+                      className="collection-row-card"
+                      onClick={() => setSelectedCollection(col)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="col-thumb-box">
+                        <span>{col.iconEmoji}</span>
+                      </div>
+                      <div className="col-text-body">
+                        <h4 className="col-name">{col.title}</h4>
+                        <p className="col-sub">
+                          <span>{col.wordCount} words,</span>
+                          <span className="cefr-tag">{col.level}</span>
+                        </p>
+                      </div>
+                      <FiChevronRight className="col-arrow-icon" />
+                    </div>
                   ))}
                 </div>
               </>
             )}
-            {hasReviews && <span className="reviews-count">({course.reviews.toLocaleString()})</span>}
-          </div>
-        )}
-        {(hasStudents || course.duration) && (
-          <div className="meta-info">
-            {hasStudents && <span><FiUsers /> {course.students.toLocaleString()} {t('student')}</span>}
-            {course.duration && <span><FiPlayCircle /> {course.duration}</span>}
-          </div>
-        )}
-        <div className="price-row">
-          <span className="current-price text-emerald-600">{t(course.price)}</span>
-        </div>
-      </div>
-    </div>
-  );
-};
 
-const CourseListPage = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState('all');
-  const [selectedLevel, setSelectedLevel] = useState('all');
-  const [sortBy, setSortBy] = useState('newest');
-
-  // Fetch danh sách môn học phục vụ cho việc hiển thị bộ lọc động
-  const {
-    data: subjects = [],
-    isError: isSubjectsError,
-    isFetching: isSubjectsFetching,
-    refetch: refetchSubjects
-  } = useQuery({
-    queryKey: ['subjects'],
-    queryFn: async () => {
-      try {
-        const response = await apiClient.get('/courses/subjects');
-        return response.data?.subjects || [];
-      } catch (err) {
-        console.error('Lỗi fetch subjects từ DB:', err);
-        throw err;
-      }
-    }
-  });
-
-  // Fetch danh sách khóa học từ DB
-  const {
-    data: courses = [],
-    isLoading: loading,
-    isError,
-    isFetching,
-    refetch
-  } = useQuery({
-    queryKey: ['courses'],
-    queryFn: fetchCourses
-  });
-
-  // Lọc danh sách môn học để hiển thị lên thanh danh mục
-  const displayedSubjects = subjects;
-
-  // Xử lý bộ lọc và tìm kiếm
-  const filteredCourses = courses.filter(course => {
-    // 1. Tìm kiếm không dấu thông minh
-    const rawSearch = removeVietnameseTones(searchTerm.trim());
-    const matchSearch = !rawSearch || 
-      removeVietnameseTones(course.title || '').includes(rawSearch) ||
-      removeVietnameseTones(course.level || '').includes(rawSearch) ||
-      removeVietnameseTones(course.instructor || '').includes(rawSearch) ||
-      (course.subjectName && removeVietnameseTones(course.subjectName).includes(rawSearch));
-
-    // 2. Bộ lọc theo môn học (subject)
-    const matchSubject = selectedSubjectId === 'all' || course.subjectId === Number(selectedSubjectId);
-
-    // 3. Bộ lọc theo trình độ
-    const matchLevel = selectedLevel === 'all' || 
-      (course.level && course.level.toLowerCase() === selectedLevel.toLowerCase());
-
-    return matchSearch && matchSubject && matchLevel;
-  });
-
-  // Xử lý sắp xếp kết quả
-  const sortedCourses = [...filteredCourses].sort((a, b) => {
-    if (sortBy === 'rating') {
-      return b.rating - a.rating;
-    }
-    if (sortBy === 'students') {
-      return b.students - a.students;
-    }
-    if (sortBy === 'newest') {
-      const getNumId = (id) => parseInt(String(id).replace(/^db-/, ''), 10) || 0;
-      return getNumId(b.id) - getNumId(a.id);
-    }
-    return 0;
-  });
-
-  // Sửa lỗi IntersectionObserver: Đảm bảo trigger lại hoạt ảnh khi danh sách hiển thị thực tế thay đổi
-  const courseIdsString = sortedCourses.map(c => c.id).join(',');
-  useEffect(() => {
-    if (sortedCourses.length > 0) {
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('animate-in');
-          }
-        });
-      }, { threshold: 0.05 });
-
-      const timer = setTimeout(() => {
-        document.querySelectorAll('.scroll-animate').forEach(el => observer.observe(el));
-      }, 100);
-
-      return () => {
-        clearTimeout(timer);
-        observer.disconnect();
-      };
-    }
-  }, [courseIdsString]);
-
-  const { t } = useLanguage();
-  const handleResetFilters = () => {
-    setSearchTerm('');
-    setSelectedSubjectId('all');
-    setSelectedLevel('all');
-    setSortBy('newest');
-  };
-
-  return (
-    <div className="courses-page-new">
-      <Header />
-      
-      <main className="courses-main">
-        {/* Hero Section */}
-        <section className="courses-hero-section">
-          <div className="container">
-            <div className="hero-flex">
-              <div className="hero-text scroll-animate">
-                <h1>{t('coursesTitle')}</h1>
-                <p>{t('coursesSubtitle')}</p>
-                <div className="search-bar-wrapper">
-                  <FiSearch className="search-icon" />
-                  <input 
-                    type="text" 
-                    placeholder={t('searchPlaceholder')}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                  {searchTerm && (
-                    <button className="btn-clear-search" onClick={() => setSearchTerm('')} title="Xóa tìm kiếm">
-                      <FiX />
-                    </button>
-                  )}
-                  <button className="btn-search">{t('searchPlaceholder').split('...')[0]}</button>
-                </div>
-              </div>
-              <div className="hero-stats scroll-animate">
-                <div className="stat-pill"><strong>100k+</strong> {t('student')}</div>
-                <div className="stat-pill"><strong>50+</strong> {t('courses')}</div>
-                <div className="stat-pill"><strong>24/7</strong> AI Tutor</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Categories / Subjects Filter Bar */}
-        <nav className="category-filter-bar">
-          <div className="container">
-            <div className="filter-list">
-              <button 
-                className={selectedSubjectId === 'all' ? 'active' : ''} 
-                onClick={() => setSelectedSubjectId('all')}
-              >
-                <FiFilter /> {t('Tất cả môn học')}
-              </button>
-              {displayedSubjects.map(sub => (
-                <button 
-                  key={sub.subject_id}
-                  className={selectedSubjectId === sub.subject_id ? 'active' : ''}
-                  onClick={() => setSelectedSubjectId(sub.subject_id)}
-                >
-                  {t(sub.subject_name)}
-                </button>
-              ))}
-              {isSubjectsError && (
-                <button type="button" onClick={() => refetchSubjects()} disabled={isSubjectsFetching}>
-                  <FiRefreshCw aria-hidden="true" />
-                  {t(isSubjectsFetching ? 'Đang tải lại môn học...' : 'Không thể tải môn học — Thử lại')}
-                </button>
-              )}
-            </div>
-          </div>
-        </nav>
-
-        {/* Catalog Control Panel (Counts, Sorting & Advanced Level Filter) */}
-        <section className="catalog-controls-section">
-          <div className="container">
-            <div className="catalog-controls-bar">
-              <div className="results-count">
-                {t('Tìm thấy')} <strong>{sortedCourses.length}</strong> {t('khóa học')}
-              </div>
-              
-              <div className="controls-group">
-                {/* Bộ lọc trình độ */}
-                <div className="filter-select-wrapper">
-                  <label htmlFor="level-select">{t('Trình độ:')}</label>
-                  <select 
-                    id="level-select"
-                    value={selectedLevel}
-                    onChange={(e) => setSelectedLevel(e.target.value)}
-                  >
-                    <option value="all">{t('Tất cả trình độ')}</option>
-                    <option value="beginner">{t('Beginner (Bắt đầu)')}</option>
-                    <option value="elementary">{t('Elementary (Sơ cấp)')}</option>
-                    <option value="intermediate">{t('Intermediate (Trung cấp)')}</option>
-                    <option value="advanced">{t('Advanced (Nâng cao)')}</option>
-                  </select>
+            {/* VIEW 2: COURSE CATALOG */}
+            {activeHubTab === 'course' && (
+              <div className="course-catalog-view">
+                <div className="catalog-search-header">
+                  <h2>Khóa học Video & Lộ trình chuẩn CEFR</h2>
+                  <div className="catalog-search-bar">
+                    <FiSearch className="search-icon" />
+                    <input 
+                      type="text"
+                      placeholder="Tìm kiếm khóa học..."
+                      value={courseSearch}
+                      onChange={(e) => setCourseSearch(e.target.value)}
+                    />
+                    {courseSearch && (
+                      <button className="btn-clear-search" onClick={() => setCourseSearch('')}>
+                        <FiX />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Sắp xếp kết quả */}
-                <div className="filter-select-wrapper">
-                  <label htmlFor="sort-select">{t('Sắp xếp:')}</label>
-                  <select 
-                    id="sort-select"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                  >
-                    <option value="newest">{t('Mới nhất')}</option>
-                    <option value="students">{t('Học viên đông nhất')}</option>
-                    <option value="rating">{t('Đánh giá cao nhất')}</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* All Courses Grid */}
-        <section className="course-section">
-          <div className="container">
-            {loading ? (
-              <div className="course-grid">
-                {[...Array(6)].map((_, i) => <CourseCardSkeleton key={i} />)}
-              </div>
-            ) : isError ? (
-              <div className="courses-empty-state" role="alert" aria-live="assertive">
-                <FiAlertCircle className="empty-illustration" aria-hidden="true" />
-                <h3>{t('Không thể tải danh sách khóa học, vui lòng thử lại sau')}</h3>
-                <button
-                  type="button"
-                  className="btn-reset-filters"
-                  onClick={() => refetch()}
-                  disabled={isFetching}
-                >
-                  <FiRefreshCw aria-hidden="true" />
-                  {t(isFetching ? 'Đang thử lại...' : 'Thử lại')}
-                </button>
-              </div>
-            ) : courses.length === 0 ? (
-              <div className="courses-empty-state" role="status">
-                <FiPlayCircle className="empty-illustration" aria-hidden="true" />
-                <h3>{t('Chưa có khóa học nào')}</h3>
-                <p>{t('Các khóa học mới sẽ xuất hiện tại đây khi được xuất bản.')}</p>
-              </div>
-            ) : sortedCourses.length === 0 ? (
-              <div className="courses-empty-state">
-                <FiSearch className="empty-illustration" aria-hidden="true" />
-                <h3>{t('Không tìm thấy kết quả phù hợp')}</h3>
-                <p>{t('Thử thay đổi từ khóa tìm kiếm hoặc đặt lại bộ lọc của bạn để khám phá các khóa học khác.')}</p>
-                <button className="btn-reset-filters" onClick={handleResetFilters}>
-                  {t('Thiết lập lại bộ lọc')}
-                </button>
-              </div>
-            ) : (
-              <div className="course-grid">
-                {sortedCourses.map(course => <CourseCard key={course.id} course={course} />)}
+                {isCoursesLoading ? (
+                  <p className="text-slate-500 py-8 text-center">Đang tải danh sách khóa học...</p>
+                ) : filteredDbCourses.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <p>Không tìm thấy khóa học nào phù hợp với từ khóa.</p>
+                  </div>
+                ) : (
+                  <div className="course-cards-grid">
+                    {filteredDbCourses.map(course => (
+                      <div 
+                        key={course.course_id} 
+                        className="course-card-clean"
+                        onClick={() => navigate(`/lessons?courseId=${course.course_id}`)}
+                      >
+                        <div className="card-media-wrap">
+                          <img 
+                            src={course.thumbnail_url || '/images/hero_illustration.png'} 
+                            alt={course.course_name} 
+                          />
+                          <span className="level-chip">{course.subject_name || 'General'}</span>
+                        </div>
+                        <div className="card-content-wrap">
+                          <h4 className="course-title-text">{course.course_name}</h4>
+                          <p className="instructor-sub">{course.instructor_name || 'E-Learn Academy'}</p>
+                          <div className="card-footer-meta">
+                            <span className="price-badge">
+                              {course.price && course.price > 0 
+                                ? `${Number(course.price).toLocaleString('vi-VN')} ₫` 
+                                : 'Miễn phí'}
+                            </span>
+                            <span className="btn-card-learn">Học ngay →</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        </section>
+
+            {/* VIEW 3: TESTS & QUIZZES UNIFIED PANEL */}
+            {activeHubTab === 'quizzes' && (
+              <TestsAndQuizzesPanel />
+            )}
+
+          </section>
+
+          {/* ========================================================= */}
+          {/* 3. RIGHT COLUMN: PROGRESS TRACKING & PROMO WIDGETS       */}
+          {/* ========================================================= */}
+          <aside className="hub-right-sidebar">
+            {/* Your progress Widget */}
+            <div className="progress-widget-card">
+              <h3 className="widget-title">Your progress</h3>
+              
+              <div className="pills-group">
+                <div className="progress-pill-row learning">
+                  <span>Đang học (Learning)</span>
+                  <span className="pill-count">{learningCount} learning</span>
+                </div>
+
+                <div className="progress-pill-row learned">
+                  <span>Đã thuộc (Learned)</span>
+                  <span className="pill-count">{learnedCount} learned</span>
+                </div>
+
+                <div className="progress-pill-row new-words">
+                  <span>Từ mới (New words)</span>
+                  <span className="pill-count">{newCount} new</span>
+                </div>
+              </div>
+
+              <button 
+                type="button" 
+                className="btn-how-it-works"
+                onClick={() => setIsHowItWorksOpen(true)}
+              >
+                <FiHelpCircle /> How it works
+              </button>
+            </div>
+
+            {/* Mobile / Quick Practice Promo Card */}
+            {showPromoBanner && (
+              <div className="app-promo-card">
+                <div className="promo-icon-blue">
+                  <FiAward />
+                </div>
+                <div className="promo-text-wrap">
+                  <h4>Get the E-Learn app</h4>
+                  <p>Schedule, chat, and learn on the go</p>
+                </div>
+                <button 
+                  type="button" 
+                  className="btn-close-promo"
+                  onClick={() => setShowPromoBanner(false)}
+                  title="Ẩn thông báo"
+                >
+                  <FiX />
+                </button>
+              </div>
+            )}
+          </aside>
+
+        </div>
       </main>
+
+      {/* Interactive Flashcard Study Modal */}
+      {selectedCollection && (
+        <VocabularyFlashcardModal 
+          collection={selectedCollection}
+          onClose={() => setSelectedCollection(null)}
+          onUpdateWordProgress={handleUpdateWordProgress}
+          userProgressMap={userProgressMap}
+        />
+      )}
+
+      {/* Add Custom Word Modal */}
+      <AddWordModal 
+        isOpen={isAddWordModalOpen}
+        onClose={() => setIsAddWordModalOpen(false)}
+        onAddWord={handleAddCustomWord}
+      />
+
+      {/* How It Works Explainer Modal */}
+      <HowItWorksModal 
+        isOpen={isHowItWorksOpen}
+        onClose={() => setIsHowItWorksOpen(false)}
+      />
 
       <Footer />
     </div>

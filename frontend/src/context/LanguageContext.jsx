@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const translations = {
   VIE: {
     // Header & Nav
+    learn: "Học tập",
     courses: "Khóa học",
     roadmap: "Lộ trình",
     quizzes: "Trắc nghiệm",
@@ -76,6 +77,7 @@ const translations = {
   },
   ENG: {
     // Header & Nav
+    learn: "Learn",
     courses: "Courses",
     roadmap: "Roadmap",
     quizzes: "Quizzes",

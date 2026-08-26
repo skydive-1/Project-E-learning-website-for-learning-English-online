@@ -30,18 +30,13 @@ const MobileBottomNav = () => {
     },
     {
       to: '/courses',
-      label: t('courses') || 'Khóa học',
+      label: t('learn') || 'Học tập',
       icon: <FiBook className="text-lg" />
     },
     {
       to: '/my-courses',
       label: t('my_courses') || 'Của tôi',
       icon: <FiBookmark className="text-lg" />
-    },
-    {
-      to: '/quizzes',
-      label: t('quizzes') || 'Trắc nghiệm',
-      icon: <FiAward className="text-lg" />
     },
     {
       to: '/profile',
@@ -58,18 +53,13 @@ const MobileBottomNav = () => {
     },
     {
       to: '/courses',
-      label: t('courses') || 'Khóa học',
+      label: t('learn') || 'Học tập',
       icon: <FiBook className="text-lg" />
     },
     {
       to: '/academy',
       label: t('roadmap') || 'Lộ trình',
       icon: <FiCompass className="text-lg" />
-    },
-    {
-      to: '/quizzes',
-      label: t('quizzes') || 'Trắc nghiệm',
-      icon: <FiAward className="text-lg" />
     },
     {
       to: '/login',
