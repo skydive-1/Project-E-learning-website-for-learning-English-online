@@ -76,9 +76,8 @@ const Header = () => {
         )}
 
         <nav id="main-nav" className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}>
-          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>{t('courses')}</Link>
+          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>{t('learn')}</Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>{t('roadmap')}</Link>
-          <Link to="/quizzes" onClick={() => setIsMobileMenuOpen(false)}>{t('quizzes')}</Link>
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
           <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>{t('pricing')}</a>
 
