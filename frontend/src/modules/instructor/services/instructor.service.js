@@ -18,6 +18,7 @@ export const instructorService = {
     formData.append('file', file);
     
     const response = await apiClient.post('/courses/upload', formData, {
+      timeout: 300000,
       headers: {
         'Content-Type': 'multipart/form-data'
       }

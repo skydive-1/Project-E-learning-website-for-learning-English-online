@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { PassThrough } = require('stream');
 
 // Import utilities and modules
 const { validateVideoFile } = require('../src/utils/videoValidator.util');
@@ -26,6 +27,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
   let origUploadDoc;
   let origCheckObject;
   let origGenerateSignedUrl;
+  let origFetchPrivateObject;
   let origDeleteStorageObject;
   let origQuery;
   let origGetLessonById;
@@ -81,6 +83,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
     origUploadDoc = supabaseStorage.uploadDocumentToSupabase;
     origCheckObject = supabaseStorage.checkObjectExists;
     origGenerateSignedUrl = supabaseStorage.generateSignedUrl;
+    origFetchPrivateObject = supabaseStorage.fetchPrivateObject;
     origDeleteStorageObject = supabaseStorage.deleteStorageObject;
     origQuery = db.query;
     origGetLessonById = coursesService.getLessonById;
@@ -99,6 +102,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
     supabaseStorage.uploadDocumentToSupabase = origUploadDoc;
     supabaseStorage.checkObjectExists = origCheckObject;
     supabaseStorage.generateSignedUrl = origGenerateSignedUrl;
+    supabaseStorage.fetchPrivateObject = origFetchPrivateObject;
     supabaseStorage.deleteStorageObject = origDeleteStorageObject;
     db.query = async (text, params) => {
       if (typeof text === 'string' && text.includes('INSERT INTO pending_media_uploads')) {
@@ -120,6 +124,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
     supabaseStorage.uploadDocumentToSupabase = origUploadDoc;
     supabaseStorage.checkObjectExists = origCheckObject;
     supabaseStorage.generateSignedUrl = origGenerateSignedUrl;
+    supabaseStorage.fetchPrivateObject = origFetchPrivateObject;
     supabaseStorage.deleteStorageObject = origDeleteStorageObject;
     db.query = origQuery;
     coursesService.getLessonById = origGetLessonById;
@@ -357,7 +362,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
     });
 
     // Test 8: Instructor upload -> publish -> student lấy ticket -> phát video
-    it('8. Flow: Instructor upload -> publish -> student lấy ticket -> video stream redirect', async () => {
+    it('8. Flow: Instructor upload -> publish -> student lấy ticket -> backend proxy video', async () => {
       const validMp4 = createMockValidMp4Buffer();
       const tempPath = path.join(testOutputDir, 'flow_test.mp4');
       fs.writeFileSync(tempPath, validMp4);
@@ -413,6 +418,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       let ticketResData = null;
       const resTicket = {
         status: () => resTicket,
+        cookie: () => resTicket,
         json: (d) => { ticketResData = d; return resTicket; }
       };
 
@@ -421,22 +427,34 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.ok(ticketResData.ticket);
 
       // 3. Stream với ticket
-      supabaseStorage.generateSignedUrl = async (path) => `https://supabase.co/storage/v1/object/sign/videos/${path}?token=mock`;
+      supabaseStorage.fetchPrivateObject = async () => new Response(Buffer.alloc(validMp4.length), {
+        status: 206,
+        headers: {
+          'Content-Type': 'video/mp4',
+          'Content-Length': String(validMp4.length),
+          'Content-Range': `bytes 0-${validMp4.length - 1}/${validMp4.length}`
+        }
+      });
       const ticketDecoded = jwt.verify(ticketResData.ticket, JWT_SECRET);
       const reqStream = {
         params: { lessonId: '99' },
         user: ticketDecoded,
-        headers: { 'user-agent': 'Mozilla/5.0' }
+        headers: { 'user-agent': 'Mozilla/5.0', range: `bytes=0-${validMp4.length - 1}` }
       };
 
-      let redirectUrl = null;
-      const resStream = {
-        setHeader: () => {},
-        redirect: (url) => { redirectUrl = url; }
-      };
+      const resStream = new PassThrough();
+      resStream.headers = {};
+      resStream.setHeader = (key, value) => { resStream.headers[key] = value; };
+      resStream.status = (code) => { resStream.statusCode = code; return resStream; };
+      resStream.json = (payload) => { resStream.payload = payload; resStream.end(); return resStream; };
+      resStream.resume();
+      const finished = new Promise(resolve => resStream.once('finish', resolve));
 
       await lessonsController.streamLessonVideo(reqStream, resStream, () => {});
-      assert.ok(redirectUrl && redirectUrl.startsWith('http'), 'Stream phải redirect tới signed URL');
+      await finished;
+      assert.strictEqual(resStream.statusCode, 206);
+      assert.strictEqual(resStream.headers['Content-Type'], 'video/mp4');
+      assert.strictEqual(resStream.headers.Location, undefined, 'Không được lộ signed URL qua redirect');
     });
 
     // Test 9: Range/redirect và MIME đúng
@@ -450,23 +468,33 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
         storage_bucket: 'videos'
       });
       coursesService.canUserAccessLesson = async () => true;
-      supabaseStorage.generateSignedUrl = async (path) => `https://supabase.co/storage/v1/object/sign/videos/${path}?token=mock`;
+      supabaseStorage.fetchPrivateObject = async () => new Response(Buffer.alloc(1024), {
+        status: 206,
+        headers: {
+          'Content-Type': 'video/mp4',
+          'Content-Length': '1024',
+          'Content-Range': 'bytes 0-1023/4096'
+        }
+      });
 
       const headersSet = {};
-      let redirected = null;
-      const res = {
-        setHeader: (k, v) => { headersSet[k] = v; },
-        redirect: (url) => { redirected = url; }
-      };
+      const res = new PassThrough();
+      res.setHeader = (k, v) => { headersSet[k] = v; };
+      res.status = (code) => { res.statusCode = code; return res; };
+      res.json = (payload) => { res.payload = payload; res.end(); return res; };
+      res.resume();
+      const finished = new Promise(resolve => res.once('finish', resolve));
 
       await lessonsController.streamLessonVideo({
         params: { lessonId: '44' },
         user: { id: 1, userId: 1, roleId: 3, lessonId: '44', type: 'video_stream_ticket' },
-        headers: { 'user-agent': 'Chrome/120' }
+        headers: { 'user-agent': 'Chrome/120', range: 'bytes=0-1023' }
       }, res, () => {});
+      await finished;
 
       assert.strictEqual(headersSet['X-Content-Type-Options'], 'nosniff');
-      assert.ok(redirected && redirected.includes('supabase.co'));
+      assert.strictEqual(headersSet['Content-Type'], 'video/mp4');
+      assert.strictEqual(res.statusCode, 206);
     });
   });
 

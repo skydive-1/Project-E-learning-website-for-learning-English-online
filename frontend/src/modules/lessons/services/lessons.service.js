@@ -7,7 +7,11 @@ import { getCourseQuizQuestions, fetchAndCacheQuizzes } from '../../quizzes/serv
  */
 export const getVideoTicket = async (lessonId) => {
   const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-  const response = await apiClient.get(`/lessons/video/ticket/${cleanId}`);
+  // withCredentials là bắt buộc để backend đặt cookie vé HttpOnly. Native
+  // <video> dùng cookie này nên ticket không còn xuất hiện trong URL phát.
+  const response = await apiClient.get(`/lessons/video/ticket/${cleanId}`, {
+    withCredentials: true
+  });
   return response.data;
 };
 
@@ -218,7 +222,9 @@ export const getCourseDetails = async (courseId = 1) => {
           let resolvedUrl = '';
           if (l.content_url) {
             if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
-              resolvedUrl = l.content_url;
+              // Không giữ URL video ngoài trong state/client DOM. Backend sẽ cấp
+              // ticket và từ chối nguồn không thể bảo vệ.
+              resolvedUrl = l.content_type === 'video' ? 'protected-video-source' : l.content_url;
             } else {
               const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
               const backendHost = apiUrl.replace(/\/api\/?$/, '');
@@ -420,8 +426,7 @@ export const getLessonById = async (lessonId) => {
     let resolvedUrl = '';
     if (l.content_url) {
       if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
-        // Link trực tiếp CDN -> Phát trực tiếp để đạt tốc độ cao nhất
-        resolvedUrl = l.content_url;
+        resolvedUrl = l.content_type === 'video' ? 'protected-video-source' : l.content_url;
       } else {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         const backendHost = apiUrl.replace(/\/api\/?$/, '');

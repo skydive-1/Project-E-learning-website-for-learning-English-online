@@ -235,7 +235,9 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
       { expiresIn: '1h' }
     );
 
-    const res = await fetch(`${baseUrl}/api/video/12?ticket=${regularToken}`);
+    const res = await fetch(`${baseUrl}/api/video/12`, {
+      headers: { 'X-Video-Ticket': regularToken }
+    });
     const data = await res.json();
     assert.strictEqual(res.status, 403);
     assert.strictEqual(data.code, 'TOKEN_INVALID');
@@ -249,7 +251,9 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
       { expiresIn: '60s' }
     );
 
-    const res = await fetch(`${baseUrl}/api/video/12?ticket=${mismatchedLessonTicket}`);
+    const res = await fetch(`${baseUrl}/api/video/12`, {
+      headers: { 'X-Video-Ticket': mismatchedLessonTicket }
+    });
     const data = await res.json();
     assert.strictEqual(res.status, 403);
     assert.strictEqual(data.code, 'TOKEN_INVALID');
@@ -263,7 +267,9 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Middleware Test Suite ===', () =
       { expiresIn: '60s' }
     );
 
-    const res = await fetch(`${baseUrl}/api/video/12?ticket=${validTicket}`);
+    const res = await fetch(`${baseUrl}/api/video/12`, {
+      headers: { 'X-Video-Ticket': validTicket }
+    });
     const data = await res.json();
     assert.strictEqual(res.status, 200);
     assert.strictEqual(data.success, true);
