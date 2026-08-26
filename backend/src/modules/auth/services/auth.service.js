@@ -8,6 +8,7 @@ const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { supabaseAdmin, supabaseClient } = require('../../../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
+const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
 
 class AuthService {
   async register({ email, username, password, fullName, roleId }) {
@@ -219,7 +220,8 @@ class AuthService {
           email: user.email,
           username: user.username,
           fullName: user.full_name,
-          roleId: user.role_id
+          roleId: user.role_id,
+          isSuperAdmin: isSuperAdminUser(user)
         }
       };
     } catch (error) {
@@ -250,7 +252,8 @@ class AuthService {
         phone: user.phone,
         roleId: user.role_id,
         gender: user.gender,
-        createdDate: user.created_date
+        createdDate: user.created_date,
+        isSuperAdmin: isSuperAdminUser(user)
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin cá nhân trong AuthService');

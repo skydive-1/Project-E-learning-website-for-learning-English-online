@@ -13,6 +13,7 @@ const {
   isAutomatedDownloader,
   registerTicketRequest
 } = require('../utils/videoSecurity.util');
+const { isSuperAdminUser } = require('../utils/superAdmin.util');
 
 /**
  * Middleware xác thực người dùng đã đăng nhập (kiểm tra JWT & CSDL thực tế)
@@ -112,6 +113,7 @@ const authenticate = async (req, res, next) => {
       fullName: dbUser.full_name,
       roleId: dbUser.role_id
     };
+    req.user.isSuperAdmin = isSuperAdminUser(req.user);
 
     // Cập nhật mốc hoạt động gần nhất phục vụ Realtime Online Tracking
     db.query('UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE user_id = $1', [dbUser.user_id]).catch(() => {});
@@ -178,6 +180,7 @@ const optionalAuthenticate = async (req, res, next) => {
       fullName: dbUser.full_name,
       roleId: dbUser.role_id
     };
+    req.user.isSuperAdmin = isSuperAdminUser(req.user);
     next();
   } catch (error) {
     // Token lỗi hoặc hết hạn: bỏ qua, tiếp tục như anonymous
