@@ -341,30 +341,30 @@ const QuizzesListPage = () => {
         </div>
 
         {/* Quizzes List Header */}
-        <div className="flex justify-between items-center w-full max-w-4xl mb-8">
-          <div className="flex items-center flex-1">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center w-full max-w-4xl mb-8 gap-4">
+          <div className="flex items-center flex-1 w-full">
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t('Danh sách đề thi hiện có')}</h2>
-            <div className="flex-1 h-[1px] bg-slate-200 dark:bg-slate-800 ml-4 mr-4"></div>
+            <div className="flex-1 h-[1px] bg-slate-200 dark:bg-slate-800 ml-4 mr-2 hidden sm:block"></div>
           </div>
           {isInstructorOrAdmin && (
-            <div className="flex items-center space-x-2 shrink-0">
+            <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
               <button
                 type="button"
                 onClick={() => {
                   setShowManageModal(true);
                   loadManagedQuizzes();
                 }}
-                className="flex items-center space-x-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
               >
-                <FiKey /> <span>{t('Quản lý Đề thi & Mã PIN')}</span>
+                <FiKey /> <span>{t('Quản lý')}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center space-x-1.5 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all shadow-md cursor-pointer"
               >
-                <FiPlus /> <span>{t('Tạo đề thi mới')}</span>
+                <FiPlus /> <span>{t('Tạo đề thi')}</span>
               </button>
             </div>
           )}

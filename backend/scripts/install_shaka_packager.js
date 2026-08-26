@@ -1,4 +1,4 @@
-/**
+ư/**
  * Script tự động tải Shaka Packager binary phù hợp với hệ điều hành khi deploy (Railway, Render, VPS, Local)
  * Tự động chạy trong quá trình `npm install` hoặc `postinstall`.
  */

@@ -1160,3 +1160,68 @@ input[type="search"]::-webkit-search-cancel-button {
     transform: scaleY(0.7);
   }
 }
+
+/* ========================================================
+   GLOBAL RESPONSIVE & MOBILE POLISH UTILITIES
+   - Touch Target Min 44x44px
+   - Safe Area Insets for Mobile Notch & Home Indicators
+   - Smooth Touch Momentum Scrolling
+   - Table Horizontal Scroll Wrappers
+   ======================================================== */
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.touch-scroll-momentum {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.responsive-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 1rem;
+}
+
+.responsive-table-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+
+.responsive-table-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.responsive-table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+.responsive-container {
+  width: 100%;
+  max-width: 1320px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .responsive-container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+

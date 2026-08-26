@@ -1,13 +1,28 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { FiMail, FiArrowLeft } from 'react-icons/fi';
 import { forgotPasswordApi } from '../services/auth.service';
 
 const ForgotPasswordPage = () => {
   const navigate = useNavigate();
+  const outletContext = useOutletContext();
+  const setAuthInteractiveState = outletContext?.setAuthInteractiveState;
+
   const [email, setEmail] = useState('');
+  const [isEmailFocused, setIsEmailFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+
+  useEffect(() => {
+    if (setAuthInteractiveState) {
+      setAuthInteractiveState((prev) => ({
+        ...prev,
+        showPassword: false,
+        isPasswordFocused: false,
+        isEmailFocused
+      }));
+    }
+  }, [isEmailFocused, setAuthInteractiveState]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,7 +52,7 @@ const ForgotPasswordPage = () => {
   return (
     <>
       <h2 className="welcome-title">Quên mật khẩu</h2>
-      <p className="welcome-subtitle">Nhập email của bạn để nhận link khôi phục mật khẩu từ Supabase.</p>
+      <p className="welcome-subtitle">Nhập email của bạn để nhận link khôi phục mật khẩu.</p>
 
       {message.text && (
         <div className={`auth-message ${message.type}`}>
@@ -55,6 +70,8 @@ const ForgotPasswordPage = () => {
               placeholder="Nhập Email của bạn"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onFocus={() => setIsEmailFocused(true)}
+              onBlur={() => setIsEmailFocused(false)}
               required
             />
           </div>
