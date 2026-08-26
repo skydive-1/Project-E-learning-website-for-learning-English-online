@@ -129,8 +129,9 @@ const testConnection = async () => {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
         ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       `);
-      console.log('✅ Tự động đồng bộ: Đảm bảo đầy đủ cột bảng users (supabase_uid, longest_streak, profile_picture_url, ...)');
+      console.log('✅ Tự động đồng bộ: Đảm bảo đầy đủ cột bảng users (supabase_uid, longest_streak, profile_picture_url, last_seen_at, ...)');
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột bảng users:', migErr.message);
     }

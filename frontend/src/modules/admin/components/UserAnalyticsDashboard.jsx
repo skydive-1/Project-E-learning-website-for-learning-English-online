@@ -58,14 +58,18 @@ const RANGE_OPTIONS = [
 ];
 
 const STATUS_META = {
-  active: { label: 'Đang hoạt động', shortLabel: 'Hoạt động', chipColor: 'lime', dotColor: 'green' },
+  online: { label: 'Đang online', shortLabel: 'Online', chipColor: 'lime', dotColor: 'green' },
+  active: { label: 'Hoạt động hôm nay', shortLabel: 'Hôm nay', chipColor: 'lime', dotColor: 'green' },
+  recent: { label: 'Vắng 1-7 ngày', shortLabel: '1-7 ngày', chipColor: 'gray', dotColor: 'indigo' },
   attention: { label: 'Cần chú ý', shortLabel: 'Cần chú ý', chipColor: 'yellow', dotColor: 'yellow' },
   inactive: { label: 'Không hoạt động', shortLabel: 'Không hoạt động', chipColor: 'rose', dotColor: 'indigo' }
 };
 
 const STATUS_FILTER_ITEMS = [
   { id: 'all', label: 'Tất cả trạng thái' },
-  { id: 'active', label: 'Đang hoạt động' },
+  { id: 'online', label: '🟢 Đang online (Realtime)' },
+  { id: 'active', label: 'Hoạt động hôm nay' },
+  { id: 'recent', label: 'Vắng mặt 1-7 ngày' },
   { id: 'attention', label: 'Cần chú ý (8-30 ngày)' },
   { id: 'inactive', label: 'Không hoạt động (>30 ngày)' }
 ];
@@ -96,11 +100,24 @@ const formatStudyTime = (minutes) => {
 
 const formatRelativeActivity = (learner) => {
   if (!learner.last_activity_at) return 'Chưa có hoạt động';
-  const days = toNumber(learner.inactive_days);
-  if (days <= 0) return 'Hôm nay';
-  if (days === 1) return 'Hôm qua';
+  const now = Date.now();
+  const date = new Date(learner.last_activity_at);
+  const diffMs = Math.max(0, now - date.getTime());
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const days = Math.floor(diffHours / 24);
+
+  if (diffMinutes <= 1) return 'Vừa mới đây';
+  if (diffMinutes <= 15) return `${diffMinutes} phút trước`;
+  if (diffMinutes < 60) return `${diffMinutes} phút trước`;
+  if (diffHours < 24 && date.getDate() === new Date(now).getDate()) {
+    return `Hôm nay ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  if (days === 1 || (diffHours < 48 && date.getDate() === new Date(now - 86400000).getDate())) {
+    return `Hôm qua ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+  }
   if (days < 30) return `${days} ngày trước`;
-  return dateFormatter.format(new Date(learner.last_activity_at));
+  return dateFormatter.format(date);
 };
 
 const getInitials = (learner) => {
@@ -169,7 +186,13 @@ const DashboardSkeleton = () => (
   </section>
 );
 
-const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = null }) => {
+const UserAnalyticsDashboard = ({
+  dataSource = getAdminAnalytics,
+  initialData = null,
+  canResetToken = true,
+  title = 'User Analytics & System Health',
+  subtitle = null
+}) => {
   const showToast = useToast();
   const [range, setRange] = useState(30);
   const [data, setData] = useState(initialData);
@@ -227,7 +250,14 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
   const filteredLearners = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase('vi');
     return learners.filter((learner) => {
-      const matchesStatus = statusFilter === 'all' || learner.engagement_status === statusFilter;
+      let matchesStatus = true;
+      if (statusFilter === 'online') {
+        matchesStatus = Boolean(learner.is_online || learner.engagement_status === 'online');
+      } else if (statusFilter === 'active') {
+        matchesStatus = learner.engagement_status === 'online' || learner.engagement_status === 'active';
+      } else if (statusFilter !== 'all') {
+        matchesStatus = learner.engagement_status === statusFilter;
+      }
       const haystack = `${learner.full_name || ''} ${learner.username || ''} ${learner.email || ''}`.toLocaleLowerCase('vi');
       return matchesStatus && (!keyword || haystack.includes(keyword));
     });
@@ -317,19 +347,34 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
               <RiShieldUserLine className="size-5" />
             </span>
             <h2 id="user-analytics-main-title" className="text-title-1-semibold text-text-primary">
-              User Analytics & System Health
+              {title}
             </h2>
           </div>
           <p className="mt-1 text-body-regular text-text-secondary">
-            Hoạt động, tiến độ học tập và mức độ tương tác học viên trên toàn hệ thống trong {range} ngày gần nhất.
+            {subtitle 
+              ? `${subtitle} (Thống kê ${range} ngày qua)`
+              : `Hoạt động, tiến độ học tập và mức độ tương tác học viên trên toàn hệ thống trong ${range} ngày gần nhất.`}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Segmented Control cho khoảng thời gian */}
           <SegmentedControl
-            selectedKey={String(range)}
-            onSelectionChange={(key) => setRange(Number(key))}
+            selectedKeys={[String(range)]}
+            onSelectionChange={(keys) => {
+              let keyVal = null;
+              if (keys instanceof Set) {
+                keyVal = Array.from(keys)[0];
+              } else if (Array.isArray(keys)) {
+                keyVal = keys[0];
+              } else if (typeof keys === 'string' || typeof keys === 'number') {
+                keyVal = keys;
+              }
+              const parsed = Number(keyVal);
+              if (!Number.isNaN(parsed) && parsed > 0) {
+                setRange(parsed);
+              }
+            }}
             variant="solid"
             aria-label="Chọn khoảng thời gian phân tích"
           >
@@ -822,9 +867,16 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
 
                         <td className="pr-5 py-3">
                           <div className="flex items-center gap-1.5">
-                            <StatusDot color={statusInfo.dotColor} />
-                            <Chip variant="bold" color={statusInfo.chipColor}>
-                              {statusInfo.shortLabel}
+                            {learner.is_online ? (
+                              <span className="relative flex size-2 shrink-0">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                              </span>
+                            ) : (
+                              <StatusDot color={statusInfo.dotColor} />
+                            )}
+                            <Chip variant="bold" color={learner.is_online ? 'lime' : statusInfo.chipColor}>
+                              {learner.is_online ? 'Online' : statusInfo.shortLabel}
                             </Chip>
                           </div>
                         </td>
@@ -839,19 +891,21 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
                                 <span className="text-caption-1-semibold text-text-secondary">
                                   CHI TIẾT TIẾN TRÌNH VÀ TƯƠNG TÁC AI CỦA HỌC VIÊN
                                 </span>
-                                <Button
-                                  variant="secondary"
-                                  size="xs"
-                                  leadingIcon={RiFlashlightLine}
-                                  disabled={resettingUserId === learner.user_id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleQuickResetToken(learner);
-                                  }}
-                                  aria-label={`Reset token AI cho ${learner.full_name || learner.username}`}
-                                >
-                                  {resettingUserId === learner.user_id ? 'Đang reset...' : 'Reset Token AI'}
-                                </Button>
+                                {canResetToken && (
+                                  <Button
+                                    variant="secondary"
+                                    size="xs"
+                                    leadingIcon={RiFlashlightLine}
+                                    disabled={resettingUserId === learner.user_id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleQuickResetToken(learner);
+                                    }}
+                                    aria-label={`Reset token AI cho ${learner.full_name || learner.username}`}
+                                  >
+                                    {resettingUserId === learner.user_id ? 'Đang reset...' : 'Reset Token AI'}
+                                  </Button>
+                                )}
                               </div>
 
                               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 text-caption-1-medium">
@@ -934,9 +988,19 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
                         </small>
                       </div>
                     </div>
-                    <Chip variant="bold" color={statusInfo.chipColor}>
-                      {statusInfo.shortLabel}
-                    </Chip>
+                    <div className="flex items-center gap-1.5">
+                      {learner.is_online ? (
+                        <span className="relative flex size-2 shrink-0">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                        </span>
+                      ) : (
+                        <StatusDot color={statusInfo.dotColor} />
+                      )}
+                      <Chip variant="bold" color={learner.is_online ? 'lime' : statusInfo.chipColor}>
+                        {learner.is_online ? 'Online' : statusInfo.shortLabel}
+                      </Chip>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between text-caption-1-medium text-text-secondary">
@@ -957,17 +1021,19 @@ const UserAnalyticsDashboard = ({ dataSource = getAdminAnalytics, initialData = 
                         <div><span className="text-text-secondary">Chat AI:</span> <strong>{toNumber(learner.ai_messages)}</strong></div>
                         <div><span className="text-text-secondary">Token đã dùng:</span> <strong>{numberFormatter.format(toNumber(learner.used_tokens))}</strong></div>
                       </div>
-                      <div className="pt-2 border-t border-separator-border flex justify-end">
-                        <Button
-                          variant="secondary"
-                          size="xs"
-                          leadingIcon={RiFlashlightLine}
-                          disabled={resettingUserId === learner.user_id}
-                          onClick={() => handleQuickResetToken(learner)}
-                        >
-                          Reset Token AI
-                        </Button>
-                      </div>
+                      {canResetToken && (
+                        <div className="pt-2 border-t border-separator-border flex justify-end">
+                          <Button
+                            variant="secondary"
+                            size="xs"
+                            leadingIcon={RiFlashlightLine}
+                            disabled={resettingUserId === learner.user_id}
+                            onClick={() => handleQuickResetToken(learner)}
+                          >
+                            Reset Token AI
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </article>

@@ -34,6 +34,22 @@ exports.getPerformance = async (req, res, next) => {
   }
 };
 
+exports.getAnalytics = async (req, res, next) => {
+  try {
+    const instructorId = req.user.id;
+    const range = req.query.range || 30;
+    const analytics = await instructorService.getAnalytics(instructorId, range);
+
+    res.status(200).json({
+      success: true,
+      message: 'Lấy dữ liệu Analytics của giảng viên thành công',
+      data: analytics
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const { geminiModel } = require('../../../utils/ai-clients');
 
 exports.generateQuiz = async (req, res, next) => {

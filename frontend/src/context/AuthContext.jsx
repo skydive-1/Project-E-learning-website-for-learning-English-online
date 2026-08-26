@@ -100,8 +100,18 @@ export const AuthProvider = ({ children }) => {
     };
 
     window.addEventListener('auth-logout', handleAuthLogout);
+
+    // Heartbeat định kỳ (3 phút) khi tab đang mở và có token để cập nhật mốc hoạt động realtime
+    const heartbeatInterval = setInterval(() => {
+      const token = localStorage.getItem('token');
+      if (token && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        getProfile().catch(() => {});
+      }
+    }, 3 * 60 * 1000);
+
     return () => {
       window.removeEventListener('auth-logout', handleAuthLogout);
+      clearInterval(heartbeatInterval);
     };
   }, [fetchUserProfile, navigate]);
 
