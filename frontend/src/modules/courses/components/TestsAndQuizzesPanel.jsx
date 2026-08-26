@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FiAward, FiClock, FiPlay, FiZap, FiPlus, FiX, 
-  FiKey, FiLock, FiCopy, FiCheck, FiTrash2, FiShield, FiEye, FiGlobe, FiSearch,
-  FiChevronRight, FiCheckCircle, FiCpu, FiRefreshCw
+  FiKey, FiCopy, FiCheck, FiTrash2, FiShield, FiSearch,
+  FiChevronRight, FiRefreshCw
 } from 'react-icons/fi';
 import { 
   getFreeQuizzesList, 
@@ -16,6 +16,8 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
+import { syncClozeGaps, validateClozeDraft } from '../../quizzes/utils/openCloze';
+import CreateQuizDialog from './CreateQuizDialog';
 
 // Skeleton loading cho Quiz Cards
 const QuizCardSkeleton = () => (
@@ -65,6 +67,12 @@ const TestsAndQuizzesPanel = () => {
   const [aiTopic, setAiTopic] = useState('');
   const [aiCount, setAiCount] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiTypes, setAiTypes] = useState([
+    'multiple_choice',
+    'writing',
+    'pronunciation',
+    'open_cloze'
+  ]);
 
   // States cho modal Quản lý đề thi (Giảng viên / Admin)
   const [showManageModal, setShowManageModal] = useState(false);
@@ -161,15 +169,18 @@ const TestsAndQuizzesPanel = () => {
   };
 
   // Tạo câu hỏi thủ công
-  const handleAddQuestion = () => {
+  const handleAddQuestion = (questionType = 'multiple_choice') => {
+    const baseQuestion = {
+      question_text: '',
+      question_type: questionType,
+      options: questionType === 'multiple_choice' ? ['', '', '', ''] : [],
+      correct_answer: questionType === 'multiple_choice' ? 'A' : '',
+      explanation: ''
+    };
+
     setQuestionsList(prev => [
       ...prev,
-      {
-        question_text: '',
-        question_type: 'multiple_choice',
-        options: ['', '', '', ''],
-        correct_answer: ''
-      }
+      baseQuestion
     ]);
   };
 
@@ -181,14 +192,35 @@ const TestsAndQuizzesPanel = () => {
     }
     try {
       setAiGenerating(true);
+      if (aiTypes.length === 0) {
+        showToast('Vui lòng chọn ít nhất một dạng câu hỏi', 'warning');
+        return;
+      }
+
       const res = await generateQuizAi({
         topic: aiTopic.trim(),
         count: aiCount,
-        types: { multiple_choice: true, writing: true, pronunciation: true }
+        questionTypes: aiTypes
       });
 
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        setQuestionsList(res.questions);
+        const normalizedQuestions = res.questions.map(question => {
+          const questionType = question.question_type || question.questionType || 'multiple_choice';
+          const questionText = question.question_text || question.questionText || '';
+          const options = questionType === 'open_cloze'
+            ? syncClozeGaps(questionText, question.options || [])
+            : (Array.isArray(question.options) ? question.options : []);
+
+          return {
+            question_text: questionText,
+            question_type: questionType,
+            options,
+            correct_answer: question.correct_answer ?? question.correctAnswer ?? (questionType === 'multiple_choice' ? 'A' : ''),
+            explanation: question.explanation || ''
+          };
+        });
+
+        setQuestionsList(normalizedQuestions);
         if (!quizTitle) setQuizTitle(`Bài tập AI: ${aiTopic.trim()}`);
         if (!quizDesc) setQuizDesc(`Đề thi tự động tạo bởi Trợ lý AI E-Learn về chủ đề ${aiTopic.trim()}.`);
         setCreateMode('manual'); // Chuyển sang xem lại câu hỏi
@@ -215,16 +247,42 @@ const TestsAndQuizzesPanel = () => {
       showToast('Đề thi phải có ít nhất 1 câu hỏi', 'warning');
       return;
     }
+    if (isPrivateQuiz && quizPinCode.trim().length < 4) {
+      showToast('Mã PIN riêng tư phải có ít nhất 4 ký tự', 'warning');
+      return;
+    }
+
+    const invalidQuestion = questionsList.find(question => {
+      const type = question.question_type || 'multiple_choice';
+      if (!String(question.question_text || '').trim()) return true;
+      if (type === 'multiple_choice') {
+        return !Array.isArray(question.options)
+          || question.options.length !== 4
+          || question.options.some(option => !String(option).trim())
+          || !/^[A-D]$/.test(String(question.correct_answer || ''));
+      }
+      if (type === 'pronunciation') return !String(question.correct_answer || '').trim();
+      if (type === 'open_cloze') return Boolean(validateClozeDraft({
+        questionText: question.question_text,
+        options: question.options
+      }));
+      return false;
+    });
+
+    if (invalidQuestion) {
+      showToast('Vui lòng hoàn thiện nội dung và đáp án của tất cả câu hỏi', 'warning');
+      return;
+    }
 
     try {
       setSubmitting(true);
       await createQuiz({
         title: quizTitle.trim(),
         description: quizDesc.trim(),
-        difficulty_level: quizDifficulty,
-        time_limit_minutes: quizTimeLimit,
-        is_private: isPrivateQuiz,
-        pin_code: isPrivateQuiz ? quizPinCode.trim() : null,
+        difficulty: quizDifficulty,
+        timeLimit: quizTimeLimit,
+        isPrivate: isPrivateQuiz,
+        pinCode: isPrivateQuiz ? quizPinCode.trim() : null,
         questions: questionsList
       });
 
@@ -234,6 +292,9 @@ const TestsAndQuizzesPanel = () => {
       setQuizTitle('');
       setQuizDesc('');
       setQuestionsList([]);
+      setIsPrivateQuiz(false);
+      setQuizPinCode('');
+      setCreateMode('manual');
       loadQuizzes();
     } catch (err) {
       console.error('Lỗi tạo đề thi:', err);
@@ -356,14 +417,14 @@ const TestsAndQuizzesPanel = () => {
       ) : (
         <div className="quizzes-cards-grid">
           {quizzesList.map(quiz => {
-            const difficultyLabel = quiz.difficulty_level === 'Easy' ? 'Dễ' : quiz.difficulty_level === 'Hard' ? 'Khó' : 'Trung bình';
-            const difficultyClass = quiz.difficulty_level === 'Easy' ? 'easy' : quiz.difficulty_level === 'Hard' ? 'hard' : 'medium';
+            const difficultyLabel = quiz.difficulty === 'Easy' ? 'Dễ' : quiz.difficulty === 'Hard' ? 'Khó' : 'Trung bình';
+            const difficultyClass = quiz.difficulty === 'Easy' ? 'easy' : quiz.difficulty === 'Hard' ? 'hard' : 'medium';
             
             return (
               <div 
-                key={quiz.quiz_id} 
+                key={quiz.id}
                 className="quiz-card-item"
-                onClick={() => navigate(`/quizzes/play/${quiz.quiz_id}`)}
+                onClick={() => navigate(`/quizzes/play/${quiz.id}`)}
                 role="button"
                 tabIndex={0}
               >
@@ -372,7 +433,7 @@ const TestsAndQuizzesPanel = () => {
                     <FiZap /> {difficultyLabel}
                   </span>
                   <span className="badge-time">
-                    <FiClock /> {quiz.time_limit_minutes || 15} phút
+                    <FiClock /> {quiz.timeLimit || 15} phút
                   </span>
                 </div>
 
@@ -385,7 +446,7 @@ const TestsAndQuizzesPanel = () => {
 
                 <div className="card-bottom-footer">
                   <span className="questions-count">
-                    {quiz.questions_count || (quiz.questions ? quiz.questions.length : 5)} câu hỏi
+                    {quiz.questions?.length || 0} câu hỏi
                   </span>
                   <button type="button" className="btn-start-quiz">
                     <span>Bắt đầu thi</span>
@@ -401,217 +462,38 @@ const TestsAndQuizzesPanel = () => {
       {/* ========================================================= */}
       {/* MODAL 1: TẠO ĐỀ THI MỚI (Tích hợp AI Generator)            */}
       {/* ========================================================= */}
-      {showCreateModal && (
-        <div className="vocab-modal-backdrop" onClick={() => setShowCreateModal(false)}>
-          <div className="vocab-modal-card create-quiz-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="vocab-modal-header">
-              <div className="header-info">
-                <span className="collection-icon-badge">✨</span>
-                <div>
-                  <h2 className="collection-modal-title">Tạo đề thi trắc nghiệm mới</h2>
-                  <p className="modal-subtitle-text">Tự soạn câu hỏi hoặc dùng Trợ lý AI để sinh đề tự động</p>
-                </div>
-              </div>
-              <button type="button" className="btn-close-modal" onClick={() => setShowCreateModal(false)}>
-                <FiX />
-              </button>
-            </div>
-
-            {/* Switch Mode: Manual vs AI */}
-            <div className="create-tabs-bar">
-              <button 
-                type="button" 
-                className={`tab-switch-btn ${createMode === 'manual' ? 'active' : ''}`}
-                onClick={() => setCreateMode('manual')}
-              >
-                ✍️ Soạn câu hỏi ({questionsList.length})
-              </button>
-              <button 
-                type="button" 
-                className={`tab-switch-btn ${createMode === 'ai' ? 'active' : ''}`}
-                onClick={() => setCreateMode('ai')}
-              >
-                <FiCpu /> Sinh đề bằng Trợ lý AI
-              </button>
-            </div>
-
-            {createMode === 'ai' ? (
-              <div className="ai-generator-body">
-                <div className="form-group">
-                  <label htmlFor="ai-topic">Chủ đề bài tập muốn AI tạo <span className="req">*</span></label>
-                  <input 
-                    id="ai-topic"
-                    type="text" 
-                    placeholder="VD: Phrasal verbs for travel, IELTS Speaking Part 1, Simple Past vs Present Perfect..."
-                    value={aiTopic}
-                    onChange={(e) => setAiTopic(e.target.value)}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="ai-count">Số lượng câu hỏi</label>
-                  <select 
-                    id="ai-count"
-                    value={aiCount} 
-                    onChange={(e) => setAiCount(Number(e.target.value))}
-                  >
-                    <option value={3}>3 câu hỏi nhanh</option>
-                    <option value={5}>5 câu hỏi tiêu chuẩn</option>
-                    <option value={10}>10 câu hỏi chuyên sâu</option>
-                  </select>
-                </div>
-
-                <div className="ai-feature-box">
-                  <FiCpu className="ai-icon" />
-                  <p>Trợ lý AI sẽ tự động phân bổ câu hỏi trắc nghiệm, bài tập tự luận chấm ngữ pháp và mẫu câu luyện phát âm IPA.</p>
-                </div>
-
-                <button 
-                  type="button" 
-                  className="btn-submit-ai"
-                  onClick={handleGenerateAI}
-                  disabled={aiGenerating || !aiTopic.trim()}
-                >
-                  {aiGenerating ? (
-                    <>
-                      <FiRefreshCw className="animate-spin" /> AI đang soạn câu hỏi...
-                    </>
-                  ) : (
-                    <>
-                      <FiCpu /> Bắt đầu tạo câu hỏi AI
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleSaveQuiz} className="manual-quiz-form">
-                <div className="form-grid-2">
-                  <div className="form-group">
-                    <label htmlFor="quiz-title">Tiêu đề đề thi <span className="req">*</span></label>
-                    <input 
-                      id="quiz-title"
-                      type="text" 
-                      placeholder="VD: Kiểm tra Thì Hiện Tại Hoàn Thành" 
-                      value={quizTitle}
-                      onChange={(e) => setQuizTitle(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="quiz-diff">Độ khó</label>
-                    <select 
-                      id="quiz-diff"
-                      value={quizDifficulty} 
-                      onChange={(e) => setQuizDifficulty(e.target.value)}
-                    >
-                      <option value="Easy">Dễ (Easy)</option>
-                      <option value="Medium">Trung bình (Medium)</option>
-                      <option value="Hard">Khó (Hard)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="quiz-desc">Mô tả ngắn</label>
-                  <input 
-                    id="quiz-desc"
-                    type="text" 
-                    placeholder="Mô tả nội dung trọng tâm của đề thi..." 
-                    value={quizDesc}
-                    onChange={(e) => setQuizDesc(e.target.value)}
-                  />
-                </div>
-
-                <div className="form-grid-2">
-                  <div className="form-group">
-                    <label htmlFor="quiz-time">Thời gian làm bài (Phút)</label>
-                    <input 
-                      id="quiz-time"
-                      type="number" 
-                      min={1} 
-                      max={180} 
-                      value={quizTimeLimit}
-                      onChange={(e) => setQuizTimeLimit(Number(e.target.value))}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Chế độ bảo mật đề thi</label>
-                    <div className="privacy-toggle-row">
-                      <label className="checkbox-label">
-                        <input 
-                          type="checkbox" 
-                          checked={isPrivateQuiz} 
-                          onChange={(e) => setIsPrivateQuiz(e.target.checked)} 
-                        />
-                        <span>Khóa bằng mã PIN riêng tư</span>
-                      </label>
-                      {isPrivateQuiz && (
-                        <input 
-                          type="text" 
-                          placeholder="MÃ PIN (VD: 123456)" 
-                          value={quizPinCode} 
-                          onChange={(e) => setQuizPinCode(e.target.value.toUpperCase())}
-                          className="pin-inline-input"
-                          maxLength={8}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Questions List Editor */}
-                <div className="questions-editor-wrap">
-                  <div className="editor-header">
-                    <h4>Danh sách câu hỏi ({questionsList.length})</h4>
-                    <button type="button" className="btn-add-q" onClick={handleAddQuestion}>
-                      <FiPlus /> Thêm câu hỏi
-                    </button>
-                  </div>
-
-                  {questionsList.map((q, idx) => (
-                    <div key={idx} className="question-item-card">
-                      <div className="q-head">
-                        <span className="q-number">Câu {idx + 1}</span>
-                        <button 
-                          type="button" 
-                          className="btn-del-q"
-                          onClick={() => setQuestionsList(prev => prev.filter((_, i) => i !== idx))}
-                        >
-                          <FiTrash2 />
-                        </button>
-                      </div>
-
-                      <input 
-                        type="text"
-                        placeholder="Nội dung câu hỏi..."
-                        value={q.question_text || ''}
-                        onChange={(e) => {
-                          const updated = [...questionsList];
-                          updated[idx].question_text = e.target.value;
-                          setQuestionsList(updated);
-                        }}
-                        className="q-text-input"
-                        required
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="form-footer-actions">
-                  <button type="button" className="btn-cancel" onClick={() => setShowCreateModal(false)}>
-                    Hủy bỏ
-                  </button>
-                  <button type="submit" className="btn-submit-word" disabled={submitting}>
-                    {submitting ? 'Đang lưu...' : 'Xuất bản đề thi'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+      <CreateQuizDialog
+        open={showCreateModal}
+        onOpenChange={setShowCreateModal}
+        createMode={createMode}
+        onCreateModeChange={setCreateMode}
+        quizTitle={quizTitle}
+        onQuizTitleChange={setQuizTitle}
+        quizDescription={quizDesc}
+        onQuizDescriptionChange={setQuizDesc}
+        quizDifficulty={quizDifficulty}
+        onQuizDifficultyChange={setQuizDifficulty}
+        quizTimeLimit={quizTimeLimit}
+        onQuizTimeLimitChange={setQuizTimeLimit}
+        isPrivate={isPrivateQuiz}
+        onPrivateChange={setIsPrivateQuiz}
+        pinCode={quizPinCode}
+        onPinCodeChange={setQuizPinCode}
+        questions={questionsList}
+        onQuestionsChange={setQuestionsList}
+        onAddQuestion={handleAddQuestion}
+        submitting={submitting}
+        onSubmit={handleSaveQuiz}
+        aiTopic={aiTopic}
+        onAiTopicChange={setAiTopic}
+        aiCount={aiCount}
+        onAiCountChange={setAiCount}
+        aiTypes={aiTypes}
+        onAiTypesChange={setAiTypes}
+        aiGenerating={aiGenerating}
+        onGenerateAi={handleGenerateAI}
+        canUseAi={userRole === 1}
+      />
 
       {/* ========================================================= */}
       {/* MODAL 2: QUẢN LÝ ĐỀ THI & MÃ PIN (Giảng viên / Admin)      */}

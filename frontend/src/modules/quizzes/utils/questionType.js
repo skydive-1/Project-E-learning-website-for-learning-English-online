@@ -9,6 +9,10 @@ const TYPE_ALIASES = {
   audio: 'pronunciation',
   oral: 'pronunciation',
   read_aloud: 'pronunciation',
+  open_cloze: 'open_cloze',
+  cloze: 'open_cloze',
+  gap_fill: 'open_cloze',
+  fill_in_the_blanks: 'open_cloze',
   multiple_choice: 'multiple_choice',
   multiplechoice: 'multiple_choice',
   mcq: 'multiple_choice'
@@ -30,25 +34,21 @@ export const getEffectiveQuestionType = (question) => {
   if (!question) return 'multiple_choice';
 
   const explicitType = normalizeType(question.questionType || question.question_type);
-  if (explicitType === 'writing' || explicitType === 'pronunciation') {
-    return explicitType;
+  if (explicitType && explicitType !== 'multiple_choice') return explicitType;
+
+  if (/\{\{\s*[A-Za-z0-9_-]+\s*\}\}/.test(String(question.question || question.question_text || ''))) {
+    return 'open_cloze';
   }
 
   const options = Array.isArray(question.options) ? question.options.filter(Boolean) : [];
   if (options.length > 0) return 'multiple_choice';
 
-  const expectedAnswer = String(question.correctAnswer || question.correct_answer || '').trim();
-  const isOptionKey = /^[A-D](?:[.)])?$/i.test(expectedAnswer);
-  if (expectedAnswer && !isOptionKey) return 'pronunciation';
-
-  const promptAndGuide = [
-    question.question,
-    question.question_text,
-    question.explanation
-  ].filter(Boolean).join(' ').toLowerCase();
+  const promptAndGuide = [question.question, question.question_text, question.explanation]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 
   if (SPEAKING_PROMPT_PATTERN.test(promptAndGuide)) return 'pronunciation';
-
   return 'writing';
 };
 

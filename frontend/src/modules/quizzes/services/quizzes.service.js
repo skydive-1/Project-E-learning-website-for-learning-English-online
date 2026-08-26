@@ -188,6 +188,20 @@ export const submitWritingAnswer = async (quizId, questionId, text) => {
   }
 };
 
+export const submitOpenClozeAnswer = async (quizId, questionId, answers) => {
+  try {
+    const response = await apiClient.post('/quizzes/submit-cloze', {
+      quizId: Number(quizId),
+      questionId: Number(questionId),
+      answers
+    });
+    return response.data;
+  } catch (error) {
+    console.error('⚠️ Lỗi nộp bài điền từ:', error.message);
+    throw error;
+  }
+};
+
 /**
  * Gửi file ghi âm của học viên lên backend để AI nhận diện và chấm điểm
  */

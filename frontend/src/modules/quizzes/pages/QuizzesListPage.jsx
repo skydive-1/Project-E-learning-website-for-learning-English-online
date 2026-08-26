@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus, FiX, 
-  FiKey, FiLock, FiCopy, FiCheck, FiTrash2, FiShield, FiEye, FiGlobe, FiSearch 
+  FiKey, FiLock, FiCopy, FiCheck, FiTrash2, FiShield, FiEye, FiGlobe, FiSearch,
+  FiGrid
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
@@ -17,6 +18,7 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
+import { syncClozeGaps, validateClozeDraft } from '../utils/openCloze';
 
 // Component Skeleton Loading cho thẻ Quiz
 const QuizCardSkeleton = () => {
@@ -81,7 +83,8 @@ const QuizzesListPage = () => {
   const [aiTypes, setAiTypes] = useState({
     multiple_choice: true,
     writing: true,
-    pronunciation: true
+    pronunciation: true,
+    open_cloze: true
   });
 
   const loadManagedQuizzes = async () => {
@@ -145,6 +148,29 @@ const QuizzesListPage = () => {
     setQuestionsList(prev => prev.map((q, idx) => idx === index ? { ...q, [field]: value } : q));
   };
 
+  const handleUpdateClozePassage = (index, value) => {
+    setQuestionsList(prev => prev.map((question, questionIndex) => {
+      if (questionIndex !== index) return question;
+      return {
+        ...question,
+        questionText: value,
+        options: syncClozeGaps(value, question.options)
+      };
+    }));
+  };
+
+  const handleUpdateClozeGap = (questionIndex, gapId, field, value) => {
+    setQuestionsList(prev => prev.map((question, index) => {
+      if (index !== questionIndex) return question;
+      return {
+        ...question,
+        options: question.options.map(gap => String(gap.id) === String(gapId)
+          ? { ...gap, [field]: value }
+          : gap)
+      };
+    }));
+  };
+
   const loadQuizzes = async () => {
     try {
       setLoading(true);
@@ -198,6 +224,13 @@ const QuizzesListPage = () => {
     }
     if (questionsList.length === 0) {
       showToast('Vui lòng thêm ít nhất một câu hỏi!', 'warning');
+      return;
+    }
+
+    const invalidClozeIndex = questionsList.findIndex(question =>
+      question.questionType === 'open_cloze' && validateClozeDraft(question));
+    if (invalidClozeIndex >= 0) {
+      showToast(`Câu ${invalidClozeIndex + 1}: ${validateClozeDraft(questionsList[invalidClozeIndex])}`, 'warning');
       return;
     }
 
@@ -261,13 +294,18 @@ const QuizzesListPage = () => {
       };
       const res = await generateQuizAi(payload);
       if (res.success && Array.isArray(res.questions)) {
-        const newQuestions = res.questions.map(q => ({
-          questionType: q.questionType,
-          questionText: q.questionText,
-          options: q.options || [],
-          correctAnswer: q.correctAnswer || '',
-          explanation: q.explanation || ''
-        }));
+        const newQuestions = res.questions.map(q => {
+          const questionType = q.questionType || 'multiple_choice';
+          return {
+            questionType,
+            questionText: q.questionText || '',
+            options: questionType === 'open_cloze'
+              ? syncClozeGaps(q.questionText || '', q.options || [])
+              : (q.options || []),
+            correctAnswer: q.correctAnswer || '',
+            explanation: q.explanation || ''
+          };
+        });
         setQuestionsList(prev => [...prev, ...newQuestions]);
         setAiTopic('');
         showToast(`Đã tự động tạo và thêm ${newQuestions.length} câu hỏi thành công từ AI! Bạn có thể chỉnh sửa thêm bên dưới.`, 'success');
@@ -409,7 +447,7 @@ const QuizzesListPage = () => {
                       <span className="text-slate-650 dark:text-slate-300">{quiz.questions?.length || 0} câu hỏi</span>
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-550 font-semibold mt-0.5">
-                      (Trắc nghiệm: {quiz.questions?.filter(q => q.questionType === 'multiple_choice' || !q.questionType).length || 0} | Viết: {quiz.questions?.filter(q => q.questionType === 'writing').length || 0} | Nói: {quiz.questions?.filter(q => q.questionType === 'pronunciation').length || 0})
+                      (Trắc nghiệm: {quiz.questions?.filter(q => q.questionType === 'multiple_choice' || !q.questionType).length || 0} | Viết: {quiz.questions?.filter(q => q.questionType === 'writing').length || 0} | Nói: {quiz.questions?.filter(q => q.questionType === 'pronunciation').length || 0} | Điền từ: {quiz.questions?.filter(q => q.questionType === 'open_cloze').length || 0})
                     </span>
                   </span>
 
@@ -437,7 +475,7 @@ const QuizzesListPage = () => {
                   ✨ Tạo đề thi tự luyện mới
                 </h2>
                 <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold mt-1">
-                  Biên soạn đề thi trắc nghiệm hoặc viết luận, phát âm tự do (không đính kèm bài giảng).
+                  Biên soạn trắc nghiệm, viết luận, phát âm hoặc bài điền từ theo đoạn văn.
                 </p>
               </div>
               <button
@@ -592,6 +630,15 @@ const QuizzesListPage = () => {
                           />
                           <span>Luyện nói phát âm (Pronunciation)</span>
                         </label>
+                        <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-purple-800 dark:text-purple-300">
+                          <input
+                            type="checkbox"
+                            checked={aiTypes.open_cloze}
+                            onChange={(e) => setAiTypes(prev => ({ ...prev, open_cloze: e.target.checked }))}
+                            className="rounded border-purple-300 dark:border-purple-800 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                          />
+                          <span>Điền từ vào đoạn văn (Open Cloze)</span>
+                        </label>
                       </div>
                     </div>
 
@@ -642,14 +689,14 @@ const QuizzesListPage = () => {
 
               {/* Questions List Editor */}
               <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-start sm:justify-between">
                   <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex flex-col gap-0.5 md:flex-row md:items-center">
                     <span>Danh sách câu hỏi ({questionsList.length})</span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold normal-case md:ml-2">
-                      (Trắc nghiệm: {questionsList.filter(q => q.questionType === 'multiple_choice').length} | Viết: {questionsList.filter(q => q.questionType === 'writing').length} | Nói: {questionsList.filter(q => q.questionType === 'pronunciation').length})
+                      (Trắc nghiệm: {questionsList.filter(q => q.questionType === 'multiple_choice').length} | Viết: {questionsList.filter(q => q.questionType === 'writing').length} | Nói: {questionsList.filter(q => q.questionType === 'pronunciation').length} | Điền từ: {questionsList.filter(q => q.questionType === 'open_cloze').length})
                     </span>
                   </h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">Số lượng thêm:</span>
                       <select
@@ -686,6 +733,13 @@ const QuizzesListPage = () => {
                     >
                       + Luyện đọc (Pronunciation)
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddQuestion('open_cloze')}
+                      className="px-3 py-1.5 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/45 dark:hover:bg-cyan-900/65 text-cyan-700 dark:text-cyan-300 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all inline-flex items-center gap-1.5"
+                    >
+                      <FiGrid aria-hidden="true" /> Điền từ (Open Cloze)
+                    </button>
                   </div>
                 </div>
 
@@ -707,20 +761,38 @@ const QuizzesListPage = () => {
                         
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black bg-indigo-100 dark:bg-indigo-900/80 text-smart-indigo dark:text-indigo-400 px-2 py-0.5 rounded uppercase tracking-wider">
-                            Câu {index + 1} - {q.questionType === 'multiple_choice' ? 'Trắc nghiệm' : q.questionType === 'writing' ? 'Tự luận' : 'Phát âm'}
+                            Câu {index + 1} - {q.questionType === 'multiple_choice' ? 'Trắc nghiệm' : q.questionType === 'writing' ? 'Tự luận' : q.questionType === 'open_cloze' ? 'Điền từ' : 'Phát âm'}
                           </span>
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Câu hỏi/Đề bài *</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Nhập nội dung câu hỏi..."
-                            value={q.questionText}
-                            onChange={(e) => handleUpdateQuestion(index, 'questionText', e.target.value)}
-                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg focus:border-smart-indigo outline-none transition-all text-xs font-semibold"
-                          />
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            {q.questionType === 'open_cloze' ? 'Đoạn văn có chỗ trống *' : 'Câu hỏi/Đề bài *'}
+                          </label>
+                          {q.questionType === 'open_cloze' ? (
+                            <>
+                              <textarea
+                                required
+                                rows={4}
+                                placeholder="Ví dụ: Artificial intelligence {{1}} the way companies {{2}} data."
+                                value={q.questionText}
+                                onChange={(e) => handleUpdateClozePassage(index, e.target.value)}
+                                className="w-full resize-y px-3 py-2.5 bg-white dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg focus:border-smart-indigo outline-none transition-colors text-sm font-semibold leading-relaxed"
+                              />
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                Đặt <strong>{'{{1}}'}</strong>, <strong>{'{{2}}'}</strong>… tại vị trí cần điền. Mỗi mã chỉ dùng một lần.
+                              </p>
+                            </>
+                          ) : (
+                            <input
+                              type="text"
+                              required
+                              placeholder="Nhập nội dung câu hỏi..."
+                              value={q.questionText}
+                              onChange={(e) => handleUpdateQuestion(index, 'questionText', e.target.value)}
+                              className="w-full px-3 py-2 bg-white dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg focus:border-smart-indigo outline-none transition-all text-xs font-semibold"
+                            />
+                          )}
                         </div>
 
                         {q.questionType === 'multiple_choice' && (
@@ -755,6 +827,46 @@ const QuizzesListPage = () => {
                                 <option value="D">D</option>
                               </select>
                             </div>
+                          </div>
+                        )}
+
+                        {q.questionType === 'open_cloze' && (
+                          <div className="space-y-2 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3 dark:border-cyan-900/60 dark:bg-cyan-950/15">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-cyan-800 dark:text-cyan-300">
+                                <FiGrid aria-hidden="true" /> Đáp án từng chỗ trống
+                              </span>
+                              <span className="text-[10px] font-semibold text-cyan-700 dark:text-cyan-400">{q.options.length} ô</span>
+                            </div>
+
+                            {q.options.length === 0 ? (
+                              <p className="rounded-lg bg-white/70 p-3 text-xs font-semibold text-cyan-800 dark:bg-slate-900/50 dark:text-cyan-300">
+                                Thêm marker {'{{1}}'} vào đoạn văn để tạo ô đáp án.
+                              </p>
+                            ) : q.options.map(gap => (
+                              <div key={gap.id} className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr_1fr] sm:items-center">
+                                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-cyan-700 px-2 text-xs font-black text-white">
+                                  {gap.id}
+                                </span>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="Đáp án đúng"
+                                  aria-label={`Đáp án đúng cho chỗ trống ${gap.id}`}
+                                  value={gap.answer}
+                                  onChange={(e) => handleUpdateClozeGap(index, gap.id, 'answer', e.target.value)}
+                                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 dark:text-slate-100 border border-cyan-200 dark:border-cyan-900/70 rounded-lg focus:border-cyan-600 outline-none text-xs font-semibold"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Đáp án khác, ngăn cách bằng dấu phẩy"
+                                  aria-label={`Đáp án thay thế cho chỗ trống ${gap.id}`}
+                                  value={(gap.acceptedAnswers || []).join(', ')}
+                                  onChange={(e) => handleUpdateClozeGap(index, gap.id, 'acceptedAnswers', e.target.value.split(',').map(item => item.trim()).filter(Boolean))}
+                                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 dark:text-slate-100 border border-cyan-200 dark:border-cyan-900/70 rounded-lg focus:border-cyan-600 outline-none text-xs font-semibold"
+                                />
+                              </div>
+                            ))}
                           </div>
                         )}
 

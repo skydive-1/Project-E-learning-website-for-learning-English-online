@@ -14,7 +14,8 @@ import {
   FiSquare, 
   FiPlay, 
   FiPause, 
-  FiEdit3 
+  FiEdit3,
+  FiGrid
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
@@ -26,10 +27,12 @@ import {
   submitQuizAttempt, 
   getQuizLeaderboard,
   submitWritingAnswer, 
-  submitAudioAnswer 
+  submitAudioAnswer,
+  submitOpenClozeAnswer
 } from '../services/quizzes.service';
 import useStudyTimeTracker from '../../lessons/hooks/useStudyTimeTracker';
 import getEffectiveQuestionType from '../utils/questionType';
+import OpenClozeQuestion from '../components/OpenClozeQuestion';
 
 const PlayQuizPage = () => {
   const { quizId } = useParams();
@@ -73,6 +76,8 @@ const PlayQuizPage = () => {
   const [audioBlob, setAudioBlob] = useState(null);
   const [aiFeedback, setAiFeedback] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [clozeAnswers, setClozeAnswers] = useState({});
+  const [clozeFeedback, setClozeFeedback] = useState(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -145,9 +150,9 @@ const PlayQuizPage = () => {
 
     const currentQuestion = quiz?.questions?.[currentIdx];
     const effectiveType = getEffectiveQuestionType(currentQuestion);
-    const isAiQuestion = effectiveType === 'writing' || effectiveType === 'pronunciation';
+    const isUntimedQuestion = ['writing', 'pronunciation', 'open_cloze'].includes(effectiveType);
 
-    if (isAiQuestion) {
+    if (isUntimedQuestion) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
@@ -215,6 +220,10 @@ const PlayQuizPage = () => {
     setAnswersLog([]);
     setTimeLeft(20);
     setSelectedAnswers({});
+    setWritingAnswer('');
+    setClozeAnswers({});
+    setClozeFeedback(null);
+    setAiFeedback(null);
   };
 
   const handleAnswerClick = (optionKey) => {
@@ -283,6 +292,46 @@ const PlayQuizPage = () => {
     } catch (err) {
       console.error("Lỗi nộp bài tự luận:", err);
       showToast("Đã xảy ra lỗi khi chấm điểm bài viết bằng AI. Vui lòng thử lại!", 'error');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleClozeAnswerChange = (gapId, value) => {
+    setClozeAnswers(prev => ({ ...prev, [gapId]: value.slice(0, 100) }));
+  };
+
+  const handleClozeSubmit = async (event) => {
+    event.preventDefault();
+    const gaps = Array.isArray(currentQuestion.options) ? currentQuestion.options : [];
+    const hasEmptyGap = gaps.some(gap => !String(clozeAnswers[gap.id] || '').trim());
+    if (hasEmptyGap || gaps.length === 0) {
+      showToast('Vui lòng điền đầy đủ tất cả chỗ trống trước khi nộp bài.', 'warning');
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const res = await submitOpenClozeAnswer(quiz.id, currentQuestion.id, clozeAnswers);
+      if (res.success) {
+        const result = res.data;
+        const points = Number(result.score) || 0;
+        setClozeFeedback(result);
+        setScore(prev => prev + points);
+        setSelectedAnswers(prev => ({
+          ...prev,
+          [currentQuestion.id]: { type: 'open_cloze', answers: clozeAnswers }
+        }));
+        setAnswersLog(prev => [...prev, {
+          isCorrect: points >= 50,
+          pointsEarned: points,
+          questionType: 'open_cloze'
+        }]);
+        setGameState('feedback');
+      }
+    } catch (err) {
+      console.error('Lỗi nộp bài điền từ:', err);
+      showToast(err.response?.data?.message || 'Không thể chấm bài điền từ. Vui lòng thử lại.', 'error');
     } finally {
       setAiLoading(false);
     }
@@ -391,6 +440,8 @@ const PlayQuizPage = () => {
     setAudioBlob(null);
     setAudioUrl(null);
     setAiFeedback(null);
+    setClozeAnswers({});
+    setClozeFeedback(null);
     setIsRecording(false);
 
     if (currentIdx < quiz.questions.length - 1) {
@@ -538,13 +589,23 @@ const PlayQuizPage = () => {
                         {effectiveQuestionType === 'writing' ? (
                           <><FiEdit3 aria-hidden="true" /><span>Viết luận</span></>
                         ) : effectiveQuestionType === 'pronunciation' ? (
-                          <><FiMic aria-hidden="true" /><span>Bài nói &amp; Phát âm (AI Voice)</span></>
+<>
+  <FiMic aria-hidden="true" />
+  <span>Bài nói &amp; Phát âm (AI Voice)</span>
+</>
+) : effectiveQuestionType === 'open_cloze' ? (
+<>
+  <FiGrid aria-hidden="true" />
+  <span>Điền từ vào đoạn văn</span>
+</>
                         ) : (
                           <><FiAward aria-hidden="true" /><span>Trắc nghiệm</span></>
                         )}
                       </span>
                       <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 leading-snug">
-                        {currentQuestion.question}
+                        {effectiveQuestionType === 'open_cloze'
+                          ? 'Hoàn thành đoạn văn bằng từ phù hợp'
+                          : currentQuestion.question}
                       </h2>
                     </div>
 
@@ -567,8 +628,10 @@ const PlayQuizPage = () => {
                         <div className="px-4 py-2 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-150 dark:border-indigo-900/50 text-xs font-black text-smart-indigo dark:text-indigo-400 tracking-wider flex items-center gap-1.5 shadow-sm">
                           {effectiveQuestionType === 'writing' ? (
                             <><FiEdit3 aria-hidden="true" /><span>Trợ lý AI sẵn sàng chấm điểm bài viết</span></>
-                          ) : (
+                          ) : effectiveQuestionType === 'pronunciation' ? (
                             <><FiMic aria-hidden="true" /><span>Micro và Trợ lý AI sẵn sàng chấm điểm bài nói</span></>
+                          ) : (
+                            <><FiGrid aria-hidden="true" /><span>Hệ thống sẽ chấm chính xác từng chỗ trống</span></>
                           )}
                         </div>
                       </div>
@@ -598,6 +661,17 @@ const PlayQuizPage = () => {
                           );
                         })}
                       </div>
+                    )}
+
+                    {effectiveQuestionType === 'open_cloze' && (
+                      <OpenClozeQuestion
+                        question={currentQuestion}
+                        answers={clozeAnswers}
+                        onAnswerChange={handleClozeAnswerChange}
+                        onSubmit={handleClozeSubmit}
+                        disabled={aiLoading}
+                        loading={aiLoading}
+                      />
                     )}
 
                     {/* Writing Input Area */}
@@ -811,6 +885,38 @@ const PlayQuizPage = () => {
                         </div>
                       )}
                     </>
+                  )}
+
+                  {effectiveQuestionType === 'open_cloze' && clozeFeedback && (
+                    <div className="w-full flex flex-col items-center gap-5">
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-smart-indigo dark:bg-indigo-950/20 dark:text-indigo-400">
+                          <FiGrid aria-hidden="true" /> Kết quả điền từ
+                        </span>
+                        <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">
+                          Đúng {clozeFeedback.correctCount}/{clozeFeedback.totalGaps} chỗ trống
+                        </h2>
+                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                          Điểm chính xác: <strong className="text-smart-indigo dark:text-indigo-400">{clozeFeedback.score}/100</strong>
+                        </p>
+                      </div>
+
+                      <OpenClozeQuestion
+                        question={currentQuestion}
+                        answers={clozeAnswers}
+                        onAnswerChange={() => {}}
+                        onSubmit={(event) => event.preventDefault()}
+                        disabled
+                        feedback={clozeFeedback}
+                        showSubmit={false}
+                      />
+
+                      {clozeFeedback.explanation && (
+                        <p className="w-full rounded-xl bg-slate-50 p-4 text-left text-xs font-semibold leading-relaxed text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                          <strong>Giải thích:</strong> {clozeFeedback.explanation}
+                        </p>
+                      )}
+                    </div>
                   )}
 
                   {/* Nếu là câu hỏi Tự luận (Writing) hoặc Bài nói/Phát âm (Pronunciation) được chấm bởi AI */}
@@ -1074,6 +1180,11 @@ const PlayQuizPage = () => {
                   setScore(0);
                   setAnswersLog([]);
                   setTimeLeft(20);
+                  setSelectedAnswers({});
+                  setWritingAnswer('');
+                  setClozeAnswers({});
+                  setClozeFeedback(null);
+                  setAiFeedback(null);
                 }}
                 className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
