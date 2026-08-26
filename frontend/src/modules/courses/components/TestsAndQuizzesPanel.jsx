@@ -67,12 +67,7 @@ const TestsAndQuizzesPanel = () => {
   const [aiTopic, setAiTopic] = useState('');
   const [aiCount, setAiCount] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiTypes, setAiTypes] = useState([
-    'multiple_choice',
-    'writing',
-    'pronunciation',
-    'open_cloze'
-  ]);
+  const [aiTypes, setAiTypes] = useState([]);
 
   // States cho modal Quản lý đề thi (Giảng viên / Admin)
   const [showManageModal, setShowManageModal] = useState(false);
