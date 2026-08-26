@@ -351,7 +351,7 @@ const getAnalyticsDashboard = async (days = 30) => {
       COALESCE(q.average_quiz_score, 0)::float AS average_quiz_score,
       COALESCE(ch.ai_messages, 0)::int AS ai_messages,
       COALESCE(utl.used_tokens, 0)::int AS used_tokens,
-      GREATEST(p.last_progress_at, st.last_study_at, q.last_quiz_at, ch.last_chat_at) AS last_activity_at
+      GREATEST(u.last_seen_at, p.last_progress_at, st.last_study_at, q.last_quiz_at, ch.last_chat_at) AS last_activity_at
     FROM users u
     LEFT JOIN progress p ON p.user_id = u.user_id
     LEFT JOIN learner_scope ls ON ls.user_id = u.user_id
@@ -408,26 +408,52 @@ const getAnalyticsDashboard = async (days = 30) => {
   const now = Date.now();
   const learners = learnersResult.rows.map((learner) => {
     const lastActivityTime = learner.last_activity_at ? new Date(learner.last_activity_at).getTime() : null;
-    const inactiveDays = lastActivityTime ? Math.floor((now - lastActivityTime) / 86400000) : null;
-    const engagementStatus = inactiveDays === null
-      ? 'inactive'
-      : inactiveDays <= 7
-        ? 'active'
-        : inactiveDays <= 30
-          ? 'attention'
-          : 'inactive';
+    let inactiveMinutes = null;
+    let inactiveDays = null;
+    let engagementStatus = 'inactive';
+    let isOnline = false;
+
+    if (lastActivityTime) {
+      const diffMs = now - lastActivityTime;
+      inactiveMinutes = Math.max(0, Math.floor(diffMs / 60000));
+      inactiveDays = Math.max(0, Math.floor(diffMs / 86400000));
+
+      if (inactiveMinutes <= 15) {
+        isOnline = true;
+        engagementStatus = 'online';
+      } else if (inactiveDays === 0 || inactiveMinutes <= 24 * 60) {
+        engagementStatus = 'active';
+      } else if (inactiveDays <= 7) {
+        engagementStatus = 'recent';
+      } else if (inactiveDays <= 30) {
+        engagementStatus = 'attention';
+      } else {
+        engagementStatus = 'inactive';
+      }
+    }
 
     return {
       ...learner,
+      is_online: isOnline,
+      inactive_minutes: inactiveMinutes,
       inactive_days: inactiveDays,
       engagement_status: engagementStatus
     };
   });
 
   const engagement = learners.reduce((summary, learner) => {
-    summary[learner.engagement_status] += 1;
+    const status = learner.engagement_status;
+    if (status === 'online' || status === 'active') {
+      summary.active = (summary.active || 0) + 1;
+    } else if (status === 'recent') {
+      summary.recent = (summary.recent || 0) + 1;
+    } else if (status === 'attention') {
+      summary.attention = (summary.attention || 0) + 1;
+    } else {
+      summary.inactive = (summary.inactive || 0) + 1;
+    }
     return summary;
-  }, { active: 0, attention: 0, inactive: 0 });
+  }, { active: 0, recent: 0, attention: 0, inactive: 0 });
 
   return {
     rangeDays: safeDays,

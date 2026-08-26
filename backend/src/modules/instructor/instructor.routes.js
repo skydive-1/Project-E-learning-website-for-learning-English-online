@@ -18,6 +18,9 @@ router.get('/students', instructorController.getStudents);
 // GET /api/instructor/performance - Lấy dữ liệu thống kê hiệu suất học tập/doanh thu
 router.get('/performance', instructorController.getPerformance);
 
+// GET /api/instructor/analytics - Lấy dữ liệu phân tích học tập theo chuẩn BoardUI
+router.get('/analytics', instructorController.getAnalytics);
+
 // POST /api/instructor/generate-quiz - Sinh câu hỏi trắc nghiệm bằng AI (Gemini)
 router.post('/generate-quiz', aiLimiter, instructorController.generateQuiz);
 
@@ -46,6 +49,22 @@ router.post('/accept-policy', instructorController.acceptPolicy);
  *     tags: [Instructor]
  *     security:
  *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thành công
+ * 
+ * /api/instructor/analytics:
+ *   get:
+ *     summary: Lấy dữ liệu phân tích học tập theo chuẩn BoardUI
+ *     tags: [Instructor]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: range
+ *         schema:
+ *           type: integer
+ *         description: Khoảng thời gian phân tích (7, 30, 90, 365 ngày)
  *     responses:
  *       200:
  *         description: Thành công

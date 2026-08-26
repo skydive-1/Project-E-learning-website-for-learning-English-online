@@ -14,6 +14,8 @@ import '../styles/instructor.scss';
 import { getCourseQuizQuestions, saveCourseQuizQuestions } from '../../quizzes/services/quizzes.service';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Cell } from 'recharts';
 import { useToast } from '../../../context/ToastContext';
+import UserAnalyticsDashboard from '../../admin/components/UserAnalyticsDashboard';
+import { getInstructorAnalytics } from '../services/instructor.service';
 
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
@@ -546,7 +548,7 @@ const InstructorDashboard = () => {
 
         {/* Content Area */}
         <div className="instructor-content">
-          {activeTab !== 'quizzes' && (
+          {activeTab !== 'quizzes' && activeTab !== 'performance' && (
             <header className="content-header">
               <div className="header-text">
                 {activeTab === 'courses' && (
@@ -559,12 +561,6 @@ const InstructorDashboard = () => {
                   <>
                     <h1>Student Directory</h1>
                     <p>Track your students' enrollment status, activity, and learning progress.</p>
-                  </>
-                )}
-                {activeTab === 'performance' && (
-                  <>
-                    <h1>Performance Analytics</h1>
-                    <p>Evaluate your course engagement, enrollments, and student progress metrics.</p>
                   </>
                 )}
               </div>
@@ -800,207 +796,16 @@ const InstructorDashboard = () => {
             </>
           )}
 
-          {/* --- 3. PERFORMANCE TAB CONTENT --- */}
+          {/* --- 3. PERFORMANCE TAB CONTENT (BOARDUI DASHBOARD) --- */}
           {activeTab === 'performance' && (
-            <>
-              {performanceLoading ? (
-                <div style={{ padding: '100px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: '12px', color: '#64748b' }}>
-                  <FiLoader className="spin" style={{ fontSize: '32px' }} />
-                  <span>Đang tổng hợp dữ liệu hiệu suất của bạn...</span>
-                </div>
-              ) : !performanceData ? (
-                <div style={{ padding: '60px', textAlignment: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', color: '#64748b' }}>
-                  <FiTrendingUp style={{ fontSize: '48px' }} />
-                  <span>Không tìm thấy dữ liệu thống kê nào.</span>
-                </div>
-              ) : (
-                <>
-                  {/* Overview Stats */}
-                  <div className="stats-overview" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                    <div className="stat-card">
-                      <span className="stat-label">Tổng số khóa học</span>
-                      <span className="stat-value">{performanceData.overview.totalCourses}</span>
-                      <span className="stat-change">Được tạo bởi bạn</span>
-                    </div>
-                    <div className="stat-card">
-                      <span className="stat-label">Tổng học viên học</span>
-                      <span className="stat-value">{performanceData.overview.totalStudents}</span>
-                      <span className="stat-change">Đã bắt đầu học bài</span>
-                    </div>
-                    <div className="stat-card">
-                      <span className="stat-label">Tổng lượt hoàn thành</span>
-                      <span className="stat-value" style={{ color: '#059669' }}>
-                        {performanceData.overview.totalCompletions}
-                      </span>
-                      <span className="stat-change">Bài giảng đã học xong</span>
-                    </div>
-                    <div className="stat-card">
-                      <span className="stat-label">Đánh giá trung bình</span>
-                      <span className="stat-value" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {performanceData.overview.ratingAverage} <FiStar style={{ fill: '#f59e0b', stroke: '#f59e0b', fontSize: '20px' }} />
-                      </span>
-                      <span className="stat-change">Từ phản hồi học viên</span>
-                    </div>
-                  </div>
-
-                  {/* Monthly Enrollments Custom SVG Bar Chart */}
-                  <div className="chart-card">
-                    <div className="chart-header">
-                      <h3>Thống kê lượt đăng ký học theo tháng</h3>
-                      <span style={{ fontSize: '13px', color: 'var(--text-muted, #64748b)', fontWeight: '500' }}>Biểu đồ lượt tham gia học bài mới</span>
-                    </div>
-                    
-                    {performanceData.monthlyData.length === 0 ? (
-                      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted, #64748b)', fontSize: '14px', fontWeight: '500' }}>
-                        Chưa có dữ liệu theo tháng. Lượt đăng ký học của học sinh sẽ được vẽ tại đây.
-                      </div>
-                    ) : (
-                      <div className="chart-container">
-                        {/* Grid lines */}
-                        <div className="chart-y-axis">
-                          <div className="grid-line"><span>{maxEnrollments}</span></div>
-                          <div className="grid-line"><span>{Math.round(maxEnrollments * 0.67)}</span></div>
-                          <div className="grid-line"><span>{Math.round(maxEnrollments * 0.33)}</span></div>
-                          <div className="grid-line"><span>0</span></div>
-                        </div>
-
-                        {/* Bars */}
-                        {performanceData.monthlyData.map((item, idx) => {
-                          const heightPercent = (item.enrollments / maxEnrollments) * 100;
-                          return (
-                            <div className="chart-bar-item" key={item.month}>
-                              <span className="chart-bar-value">{item.enrollments} hs</span>
-                              <div 
-                                className="chart-bar" 
-                                style={{ height: `${Math.max(heightPercent, 5)}%` }}
-                                title={`${item.month}: ${item.enrollments} lượt đăng ký`}
-                              ></div>
-                              <span className="chart-bar-label">{item.month}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Individual Course Performance Breakdown */}
-                  <h2 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-color, #0f172a)', marginBottom: '16px' }}>
-                    Hiệu suất chi tiết từng khóa học
-                  </h2>
-                  <div className="course-list-table-wrapper">
-                    <table className="course-list-table">
-                      <thead>
-                        <tr>
-                          <th>Tên khóa học</th>
-                          <th>Số chương học</th>
-                          <th>Số bài học</th>
-                          <th>Số học viên tham gia</th>
-                          <th>Tổng lượt hoàn thành bài</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {performanceData.courses.map(c => (
-                          <tr key={c.courseId}>
-                            <td>
-                              <span style={{ fontWeight: '700', color: 'var(--text-color, #0f172a)' }}>{c.courseName}</span>
-                            </td>
-                            <td>
-                              <span style={{ fontWeight: '600' }}>{c.sectionsCount} chương</span>
-                            </td>
-                            <td>
-                              <span style={{ fontWeight: '600' }}>{c.lessonsCount} bài</span>
-                            </td>
-                            <td>
-                              <span style={{ fontWeight: '600', color: 'var(--primary, #3b82f6)' }}>{c.studentCount} học viên</span>
-                            </td>
-                            <td>
-                              <span style={{ fontWeight: '700', color: '#059669' }}>
-                                {c.completedLessonsCount} lượt
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* INSTRUCTOR ANALYTICS EXTENSION: Lesson Completion & Quiz Score Spectrum */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px', marginTop: '24px' }}>
-                    
-                    {/* Chart 1: Lesson Completion Rate Breakdown */}
-                    <div className="chart-card" style={{ padding: '20px' }}>
-                      <div className="chart-header" style={{ marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-color, #0f172a)' }}>
-                          📊 Tỷ lệ học viên hoàn thành từng bài giảng (Video/PDF)
-                        </h3>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)' }}>Tỷ lệ học viên xem hết bài học trên tổng số học viên đăng ký</span>
-                      </div>
-                      <div style={{ height: '240px', width: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={performanceData.lessonCompletionStats || [
-                            { lessonTitle: 'Bài 1: Giới thiệu AI', rate: 94, type: 'video' },
-                            { lessonTitle: 'Bài 2: English Mindset', rate: 88, type: 'video' },
-                            { lessonTitle: 'Bài 3: Thì thời gian', rate: 76, type: 'pdf' },
-                            { lessonTitle: 'Bài 4: Câu hỏi đuôi', rate: 82, type: 'video' },
-                            { lessonTitle: 'Bài 5: Passive Listening', rate: 65, type: 'video' }
-                          ]}>
-                            <XAxis dataKey="lessonTitle" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                            <YAxis stroke="#94a3b8" fontSize={11} domain={[0, 100]} tickLine={false} />
-                            <RechartsTooltip 
-                              contentStyle={{ backgroundColor: 'var(--dropdown-bg, #0f172a)', borderColor: 'var(--border-color, #334155)', borderRadius: '10px', color: 'var(--text-color, #fff)', fontSize: '12px' }}
-                            />
-                            <Bar dataKey="rate" name="Tỷ lệ hoàn thành (%)" radius={[6, 6, 0, 0]}>
-                              {[94, 88, 76, 82, 65].map((val, index) => (
-                                <Cell key={`cell-${index}`} fill={val >= 80 ? '#10b981' : val >= 70 ? '#6366f1' : '#f59e0b'} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* Chart 2: Class Quiz Score Distribution Spectrum */}
-                    <div className="chart-card" style={{ padding: '20px' }}>
-                      <div className="chart-header" style={{ marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-color, #0f172a)' }}>
-                          🎯 Phổ điểm bài tập Quiz của cả lớp
-                        </h3>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)' }}>Phân bổ dải điểm số trắc nghiệm của học viên</span>
-                      </div>
-                      <div style={{ height: '240px', width: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={performanceData.quizScoreSpectrum || [
-                            { range: '0-20%', count: 2, label: 'Yếu' },
-                            { range: '21-40%', count: 4, label: 'TB Yếu' },
-                            { range: '41-60%', count: 8, label: 'Trung bình' },
-                            { range: '61-80%', count: 18, label: 'Khá' },
-                            { range: '81-100%', count: 24, label: 'Xuất sắc' }
-                          ]}>
-                            <XAxis dataKey="range" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                            <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                            <RechartsTooltip 
-                              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '10px', color: '#fff', fontSize: '12px' }}
-                            />
-                            <Bar dataKey="count" name="Số học viên" radius={[6, 6, 0, 0]}>
-                              {[
-                                { fill: '#ef4444' },
-                                { fill: '#f97316' },
-                                { fill: '#eab308' },
-                                { fill: '#3b82f6' },
-                                { fill: '#10b981' }
-                              ].map((entry, index) => (
-                                <Cell key={`quiz-cell-${index}`} fill={entry.fill} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                  </div>
-                </>
-              )}
-            </>
+            <div className="user-analytics-wrapper pb-6">
+              <UserAnalyticsDashboard
+                dataSource={getInstructorAnalytics}
+                canResetToken={false}
+                title="Instructor Performance & Analytics"
+                subtitle="Theo dõi chi tiết nhịp học tập, tiến độ, thời lượng và mức độ tương tác của học viên trong các khóa học bạn phụ trách."
+              />
+            </div>
           )}
 
           {/* --- 4. QUIZZES TAB CONTENT --- */}

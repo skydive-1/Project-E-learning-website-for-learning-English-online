@@ -105,6 +105,9 @@ const authenticate = async (req, res, next) => {
       roleId: dbUser.role_id
     };
 
+    // Cập nhật mốc hoạt động gần nhất phục vụ Realtime Online Tracking
+    db.query('UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE user_id = $1', [dbUser.user_id]).catch(() => {});
+
     next();
   } catch (error) {
     const status = error.status || 500;
