@@ -1,9 +1,12 @@
 /* ---------------------------------------------------------------------------
- * User Analytics Dashboard - BoardUI Integration Styles
+ * User Analytics Dashboard - BoardUI Integration Styles & Responsive
  * --------------------------------------------------------------------------- */
 
 .user-analytics-boardui {
   color: var(--color-text-primary, #0f172a);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Custom smooth transitions for table hover & accordion expansion */
@@ -46,5 +49,48 @@
   td {
     color: var(--color-text-primary, #f9fafb);
     border-color: var(--color-separator-border, #1f2937);
+  }
+}
+
+/* ========================================================
+   RESPONSIVE DESIGN (Analytics Dashboard)
+   - Tablet & Mobile: Auto-fit KPI grid, horizontal table scroll
+   ======================================================== */
+
+@media (max-width: 1024px) {
+  .user-analytics-boardui {
+    .analytics-kpi-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 1rem;
+    }
+
+    .analytics-controls-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .user-analytics-boardui {
+    .analytics-kpi-grid {
+      grid-template-columns: 1fr !important;
+      gap: 0.75rem;
+    }
+
+    .analytics-chart-container {
+      height: 260px !important;
+    }
+
+    .analytics-header-actions {
+      flex-direction: column;
+      width: 100%;
+
+      button {
+        width: 100%;
+        justify-content: center;
+      }
+    }
   }
 }

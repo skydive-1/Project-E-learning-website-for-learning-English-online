@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import { loginUser, loginWithGoogle, googleConfirmRole } from '../services/auth.service';
@@ -8,6 +8,9 @@ import { useToast } from '../../../context/ToastContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const outletContext = useOutletContext();
+  const setAuthInteractiveState = outletContext?.setAuthInteractiveState;
+
   const { login } = useAuth();
   const showToast = useToast();
   const [formData, setFormData] = useState({
@@ -16,8 +19,22 @@ const LoginPage = () => {
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [isEmailFocused, setIsEmailFocused] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+
+  // Đồng bộ trạng thái tương tác với cụm nhân vật hình khối
+  useEffect(() => {
+    if (setAuthInteractiveState) {
+      setAuthInteractiveState((prev) => ({
+        ...prev,
+        showPassword,
+        isEmailFocused,
+        isPasswordFocused
+      }));
+    }
+  }, [showPassword, isEmailFocused, isPasswordFocused, setAuthInteractiveState]);
 
   const handleChange = (e) => {
     setFormData({
@@ -41,7 +58,7 @@ const LoginPage = () => {
         setMessage({ type: 'success', text: 'Đăng nhập thành công! Đang tải thông tin...' });
         await login(result.data.token);
       } else {
-        throw new Error("Token không hợp lệ từ API");
+        throw new Error('Token không hợp lệ từ API');
       }
     } catch (error) {
       const errMsg = error.response?.data?.message || 'Email hoặc mật khẩu không chính xác';
@@ -146,6 +163,8 @@ const LoginPage = () => {
               placeholder="Email"
               value={formData.email}
               onChange={handleChange}
+              onFocus={() => setIsEmailFocused(true)}
+              onBlur={() => setIsEmailFocused(false)}
               required
             />
           </div>
@@ -161,12 +180,15 @@ const LoginPage = () => {
               placeholder="Mật khẩu"
               value={formData.password}
               onChange={handleChange}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
               required
             />
             <button
               type="button"
               className="toggle-password"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
             >
               {showPassword ? <FiEyeOff /> : <FiEye />}
             </button>
@@ -197,27 +219,6 @@ const LoginPage = () => {
         className="google-btn" 
         onClick={handleGoogleLogin}
         disabled={isLoading}
-        style={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px 16px',
-          border: '1.5px solid var(--border-color, #e2e8f0)',
-          borderRadius: '20px',
-          backgroundColor: 'var(--card-bg, #ffffff)',
-          color: 'var(--text-color, #0f172a)',
-          fontSize: '14.5px',
-          fontWeight: '600',
-          cursor: 'pointer',
-          transition: 'all 0.2s ease',
-          fontFamily: "'Outfit', sans-serif",
-          marginTop: '12px',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)'
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--dropdown-hover, #f8fafc)'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.05)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--card-bg, #ffffff)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.02)'; }}
       >
         <span style={{ display: 'flex', alignItems: 'center', fontSize: '20px' }}>
           <FcGoogle />

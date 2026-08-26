@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { FiMail, FiLock, FiUser, FiEye, FiEyeOff } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import { registerUser, loginWithGoogle, googleConfirmRole } from '../services/auth.service';
@@ -8,6 +8,9 @@ import { useToast } from '../../../context/ToastContext';
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const outletContext = useOutletContext();
+  const setAuthInteractiveState = outletContext?.setAuthInteractiveState;
+
   const { login } = useAuth();
   const showToast = useToast();
   const [formData, setFormData] = useState({
@@ -20,8 +23,22 @@ const RegisterPage = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isEmailFocused, setIsEmailFocused] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+
+  // Đồng bộ trạng thái tương tác với cụm nhân vật hình khối
+  useEffect(() => {
+    if (setAuthInteractiveState) {
+      setAuthInteractiveState((prev) => ({
+        ...prev,
+        showPassword: showPassword || showConfirmPassword,
+        isEmailFocused,
+        isPasswordFocused
+      }));
+    }
+  }, [showPassword, showConfirmPassword, isEmailFocused, isPasswordFocused, setAuthInteractiveState]);
 
   const handleChange = (e) => {
     setFormData({
@@ -160,6 +177,8 @@ const RegisterPage = () => {
               placeholder="Tên người dùng"
               value={formData.username}
               onChange={handleChange}
+              onFocus={() => setIsEmailFocused(true)}
+              onBlur={() => setIsEmailFocused(false)}
               required
             />
           </div>
@@ -175,6 +194,8 @@ const RegisterPage = () => {
               placeholder="Email"
               value={formData.email}
               onChange={handleChange}
+              onFocus={() => setIsEmailFocused(true)}
+              onBlur={() => setIsEmailFocused(false)}
               required
             />
           </div>
@@ -190,12 +211,15 @@ const RegisterPage = () => {
               placeholder="Mật khẩu"
               value={formData.password}
               onChange={handleChange}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
               required
             />
             <button
               type="button"
               className="toggle-password"
               onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
             >
               {showPassword ? <FiEyeOff /> : <FiEye />}
             </button>
@@ -212,26 +236,41 @@ const RegisterPage = () => {
               placeholder="Xác nhận mật khẩu"
               value={formData.confirmPassword}
               onChange={handleChange}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
               required
             />
             <button
               type="button"
               className="toggle-password"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              aria-label={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
             >
               {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
             </button>
           </div>
         </div>
+
         <div className="form-group">
-          <div className="input-wrapper relative flex items-center">
-            <FiUser className="input-icon absolute left-4 text-slate-400" />
+          <div className="input-wrapper">
+            <FiUser className="input-icon" />
             <select
               id="roleId"
               name="roleId"
               value={formData.roleId}
               onChange={handleChange}
-              className="w-full pl-12 pr-8 py-3.5 bg-[#fafbfc] dark:bg-[#111214] border border-[#e2e8f0] dark:border-[#1f2023] rounded-[20px] focus:outline-none focus:border-smart-indigo text-[14.5px] text-slate-700 dark:text-slate-200 font-sans cursor-pointer"
+              style={{
+                width: '100%',
+                backgroundColor: 'var(--input-bg, #f8fafc)',
+                border: '1.5px solid var(--border-grey, #e2e8f0)',
+                borderRadius: '16px',
+                padding: '13px 16px 13px 46px',
+                fontSize: '14.5px',
+                color: 'var(--text-dark, #0f172a)',
+                outline: 'none',
+                cursor: 'pointer',
+                fontFamily: "'Outfit', sans-serif"
+              }}
             >
               <option value={3}>Học viên (Student)</option>
               <option value={2}>Giảng viên (Instructor)</option>
@@ -257,27 +296,6 @@ const RegisterPage = () => {
         className="google-btn" 
         onClick={handleGoogleLogin}
         disabled={isLoading}
-        style={{
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px 16px',
-          border: '1.5px solid var(--border-color, #e2e8f0)',
-          borderRadius: '20px',
-          backgroundColor: 'var(--card-bg, #ffffff)',
-          color: 'var(--text-color, #0f172a)',
-          fontSize: '14.5px',
-          fontWeight: '600',
-          cursor: 'pointer',
-          transition: 'all 0.2s ease',
-          fontFamily: "'Outfit', sans-serif",
-          marginTop: '12px',
-          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)'
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--dropdown-hover, #f8fafc)'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.05)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--card-bg, #ffffff)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.02)'; }}
       >
         <span style={{ display: 'flex', alignItems: 'center', fontSize: '20px' }}>
           <FcGoogle />

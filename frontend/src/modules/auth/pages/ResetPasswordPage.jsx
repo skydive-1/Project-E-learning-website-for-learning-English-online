@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { FiLock, FiEye, FiEyeOff, FiArrowLeft } from 'react-icons/fi';
 import { resetPasswordApi } from '../services/auth.service';
 
 const ResetPasswordPage = () => {
   const navigate = useNavigate();
+  const outletContext = useOutletContext();
+  const setAuthInteractiveState = outletContext?.setAuthInteractiveState;
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   
   const [accessToken, setAccessToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +34,17 @@ const ResetPasswordPage = () => {
       });
     }
   }, []);
+
+  useEffect(() => {
+    if (setAuthInteractiveState) {
+      setAuthInteractiveState((prev) => ({
+        ...prev,
+        showPassword: showPassword || showConfirmPassword,
+        isPasswordFocused,
+        isEmailFocused: false
+      }));
+    }
+  }, [showPassword, showConfirmPassword, isPasswordFocused, setAuthInteractiveState]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -92,6 +107,8 @@ const ResetPasswordPage = () => {
                 placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onFocus={() => setIsPasswordFocused(true)}
+                onBlur={() => setIsPasswordFocused(false)}
                 required
               />
               <button
@@ -99,6 +116,7 @@ const ResetPasswordPage = () => {
                 className="toggle-password"
                 onClick={() => setShowPassword(!showPassword)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
               >
                 {showPassword ? <FiEyeOff /> : <FiEye />}
               </button>
@@ -113,6 +131,8 @@ const ResetPasswordPage = () => {
                 placeholder="Xác nhận mật khẩu mới"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                onFocus={() => setIsPasswordFocused(true)}
+                onBlur={() => setIsPasswordFocused(false)}
                 required
               />
               <button
@@ -120,6 +140,7 @@ const ResetPasswordPage = () => {
                 className="toggle-password"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                aria-label={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
               >
                 {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
               </button>
@@ -127,7 +148,7 @@ const ResetPasswordPage = () => {
           </div>
 
           <button type="submit" className="submit-btn" disabled={isLoading}>
-            {isLoading ? <span className="spinner"></span> : 'Cập nhật mật khẩu'}
+            {isLoading ? <span className="spinner"></span> : 'Lưu mật khẩu mới'}
           </button>
         </form>
       )}
