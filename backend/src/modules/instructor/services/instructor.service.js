@@ -8,10 +8,14 @@ const path = require('path');
 
 class InstructorService {
   /**
-   * Lấy danh sách học viên đăng ký các khóa học của giảng viên này
+   * Lấy danh sách học viên đăng ký các khóa học của giảng viên này (hoặc toàn bộ nếu là Admin)
    * @param {number} instructorId - ID của giảng viên
+   * @param {boolean} isAdmin - Cờ quyền Admin / Super Admin
    */
-  async getStudents(instructorId) {
+  async getStudents(instructorId, isAdmin = false) {
+    const whereClause = isAdmin ? '' : 'WHERE c.instructor_id = $1';
+    const params = isAdmin ? [] : [instructorId];
+
     // Truy vấn thông tin học viên kèm theo khóa học và tiến độ hoàn thành bài giảng
     const queryText = `
       SELECT 
@@ -39,12 +43,12 @@ class InstructorService {
       JOIN lessons l ON up.lesson_id = l.lesson_id
       JOIN sections s ON l.section_id = s.section_id
       JOIN courses c ON s.course_id = c.course_id
-      WHERE c.instructor_id = $1
+      ${whereClause}
       GROUP BY u.user_id, c.course_id, c.course_name
       ORDER BY u.full_name ASC;
     `;
 
-    const result = await db.query(queryText, [instructorId]);
+    const result = await db.query(queryText, params);
 
     // Tính toán tỷ lệ phần trăm tiến độ của học viên
     return result.rows.map(row => {
@@ -71,14 +75,19 @@ class InstructorService {
   }
 
   /**
-   * Lấy dữ liệu hiệu suất (Performance) của giảng viên - Phiên bản phi thương mại
+   * Lấy dữ liệu hiệu suất (Performance) của giảng viên (hoặc toàn sàn nếu là Admin)
    * @param {number} instructorId - ID của giảng viên
+   * @param {boolean} isAdmin - Cờ quyền Admin / Super Admin
    */
-  async getPerformance(instructorId) {
+  async getPerformance(instructorId, isAdmin = false) {
+    const courseWhere = isAdmin ? '' : 'WHERE instructor_id = $1';
+    const courseJoinWhere = isAdmin ? '' : 'WHERE c.instructor_id = $1';
+    const params = isAdmin ? [] : [instructorId];
+
     // 1. Tổng số khóa học của giảng viên
     const coursesCountRes = await db.query(
-      'SELECT COUNT(*) as count FROM courses WHERE instructor_id = $1',
-      [instructorId]
+      `SELECT COUNT(*) as count FROM courses ${courseWhere}`,
+      params
     );
     const totalCourses = parseInt(coursesCountRes.rows[0].count || 0, 10);
 
@@ -89,9 +98,9 @@ class InstructorService {
       JOIN lessons l ON up.lesson_id = l.lesson_id
       JOIN sections s ON l.section_id = s.section_id
       JOIN courses c ON s.course_id = c.course_id
-      WHERE c.instructor_id = $1
+      ${courseJoinWhere}
     `;
-    const studentsCountRes = await db.query(studentsCountQuery, [instructorId]);
+    const studentsCountRes = await db.query(studentsCountQuery, params);
     const totalStudents = parseInt(studentsCountRes.rows[0].count || 0, 10);
 
     // 3. Tổng lượt hoàn thành bài giảng (Thay thế cho doanh thu)
@@ -101,9 +110,9 @@ class InstructorService {
       JOIN lessons l ON up.lesson_id = l.lesson_id
       JOIN sections s ON l.section_id = s.section_id
       JOIN courses c ON s.course_id = c.course_id
-      WHERE c.instructor_id = $1 AND up.is_completed = TRUE
+      ${courseJoinWhere} ${isAdmin ? 'WHERE' : 'AND'} up.is_completed = TRUE
     `;
-    const completionsRes = await db.query(completionsQuery, [instructorId]);
+    const completionsRes = await db.query(completionsQuery, params);
     const totalCompletions = parseInt(completionsRes.rows[0].count || 0, 10);
 
     // 4. Thống kê chi tiết theo từng khóa học (Số chương, số bài học, số học viên, số lượt học xong)
@@ -120,11 +129,11 @@ class InstructorService {
       LEFT JOIN sections s ON c.course_id = s.course_id
       LEFT JOIN lessons l ON s.section_id = l.section_id
       LEFT JOIN user_progress up ON l.lesson_id = up.lesson_id
-      WHERE c.instructor_id = $1
+      ${courseJoinWhere}
       GROUP BY c.course_id, c.course_name, c.status
       ORDER BY student_count DESC;
     `;
-    const courseStatsRes = await db.query(courseStatsQuery, [instructorId]);
+    const courseStatsRes = await db.query(courseStatsQuery, params);
 
     // 5. Thống kê học viên mới đăng ký theo tháng
     const monthlyStatsQuery = `
@@ -140,7 +149,7 @@ class InstructorService {
         JOIN lessons l ON up.lesson_id = l.lesson_id
         JOIN sections s ON l.section_id = s.section_id
         JOIN courses c ON s.course_id = c.course_id
-        WHERE c.instructor_id = $1
+        ${courseJoinWhere}
         GROUP BY up.user_id, c.course_id
       ) enrollments
       GROUP BY TO_CHAR(min_date, 'YYYY-MM')
@@ -304,12 +313,15 @@ class InstructorService {
   }
 
   /**
-   * Tổng hợp dữ liệu phân tích học tập theo chuẩn BoardUI cho riêng giảng viên này
+   * Tổng hợp dữ liệu phân tích học tập theo chuẩn BoardUI cho riêng giảng viên này (hoặc toàn sàn nếu là Admin)
    * @param {number} instructorId - ID giảng viên
    * @param {number} days - Khoảng thời gian (7, 30, 90, 365)
+   * @param {boolean} isAdmin - Cờ quyền Admin / Super Admin
    */
-  async getAnalytics(instructorId, days = 30) {
+  async getAnalytics(instructorId, days = 30, isAdmin = false) {
     const safeDays = [7, 30, 90, 365].includes(Number(days)) ? Number(days) : 30;
+    const courseWhere = isAdmin ? '' : 'WHERE instructor_id = $1';
+    const publishedCourseWhere = isAdmin ? "WHERE (status = 'published' OR status = '1')" : "WHERE instructor_id = $1 AND (status = 'published' OR status = '1')";
 
     const overviewQuery = `
       WITH bounds AS (
@@ -318,7 +330,7 @@ class InstructorService {
           CURRENT_DATE + INTERVAL '1 day' AS period_end
       ),
       instructor_courses AS (
-        SELECT course_id FROM courses WHERE instructor_id = $1
+        SELECT course_id FROM courses ${courseWhere}
       ),
       instructor_lessons AS (
         SELECT l.lesson_id

@@ -14,6 +14,7 @@ import '../styles/instructor.scss';
 import { getCourseQuizQuestions, saveCourseQuizQuestions } from '../../quizzes/services/quizzes.service';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Cell } from 'recharts';
 import { useToast } from '../../../context/ToastContext';
+import { useAuth } from '../../../context/AuthContext';
 import UserAnalyticsDashboard from '../../admin/components/UserAnalyticsDashboard';
 import { getInstructorAnalytics } from '../services/instructor.service';
 
@@ -24,7 +25,7 @@ const getRoleFromToken = () => {
     const payloadBase64 = token.split('.')[1];
     const payloadJson = atob(payloadBase64);
     const payload = JSON.parse(payloadJson);
-    return parseInt(payload.roleId || payload.role);
+    return parseInt(payload.roleId || payload.role, 10);
   } catch (e) {
     return null;
   }
@@ -37,7 +38,7 @@ const getUserIdFromToken = () => {
     const payloadBase64 = token.split('.')[1];
     const payloadJson = atob(payloadBase64);
     const payload = JSON.parse(payloadJson);
-    return parseInt(payload.id || payload.userId);
+    return parseInt(payload.id || payload.userId, 10);
   } catch (e) {
     return null;
   }
@@ -48,18 +49,21 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 const InstructorDashboard = () => {
   const navigate = useNavigate();
   const showToast = useToast();
-  const currentUserId = getUserIdFromToken();
+  const { user: currentUser } = useAuth();
+
+  const userRoleId = parseInt(currentUser?.roleId || currentUser?.role_id || currentUser?.role || getRoleFromToken(), 10);
+  const isAdmin = userRoleId === 1 || Boolean(currentUser?.is_super_admin);
+  const currentUserId = parseInt(currentUser?.id || currentUser?.userId || getUserIdFromToken(), 10);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState('courses');
 
   // Auth check
   useEffect(() => {
-    const role = getRoleFromToken();
-    if (role !== 2 && role !== 1) { // Instructor or Admin
+    if (userRoleId !== 2 && userRoleId !== 1) { // Instructor or Admin
       navigate('/');
     }
-  }, [navigate]);
+  }, [userRoleId, navigate]);
 
   // --- TAB 1: MY COURSES STATES ---
   const [courses, setCourses] = useState([]);
@@ -99,11 +103,11 @@ const InstructorDashboard = () => {
     }
   };
 
-  // Filter courses to show only this instructor's courses
-  const myCourses = courses.filter(c => c.instructor_id === currentUserId);
+  // Filter courses to show all for Admin/Super Admin, or instructor's courses for regular Instructor
+  const myCourses = isAdmin ? courses : courses.filter(c => Number(c.instructor_id) === Number(currentUserId));
   const totalCourses = myCourses.length;
   const totalLessons = myCourses.reduce((sum, c) => sum + (c.lessons_count || 0), 0);
-  const publishedCourses = myCourses.filter(c => c.status === 1).length;
+  const publishedCourses = myCourses.filter(c => Number(c.status) === 1 || c.status === 'published').length;
 
   // Quiz management states
   const [selectedQuizCourseId, setSelectedQuizCourseId] = useState('');
@@ -134,11 +138,11 @@ const InstructorDashboard = () => {
   // Fetch details for all instructor's courses to list all lessons/quizzes
   useEffect(() => {
     const fetchAllCourseDetails = async () => {
-      const myOwned = courses.filter(c => c.instructor_id === currentUserId);
-      if (myOwned.length === 0) return;
+      const targetCourses = isAdmin ? courses : courses.filter(c => Number(c.instructor_id) === Number(currentUserId));
+      if (targetCourses.length === 0) return;
       setLoadingAllLessons(true);
       try {
-        const promises = myOwned.map(c => apiClient.get(`/courses/${c.course_id}`));
+        const promises = targetCourses.map(c => apiClient.get(`/courses/${c.course_id}`));
         const responses = await Promise.all(promises);
         const lessonsList = [];
         responses.forEach((response) => {
@@ -169,7 +173,7 @@ const InstructorDashboard = () => {
     if (courses && courses.length > 0) {
       fetchAllCourseDetails();
     }
-  }, [courses, currentUserId]);
+  }, [courses, currentUserId, isAdmin]);
 
   useEffect(() => {
     if (createCourseId) {
@@ -613,10 +617,15 @@ const InstructorDashboard = () => {
                     <span>Đang tải danh sách khóa học...</span>
                   </div>
                 ) : myCourses.length === 0 ? (
-                  <div style={{ padding: '60px', textAlignment: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', color: '#64748b' }}>
-                    <FiBook style={{ fontSize: '48px' }} />
-                    <span style={{ fontSize: '16px', fontWeight: '600' }}>Chưa có khóa học nào được tạo.</span>
-                    <button className="btn-create-course" onClick={() => navigate('/instructor/create-course')} style={{ padding: '10px 20px', fontSize: '13px' }}>
+                  <div className="empty-state-card">
+                    <div className="empty-icon-box">
+                      <FiBook />
+                    </div>
+                    <h3 className="empty-title">Chưa có khóa học nào được tạo</h3>
+                    <p className="empty-desc">
+                      Bắt đầu xây dựng giáo trình đầu tiên để chia sẻ kiến thức và quản lý học viên.
+                    </p>
+                    <button className="btn-create-course" onClick={() => navigate('/instructor/create-course')}>
                       <FiPlus /> Tạo khóa học đầu tiên
                     </button>
                   </div>
@@ -710,10 +719,14 @@ const InstructorDashboard = () => {
                     <span>Đang tải danh sách học viên...</span>
                   </div>
                 ) : filteredStudents.length === 0 ? (
-                  <div style={{ padding: '60px', textAlignment: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', color: '#64748b' }}>
-                    <FiUsers style={{ fontSize: '48px' }} />
-                    <span style={{ fontSize: '16px', fontWeight: '600' }}>Không tìm thấy học viên nào.</span>
-                    <span style={{ fontSize: '13px' }}>Học viên của các khóa học bạn dạy sẽ xuất hiện tại đây sau khi họ tham gia và học bài.</span>
+                  <div className="empty-state-card">
+                    <div className="empty-icon-box">
+                      <FiUsers />
+                    </div>
+                    <h3 className="empty-title">Không tìm thấy học viên nào</h3>
+                    <p className="empty-desc">
+                      Học viên của các khóa học bạn phụ trách sẽ xuất hiện tại đây sau khi họ tham gia và học bài.
+                    </p>
                   </div>
                 ) : (
                   <table className="course-list-table">

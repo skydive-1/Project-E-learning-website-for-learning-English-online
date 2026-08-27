@@ -443,12 +443,12 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
     };
   }
 
-  async createQuiz(title, description, difficulty, timeLimit, questions, isPrivate = false, pinCode = null) {
+  async createQuiz(title, description, difficulty, timeLimit, questions, isPrivate = false, pinCode = null, courseId = null, lessonId = null) {
     try {
       await db.query('BEGIN');
       const insertQuizQuery = `
         INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code)
-        VALUES (NULL, NULL, $1, $2, $3, $4, $5, $6)
+        VALUES ($7, $8, $1, $2, $3, $4, $5, $6)
         RETURNING quiz_id
       `;
       const quizResult = await db.query(insertQuizQuery, [
@@ -457,7 +457,9 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
         difficulty || 'Medium',
         parseInt(timeLimit, 10) || 10,
         Boolean(isPrivate),
-        pinCode ? String(pinCode).trim() : null
+        pinCode ? String(pinCode).trim() : null,
+        courseId ? parseInt(courseId, 10) : null,
+        lessonId ? parseInt(lessonId, 10) : null
       ]);
       const quizId = quizResult.rows[0].quiz_id;
 

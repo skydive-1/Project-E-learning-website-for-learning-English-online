@@ -3,13 +3,21 @@ import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../../../config/api.config';
 import { 
   FiArrowLeft, FiSave, FiUpload, FiTrash2, 
-  FiPlus, FiMove, FiVideo, FiFileText, FiAlertCircle, FiLoader
+  FiPlus, FiMove, FiVideo, FiFileText, FiAlertCircle, FiLoader,
+  FiCheckCircle, FiEdit, FiSearch, FiLayers, FiBook, FiZap, FiMessageSquare
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { DateRangePicker, SingleDatePicker } from '../../../components/ui';
+import { SingleDatePicker } from '../../../components/ui';
 import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPolicyModal';
-import { subtitlesService } from '../../lessons/services/subtitles.service';
+import CreateQuizDialog from '../../courses/components/CreateQuizDialog';
+import { 
+  createQuiz, 
+  generateQuizAi, 
+  fetchAndCacheQuizzes,
+  deleteQuizById
+} from '../../quizzes/services/quizzes.service';
+import { syncClozeGaps, validateClozeDraft } from '../../quizzes/utils/openCloze';
 import { useToast } from '../../../context/ToastContext';
 import '../styles/instructor.scss';
 
@@ -54,7 +62,7 @@ const getRoleFromToken = () => {
     const payloadBase64 = token.split('.')[1];
     const payloadJson = atob(payloadBase64);
     const payload = JSON.parse(payloadJson);
-    return parseInt(payload.roleId || payload.role);
+    return parseInt(payload.roleId || payload.role, 10);
   } catch (e) {
     return null;
   }
@@ -75,9 +83,9 @@ const CourseEditor = () => {
   const showToast = useToast();
   const { courseId } = useParams();
   const fileInputRef = useRef({});
-  const isEditMode = !!courseId;
+  const isEditMode = Boolean(courseId);
 
-  // [TASK-FE-POL-01] State quản lý Modal Policy Bản quyền Giảng viên
+  // Modal Cam kết Bản quyền Giảng viên
   const [policyModalOpen, setPolicyModalOpen] = useState(false);
 
   // Auth check
@@ -88,19 +96,89 @@ const CourseEditor = () => {
     }
   }, [navigate]);
 
+  // Main Tabs in Course Creation Hub: 'basic', 'curriculum', 'quizzes'
+  const [activeHubTab, setActiveHubTab] = useState('basic');
+  const [subjects, setSubjects] = useState([]);
+  const [courseName, setCourseName] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [startDate, setStartDate] = useState(getTodayCivilDate());
+  const [endDate, setEndDate] = useState(getNextYearCivilDate());
+  
+  const [sections, setSections] = useState([
+    {
+      id: Date.now(),
+      title: 'Chương 1: Giới thiệu',
+      lessons: [
+        { 
+          id: Date.now() + 1, 
+          title: '1. Chào mừng bạn đến với khóa học', 
+          type: 'video', 
+          contentUrl: '', 
+          uploading: false,
+          quizQuestions: [],
+          quizTitle: '',
+          quizDescription: '',
+          quizDifficulty: 'Medium',
+          quizTimeLimit: 15
+        }
+      ]
+    }
+  ]);
+
+  const [expandedSpeaking, setExpandedSpeaking] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [fetchingSubjects, setFetchingSubjects] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // ── Quizzes Dialog State ──────────────────────────────────────────────────
+  const [quizDialogTarget, setQuizDialogTarget] = useState(null); // { sIdx, lIdx }
+  const [quizDialogMode, setQuizDialogMode] = useState('manual'); // 'manual' | 'ai'
+  const [quizDialogTitle, setQuizDialogTitle] = useState('');
+  const [quizDialogDesc, setQuizDialogDesc] = useState('');
+  const [quizDialogDifficulty, setQuizDialogDifficulty] = useState('Medium');
+  const [quizDialogTimeLimit, setQuizDialogTimeLimit] = useState(15);
+  const [quizDialogIsPrivate, setQuizDialogIsPrivate] = useState(false);
+  const [quizDialogPinCode, setQuizDialogPinCode] = useState('');
+  const [quizDialogQuestions, setQuizDialogQuestions] = useState([]);
+  const [quizDialogSubmitting, setQuizDialogSubmitting] = useState(false);
+
+  const [quizAiTopic, setQuizAiTopic] = useState('');
+  const [quizAiCount, setQuizAiCount] = useState(5);
+  const [quizAiTypes, setQuizAiTypes] = useState(['multiple_choice', 'open_cloze']);
+  const [quizAiGenerating, setQuizAiGenerating] = useState(false);
+
+  // Search & Filter in Quizzes Hub Tab
+  const [quizHubSearch, setQuizHubSearch] = useState('');
+  const [quizHubFilter, setQuizHubFilter] = useState('all'); // 'all' | 'with_quiz' | 'no_quiz'
+
   // Fetch course details for editing
   useEffect(() => {
     if (isEditMode) {
       const fetchCourse = async () => {
         try {
           setLoading(true);
-          const response = await apiClient.get(`/courses/${courseId}`);
-          if (response.data && response.data.success) {
-            const course = response.data.course;
-            setCourseName(course.course_name);
-            setSubjectId(String(course.subject_id));
+          const [courseRes, quizzesData] = await Promise.all([
+            apiClient.get(`/courses/${courseId}`),
+            fetchAndCacheQuizzes(courseId)
+          ]);
+
+          if (courseRes.data && courseRes.data.success) {
+            const course = courseRes.data.course;
+            setCourseName(course.course_name || '');
+            setSubjectId(String(course.subject_id || ''));
             if (course.start_date) setStartDate(typeof course.start_date === 'string' ? course.start_date.substring(0, 10) : getTodayCivilDate());
             if (course.end_date) setEndDate(typeof course.end_date === 'string' ? course.end_date.substring(0, 10) : getNextYearCivilDate());
+            
+            const quizByLessonId = {};
+            if (Array.isArray(quizzesData)) {
+              quizzesData.forEach(q => {
+                if (q.lesson_id) {
+                  quizByLessonId[String(q.lesson_id)] = q;
+                }
+              });
+            }
+
             if (course.sections) {
               setSections(course.sections.map(sec => ({
                 id: sec.section_id,
@@ -109,6 +187,7 @@ const CourseEditor = () => {
                   const isExternal = isAllowedExternalMediaUrl(l.content_url);
                   const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : 'PENDING_AUDIT');
                   const isVerified = status === 'READY' || isExternal;
+                  const attachedQuiz = quizByLessonId[String(l.lesson_id)];
 
                   return {
                     id: l.lesson_id,
@@ -127,15 +206,21 @@ const CourseEditor = () => {
                     uploadVerified: isVerified,
                     fileName: l.content_url ? l.content_url.split('/').pop() : '',
                     speakingSentences: l.speaking_sentences || '',
-                    speakingQuestions: l.speaking_questions || ''
+                    speakingQuestions: l.speaking_questions || '',
+                    quizId: attachedQuiz?.quiz_id || null,
+                    quizTitle: attachedQuiz?.title || '',
+                    quizDescription: attachedQuiz?.description || '',
+                    quizDifficulty: attachedQuiz?.difficulty || 'Medium',
+                    quizTimeLimit: attachedQuiz?.time_limit || 15,
+                    quizQuestions: Array.isArray(attachedQuiz?.questions) ? attachedQuiz.questions : []
                   };
                 })
               })));
             }
           }
         } catch (err) {
-          console.error('Lỗi khi tải thông tin khóa học để sửa:', err);
-          setErrorMsg('Không thể tải thông tin chi tiết khóa học từ máy chủ.');
+          console.error('Lỗi khi tải thông tin khóa học:', err);
+          setErrorMsg('Không thể tải chi tiết khóa học từ máy chủ.');
         } finally {
           setLoading(false);
         }
@@ -144,31 +229,6 @@ const CourseEditor = () => {
     }
   }, [courseId, isEditMode]);
 
-  // States
-  const [activeHubTab, setActiveHubTab] = useState('basic'); // 'basic', 'curriculum', 'speaking'
-  const [subjects, setSubjects] = useState([]);
-  const [courseName, setCourseName] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  const [startDate, setStartDate] = useState(getTodayCivilDate());
-  const [endDate, setEndDate] = useState(getNextYearCivilDate());
-  
-  const [sections, setSections] = useState([
-    {
-      id: Date.now(),
-      title: 'Chương 1: Giới thiệu',
-      lessons: [
-        { id: Date.now() + 1, title: '1. Chào mừng bạn đến với khóa học', type: 'video', contentUrl: '', uploading: false }
-      ]
-    }
-  ]);
-
-  const [expandedSpeaking, setExpandedSpeaking] = useState({});
-
-  const [loading, setLoading] = useState(false);
-  const [fetchingSubjects, setFetchingSubjects] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
   // Fetch subjects
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -176,7 +236,7 @@ const CourseEditor = () => {
         const response = await apiClient.get('/courses/subjects');
         if (response.data && response.data.subjects) {
           setSubjects(response.data.subjects);
-          if (response.data.subjects.length > 0) {
+          if (response.data.subjects.length > 0 && !subjectId) {
             setSubjectId(response.data.subjects[0].subject_id.toString());
           }
         }
@@ -204,7 +264,7 @@ const CourseEditor = () => {
 
   const handleDeleteSection = (sIdx) => {
     if (sections.length === 1) {
-      showToast('Phải có ít nhất 1 chương học.', 'warning');
+      showToast('Khóa học phải có ít nhất 1 chương học.', 'warning');
       return;
     }
     const newSections = sections.filter((_, idx) => idx !== sIdx);
@@ -226,7 +286,12 @@ const CourseEditor = () => {
       contentUrl: '',
       uploading: false,
       speakingSentences: '',
-      speakingQuestions: ''
+      speakingQuestions: '',
+      quizQuestions: [],
+      quizTitle: '',
+      quizDescription: '',
+      quizDifficulty: 'Medium',
+      quizTimeLimit: 15
     });
     setSections(newSections);
   };
@@ -243,7 +308,7 @@ const CourseEditor = () => {
     setSections(newSections);
   };
 
-  // Upload File trực tiếp (Không làm gián đoạn việc soạn giáo trình)
+  // Upload File
   const triggerFileSelect = (sIdx, lIdx) => {
     const refKey = `${sIdx}-${lIdx}`;
     if (fileInputRef.current[refKey]) {
@@ -255,50 +320,45 @@ const CourseEditor = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // ── CLIENT-SIDE VALIDATION (trước khi gửi lên server) ──────────────────
-    const MAX_VIDEO_SIZE_MB = 50;  // Supabase Storage free plan 1GB (~20 video)
+    const MAX_VIDEO_SIZE_MB = 50;
     const MAX_PDF_SIZE_MB = 20;
     const ext = file.name.split('.').pop().toLowerCase();
     const isVideoFile = file.type.startsWith('video/') || ['mp4', 'mov', 'mkv', 'avi'].includes(ext);
     const isPdfFile = file.type === 'application/pdf' || ext === 'pdf';
     const lessonType = sections[sIdx].lessons[lIdx].type;
 
-    // Kiểm tra định dạng file khớp với loại bài học
     if (lessonType === 'video' && !isVideoFile) {
-      const msg = 'Bài học Video chỉ chấp nhận tệp video (MP4). Vui lòng chọn lại.';
+      const msg = 'Bài học Video chỉ nhận file video MP4. Vui lòng chọn lại.';
       handleLessonChange(sIdx, lIdx, 'uploadError', msg);
       setErrorMsg(msg);
       return;
     }
     if (lessonType === 'pdf' && !isPdfFile) {
-      const msg = 'Bài học PDF chỉ chấp nhận tệp định dạng PDF. Vui lòng chọn lại.';
+      const msg = 'Bài học PDF chỉ nhận file định dạng PDF. Vui lòng chọn lại.';
       handleLessonChange(sIdx, lIdx, 'uploadError', msg);
       setErrorMsg(msg);
       return;
     }
-    // Kiểm tra đuôi mở rộng MP4 cho video (server chỉ nhận .mp4)
     if (isVideoFile && ext !== 'mp4') {
-      const msg = `Định dạng .${ext} không được hỗ trợ. Hệ thống chỉ nhận tệp MP4 chuẩn (H.264/AAC). Vui lòng chuyển đổi sang MP4 trước khi tải lên.`;
-      handleLessonChange(sIdx, lIdx, 'uploadError', msg);
-      setErrorMsg(msg);
-      return;
-    }
-    // Kiểm tra dung lượng
-    const fileSizeMB = file.size / (1024 * 1024);
-    const maxSizeMB = isVideoFile ? MAX_VIDEO_SIZE_MB : MAX_PDF_SIZE_MB;
-    if (fileSizeMB > maxSizeMB) {
-      const msg = `Tệp quá lớn (${fileSizeMB.toFixed(1)} MB). Giới hạn tối đa: ${maxSizeMB} MB. Vui lòng nén tệp trước khi tải lên.`;
+      const msg = `Định dạng .${ext} chưa được hỗ trợ. Vui lòng chuyển sang định dạng MP4 chuẩn.`;
       handleLessonChange(sIdx, lIdx, 'uploadError', msg);
       setErrorMsg(msg);
       return;
     }
 
-    // ── BẮT ĐẦU UPLOAD ────────────────────────────────────────────────────
+    const fileSizeMB = file.size / (1024 * 1024);
+    const maxSizeMB = isVideoFile ? MAX_VIDEO_SIZE_MB : MAX_PDF_SIZE_MB;
+    if (fileSizeMB > maxSizeMB) {
+      const msg = `Dung lượng tệp (${fileSizeMB.toFixed(1)} MB) vượt quá mức cho phép (${maxSizeMB} MB).`;
+      handleLessonChange(sIdx, lIdx, 'uploadError', msg);
+      setErrorMsg(msg);
+      return;
+    }
+
     const fileSizeFormatted = fileSizeMB >= 1
       ? `${fileSizeMB.toFixed(1)} MB`
       : `${(file.size / 1024).toFixed(0)} KB`;
 
-    // Reset state và bắt đầu uploading
     const newSections = [...sections];
     newSections[sIdx].lessons[lIdx] = {
       ...newSections[sIdx].lessons[lIdx],
@@ -320,14 +380,13 @@ const CourseEditor = () => {
           if (progressEvent.total) {
             const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setSections(prev => {
-              const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+              return prev.map((sec, si) => si !== sIdx ? sec : {
                 ...sec,
                 lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
                   ...les,
                   uploadProgress: percent
                 })
               });
-              return updated;
             });
           }
         }
@@ -336,36 +395,27 @@ const CourseEditor = () => {
       if (response.data && response.data.success) {
         if (!response.data.pendingUploadId || !response.data.storageKey || !response.data.storageBucket ||
             !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
-          throw new Error('Phản hồi upload thiếu metadata pending bắt buộc. Vui lòng tải lại tệp.');
+          throw new Error('Phản hồi thiếu metadata bắt buộc. Vui lòng thử tải lại.');
         }
         setSections(prev => {
-          const updated = prev.map((sec, si) => si !== sIdx ? sec : {
-            ...sec,
-            lessons: sec.lessons.map((les, li) => li !== lIdx ? les : applySuccessfulUploadToLesson(les, response.data, file))
-          });
-          return updated;
-        });
-        // Lưu thêm thông tin file để hiển thị
-        setSections(prev => {
-          const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+          return prev.map((sec, si) => si !== sIdx ? sec : {
             ...sec,
             lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
-              ...les,
+              ...applySuccessfulUploadToLesson(les, response.data, file),
               uploadProgress: 100,
               fileSizeFormatted
             })
           });
-          return updated;
         });
       } else {
-        throw new Error(response.data?.message || 'Không thể xác thực tệp lưu trữ.');
+        throw new Error(response.data?.message || 'Không thể xác thực tệp.');
       }
     } catch (err) {
-      console.error('Lỗi khi tải file lên:', err);
+      console.error('Lỗi khi tải file:', err);
       const errMsg = err.response?.data?.message || err.message || 'Lỗi khi tải file lên máy chủ.';
       setErrorMsg(errMsg);
       setSections(prev => {
-        const updated = prev.map((sec, si) => si !== sIdx ? sec : {
+        return prev.map((sec, si) => si !== sIdx ? sec : {
           ...sec,
           lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
             ...les,
@@ -375,15 +425,193 @@ const CourseEditor = () => {
             uploadProgress: 0
           })
         });
-        return updated;
       });
     } finally {
-      // Reset file input để có thể chọn lại cùng tên file
       if (e.target) e.target.value = '';
     }
   };
 
-  // 1. Khi nhấn "Xuất bản khóa học": Validate khung bài giảng rồi mở Modal Cam kết Bản quyền [TASK-FE-POL-01]
+  // ── Quizzes Handlers ──────────────────────────────────────────────────────
+  const handleOpenQuizDialog = (sIdx, lIdx, initialMode = 'manual') => {
+    const lesson = sections[sIdx].lessons[lIdx];
+    setQuizDialogTarget({ sIdx, lIdx });
+    setQuizDialogMode(initialMode);
+    setQuizDialogTitle(lesson.quizTitle || `Trắc nghiệm: ${lesson.title}`);
+    setQuizDialogDesc(lesson.quizDescription || `Bộ câu hỏi kiểm tra củng cố kiến thức cho bài học: ${lesson.title}`);
+    setQuizDialogDifficulty(lesson.quizDifficulty || 'Medium');
+    setQuizDialogTimeLimit(lesson.quizTimeLimit || 15);
+    setQuizDialogQuestions(Array.isArray(lesson.quizQuestions) && lesson.quizQuestions.length > 0 ? [...lesson.quizQuestions] : [
+      {
+        question_text: '',
+        question_type: 'multiple_choice',
+        options: ['', '', '', ''],
+        correct_answer: 'A',
+        explanation: ''
+      }
+    ]);
+    setQuizAiTopic(`${courseName ? `${courseName} - ` : ''}${lesson.title}`);
+    setQuizAiCount(5);
+    setQuizAiTypes(['multiple_choice', 'open_cloze']);
+  };
+
+  const handleAddQuizQuestion = (type = 'multiple_choice') => {
+    setQuizDialogQuestions(prev => [
+      ...prev,
+      {
+        question_text: '',
+        question_type: type,
+        options: type === 'multiple_choice' ? ['', '', '', ''] : [],
+        correct_answer: type === 'multiple_choice' ? 'A' : '',
+        explanation: ''
+      }
+    ]);
+  };
+
+  const handleGenerateAiQuiz = async () => {
+    if (!quizAiTopic.trim()) {
+      showToast('Vui lòng nhập chủ đề sinh câu hỏi.', 'warning');
+      return;
+    }
+    if (quizAiTypes.length === 0) {
+      showToast('Vui lòng chọn ít nhất một dạng câu hỏi.', 'warning');
+      return;
+    }
+    try {
+      setQuizAiGenerating(true);
+      const res = await generateQuizAi({
+        topic: quizAiTopic.trim(),
+        count: quizAiCount,
+        questionTypes: quizAiTypes
+      });
+      if (res && Array.isArray(res.questions) && res.questions.length > 0) {
+        const normalized = res.questions.map(q => {
+          const type = q.question_type || q.questionType || 'multiple_choice';
+          const text = q.question_text || q.questionText || '';
+          const opts = type === 'open_cloze'
+            ? syncClozeGaps(text, q.options || [])
+            : (Array.isArray(q.options) ? q.options : []);
+          return {
+            question_text: text,
+            question_type: type,
+            options: opts,
+            correct_answer: q.correct_answer ?? q.correctAnswer ?? (type === 'multiple_choice' ? 'A' : ''),
+            explanation: q.explanation || ''
+          };
+        });
+        setQuizDialogQuestions(normalized);
+        setQuizDialogMode('manual');
+        showToast(`Trợ lý AI đã tạo thành công ${normalized.length} câu hỏi!`, 'success');
+      } else {
+        showToast('Không nhận được câu hỏi từ AI. Vui lòng thử lại.', 'error');
+      }
+    } catch (err) {
+      console.error('Lỗi sinh câu hỏi AI:', err);
+      showToast(err.response?.data?.message || 'Không thể tạo câu hỏi từ AI.', 'error');
+    } finally {
+      setQuizAiGenerating(false);
+    }
+  };
+
+  const handleSaveQuizDialog = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!quizDialogTitle.trim()) {
+      showToast('Vui lòng nhập tiêu đề bài trắc nghiệm.', 'warning');
+      return;
+    }
+    if (quizDialogQuestions.length === 0) {
+      showToast('Đề thi phải có ít nhất 1 câu hỏi.', 'warning');
+      return;
+    }
+
+    const invalidQuestion = quizDialogQuestions.find(q => {
+      const type = q.question_type || 'multiple_choice';
+      if (!String(q.question_text || '').trim()) return true;
+      if (type === 'multiple_choice') {
+        return !Array.isArray(q.options)
+          || q.options.length !== 4
+          || q.options.some(opt => !String(opt).trim())
+          || !/^[A-D]$/.test(String(q.correct_answer || ''));
+      }
+      if (type === 'pronunciation') return !String(q.correct_answer || '').trim();
+      if (type === 'open_cloze') return Boolean(validateClozeDraft({ questionText: q.question_text, options: q.options }));
+      return false;
+    });
+
+    if (invalidQuestion) {
+      showToast('Vui lòng điền đầy đủ câu hỏi và đáp án hợp lệ cho từng mục.', 'warning');
+      return;
+    }
+
+    if (!quizDialogTarget) return;
+    const { sIdx, lIdx } = quizDialogTarget;
+    const targetLesson = sections[sIdx].lessons[lIdx];
+
+    const updatedSections = [...sections];
+    updatedSections[sIdx].lessons[lIdx] = {
+      ...targetLesson,
+      quizTitle: quizDialogTitle.trim(),
+      quizDescription: quizDialogDesc.trim(),
+      quizDifficulty: quizDialogDifficulty,
+      quizTimeLimit: quizDialogTimeLimit,
+      quizQuestions: quizDialogQuestions
+    };
+    setSections(updatedSections);
+
+    if (targetLesson.id && typeof targetLesson.id === 'number' && isEditMode) {
+      try {
+        setQuizDialogSubmitting(true);
+        await createQuiz({
+          title: quizDialogTitle.trim(),
+          description: quizDialogDesc.trim(),
+          difficulty: quizDialogDifficulty,
+          timeLimit: quizDialogTimeLimit,
+          isPrivate: false,
+          pinCode: null,
+          courseId: parseInt(courseId, 10),
+          lessonId: targetLesson.id,
+          questions: quizDialogQuestions
+        });
+        showToast(`Đã lưu ${quizDialogQuestions.length} câu hỏi cho bài học "${targetLesson.title}"!`, 'success');
+      } catch (err) {
+        console.warn('Lỗi lưu trực tiếp quiz:', err?.message);
+        showToast(`Đã cập nhật câu hỏi cho bài học! Sẽ lưu cùng khóa học khi xuất bản.`, 'info');
+      } finally {
+        setQuizDialogSubmitting(false);
+      }
+    } else {
+      showToast(`Đã cập nhật ${quizDialogQuestions.length} câu hỏi vào bài học "${targetLesson.title}"!`, 'success');
+    }
+
+    setQuizDialogTarget(null);
+  };
+
+  const handleDeleteLessonQuiz = async (sIdx, lIdx) => {
+    const lesson = sections[sIdx].lessons[lIdx];
+    if (!window.confirm(`Bạn có chắc muốn xóa toàn bộ câu hỏi trắc nghiệm của bài học "${lesson.title}"?`)) {
+      return;
+    }
+
+    if (lesson.quizId && isEditMode) {
+      try {
+        await deleteQuizById(lesson.quizId);
+      } catch (err) {
+        console.warn('Xóa quiz trên máy chủ:', err?.message);
+      }
+    }
+
+    const updatedSections = [...sections];
+    updatedSections[sIdx].lessons[lIdx] = {
+      ...lesson,
+      quizId: null,
+      quizTitle: '',
+      quizDescription: '',
+      quizQuestions: []
+    };
+    setSections(updatedSections);
+    showToast(`Đã xóa bộ trắc nghiệm của bài học "${lesson.title}".`, 'info');
+  };
+
+  // Submit / Publish Course
   const handleInitiatePublish = () => {
     if (!courseName.trim()) {
       setErrorMsg('Vui lòng nhập tên khóa học.');
@@ -393,13 +621,11 @@ const CourseEditor = () => {
       setErrorMsg('Vui lòng chọn môn học.');
       return;
     }
-
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
       return;
     }
 
-    // Validate toàn bộ cấu trúc bài giảng khi Publish
     for (let sIdx = 0; sIdx < sections.length; sIdx++) {
       const section = sections[sIdx];
       if (!section.title.trim()) {
@@ -426,7 +652,7 @@ const CourseEditor = () => {
             return;
           }
           if (!isMediaReadyForPublish(lesson)) {
-            setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng (trạng thái: ${lesson.mediaStatus || 'CHƯA_XÁC_THỰC'}). Vui lòng tải lại tệp tin trước khi xuất bản.`);
+            setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng. Vui lòng tải lại tệp.`);
             return;
           }
         }
@@ -434,11 +660,9 @@ const CourseEditor = () => {
     }
 
     setErrorMsg('');
-    // Mở Modal Cam kết Bản quyền để Giảng viên ký xác nhận
     setPolicyModalOpen(true);
   };
 
-  // 2. Thực hiện lưu hoặc xuất bản khóa học lên máy chủ
   const executeSubmitCourse = async (status = 1) => {
     if (!courseName.trim()) {
       setErrorMsg('Vui lòng nhập tên khóa học.');
@@ -448,42 +672,14 @@ const CourseEditor = () => {
       setErrorMsg('Vui lòng chọn môn học.');
       return;
     }
-
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
       return;
     }
 
-    for (let sIdx = 0; sIdx < sections.length; sIdx++) {
-      const section = sections[sIdx];
-      if (!section.title.trim()) {
-        setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
-        return;
-      }
-      for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
-        const lesson = section.lessons[lIdx];
-        if (lesson.uploading) {
-          setErrorMsg(`Bài học "${lesson.title}" đang được tải lên. Vui lòng đợi.`);
-          return;
-        }
-      }
-    }
-
     setLoading(true);
     setErrorMsg('');
     setSuccessMsg('');
-
-    // Nếu xuất bản (status = 1), ghi nhận chấp thuận bản quyền vào cơ sở dữ liệu
-    if (status === 1) {
-      try {
-        await apiClient.post('/instructor/accept-policy', {
-          signature: user?.full_name || user?.username || 'Giảng viên',
-          courseName: courseName.trim()
-        });
-      } catch (policyErr) {
-        console.debug('Lỗi ghi nhận accept-policy:', policyErr?.message);
-      }
-    }
 
     const payload = {
       courseName,
@@ -498,7 +694,7 @@ const CourseEditor = () => {
         lessons: sec.lessons.map((les, lIdx) => ({
           id: les.id,
           title: les.title,
-          contentType: les.type, // 'video', 'pdf', 'quiz', 'speaking', 'text'
+          contentType: les.type,
           contentUrl: les.contentUrl,
           storageProvider: les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'supabase') : null),
           storageBucket: les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null),
@@ -521,6 +717,33 @@ const CourseEditor = () => {
         : await apiClient.post('/courses', payload);
 
       if (response.data && response.data.success) {
+        const targetCourseId = response.data?.course?.course_id || courseId;
+
+        // Lưu đồng bộ các bộ quizzes cho từng bài học nếu có cấu hình
+        if (targetCourseId) {
+          for (const sec of sections) {
+            for (const les of sec.lessons) {
+              if (Array.isArray(les.quizQuestions) && les.quizQuestions.length > 0) {
+                try {
+                  await createQuiz({
+                    title: les.quizTitle || `Trắc nghiệm: ${les.title}`,
+                    description: les.quizDescription || `Bài kiểm tra cho bài học: ${les.title}`,
+                    difficulty: les.quizDifficulty || 'Medium',
+                    timeLimit: les.quizTimeLimit || 15,
+                    isPrivate: false,
+                    pinCode: null,
+                    courseId: parseInt(targetCourseId, 10),
+                    lessonId: typeof les.id === 'number' ? les.id : null,
+                    questions: les.quizQuestions
+                  });
+                } catch (qErr) {
+                  console.debug('Lưu quiz theo bài học:', qErr?.message);
+                }
+              }
+            }
+          }
+        }
+
         setSuccessMsg(
           status === 0
             ? 'Đã lưu bản nháp khóa học thành công!'
@@ -539,31 +762,69 @@ const CourseEditor = () => {
     }
   };
 
+  // Quizzes Overview Calculations
+  const allLessonsFlat = sections.flatMap((sec, sIdx) => 
+    sec.lessons.map((les, lIdx) => ({
+      ...les,
+      sIdx,
+      lIdx,
+      sectionTitle: sec.title
+    }))
+  );
+  const totalLessonsCount = allLessonsFlat.length;
+  const lessonsWithQuizCount = allLessonsFlat.filter(l => Array.isArray(l.quizQuestions) && l.quizQuestions.length > 0).length;
+  const totalQuestionsCount = allLessonsFlat.reduce((sum, l) => sum + (l.quizQuestions?.length || 0), 0);
+
+  const filteredQuizzesLessons = allLessonsFlat.filter(l => {
+    const hasQuiz = Array.isArray(l.quizQuestions) && l.quizQuestions.length > 0;
+    if (quizHubFilter === 'with_quiz' && !hasQuiz) return false;
+    if (quizHubFilter === 'no_quiz' && hasQuiz) return false;
+    if (quizHubSearch.trim()) {
+      const q = quizHubSearch.toLowerCase();
+      return l.title.toLowerCase().includes(q) || l.sectionTitle.toLowerCase().includes(q) || (l.quizTitle && l.quizTitle.toLowerCase().includes(q));
+    }
+    return true;
+  });
+
   return (
     <div className="instructor-page">
       <Header />
       
-      <main className="instructor-container editor-mode" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '30px' }}>
-        {/* Sidebar */}
+      <main className="instructor-container editor-mode" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '30px' }}>
+        {/* Left Navigation Sidebar */}
         <div className="editor-sidebar">
           <button className="btn-back" onClick={() => navigate('/instructor/dashboard')}>
-            <FiArrowLeft /> Back to Dashboard
+            <FiArrowLeft /> Về bảng điều khiển
           </button>
           
           <div className="course-nav-guide">
-            <h3 style={{ textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-light, #64748b)', fontSize: '11px', fontWeight: '800', marginBottom: '16px' }}>Course Creation Hub</h3>
-            <ul style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: 0, listStyle: 'none' }}>
+            <div className="hub-title">Course Creation Hub</div>
+            <ul className="hub-nav-list">
               <li 
                 onClick={() => setActiveHubTab('basic')}
                 className={`hub-nav-item ${activeHubTab === 'basic' ? 'active' : ''}`}
               >
-                📝 Thông tin khóa học
+                <FiFileText className="hub-tab-icon" />
+                <span>Thông tin khóa học</span>
               </li>
               <li 
                 onClick={() => setActiveHubTab('curriculum')}
                 className={`hub-nav-item ${activeHubTab === 'curriculum' ? 'active' : ''}`}
               >
-                📚 Chương trình học
+                <FiBook className="hub-tab-icon" />
+                <span>Chương trình học</span>
+              </li>
+              <li 
+                onClick={() => setActiveHubTab('quizzes')}
+                className={`hub-nav-item ${activeHubTab === 'quizzes' ? 'active' : ''}`}
+              >
+                <FiLayers className="hub-tab-icon" />
+                <span>Quản lý Quizzes</span>
+                {totalQuestionsCount > 0 && (
+                  <span className="badge-count">
+                    {totalQuestionsCount}
+                  </span>
+                )}
               </li>
             </ul>
           </div>
@@ -573,8 +834,7 @@ const CourseEditor = () => {
         <div className="instructor-content">
           <header className="content-header" style={{ marginBottom: '24px' }}>
             <div className="header-text">
-              <h1>{isEditMode ? 'Edit Course' : 'Create New Course'}</h1>
-              <p>{isEditMode ? 'Update your course metadata and structure your curriculum below.' : 'Setup your course metadata and structure your curriculum below.'}</p>
+              <h1>{isEditMode ? 'Chỉnh sửa khóa học' : 'Tạo khóa học mới'}</h1>
             </div>
             <div className="header-actions">
               <button 
@@ -582,14 +842,14 @@ const CourseEditor = () => {
                 onClick={() => executeSubmitCourse(0)}
                 disabled={loading}
               >
-                <FiSave /> Save Draft
+                <FiSave /> Lưu bản nháp
               </button>
               <button 
                 className="btn-publish" 
                 onClick={handleInitiatePublish}
                 disabled={loading}
               >
-                {loading ? <FiLoader className="spin" /> : <FiUpload />} Publish Course
+                {loading ? <FiLoader className="spin" /> : <FiUpload />} Xuất bản khóa học
               </button>
             </div>
           </header>
@@ -612,29 +872,29 @@ const CourseEditor = () => {
             </div>
           )}
 
-          {/* Basic Course Info Form */}
+          {/* 1. Basic Course Info Form */}
           {activeHubTab === 'basic' && (
             <div className="course-basic-form" style={{
-              padding: '24px', borderRadius: '20px', marginBottom: '32px'
+              padding: '24px', borderRadius: '12px', marginBottom: '32px'
             }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px' }} className="form-section-title">Thông tin khóa học cơ bản</h2>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px' }} className="form-section-title">Thông tin khóa học cơ bản</h2>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                 <div>
-                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Tên khóa học *</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Tên khóa học *</label>
                   <input 
                     type="text" 
                     value={courseName}
                     onChange={(e) => setCourseName(e.target.value)}
                     placeholder="Ví dụ: Luyện thi IELTS mục tiêu 6.5+"
                     style={{
-                      width: '100%', padding: '12px', borderRadius: '10px', fontSize: '14px'
+                      width: '100%', padding: '12px', borderRadius: '8px', fontSize: '14px'
                     }}
                   />
                 </div>
 
                 <div>
-                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Môn học liên kết *</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Môn học liên kết *</label>
                   {fetchingSubjects ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', color: 'var(--text-light, #64748b)' }}>
                       <FiLoader className="spin" /> Đang tải môn học...
@@ -644,7 +904,7 @@ const CourseEditor = () => {
                       value={subjectId}
                       onChange={(e) => setSubjectId(e.target.value)}
                       style={{
-                        width: '100%', padding: '12px', borderRadius: '10px', fontSize: '14px'
+                        width: '100%', padding: '12px', borderRadius: '8px', fontSize: '14px'
                       }}
                     >
                       {subjects.map(sub => (
@@ -659,7 +919,7 @@ const CourseEditor = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div>
-                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Ngày khai giảng</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Ngày khai giảng</label>
                   <SingleDatePicker 
                     value={startDate}
                     rangeStart={startDate}
@@ -669,7 +929,7 @@ const CourseEditor = () => {
                   />
                 </div>
                 <div>
-                  <label className="form-group-label" style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Ngày kết thúc</label>
+                  <label className="form-group-label" style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Ngày kết thúc</label>
                   <SingleDatePicker 
                     value={endDate}
                     rangeStart={startDate}
@@ -683,11 +943,10 @@ const CourseEditor = () => {
             </div>
           )}
 
-          {/* Curriculum Builder */}
+          {/* 2. Curriculum Builder */}
           {activeHubTab === 'curriculum' && (
             <div className="curriculum-builder">
-              <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }} className="builder-title">Curriculum Builder</h2>
-              <p style={{ fontSize: '14px', marginBottom: '20px' }} className="builder-subtitle">Thêm các chương học và bài giảng dưới dạng PDF hoặc Video để cấu thành khóa học của bạn.</p>
+              <p className="builder-subtitle">Thêm các chương học, bài giảng video/PDF và gắn bài tập trắc nghiệm trực tiếp vào từng bài học.</p>
 
               {sections.map((section, sIdx) => (
                 <div key={section.id} className="section-container">
@@ -712,31 +971,38 @@ const CourseEditor = () => {
                   <div className="lessons-list">
                     {section.lessons.map((lesson, lIdx) => {
                       const refKey = `${sIdx}-${lIdx}`;
+                      const hasQuiz = Array.isArray(lesson.quizQuestions) && lesson.quizQuestions.length > 0;
+
                       return (
-                        <div key={lesson.id} className="lesson-item-edit" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                            <div className="lesson-main" style={{ flex: 1 }}>
-                              <FiMove className="drag-handle-small" />
+                        <div key={lesson.id} className="minimalist-lesson-card">
+                          {/* Row 1: Drag, Type, Title Input, Media Upload Button, Delete Button */}
+                          <div className="card-top-row">
+                            <div className="drag-handle-wrapper" title="Kéo thả để sắp xếp bài học">
+                              <FiMove className="drag-icon" />
+                            </div>
+
+                            <div className="type-select-wrapper">
                               <select 
                                 value={lesson.type}
                                 onChange={(e) => handleLessonChange(sIdx, lIdx, 'type', e.target.value)}
-                                style={{ border: 'none', background: 'none', fontWeight: '600', color: '#64748b', marginRight: '8px', cursor: 'pointer' }}
+                                className="lesson-type-select"
                               >
                                 <option value="video">Video</option>
                                 <option value="pdf">PDF Document</option>
                               </select>
+                            </div>
+
+                            <div className="title-input-wrapper">
                               <input 
                                 type="text"
+                                className="lesson-title-input"
                                 value={lesson.title}
                                 onChange={(e) => handleLessonChange(sIdx, lIdx, 'title', e.target.value)}
                                 placeholder="Nhập tên bài học..."
-                                style={{
-                                  border: 'none', background: 'none', borderBottom: '1px dashed #cbd5e1', width: '60%', padding: '2px 4px', fontSize: '14px'
-                                }}
                               />
                             </div>
-                            
-                            <div className="lesson-actions">
+
+                            <div className="card-top-actions">
                               <input 
                                 type="file" 
                                 ref={el => fileInputRef.current[refKey] = el}
@@ -745,269 +1011,225 @@ const CourseEditor = () => {
                                 accept={lesson.type === 'video' ? 'video/mp4' : 'application/pdf'}
                               />
                               <button 
-                                className="btn-edit-content" 
+                                type="button"
+                                className={`btn-upload-media ${lesson.contentUrl ? 'uploaded' : ''}`}
                                 onClick={() => triggerFileSelect(sIdx, lIdx)}
                                 disabled={lesson.uploading}
                                 title={lesson.type === 'video'
-                                  ? 'Chỉ chấp nhận MP4 chuẩn (H.264/AAC) — Tối đa 50 MB'
-                                  : 'Chỉ chấp nhận PDF — Tối đa 20 MB'
+                                  ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 50 MB'
+                                  : 'Chỉ nhận PDF — Tối đa 20 MB'
                                 }
-                                style={{
-                                  background: lesson.uploading ? '#f8fafc' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fef2f2' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fffbeb' : lesson.contentUrl ? '#ecfdf5' : '',
-                                  color: lesson.uploading ? '#64748b' : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#dc2626' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#d97706' : lesson.contentUrl ? '#059669' : '',
-                                  borderColor: (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? '#fecaca' : lesson.mediaStatus === 'PENDING_AUDIT' ? '#fde68a' : lesson.contentUrl ? '#a7f3d0' : ''
-                                }}
                               >
                                 {lesson.uploading ? (
-                                  <><FiLoader className="spin" /> Đang tải ({lesson.uploadProgress || 0}%)...</>
+                                  <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
                                 ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
-                                  <><FiUpload /> ⚠️ Cần tải lại</>
+                                  <><FiUpload /> <span>Cần tải lại</span></>
                                 ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
-                                  <><FiUpload /> ⏳ Chờ kiểm định</>
+                                  <><FiUpload /> <span>Chờ kiểm định</span></>
                                 ) : lesson.contentUrl ? (
-                                  <><FiUpload /> ✓ Đã tải lên</>
+                                  <><FiCheckCircle /> <span>Đã tải lên</span></>
                                 ) : (
-                                  <><FiUpload /> Chọn tệp</>
+                                  <><FiUpload /> <span>Tải lên {lesson.type === 'video' ? 'Video' : 'PDF'}</span></>
                                 )}
                               </button>
-                              <button className="btn-icon-small" onClick={() => handleDeleteLesson(sIdx, lIdx)} title="Xóa bài học">
+
+                              <button 
+                                type="button"
+                                className="btn-delete-lesson" 
+                                onClick={() => handleDeleteLesson(sIdx, lIdx)} 
+                                title="Xóa bài học"
+                              >
                                 <FiTrash2 />
                               </button>
                             </div>
                           </div>
 
-                          {/* ━━ Upload Progress Bar — hiển thị khi đang uploading ━━ */}
+                          {/* Upload Progress Bar */}
                           {lesson.uploading && (
-                            <div style={{ marginLeft: '28px', marginTop: '2px' }}>
+                            <div style={{ marginTop: '2px' }}>
                               <div style={{
-                                width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '99px', overflow: 'hidden'
+                                width: '100%', height: '4px', background: 'var(--border-color, #e2e8f0)', borderRadius: '4px', overflow: 'hidden'
                               }}>
                                 <div style={{
                                   width: `${lesson.uploadProgress || 0}%`,
                                   height: '100%',
-                                  background: 'linear-gradient(90deg, #4f46e5, #7c3aed)',
-                                  borderRadius: '99px',
+                                  background: '#2563eb',
+                                  borderRadius: '4px',
                                   transition: 'width 0.3s ease'
                                 }} />
                               </div>
-                              <span style={{ fontSize: '10px', color: '#64748b', marginTop: '3px', display: 'block' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-light, #64748b)', marginTop: '2px', display: 'block' }}>
                                 Đang tải lên Supabase Storage... {lesson.uploadProgress || 0}%
                               </span>
                             </div>
                           )}
 
-                          {/* ━━ MISSING_SOURCE Warning Banner (Edit Mode) ━━ */}
+                          {/* Warnings / Errors if any */}
                           {!lesson.uploading && (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') && !lesson.uploadError && (
                             <div style={{
-                              marginLeft: '28px', marginTop: '2px',
+                              marginTop: '2px',
                               display: 'flex', alignItems: 'flex-start', gap: '8px',
-                              padding: '8px 12px', borderRadius: '8px',
-                              background: '#fffbeb', border: '1px solid #fde68a',
-                              fontSize: '12px', color: '#92400e', lineHeight: '1.5'
+                              padding: '6px 10px', borderRadius: '6px',
+                              background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)',
+                              fontSize: '12px', color: '#d97706', lineHeight: '1.4'
                             }}>
-                              <FiAlertCircle style={{ flexShrink: 0, marginTop: '1px', color: '#d97706' }} />
-                              <span>
-                                <strong>Video/PDF bị mất nguồn:</strong> Tệp bài giảng này không còn tồn tại trên hệ thống lưu trữ.
-                                {' '}<strong>Vui lòng tải lại tệp</strong> bằng cách nhấp nút “⚠️ Cần tải lại” bên trên.
-                              </span>
+                              <FiAlertCircle style={{ flexShrink: 0, marginTop: '1px' }} />
+                              <span><strong>Tệp nguồn bị mất:</strong> Vui lòng tải lại tệp tin cho bài học này.</span>
                             </div>
                           )}
 
-                          {/* ━━ Upload Error Banner ━━ */}
                           {lesson.uploadError && !lesson.uploading && (
                             <div style={{
-                              marginLeft: '28px', marginTop: '2px',
+                              marginTop: '2px',
                               display: 'flex', alignItems: 'flex-start', gap: '8px',
-                              padding: '8px 12px', borderRadius: '8px',
-                              background: '#fef2f2', border: '1px solid #fecaca',
-                              fontSize: '12px', color: '#991b1b', lineHeight: '1.5'
+                              padding: '6px 10px', borderRadius: '6px',
+                              background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                              fontSize: '12px', color: '#ef4444', lineHeight: '1.4'
                             }}>
-                              <FiAlertCircle style={{ flexShrink: 0, marginTop: '1px', color: '#ef4444' }} />
+                              <FiAlertCircle style={{ flexShrink: 0, marginTop: '1px' }} />
                               <span>{lesson.uploadError}</span>
                             </div>
                           )}
 
-                          <div style={{ marginLeft: '28px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <button
-                              type="button"
-                              onClick={() => setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: !prev[lesson.id] }))}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                background: 'none',
-                                border: 'none',
-                                color: '#4f46e5',
-                                fontSize: '11px',
-                                fontWeight: '750',
-                                cursor: 'pointer',
-                                padding: '4px 0',
-                                outline: 'none'
-                              }}
-                            >
-                              <span>💬</span>
-                              <span style={{ textDecoration: 'underline' }}>
-                                {expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions
-                                  ? 'Ẩn bài tập speaking'
-                                  : 'Thêm bài tập speaking (tùy chọn)'
-                                }
-                              </span>
-                            </button>
+                          {/* Row 2: Left-aligned Feature Toolbar + Right-aligned File Info */}
+                          <div className="card-bottom-row">
+                            <div className="toolbar-left">
+                              {hasQuiz ? (
+                                <div className="quiz-configured-group">
+                                  <span className="badge-quiz-active">
+                                    <FiCheckCircle />
+                                    <span>{lesson.quizQuestions.length} câu hỏi trắc nghiệm</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenQuizDialog(sIdx, lIdx, 'manual')}
+                                    className="btn-toolbar-link primary"
+                                  >
+                                    <FiEdit /> Sửa Quizzes
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenQuizDialog(sIdx, lIdx, 'ai')}
+                                    className="btn-toolbar-link ai"
+                                  >
+                                    <FiZap /> Sinh thêm AI
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLessonQuiz(sIdx, lIdx)}
+                                    className="btn-toolbar-link danger"
+                                    title="Xóa bộ trắc nghiệm bài học"
+                                  >
+                                    <FiTrash2 /> Xóa
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="quiz-create-group">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenQuizDialog(sIdx, lIdx, 'manual')}
+                                    className="btn-toolbar-pill default"
+                                  >
+                                    <FiPlus /> Tạo Quizzes vào bài học
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenQuizDialog(sIdx, lIdx, 'ai')}
+                                    className="btn-toolbar-pill ai"
+                                  >
+                                    <FiZap /> AI tạo Quizzes
+                                  </button>
+                                </div>
+                              )}
 
-                            {/* Trigger AI Subtitle Generator for Video Lessons */}
-                            {lesson.type === 'video' && lesson.id && (
+                              <span className="toolbar-divider" />
+
+                              {/* Speaking Exercise Toggle */}
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  try {
-                                    setLoading(true);
-                                    const result = await subtitlesService.generateSubtitles(lesson.id);
-                                    showToast(`✅ Đã tạo thành công ${result?.cues?.length || 0} câu phụ đề song ngữ bằng AI Gemini 2.5 Flash!`, 'success');
-                                  } catch (err) {
-                                    showToast(`❌ Lỗi tạo phụ đề AI: ${err.message}`, 'error');
-                                  } finally {
-                                    setLoading(false);
-                                  }
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#0d9488',
-                                  fontSize: '11px',
-                                  fontWeight: '750',
-                                  cursor: 'pointer',
-                                  padding: '4px 0',
-                                  outline: 'none'
-                                }}
-                                title="Tự động bóc băng lời thoại và dịch song ngữ bằng Gemini 2.5 Flash"
+                                onClick={() => setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: !prev[lesson.id] }))}
+                                className={`btn-speaking-pill ${expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions ? 'active' : ''}`}
                               >
-                                <span>✨</span>
-                                <span style={{ textDecoration: 'underline' }}>⚡ Tạo phụ đề song ngữ AI (Gemini 2.5)</span>
+                                <FiMessageSquare />
+                                <span>
+                                  {expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions
+                                    ? 'Ẩn bài tập speaking'
+                                    : 'Thêm bài tập speaking'
+                                  }
+                                </span>
                               </button>
-                            )}
 
-                            {(lesson.speakingSentences || lesson.speakingQuestions) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (window.confirm("Bạn có chắc chắn muốn xóa bài tập Speaking này?")) {
-                                    handleLessonChange(sIdx, lIdx, 'speakingSentences', '');
-                                    handleLessonChange(sIdx, lIdx, 'speakingQuestions', '');
-                                    setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: false }));
-                                  }
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#ef4444',
-                                  fontSize: '11px',
-                                  fontWeight: '700',
-                                  cursor: 'pointer',
-                                  padding: '4px 0',
-                                  outline: 'none'
-                                }}
-                                title="Xóa bài tập Speaking"
-                              >
-                                <span>🗑️</span>
-                                <span style={{ textDecoration: 'underline' }}>Xóa bài tập speaking</span>
-                              </button>
+                              {(lesson.speakingSentences || lesson.speakingQuestions) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm("Bạn có chắc chắn muốn xóa bài tập Speaking này?")) {
+                                      handleLessonChange(sIdx, lIdx, 'speakingSentences', '');
+                                      handleLessonChange(sIdx, lIdx, 'speakingQuestions', '');
+                                      setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: false }));
+                                    }
+                                  }}
+                                  className="btn-toolbar-link danger"
+                                  title="Xóa bài tập Speaking"
+                                >
+                                  <FiTrash2 />
+                                  <span>Xóa speaking</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Right side of toolbar: File details info pill */}
+                            {lesson.contentUrl && !lesson.uploading && (
+                              <div className="toolbar-right">
+                                <div className="media-info-pill">
+                                  {lesson.type === 'video' ? <FiVideo className="media-icon" /> : <FiFileText className="media-icon" />}
+                                  <span className="media-filename" title={lesson.fileName || lesson.contentUrl}>
+                                    {lesson.fileName || 'Tài nguyên bài giảng'}
+                                  </span>
+                                  {lesson.fileSizeFormatted && (
+                                    <span className="media-filesize">({lesson.fileSizeFormatted})</span>
+                                  )}
+                                  <span className="storage-badge">
+                                    Supabase Storage
+                                  </span>
+                                  {lesson.contentUrl.startsWith('http') && (
+                                    <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="view-link">
+                                      Xem tệp
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
                             )}
                           </div>
 
-                          {/* Speaking configuration fields rendered inline if expanded or already has data */}
+                          {/* Speaking panel */}
                           {(expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions) && (
-                            <div style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 1fr',
-                              gap: '16px',
-                              marginTop: '6px',
-                              padding: '16px',
-                              background: 'var(--bg-color, #f8fafc)',
-                              borderRadius: '12px',
-                              border: '1px solid var(--border-color, #e2e8f0)',
-                              marginLeft: '28px'
-                            }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }} className="speaking-label">
+                            <div className="card-speaking-panel">
+                              <div className="speaking-col">
+                                <span className="speaking-label">
                                   <span>1. Câu luyện phát âm AI (Đọc mẫu - Cú pháp: Tiếng Anh | Bản dịch):</span>
-                                  <span style={{ fontWeight: '500', color: 'var(--text-light, #94a3b8)', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
+                                  <span className="optional-hint">(Tùy chọn)</span>
                                 </span>
                                 <textarea
                                   value={lesson.speakingSentences || ''}
                                   onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingSentences', e.target.value)}
                                   placeholder="Ví dụ:&#10;Welcome to our speaking class. | Chào mừng bạn đến với lớp học.&#10;Practice makes perfect. | Luyện tập tạo nên sự hoàn hảo."
                                   rows={3}
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    border: '1px solid var(--border-color, #cbd5e1)',
-                                    fontSize: '12px',
-                                    outline: 'none',
-                                    color: 'var(--text-color, #334155)',
-                                    background: 'var(--input-bg, #ffffff)',
-                                    resize: 'vertical'
-                                  }}
                                 />
                               </div>
                               
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                <span style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }} className="speaking-label">
+                              <div className="speaking-col">
+                                <span className="speaking-label">
                                   <span>2. Câu hỏi phản xạ nói Q&A (Cú pháp: Câu hỏi | Bản dịch):</span>
-                                  <span style={{ fontWeight: '500', color: 'var(--text-light, #94a3b8)', fontSize: '10px', fontStyle: 'italic' }}>(Tùy chọn)</span>
+                                  <span className="optional-hint">(Tùy chọn)</span>
                                 </span>
                                 <textarea
                                   value={lesson.speakingQuestions || ''}
                                   onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingQuestions', e.target.value)}
                                   placeholder="Ví dụ:&#10;What did you do last weekend? | Cuối tuần trước bạn đã làm gì?&#10;Tell me about your family. | Hãy chia sẻ về gia đình bạn."
                                   rows={3}
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    border: '1px solid var(--border-color, #cbd5e1)',
-                                    fontSize: '12px',
-                                    outline: 'none',
-                                    color: 'var(--text-color, #334155)',
-                                    background: 'var(--input-bg, #ffffff)',
-                                    resize: 'vertical'
-                                  }}
                                 />
                               </div>
-                            </div>
-                          )}
-
-                          {/* File details banner if uploaded & verified */}
-                          {lesson.contentUrl && !lesson.uploading && (
-                            <div style={{
-                              fontSize: '12px', color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '6px 12px', borderRadius: '6px',
-                              marginLeft: '28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '4px'
-                            }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-                                {lesson.type === 'video' ? <FiVideo className="shrink-0" /> : <FiFileText className="shrink-0" />}
-                                <span style={{ fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {lesson.fileName || 'Tài nguyên bài giảng'}
-                                </span>
-                                {lesson.fileSizeFormatted && (
-                                  <span style={{ fontSize: '10px', color: '#6b7280', flexShrink: 0 }}>
-                                    ({lesson.fileSizeFormatted})
-                                  </span>
-                                )}
-                                <span style={{ fontSize: '10px', background: '#10b981', color: '#ffffff', padding: '1px 6px', borderRadius: '10px', fontWeight: '700', flexShrink: 0 }}>
-                                  ✓ Đã bảo vệ (Supabase Storage)
-                                </span>
-                              </div>
-                              {lesson.contentUrl.startsWith('http') && (
-                                <a href={lesson.contentUrl} target="_blank" rel="noreferrer" style={{ color: '#047857', textDecoration: 'underline', fontSize: '11px', flexShrink: 0 }}>
-                                  Xem liên kết
-                                </a>
-                              )}
                             </div>
                           )}
                         </div>
@@ -1015,25 +1237,219 @@ const CourseEditor = () => {
                     })}
                     
                     <button className="btn-add-lesson" onClick={() => handleAddLesson(sIdx)}>
-                      <FiPlus /> Add Lesson
+                      <FiPlus /> Thêm bài học
                     </button>
                   </div>
                 </div>
               ))}
 
               <button className="btn-add-section" onClick={handleAddSection}>
-                <FiPlus /> Add New Section
+                <FiPlus /> Thêm chương học mới
               </button>
             </div>
           )}
 
+          {/* 3. Course Quizzes Hub Tab */}
+          {activeHubTab === 'quizzes' && (
+            <div className="course-quizzes-hub-panel">
+              {/* Hub Header */}
+              <div className="quizzes-hub-header">
+                <div>
+                  <h2>Quản lý Quizzes trong khóa học</h2>
+                  <p>Tạo đề trắc nghiệm, bài tập tự luận và phát âm trực tiếp gắn liền vào từng bài học.</p>
+                </div>
+                <div className="hub-header-actions">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (sections.length === 0 || sections[0].lessons.length === 0) {
+                        showToast('Vui lòng thêm ít nhất một bài học vào chương trình học trước.', 'warning');
+                        return;
+                      }
+                      handleOpenQuizDialog(0, 0, 'ai');
+                    }}
+                    className="btn-hub-action ai"
+                  >
+                    <FiZap /> Tạo nhanh bằng AI
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (sections.length === 0 || sections[0].lessons.length === 0) {
+                        showToast('Vui lòng thêm ít nhất một bài học vào chương trình học trước.', 'warning');
+                        return;
+                      }
+                      handleOpenQuizDialog(0, 0, 'manual');
+                    }}
+                    className="btn-hub-action primary"
+                  >
+                    <FiPlus /> Thêm bài tập trắc nghiệm
+                  </button>
+                </div>
+              </div>
+
+              {/* Metrics Bar (Bento Grid) */}
+              <div className="quizzes-metrics-grid">
+                <div className="metric-card">
+                  <span className="metric-label">Tổng số bài học</span>
+                  <div className="metric-value">{totalLessonsCount}</div>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-label">Bài học có Quizzes</span>
+                  <div className="metric-value success">
+                    {lessonsWithQuizCount} <span className="metric-sub">/ {totalLessonsCount}</span>
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <span className="metric-label">Tổng số câu hỏi</span>
+                  <div className="metric-value accent">{totalQuestionsCount}</div>
+                </div>
+              </div>
+
+              {/* Search & Filter */}
+              <div className="quizzes-filter-bar">
+                <div className="filter-pills-group">
+                  <button 
+                    type="button" 
+                    onClick={() => setQuizHubFilter('all')}
+                    className={`filter-pill ${quizHubFilter === 'all' ? 'active-all' : ''}`}
+                  >
+                    Tất cả ({totalLessonsCount})
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setQuizHubFilter('with_quiz')}
+                    className={`filter-pill ${quizHubFilter === 'with_quiz' ? 'active-with' : ''}`}
+                  >
+                    Đã có Quizzes ({lessonsWithQuizCount})
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setQuizHubFilter('no_quiz')}
+                    className={`filter-pill ${quizHubFilter === 'no_quiz' ? 'active-no' : ''}`}
+                  >
+                    Chưa tạo Quizzes ({totalLessonsCount - lessonsWithQuizCount})
+                  </button>
+                </div>
+
+                <div className="search-box-wrapper">
+                  <FiSearch className="search-icon" />
+                  <input 
+                    type="text" 
+                    placeholder="Tìm theo bài học hoặc chương..." 
+                    value={quizHubSearch}
+                    onChange={(e) => setQuizHubSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Lessons & Quizzes List */}
+              <div className="quizzes-lessons-list">
+                {filteredQuizzesLessons.length === 0 ? (
+                  <div style={{
+                    padding: '40px 20px', textAlign: 'center', background: 'var(--card-bg, #fff)',
+                    borderRadius: '10px', border: '1px dashed var(--border-color, #cbd5e1)',
+                    color: 'var(--text-light, #64748b)'
+                  }}>
+                    <FiLayers style={{ fontSize: '32px', color: 'var(--text-light, #cbd5e1)', marginBottom: '8px' }} />
+                    <p style={{ margin: 0, fontWeight: '600', fontSize: '14px' }}>Không tìm thấy bài học nào phù hợp với bộ lọc.</p>
+                  </div>
+                ) : (
+                  filteredQuizzesLessons.map((item) => {
+                    const hasQuestions = Array.isArray(item.quizQuestions) && item.quizQuestions.length > 0;
+                    return (
+                      <div key={item.id} className="quiz-lesson-row">
+                        <div className="lesson-info">
+                          <div className="tags-row">
+                            <span className="section-tag">
+                              {item.sectionTitle}
+                            </span>
+                            <span className="type-tag">
+                              {item.type === 'video' ? 'Video' : 'PDF Document'}
+                            </span>
+                          </div>
+
+                          <h3 className="lesson-title-heading">
+                            {item.title}
+                          </h3>
+
+                          {hasQuestions ? (
+                            <div className="quiz-status-detail">
+                              <span className="status-count">
+                                <FiCheckCircle /> Đã có {item.quizQuestions.length} câu hỏi
+                              </span>
+                              <span className="status-dot">•</span>
+                              <span className="status-meta">
+                                Độ khó: <strong>{item.quizDifficulty || 'Medium'}</strong> ({item.quizTimeLimit || 15} phút)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="quiz-empty-hint">
+                              Chưa thiết lập bộ câu hỏi trắc nghiệm cho bài học này
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="actions-group">
+                          {hasQuestions ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuizDialog(item.sIdx, item.lIdx, 'manual')}
+                                className="btn-row-action edit"
+                              >
+                                <FiEdit /> Chỉnh sửa Quizzes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuizDialog(item.sIdx, item.lIdx, 'ai')}
+                                className="btn-row-action ai"
+                              >
+                                <FiZap /> Sinh thêm AI
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLessonQuiz(item.sIdx, item.lIdx)}
+                                className="btn-row-action delete"
+                                title="Xóa toàn bộ câu hỏi"
+                              >
+                                <FiTrash2 />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuizDialog(item.sIdx, item.lIdx, 'manual')}
+                                className="btn-row-action create"
+                              >
+                                <FiPlus /> Tạo câu hỏi
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuizDialog(item.sIdx, item.lIdx, 'ai')}
+                                className="btn-row-action create-ai"
+                              >
+                                <FiZap /> AI tạo nhanh
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
       </main>
 
       <Footer />
       
-      {/* [TASK-FE-POL-01] Modal Cam kết Điều khoản & Bản quyền Giảng viên khi Xuất bản */}
+      {/* Modal Cam kết Bản quyền Giảng viên khi Xuất bản */}
       <InstructorCopyrightPolicyModal
         isOpen={policyModalOpen}
         onClose={() => setPolicyModalOpen(false)}
@@ -1041,6 +1457,42 @@ const CourseEditor = () => {
         courseName={courseName || 'Khóa học chưa đặt tên'}
         sectionsCount={sections.length}
         lessonsCount={sections.reduce((sum, s) => sum + (s.lessons?.length || 0), 0)}
+      />
+
+      {/* Modal Tạo & Chỉnh sửa Quizzes bài học (CreateQuizDialog) */}
+      <CreateQuizDialog
+        open={Boolean(quizDialogTarget)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setQuizDialogTarget(null);
+        }}
+        createMode={quizDialogMode}
+        onCreateModeChange={setQuizDialogMode}
+        quizTitle={quizDialogTitle}
+        onQuizTitleChange={setQuizDialogTitle}
+        quizDescription={quizDialogDesc}
+        onQuizDescriptionChange={setQuizDialogDesc}
+        quizDifficulty={quizDialogDifficulty}
+        onQuizDifficultyChange={setQuizDialogDifficulty}
+        quizTimeLimit={quizDialogTimeLimit}
+        onQuizTimeLimitChange={setQuizDialogTimeLimit}
+        isPrivate={quizDialogIsPrivate}
+        onPrivateChange={setQuizDialogIsPrivate}
+        pinCode={quizDialogPinCode}
+        onPinCodeChange={setQuizDialogPinCode}
+        questions={quizDialogQuestions}
+        onQuestionsChange={setQuizDialogQuestions}
+        onAddQuestion={handleAddQuizQuestion}
+        submitting={quizDialogSubmitting}
+        onSubmit={handleSaveQuizDialog}
+        aiTopic={quizAiTopic}
+        onAiTopicChange={setQuizAiTopic}
+        aiCount={quizAiCount}
+        onAiCountChange={setQuizAiCount}
+        aiTypes={quizAiTypes}
+        onAiTypesChange={setQuizAiTypes}
+        aiGenerating={quizAiGenerating}
+        onGenerateAi={handleGenerateAiQuiz}
+        canUseAi={true}
       />
 
       {/* Mini loading overlay for full publishing */}

@@ -58,6 +58,11 @@ const Header = () => {
     setIsDropdownOpen(!isDropdownOpen);
   };
 
+  const userRoleId = parseInt(user?.roleId || user?.role_id || user?.role, 10);
+  const isAdmin = userRoleId === 1 || Boolean(user?.is_super_admin);
+  const isInstructor = userRoleId === 2;
+  const canAccessInstructorPanel = isAdmin || isInstructor;
+
   return (
     <header className="main-header">
       <div className="header-container">
@@ -101,15 +106,15 @@ const Header = () => {
               </Link>
 
               {/* Role-based quick links */}
-              {parseInt(user?.roleId || user?.role_id || user?.role) === 1 && (
+              {isAdmin && (
                 <Link to="/admin/dashboard" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
                   {t('adminDashboard')}
                 </Link>
               )}
 
-              {parseInt(user?.roleId || user?.role_id || user?.role) === 2 && (
+              {canAccessInstructorPanel && (
                 <Link to="/instructor/dashboard" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
-                  {t('instructorDashboard')}
+                  Instructor Panel
                 </Link>
               )}
 
@@ -178,17 +183,17 @@ const Header = () => {
                     <span>{t('profile')}</span>
                   </Link>
 
-                  {parseInt(user?.roleId || user?.role_id || user?.role) === 1 && (
+                  {isAdmin && (
                     <Link to="/admin/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                       <FiLayout className="dropdown-icon" />
                       <span>{t('adminDashboard')}</span>
                     </Link>
                   )}
 
-                  {parseInt(user?.roleId || user?.role_id || user?.role) === 2 && (
+                  {canAccessInstructorPanel && (
                     <Link to="/instructor/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                       <FiLayout className="dropdown-icon" />
-                      <span>{t('instructorDashboard')}</span>
+                      <span>Instructor Panel</span>
                     </Link>
                   )}
 

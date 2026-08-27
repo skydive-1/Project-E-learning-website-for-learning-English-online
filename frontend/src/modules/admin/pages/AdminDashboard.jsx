@@ -16,7 +16,8 @@ import {
   FiAlertTriangle,
   FiRefreshCw,
   FiShield,
-  FiTrendingUp
+  FiTrendingUp,
+  FiEdit
 } from 'react-icons/fi';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
@@ -117,18 +118,12 @@ const AdminDashboard = () => {
     }
   }, [activeTab]);
 
-  // Fetch danh sách khóa học khi tạo quiz hoặc khi Super Admin quản lý khóa học.
+  // Fetch danh sách khóa học khi tạo quiz hoặc khi Admin / Super Admin quản lý khóa học.
   useEffect(() => {
-    if (activeTab === 'quizzes' || (activeTab === 'courses' && isSuperAdmin)) {
+    if (activeTab === 'quizzes' || activeTab === 'courses') {
       fetchCourses();
     }
-  }, [activeTab, isSuperAdmin]);
-
-  useEffect(() => {
-    if (activeTab === 'courses' && !isSuperAdmin) {
-      setActiveTab('users');
-    }
-  }, [activeTab, isSuperAdmin]);
+  }, [activeTab]);
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
@@ -521,14 +516,12 @@ const AdminDashboard = () => {
             >
               <FiUsers className="inline mr-2" /> Quản lý tài khoản
             </button>
-            {isSuperAdmin && (
-              <button
-                className={`admin-tab ${activeTab === 'courses' ? 'active' : ''}`}
-                onClick={() => setActiveTab('courses')}
-              >
-                <FiFolder className="inline mr-2" /> Quản lý khóa học
-              </button>
-            )}
+            <button
+              className={`admin-tab ${activeTab === 'courses' ? 'active' : ''}`}
+              onClick={() => setActiveTab('courses')}
+            >
+              <FiFolder className="inline mr-2" /> Quản lý khóa học
+            </button>
             <button 
               className={`admin-tab ${activeTab === 'quizzes' ? 'active' : ''}`}
               onClick={() => setActiveTab('quizzes')}
@@ -713,23 +706,45 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {/* SUPER ADMIN: COURSE MANAGEMENT */}
-            {activeTab === 'courses' && isSuperAdmin && (
+            {/* ADMIN / SUPER ADMIN: COURSE MANAGEMENT */}
+            {activeTab === 'courses' && (
               <section className="course-management" aria-labelledby="course-management-title">
                 <div className="course-management__heading">
                   <div>
                     <h2 id="course-management-title">Quản lý khóa học</h2>
-                    <p>Xem toàn bộ khóa học và xóa nội dung không còn phù hợp. Thao tác xóa sẽ loại bỏ cả chương, bài học và tài nguyên liên quan.</p>
+                    <p>Xem toàn bộ khóa học, chỉnh sửa nội dung hoặc tạo khóa học mới vào hệ thống.</p>
                   </div>
-                  <button
-                    type="button"
-                    className="course-refresh-button"
-                    onClick={fetchCourses}
-                    disabled={loadingCourses}
-                  >
-                    <FiRefreshCw className={loadingCourses ? 'is-spinning' : ''} aria-hidden="true" />
-                    Làm mới
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/instructor/create-course')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '9px 16px',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        borderRadius: '8px',
+                        fontWeight: '700',
+                        fontSize: '13px',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <FiPlus aria-hidden="true" />
+                      Tạo khóa học mới
+                    </button>
+                    <button
+                      type="button"
+                      className="course-refresh-button"
+                      onClick={fetchCourses}
+                      disabled={loadingCourses}
+                    >
+                      <FiRefreshCw className={loadingCourses ? 'is-spinning' : ''} aria-hidden="true" />
+                      Làm mới
+                    </button>
+                  </div>
                 </div>
 
                 <div className="course-management__controls">
@@ -810,7 +825,28 @@ const AdminDashboard = () => {
                                 </span>
                               </td>
                               <td data-label="Ngày tạo">{course.created_at ? new Date(course.created_at).toLocaleDateString('vi-VN') : '—'}</td>
-                              <td data-label="Hành động" className="course-table__action-cell">
+                              <td data-label="Hành động" className="course-table__action-cell" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}
+                                  title="Chỉnh sửa khóa học"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    background: 'rgba(37, 99, 235, 0.08)',
+                                    color: '#2563eb',
+                                    border: '1px solid rgba(37, 99, 235, 0.25)',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <FiEdit aria-hidden="true" />
+                                  Sửa
+                                </button>
                                 <button
                                   type="button"
                                   className="course-delete-button"
