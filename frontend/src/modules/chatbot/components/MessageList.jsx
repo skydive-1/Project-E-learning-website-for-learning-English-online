@@ -1,6 +1,7 @@
 import React from 'react';
 import { FiCpu, FiUser } from 'react-icons/fi';
 import LessonCard from './LessonCard';
+import AiThinkingState from './AiThinkingState';
 
 /**
  * MessageList Component (Udemy AI Assistant direction)
@@ -200,10 +201,7 @@ const MessageList = ({
                   </div>
                 ) : msg.isStreaming && !msg.text ? (
                   /* Initial AI Thinking State */
-                  <div className="flex items-center gap-2 py-1 text-xs text-slate-400 font-medium">
-                    <FiCpu className="text-smart-indigo dark:text-indigo-400 text-sm animate-spin" />
-                    <span>AI đang tra cứu tài liệu & suy nghĩ...</span>
-                  </div>
+                  <AiThinkingState />
                 ) : (
                   /* Standard AI / User Text Response */
                   <>
@@ -214,6 +212,12 @@ const MessageList = ({
                     {/* Streaming Cursor */}
                     {msg.isStreaming && (
                       <span className="inline-block w-1.5 h-3.5 ml-1 bg-smart-indigo dark:bg-indigo-400 animate-pulse align-middle rounded-2xs"></span>
+                    )}
+
+                    {msg.isStopped && (
+                      <div className="mt-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                        Đã dừng phản hồi
+                      </div>
                     )}
 
                     {/* Verified Lesson Cards (Udemy-like Recommendation Cards) */}

@@ -45,7 +45,7 @@ describe('KineticDirectionSection', () => {
     expect(video).toHaveAttribute('preload', 'metadata');
 
     expect(motionState.transforms).toContainEqual({
-      inputRange: [0, 0.42, 0.88],
+      inputRange: [0, 0.42, 0.94],
       outputRange: [
         'inset(0% 0% round 16px)',
         'inset(0% 0% round 16px)',
@@ -53,11 +53,11 @@ describe('KineticDirectionSection', () => {
       ]
     });
     expect(motionState.transforms).toContainEqual({
-      inputRange: [0, 0.42, 0.88],
+      inputRange: [0, 0.42, 0.94],
       outputRange: ['-50cqw', '-50cqw', '0cqw']
     });
     expect(motionState.transforms).toContainEqual({
-      inputRange: [0, 0.42, 0.88],
+      inputRange: [0, 0.42, 0.94],
       outputRange: ['50cqw', '50cqw', '0cqw']
     });
   });

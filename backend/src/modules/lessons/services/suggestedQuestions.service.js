@@ -15,19 +15,139 @@
 const db = require('../../../config/database');
 const { geminiModel } = require('../../../utils/ai-clients');
 
+const QUESTION_COUNT = 4;
+const MAX_QUESTION_LENGTH = 92;
+const LEGACY_QUESTION_PATTERNS = [
+  /muc dich va noi dung chinh cua bai/,
+  /giai thich cac diem ngu phap va cau truc cau/,
+  /trich xuat cac tu vung moi va vi du minh hoa/,
+  /tom tat nhung kien thuc cot loi/
+];
+const GROUNDING_STOP_WORDS = new Set([
+  'bai', 'hoc', 'nay', 'trong', 'cua', 'nhung', 'mot', 'cac', 'cho', 'voi', 'the', 'nao',
+  'nghia', 'giai', 'thich', 'tom', 'tat', 'noi', 'dung', 'chinh', 'kien', 'thuc', 'quan',
+  'trong', 'duoc', 'dung', 'khi', 'dau', 'vi', 'sao', 'what', 'when', 'where', 'which',
+  'how', 'why', 'this', 'that', 'lesson', 'course', 'about', 'from', 'with', 'into', 'your',
+  'you', 'the', 'and', 'for', 'are', 'was', 'were', 'have', 'has', 'can', 'will'
+]);
+
+function normalizeForMatch(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
+}
+
+function getMeaningfulTokens(value = '') {
+  return normalizeForMatch(value)
+    .match(/[a-z0-9][a-z0-9'-]{2,}/g)?.filter(token => !GROUNDING_STOP_WORDS.has(token)) || [];
+}
+
+function buildTranscriptText(cues = [], maxChars = 8000) {
+  if (typeof cues === 'string') return cues.trim().slice(0, maxChars);
+  if (!Array.isArray(cues) || cues.length === 0) return '';
+
+  const sampleSize = Math.min(cues.length, 120);
+  const sampledCues = sampleSize === cues.length
+    ? cues
+    : Array.from({ length: sampleSize }, (_, index) => cues[Math.floor(index * (cues.length - 1) / (sampleSize - 1))]);
+
+  return sampledCues
+    .map(cue => cue?.en || cue?.text || cue?.vi || '')
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars);
+}
+
+function extractGroundedTerms(sourceText = '', limit = QUESTION_COUNT) {
+  const frequency = new Map();
+  const originalTokens = String(sourceText).match(/[\p{L}\p{N}][\p{L}\p{N}'-]{2,}/gu) || [];
+
+  originalTokens.forEach((originalToken, index) => {
+    const token = normalizeForMatch(originalToken);
+    if (GROUNDING_STOP_WORDS.has(token)) return;
+
+    const current = frequency.get(token) || {
+      count: 0,
+      firstIndex: index,
+      display: originalToken
+    };
+    current.count += 1;
+    frequency.set(token, current);
+  });
+
+  return [...frequency.entries()]
+    .filter(([token]) => token.length <= 24)
+    .sort((a, b) => b[1].count - a[1].count || a[1].firstIndex - b[1].firstIndex)
+    .slice(0, limit)
+    .map(([, metadata]) => metadata.display);
+}
+
+function isLegacyGenericQuestionSet(questions = []) {
+  return Array.isArray(questions) && questions.some(question => {
+    const normalized = normalizeForMatch(question);
+    return LEGACY_QUESTION_PATTERNS.some(pattern => pattern.test(normalized));
+  });
+}
+
+function normalizeSuggestedQuestions(questions = [], sourceText = '') {
+  if (!Array.isArray(questions)) return [];
+
+  const sourceTokens = new Set(getMeaningfulTokens(sourceText));
+  const requireGrounding = sourceTokens.size > 0;
+  const seen = new Set();
+
+  return questions.reduce((result, rawQuestion) => {
+    if (result.length >= QUESTION_COUNT || typeof rawQuestion !== 'string') return result;
+
+    let question = rawQuestion.replace(/\s+/g, ' ').trim();
+    if (!question || question.length > MAX_QUESTION_LENGTH) return result;
+    if (!question.endsWith('?')) question = `${question.replace(/[.!]+$/, '')}?`;
+
+    const normalized = normalizeForMatch(question);
+    if (seen.has(normalized) || LEGACY_QUESTION_PATTERNS.some(pattern => pattern.test(normalized))) {
+      return result;
+    }
+
+    if (requireGrounding) {
+      const isGrounded = getMeaningfulTokens(question).some(token => sourceTokens.has(token));
+      if (!isGrounded) return result;
+    }
+
+    seen.add(normalized);
+    result.push(question);
+    return result;
+  }, []);
+}
+
 /**
  * 1. Trả về 4 câu hỏi gợi ý mẫu theo Template chuỗi (0 token, 0ms latency, KHÔNG gọi Gemini)
  * @param {string} lessonTitle 
  * @param {string} courseName 
  * @returns {Array<string>} 4 câu hỏi gợi ý
  */
-function getFallbackSuggestedQuestions(lessonTitle = '', courseName = '') {
-  const cleanTitle = (lessonTitle || '').trim() || 'bài học này';
+function getFallbackSuggestedQuestions(lessonTitle = '', courseName = '', sourceText = '') {
+  const groundedTerms = extractGroundedTerms(sourceText);
+  if (groundedTerms.length > 0) {
+    const templates = [
+      term => `“${term}” nghĩa là gì trong bài?`,
+      term => `Bài dùng “${term}” khi nào?`,
+      term => `Ví dụ nào có “${term}”?`,
+      term => `Ý chính về “${term}” là gì?`
+    ];
+
+    return templates.map((template, index) => template(groundedTerms[index % groundedTerms.length]));
+  }
+
   return [
-    `Mục đích và nội dung chính của bài "${cleanTitle}" là gì?`,
-    `Giải thích các điểm ngữ pháp và cấu trúc câu quan trọng trong "${cleanTitle}".`,
-    `Trích xuất các từ vựng mới và ví dụ minh họa xuất hiện trong bài này.`,
-    `Tóm tắt những kiến thức cốt lõi tôi cần ghi nhớ sau khi học xong "${cleanTitle}".`
+    'Bài này có những ý chính nào?',
+    'Khái niệm nào cần ghi nhớ?',
+    'Từ nào xuất hiện trong bài?',
+    'Kiểm tra nhanh kiến thức bài này?'
   ];
 }
 
@@ -43,28 +163,37 @@ async function getSuggestedQuestionsByLessonId(lessonId) {
   }
 
   try {
-    // Truy vấn bảng lưu trữ câu hỏi gợi ý
-    const res = await db.query(
-      'SELECT questions FROM lesson_suggested_questions WHERE lesson_id = $1',
-      [parsedLessonId]
-    );
+    const res = await db.query(`
+      SELECT l.title, ls.cues, q.questions
+      FROM lessons l
+      LEFT JOIN lesson_subtitles ls ON ls.lesson_id = l.lesson_id
+      LEFT JOIN lesson_suggested_questions q ON q.lesson_id = l.lesson_id
+      WHERE l.lesson_id = $1
+      LIMIT 1
+    `, [parsedLessonId]);
 
-    if (res.rows.length > 0 && res.rows[0].questions) {
+    if (res.rows.length === 0) return getFallbackSuggestedQuestions();
+
+    const lessonTitle = res.rows[0].title || '';
+    const transcriptCues = res.rows[0].cues || [];
+    const transcriptText = buildTranscriptText(transcriptCues);
+
+    if (res.rows[0].questions) {
       let questions = res.rows[0].questions;
       if (typeof questions === 'string') {
         try { questions = JSON.parse(questions); } catch (_) {}
       }
-      if (Array.isArray(questions) && questions.length > 0) {
-        return questions.slice(0, 4);
+      const normalizedQuestions = normalizeSuggestedQuestions(questions, transcriptText);
+      if (!isLegacyGenericQuestionSet(questions) && normalizedQuestions.length === QUESTION_COUNT) {
+        return normalizedQuestions;
       }
     }
 
-    // Nếu chưa có trong DB -> Lấy tiêu đề bài học và trả về Fallback Template nhanh (< 2ms)
-    const lessonRes = await db.query(
-      'SELECT title FROM lessons WHERE lesson_id = $1',
-      [parsedLessonId]
-    );
-    const lessonTitle = lessonRes.rows[0]?.title || '';
+    // Legacy hoặc câu không bám transcript sẽ được tạo lại một lần rồi cache vào DB.
+    if (transcriptText) {
+      return generateAndSaveSuggestedQuestions(parsedLessonId, transcriptCues);
+    }
+
     return getFallbackSuggestedQuestions(lessonTitle);
   } catch (err) {
     console.warn(`[SuggestedQuestions Warning] Lỗi đọc DB lessonId=${lessonId}:`, err.message);
@@ -123,13 +252,8 @@ async function generateAndSaveSuggestedQuestions(lessonId, cues = null) {
       return fallbackQuestions;
     }
 
-    // 3. Chuẩn bị ngữ cảnh transcript rút gọn (tối đa ~3500 ký tự để tối ưu chi phí & tốc độ)
-    const transcriptText = transcriptCues
-      .slice(0, 70)
-      .map(c => c.en || c.text || c.vi || '')
-      .filter(Boolean)
-      .join(' ')
-      .slice(0, 3500);
+    // Lấy mẫu xuyên suốt toàn bộ transcript thay vì chỉ lấy phần mở đầu.
+    const transcriptText = buildTranscriptText(transcriptCues);
 
     // 4. Xây dựng Prompt cho Gemini Flash
     const prompt = `Bạn là chuyên gia sư phạm tiếng Anh kiêm cố vấn AI Assistant tại E-Learn Academy.
@@ -143,11 +267,13 @@ THÔNG TIN BÀI HỌC:
 NỘI DUNG BÓC BĂNG TRANSCRIPT:
 ${transcriptText}
 
-YÊU CẦU:
-1. Tạo đúng 4 câu hỏi bằng tiếng Việt tự nhiên hoặc tiếng Anh tùy theo ngữ cảnh bài học (ưu tiên tiếng Việt thân thiện, rõ ràng).
-2. Các câu hỏi cần bao quát: mục đích bài học, giải thích ngữ pháp/khái niệm khó, từ vựng hoặc ví dụ cụ thể, và tóm tắt cốt lõi.
-3. Không đặt câu hỏi mơ hồ hay chung chung kiểu "Bài này nói về gì?". Hãy gắn liền với nội dung cụ thể được nhắc tới trong transcript.
-4. Trả về DUY NHẤT một JSON hợp lệ theo schema sau (không thêm markdown hay văn bản ngoài):
+YÊU CẦU BẮT BUỘC:
+1. Tạo đúng 4 câu hỏi, mỗi câu 6-12 từ và không quá 72 ký tự.
+2. Mỗi câu phải nêu rõ ít nhất một từ, cụm từ, mẫu câu hoặc ví dụ xuất hiện nguyên văn trong transcript.
+3. Chỉ hỏi điều có thể trả lời hoàn toàn bằng transcript; không thêm kiến thức bên ngoài.
+4. Không dùng câu chung chung như "Bài này nói về gì?", "Mục đích bài học là gì?" hoặc "Tóm tắt bài học".
+5. Bốn câu không trùng ý và dùng ngôn ngữ tự nhiên, trực tiếp.
+6. Trả về DUY NHẤT một JSON hợp lệ theo schema sau (không thêm markdown hay văn bản ngoài):
 {"questions": ["Câu hỏi 1?", "Câu hỏi 2?", "Câu hỏi 3?", "Câu hỏi 4?"]}`;
 
     // 5. Gọi Gemini với Timeout 4.5s
@@ -171,17 +297,17 @@ YÊU CẦU:
       text = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
       const parsed = JSON.parse(text);
-      if (parsed && Array.isArray(parsed.questions) && parsed.questions.length >= 3) {
-        generatedQuestions = parsed.questions.slice(0, 4).map(q => String(q).trim()).filter(Boolean);
+      if (parsed && Array.isArray(parsed.questions)) {
+        generatedQuestions = normalizeSuggestedQuestions(parsed.questions, transcriptText);
       }
     } catch (aiErr) {
       console.warn(`[SuggestedQuestions Warning] Gemini gặp lỗi/timeout cho lessonId=${parsedLessonId}:`, aiErr.message);
     }
 
     // Nếu AI không trả về đủ 4 câu hỏi -> Sử dụng Fallback Template
-    if (!generatedQuestions || generatedQuestions.length < 3) {
-      console.log(`[SuggestedQuestions] ⚠️ Dùng Fallback Template do AI không phản hồi đủ câu hỏi (lessonId=${parsedLessonId})`);
-      generatedQuestions = getFallbackSuggestedQuestions(lesson_title, course_name);
+    if (!generatedQuestions || generatedQuestions.length !== QUESTION_COUNT) {
+      console.log(`[SuggestedQuestions] ⚠️ Dùng fallback bám transcript do AI không phản hồi đủ câu hỏi hợp lệ (lessonId=${parsedLessonId})`);
+      generatedQuestions = getFallbackSuggestedQuestions(lesson_title, course_name, transcriptText);
     }
 
     // 6. Lưu / Ghi đè vào bảng lesson_suggested_questions
@@ -212,6 +338,9 @@ async function saveQuestionsToDb(lessonId, questions) {
 }
 
 module.exports = {
+  buildTranscriptText,
+  isLegacyGenericQuestionSet,
+  normalizeSuggestedQuestions,
   getFallbackSuggestedQuestions,
   getSuggestedQuestionsByLessonId,
   generateAndSaveSuggestedQuestions,

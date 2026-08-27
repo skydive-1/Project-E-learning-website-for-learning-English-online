@@ -11,6 +11,7 @@ const Composer = ({
   inputText,
   setInputText,
   onSubmit,
+  onStopResponse,
   isLoading,
   isRecording,
   recordingTime,
@@ -113,19 +114,31 @@ const Composer = ({
             />
           </div>
 
-          {/* Send Action Button */}
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isLoading}
-            className={`p-2.5 rounded-xl transition-all duration-200 cursor-pointer shrink-0 ${
-              inputText.trim() && !isLoading
-                ? 'bg-smart-indigo hover:bg-indigo-700 text-white shadow-sm hover:shadow-indigo-500/20 active:scale-95'
-                : 'bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60 cursor-not-allowed'
-            }`}
-            title="Gửi câu hỏi"
-          >
-            <FiSend className="text-[14px]" />
-          </button>
+          {isLoading ? (
+            <button
+              type="button"
+              onClick={onStopResponse}
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 transition-colors duration-200 cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-smart-indigo focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800"
+              title="Dừng phản hồi"
+              aria-label="Dừng phản hồi"
+            >
+              <FiSquare className="text-[13px] fill-current" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!inputText.trim()}
+              className={`p-2.5 rounded-xl transition-all duration-200 cursor-pointer shrink-0 ${
+                inputText.trim()
+                  ? 'bg-smart-indigo hover:bg-indigo-700 text-white shadow-sm hover:shadow-indigo-500/20 active:scale-95'
+                  : 'bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60 cursor-not-allowed'
+              }`}
+              title="Gửi câu hỏi"
+              aria-label="Gửi câu hỏi"
+            >
+              <FiSend className="text-[14px]" />
+            </button>
+          )}
         </form>
       )}
     </div>

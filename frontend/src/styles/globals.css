@@ -38,11 +38,91 @@
   will-change: background-position;
 }
 
+@keyframes chatbot-pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.82);
+  }
+
+  42% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  68% {
+    opacity: 0.42;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes chatbot-thinking-enter {
+  from {
+    opacity: 0.55;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chatbot-thinking-state {
+  animation: chatbot-thinking-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.chatbot-thinking-pixel {
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.chatbot-thinking-label {
+  --chatbot-thinking-muted: #64748b;
+  --chatbot-thinking-strong: #0f172a;
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--chatbot-thinking-muted) 35%,
+    var(--chatbot-thinking-strong) 50%,
+    var(--chatbot-thinking-muted) 65%
+  );
+  background-position: 200% center;
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: ai-chat-text-shimmer 1.4s linear infinite;
+  will-change: background-position;
+}
+
+.dark .chatbot-thinking-label {
+  --chatbot-thinking-muted: #94a3b8;
+  --chatbot-thinking-strong: #f1f5f9;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-progress-loading-text {
     color: var(--color-text-secondary);
     background-image: none;
     animation: none;
+  }
+
+  .chatbot-thinking-state {
+    animation: none;
+  }
+
+  .chatbot-thinking-pixel {
+    opacity: 0.35 !important;
+    transform: none;
+    animation: none !important;
+    will-change: auto;
+  }
+
+  .chatbot-thinking-label {
+    color: var(--chatbot-thinking-muted);
+    background-image: none;
+    animation: none;
+    will-change: auto;
   }
 }
 
@@ -1224,4 +1304,3 @@ input[type="search"]::-webkit-search-cancel-button {
     padding-right: 2rem;
   }
 }
-

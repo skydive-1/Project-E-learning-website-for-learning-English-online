@@ -25,18 +25,31 @@ export const askChatbot = async (question, lessonId, scope = 'lesson', currentTi
     throw error;
   }
 };
+export const CHATBOT_STREAM_PACING = Object.freeze({
+  minimumThinkingMs: 550,
+  frameMs: 16,
+  normalCharactersPerSecond: 52,
+  mediumCharactersPerSecond: 68,
+  maximumCharactersPerSecond: 84,
+  mediumBacklog: 180,
+  largeBacklog: 700,
+  maximumCharactersPerFrame: 2
+});
+
+export const getChatbotStreamRate = (remainingCharacters) => {
+  if (remainingCharacters > CHATBOT_STREAM_PACING.largeBacklog) {
+    return CHATBOT_STREAM_PACING.maximumCharactersPerSecond;
+  }
+  if (remainingCharacters > CHATBOT_STREAM_PACING.mediumBacklog) {
+    return CHATBOT_STREAM_PACING.mediumCharactersPerSecond;
+  }
+  return CHATBOT_STREAM_PACING.normalCharactersPerSecond;
+};
+
 /**
- * Gửi câu hỏi của học viên đến API RAG Chatbot của backend dạng SSE Stream.
- * 
- * 💡 THIẾT KẾ KIẾN TRÚC CLIENT-SIDE RENDERING THROTTLE:
- * Cơ chế này áp dụng "Client-side character buffer queue & adaptive throttle loop" 
- * để mô phỏng hiệu ứng gõ chữ (typing effect) mượt mà như Claude / ChatGPT.
- * Đây là giải pháp phân tách độc lập giữa "Tốc độ nhận dữ liệu từ mạng" và "Tốc độ hiển thị UI":
- * - Luồng mạng (Network Reader) đọc dữ liệu từ server ở tốc độ tối đa không bị chặn.
- * - Luồng hiển thị (Display Ticker) lấy từng cụm ký tự nhỏ từ hàng đợi đệm và gọi onChunk đều đặn.
- * - Thuật toán Adaptive Catch-up tự động tăng tốc độ nhả chữ khi hàng đợi bị tồn đọng nhiều ký tự,
- *   đảm bảo câu trả lời dài không bị kéo dài tổng thời gian hoàn tất.
- * - KHÔNG PHẢI thay đổi cách AI sinh văn bản hay làm chậm tiến trình xử lý của backend.
+ * Gửi câu hỏi đến API RAG dạng SSE, nhận dữ liệu mạng ở tốc độ tối đa nhưng
+ * hiển thị qua một hàng đợi có giới hạn rõ ràng. Câu trả lời dài chỉ tăng tốc
+ * trong một biên độ nhỏ, không còn nhảy hàng chục ký tự trong một khung hình.
  */
 export const askChatbotStream = async (
   question,
@@ -47,6 +60,7 @@ export const askChatbotStream = async (
   quickAction = null,
   options = {}
 ) => {
+  const requestStartedAt = Date.now();
   const token = localStorage.getItem('token');
   const envUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
   const baseUrl = envUrl.replace(/\/+$/, '');
@@ -89,16 +103,53 @@ export const askChatbotStream = async (
   let actions = [];
   let isNetworkDone = false;  // Server đã gửi xong ([DONE] hoặc stream closed)
   let networkError = null;    // Lỗi xảy ra trong quá trình đọc stream (nếu có)
-  let tickerIntervalId = null;
+  let displayTimerId = null;
+  let charactersBudget = 0;
+  let lastFrameAt = Date.now();
+  let isSettled = false;
+  let abortHandler = null;
 
   // Trả về Promise hoàn tất khi toàn bộ dữ liệu đã được hiển thị hết ra UI
   return new Promise((resolve, reject) => {
-    // Helper dọn dẹp ticker
     const cleanup = () => {
-      if (tickerIntervalId) {
-        clearInterval(tickerIntervalId);
-        tickerIntervalId = null;
+      if (displayTimerId !== null) {
+        clearTimeout(displayTimerId);
+        displayTimerId = null;
       }
+      if (options.signal && abortHandler) {
+        options.signal.removeEventListener('abort', abortHandler);
+        abortHandler = null;
+      }
+    };
+
+    const finishWithError = (error) => {
+      if (isSettled) return;
+      isSettled = true;
+      cleanup();
+      reject(error);
+    };
+
+    const finishSuccessfully = () => {
+      if (isSettled) return;
+      isSettled = true;
+      cleanup();
+
+      if (onChunk) {
+        onChunk(displayedText, {
+          sources,
+          actions,
+          metadata,
+          isTyping: false,
+          isComplete: true
+        });
+      }
+
+      resolve({
+        reply: displayedText,
+        sources,
+        actions,
+        metadata
+      });
     };
 
     // Hỗ trợ AbortSignal hủy luồng stream & ticker khi component unmount hoặc gửi câu hỏi mới
@@ -106,89 +157,81 @@ export const askChatbotStream = async (
       if (options.signal.aborted) {
         cleanup();
         try { reader.cancel(); } catch (_) {}
-        return reject(new DOMException('Aborted', 'AbortError'));
+        return finishWithError(new DOMException('Aborted', 'AbortError'));
       }
-      options.signal.addEventListener('abort', () => {
-        cleanup();
+      abortHandler = () => {
         try { reader.cancel(); } catch (_) {}
-        reject(new DOMException('Aborted', 'AbortError'));
-      });
+        finishWithError(new DOMException('Aborted', 'AbortError'));
+      };
+      options.signal.addEventListener('abort', abortHandler, { once: true });
     }
 
-    // 1. DISPLAY TICKER LOOP (Chạy độc lập mỗi 18-20ms để cập nhật UI mượt mà)
-    const TICK_MS = 20; // ~50 fps
-    tickerIntervalId = setInterval(() => {
-      // Nếu có lỗi từ mạng và chưa kịp hiển thị gì
+    // DISPLAY LOOP: nhịp 16 ms, có ngân sách ký tự theo thời gian và trần 2 ký tự/frame.
+    // Bộ đệm mạng lớn không thể gây ra một lần render hàng chục ký tự nữa.
+    const runDisplayFrame = () => {
+      if (isSettled) return;
+
       if (networkError && displayedText.length === 0) {
-        cleanup();
-        return reject(networkError);
+        finishWithError(networkError);
+        return;
       }
 
+      const now = Date.now();
+      const revealAfter = requestStartedAt + CHATBOT_STREAM_PACING.minimumThinkingMs;
       const remainingChars = rawFullText.length - displayedText.length;
 
-      if (remainingChars > 0) {
-        // Thuật toán Adaptive Speed (Điều chỉnh số ký tự hiển thị mỗi tick dựa trên độ dài hàng đợi đệm):
-        // - Khi hàng đợi ít: nhả 1-2 ký tự/tick để tạo cảm giác gõ chữ tự nhiên, mượt mà.
-        // - Khi hàng đợi tồn đọng nhiều: tự động tăng tốc tỷ lệ thuận để không bị trễ thời gian tổng thể.
-        let step = 1;
-        if (remainingChars > 300) {
-          step = Math.ceil(remainingChars / 10); // ~30+ ký tự/tick
-        } else if (remainingChars > 150) {
-          step = Math.ceil(remainingChars / 15); // ~10-20 ký tự/tick
-        } else if (remainingChars > 60) {
-          step = Math.ceil(remainingChars / 20); // ~3-7 ký tự/tick
-        } else if (remainingChars > 20) {
-          step = 2;
-        } else {
-          // 1 đến 2 ký tự ngẫu nhiên nhẹ nhàng
-          step = Math.random() > 0.4 ? 2 : 1;
-        }
+      if (now < revealAfter) {
+        // Không cộng dồn ngân sách trong thời gian suy nghĩ để tránh xả chữ ở frame đầu.
+        lastFrameAt = now;
+      } else if (remainingChars > 0) {
+        const elapsedMs = Math.max(0, Math.min(now - lastFrameAt, 100));
+        const charactersPerSecond = getChatbotStreamRate(remainingChars);
+        charactersBudget += (elapsedMs / 1000) * charactersPerSecond;
 
-        step = Math.min(step, remainingChars);
-        displayedText = rawFullText.slice(0, displayedText.length + step);
+        const step = Math.min(
+          Math.floor(charactersBudget),
+          CHATBOT_STREAM_PACING.maximumCharactersPerFrame,
+          remainingChars
+        );
 
-        if (onChunk) {
-          onChunk(displayedText, {
-            sources,
-            actions,
-            metadata,
-            isTyping: true,
-            isComplete: false
-          });
+        if (step > 0) {
+          charactersBudget -= step;
+          displayedText = rawFullText.slice(0, displayedText.length + step);
+
+          if (onChunk) {
+            onChunk(displayedText, {
+              sources,
+              actions,
+              metadata,
+              isTyping: true,
+              isComplete: false
+            });
+          }
         }
+        lastFrameAt = now;
+      } else {
+        lastFrameAt = now;
       }
 
-      // Kiểm tra điều kiện hoàn tất thực sự:
-      // Server đã gửi xong toàn bộ ([DONE]) VÀ toàn bộ text trong hàng đợi đã được hiển thị hết
       if (isNetworkDone && displayedText.length >= rawFullText.length) {
-        cleanup();
-
-        if (onChunk) {
-          onChunk(displayedText, {
-            sources,
-            actions,
-            metadata,
-            isTyping: false,
-            isComplete: true
-          });
-        }
-
         if (networkError) {
-          return reject(networkError);
+          finishWithError(networkError);
+          return;
         }
 
         if (!displayedText && !rawFullText) {
-          return reject(new Error('Empty response from stream'));
+          finishWithError(new Error('Empty response from stream'));
+          return;
         }
 
-        return resolve({
-          reply: displayedText,
-          sources,
-          actions,
-          metadata
-        });
+        finishSuccessfully();
+        return;
       }
-    }, TICK_MS);
+
+      displayTimerId = setTimeout(runDisplayFrame, CHATBOT_STREAM_PACING.frameMs);
+    };
+
+    displayTimerId = setTimeout(runDisplayFrame, CHATBOT_STREAM_PACING.frameMs);
 
     // 2. NETWORK READER LOOP (Đọc dữ liệu từ Server ở tốc độ mạng tối đa không bị chặn)
     (async () => {

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { askChatbotStream } from '../src/modules/chatbot/services/chatbot.service';
+import {
+  askChatbotStream,
+  CHATBOT_STREAM_PACING,
+  getChatbotStreamRate
+} from '../src/modules/chatbot/services/chatbot.service';
 
 describe('Chatbot Stream Client-Side Character Buffer Queue & Throttle', () => {
   let originalFetch;
@@ -51,11 +55,14 @@ describe('Chatbot Stream Client-Side Character Buffer Queue & Throttle', () => {
       onChunkCalls.push({ text, payload });
     });
 
-    // Advance timers incrementally to watch character queue unroll
-    await vi.advanceTimersByTimeAsync(20);
+    // Có một nhịp suy nghĩ ngắn, không xả chữ ngay khi mạng trả về.
+    await vi.advanceTimersByTimeAsync(CHATBOT_STREAM_PACING.minimumThinkingMs - 20);
+    expect(onChunkCalls).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(80);
     expect(onChunkCalls.length).toBeGreaterThan(0);
     const firstRender = onChunkCalls[0].text;
-    expect(firstRender.length).toBeLessThanOrEqual(5);
+    expect(firstRender.length).toBeLessThanOrEqual(CHATBOT_STREAM_PACING.maximumCharactersPerFrame);
 
     // Advance more ticks
     await vi.advanceTimersByTimeAsync(300);
@@ -70,7 +77,7 @@ describe('Chatbot Stream Client-Side Character Buffer Queue & Throttle', () => {
     expect(onChunkCalls[onChunkCalls.length - 1].payload.isTyping).toBe(false);
   });
 
-  it('should adaptively increase character release rate when buffer backlog is large', async () => {
+  it('should cap every rendered chunk even when the buffer backlog is large', async () => {
     const longText = 'A'.repeat(400); // 400 chars backlog
     const sseData = [
       'data: ' + JSON.stringify({ type: 'token', text: longText }) + '\n\n',
@@ -87,12 +94,12 @@ describe('Chatbot Stream Client-Side Character Buffer Queue & Throttle', () => {
       lastLen = text.length;
     });
 
-    // Advance 1 tick
-    await vi.advanceTimersByTimeAsync(20);
-    // When remaining > 300, step is ceil(remaining / 10) >= 30 chars
-    expect(recordedDeltas[0]).toBeGreaterThanOrEqual(25);
+    await vi.advanceTimersByTimeAsync(CHATBOT_STREAM_PACING.minimumThinkingMs + 100);
+    expect(recordedDeltas.length).toBeGreaterThan(0);
+    expect(Math.max(...recordedDeltas)).toBeLessThanOrEqual(CHATBOT_STREAM_PACING.maximumCharactersPerFrame);
+    expect(getChatbotStreamRate(10_000)).toBe(CHATBOT_STREAM_PACING.maximumCharactersPerSecond);
 
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(8500);
     const result = await streamPromise;
     expect(result.reply.length).toBe(400);
   });

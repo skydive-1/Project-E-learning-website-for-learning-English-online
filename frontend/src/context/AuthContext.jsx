@@ -4,6 +4,73 @@ import { getProfile } from '../modules/auth/services/auth.service';
 import { resetAuthLogoutGuard } from '../config/api.config';
 
 const AuthContext = createContext(null);
+const AUTH_USER_CACHE_KEY = 'auth_user_cache';
+
+const decodeJwtUser = (token) => {
+  try {
+    const encodedPayload = token.split('.')[1];
+    if (!encodedPayload) return null;
+
+    const normalizedPayload = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      '='
+    );
+    const binaryPayload = window.atob(paddedPayload);
+    const payloadJson = decodeURIComponent(
+      Array.from(binaryPayload, (char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')
+    );
+    const payload = JSON.parse(payloadJson);
+
+    if (payload.exp && payload.exp * 1000 <= Date.now()) return null;
+
+    const userId = payload.userId ?? payload.user_id ?? payload.id;
+    const roleId = payload.roleId ?? payload.role_id;
+    if (!userId && !payload.email) return null;
+
+    return {
+      userId,
+      user_id: userId,
+      email: payload.email,
+      username: payload.username || payload.email?.split('@')[0] || 'User',
+      roleId,
+      role_id: roleId,
+      is_super_admin: Number(roleId) === 1
+    };
+  } catch {
+    return null;
+  }
+};
+
+const readCachedUser = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+
+  try {
+    const cachedUser = JSON.parse(localStorage.getItem(AUTH_USER_CACHE_KEY));
+    if (cachedUser && typeof cachedUser === 'object') return cachedUser;
+  } catch {
+    localStorage.removeItem(AUTH_USER_CACHE_KEY);
+  }
+
+  // First load after this release: JWT claims prevent a guest-state flash before cache exists.
+  return decodeJwtUser(token);
+};
+
+const cacheUser = (userData) => {
+  if (userData && typeof userData === 'object') {
+    localStorage.setItem(AUTH_USER_CACHE_KEY, JSON.stringify(userData));
+  }
+};
+
+const clearStoredAuth = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem(AUTH_USER_CACHE_KEY);
+};
 
 const CRITICAL_AUTH_CODES = [
   'TOKEN_EXPIRED',
@@ -15,7 +82,8 @@ const CRITICAL_AUTH_CODES = [
 ];
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Render the last verified profile immediately while the backend revalidates the JWT.
+  const [user, setUser] = useState(readCachedUser);
   const [authStatus, setAuthStatus] = useState('checking'); // 'checking' | 'authenticated' | 'unauthenticated' | 'temporarily_unavailable'
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
@@ -24,6 +92,7 @@ export const AuthProvider = ({ children }) => {
   const fetchUserProfile = useCallback(async (retryCount = 0) => {
     const token = localStorage.getItem('token');
     if (!token) {
+      localStorage.removeItem(AUTH_USER_CACHE_KEY);
       setUser(null);
       setAuthStatus('unauthenticated');
       setLoading(false);
@@ -36,6 +105,7 @@ export const AuthProvider = ({ children }) => {
       setAuthStatus('checking');
       const res = await getProfile();
       const userData = res.data || res.user || res;
+      cacheUser(userData);
       setUser(userData);
       setAuthStatus('authenticated');
       setAuthError(null);
@@ -52,7 +122,7 @@ export const AuthProvider = ({ children }) => {
 
       if (isCriticalAuthError) {
         console.warn('❌ Token không hợp lệ hoặc đã hết hạn. Đăng xuất local.');
-        localStorage.removeItem('token');
+        clearStoredAuth();
         setUser(null);
         setAuthStatus('unauthenticated');
         setAuthError(null);
@@ -92,7 +162,7 @@ export const AuthProvider = ({ children }) => {
     // Lắng nghe sự kiện đăng xuất mềm từ API Interceptor khi có 401 nghiêm trọng
     const handleAuthLogout = (e) => {
       console.warn('⚡ Nhận sự kiện auth-logout:', e?.detail?.code || '401');
-      localStorage.removeItem('token');
+      clearStoredAuth();
       setUser(null);
       setAuthStatus('unauthenticated');
       setLoading(false);
@@ -125,7 +195,7 @@ export const AuthProvider = ({ children }) => {
 
   // Phương thức đăng xuất chủ động của người dùng
   const logout = () => {
-    localStorage.removeItem('token');
+    clearStoredAuth();
     setUser(null);
     setAuthStatus('unauthenticated');
     setLoading(false);
@@ -137,6 +207,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await getProfile();
       const userData = res.data || res.user || res;
+      cacheUser(userData);
       setUser(userData);
       setAuthStatus('authenticated');
     } catch (error) {

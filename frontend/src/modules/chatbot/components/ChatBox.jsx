@@ -53,6 +53,7 @@ const ChatBox = ({
   const messagesEndRef = useRef(null);
   const recordingTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const activeAiMessageIdRef = useRef(null);
   const isMountedRef = useRef(true);
   const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
     onError: (message) => showToast(message, 'error')
@@ -73,7 +74,7 @@ const ChatBox = ({
   }, []);
 
   // Helper gõ chữ từng từ mượt mà (dành cho tin nhắn chào mừng hoặc kết quả Audio)
-  const streamTextWordByWord = async (aiMessageId, fullText, extraProps = {}) => {
+  const streamTextWordByWord = async (aiMessageId, fullText, extraProps = {}, signal = null) => {
     if (!isMountedRef.current) return;
     if (!fullText) {
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: '', isStreaming: false, ...extraProps } : m));
@@ -86,7 +87,7 @@ const ChatBox = ({
     let currentAccumulated = '';
     const words = fullText.split(/(\s+)/);
     for (let i = 0; i < words.length; i++) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || signal?.aborted) return;
       currentAccumulated += words[i];
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentAccumulated, isStreaming: true, ...extraProps } : m));
       await new Promise(r => setTimeout(r, Math.random() * 10 + 12));
@@ -131,6 +132,7 @@ const ChatBox = ({
       isStreaming: true,
       timestamp: new Date()
     };
+    activeAiMessageIdRef.current = aiMessageId;
 
     setMessages(prev => [...prev, userAudioMessage, aiSkeletonMessage]);
     setIsLoading(true);
@@ -265,7 +267,8 @@ const ChatBox = ({
       if (quickAction === 'LESSON_QUICK_QUIZ' || text.toLowerCase().includes("trắc nghiệm") || text.toLowerCase().includes("bài tập ôn nhanh")) {
         const quizIntro = "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức bài học này:";
         const quizData = await generateChatbotQuiz(lessonId);
-        await streamTextWordByWord(aiMessageId, quizIntro, { quizData });
+        if (currentAbortController.signal.aborted) return;
+        await streamTextWordByWord(aiMessageId, quizIntro, { quizData }, currentAbortController.signal);
       } else {
         let finalSources = [];
         let finalActions = [];
@@ -362,10 +365,36 @@ const ChatBox = ({
         } : m));
       }
     } finally {
-      if (isMountedRef.current) {
+      const ownsActiveRequest = abortControllerRef.current === currentAbortController
+        || activeAiMessageIdRef.current === aiMessageId;
+
+      if (abortControllerRef.current === currentAbortController) {
+        abortControllerRef.current = null;
+      }
+      if (activeAiMessageIdRef.current === aiMessageId) {
+        activeAiMessageIdRef.current = null;
+      }
+      if (isMountedRef.current && ownsActiveRequest) {
         setIsLoading(false);
       }
     }
+  };
+
+  const handleStopResponse = () => {
+    const activeMessageId = activeAiMessageIdRef.current;
+    const activeController = abortControllerRef.current;
+    if (!activeMessageId || !activeController) return;
+
+    activeController.abort();
+    abortControllerRef.current = null;
+    activeAiMessageIdRef.current = null;
+
+    setMessages(prev => prev.map(message => message.id === activeMessageId ? {
+      ...message,
+      isStreaming: false,
+      isStopped: true
+    } : message));
+    setIsLoading(false);
   };
 
   // Mở Custom Delete Confirmation Modal (thay thế hoàn toàn window.confirm)
@@ -476,6 +505,7 @@ const ChatBox = ({
         inputText={inputText}
         setInputText={setInputText}
         onSubmit={() => handleSendMessage()}
+        onStopResponse={handleStopResponse}
         isLoading={isLoading}
         isRecording={isRecording}
         recordingTime={recordingTime}
