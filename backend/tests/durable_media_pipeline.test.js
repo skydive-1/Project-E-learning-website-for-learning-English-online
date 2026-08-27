@@ -722,6 +722,82 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.ok(redirectUrl && redirectUrl.startsWith('http'), 'Phải redirect tới Signed URL để PDF.js đọc tài liệu');
     });
 
+    it('6.1 PDF chính của bài học được proxy từ Supabase với MIME application/pdf', async () => {
+      const pdfBody = createMockValidPdfBuffer();
+      coursesService.canUserAccessLesson = async () => true;
+      coursesService.getLessonById = async () => ({
+        lesson_id: 52,
+        title: 'Mind maps',
+        content_type: 'pdf',
+        content_url: 'courses/2/pdf-id/Mind_maps.pdf',
+        storage_key: 'courses/2/pdf-id/Mind_maps.pdf',
+        storage_provider: 'supabase',
+        storage_bucket: 'documents',
+        media_status: 'READY'
+      });
+      supabaseStorage.fetchPrivateObject = async (storageKey, bucket) => {
+        assert.strictEqual(storageKey, 'courses/2/pdf-id/Mind_maps.pdf');
+        assert.strictEqual(bucket, 'documents');
+        return new Response(pdfBody, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Length': String(pdfBody.length),
+            'Accept-Ranges': 'bytes'
+          }
+        });
+      };
+
+      const res = new PassThrough();
+      res.headers = {};
+      res.setHeader = (key, value) => { res.headers[key] = value; };
+      res.status = (code) => { res.statusCode = code; return res; };
+      res.json = (payload) => { res.payload = payload; res.end(); return res; };
+      res.resume();
+      const finished = new Promise(resolve => res.once('finish', resolve));
+
+      await lessonsController.streamLessonPdf({
+        params: { lessonId: '52' },
+        user: { id: 5, roleId: 3 },
+        headers: {}
+      }, res, () => {});
+      await finished;
+
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.headers['Content-Type'], 'application/pdf');
+      assert.strictEqual(res.headers['X-Content-Type-Options'], 'nosniff');
+      assert.strictEqual(res.headers.Location, undefined, 'Không được lộ signed URL Supabase');
+    });
+
+    it('6.2 PDF local legacy bị mất trả lỗi rõ ràng thay vì URL /uploads hỏng', async () => {
+      coursesService.canUserAccessLesson = async () => true;
+      coursesService.getLessonById = async () => ({
+        lesson_id: 52,
+        title: 'Mind maps',
+        content_type: 'pdf',
+        content_url: '/uploads/courses/documents/file-does-not-exist.pdf',
+        storage_key: null,
+        storage_provider: 'local',
+        media_status: null
+      });
+
+      let responseCode = null;
+      let responseBody = null;
+      const res = {
+        status: (code) => { responseCode = code; return res; },
+        json: (payload) => { responseBody = payload; return res; }
+      };
+
+      await lessonsController.streamLessonPdf({
+        params: { lessonId: '52' },
+        user: { id: 5, roleId: 3 },
+        headers: {}
+      }, res, () => {});
+
+      assert.strictEqual(responseCode, 404);
+      assert.strictEqual(responseBody.code, 'PDF_MISSING_SOURCE');
+    });
+
     // Test 7: RAG text extraction vẫn chạy
     it('7. RAG text extraction trích xuất nội dung từ PDF trước khi cleanup file tạm', async () => {
       const { extractTextFromPdf } = require('../src/utils/pdfExtractor.util');

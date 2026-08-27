@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -58,6 +58,35 @@ export default function PdfStudyViewer({
   onCreateNote,
   onSelectNote
 }) {
+  const pdfFile = useMemo(() => {
+    if (!pdfUrl || typeof pdfUrl !== 'string') return pdfUrl;
+
+    try {
+      const apiBase = new URL(
+        import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+        window.location.origin
+      );
+      const documentUrl = new URL(pdfUrl, window.location.origin);
+      const apiPath = apiBase.pathname.replace(/\/+$/, '');
+      const isProtectedLessonPdf = documentUrl.origin === apiBase.origin
+        && documentUrl.pathname.startsWith(`${apiPath}/lessons/`)
+        && documentUrl.pathname.endsWith('/pdf');
+      const token = isProtectedLessonPdf ? localStorage.getItem('token') : null;
+
+      if (token) {
+        return {
+          url: documentUrl.toString(),
+          httpHeaders: { Authorization: `Bearer ${token}` },
+          withCredentials: true
+        };
+      }
+    } catch (_) {
+      // URL ngoài hoặc URL tương đối không hợp lệ sẽ được react-pdf xử lý như trước.
+    }
+
+    return pdfUrl;
+  }, [pdfUrl]);
+
   const showToast = useToast();
   const [numPages, setNumPages] = useState(null);
   const [currentPage, setCurrentPage] = useState(activePage || 1);
@@ -628,7 +657,7 @@ export default function PdfStudyViewer({
         {pdfUrl && (
           <Document
             key={`doc_retry_${documentRetryKey}_${pdfUrl}`}
-            file={pdfUrl}
+            file={pdfFile}
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={onDocumentLoadError}
             loading={null}
