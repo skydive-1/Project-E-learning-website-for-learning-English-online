@@ -4,10 +4,22 @@ import {
   getCourseQuizQuestions, 
   getFreeQuizById,
   getCourseQuizByLessonId,
-  submitQuizAttempt
+  submitQuizAttempt,
+  submitOpenClozeAnswer
 } from '../../quizzes/services/quizzes.service';
+import OpenClozeQuestion from '../../quizzes/components/OpenClozeQuestion';
+import getEffectiveQuestionType from '../../quizzes/utils/questionType';
 import { useGamification } from '../../../context/GamificationContext';
 import { useToast } from '../../../context/ToastContext';
+
+export const formatQuizOption = (option) => {
+  let displayValue = option;
+  if (option && typeof option === 'object') {
+    displayValue = option.text ?? option.value ?? option.label ?? option.answer;
+  }
+  if (displayValue === undefined || displayValue === null) return '';
+  return String(displayValue).replace(/^[A-D](?:[.):\-]\s*|\s+)/i, '').trim();
+};
 
 const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const { triggerBadgeUnlock } = useGamification() || {};
@@ -24,6 +36,11 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(600); // seconds
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [clozeAnswersByQuestion, setClozeAnswersByQuestion] = useState({});
+  const [clozeFeedbackByQuestion, setClozeFeedbackByQuestion] = useState({});
+  const [questionScores, setQuestionScores] = useState({});
+  const [submittingQuestionId, setSubmittingQuestionId] = useState(null);
+  const [isFinalSubmitting, setIsFinalSubmitting] = useState(false);
 
   const timerRef = useRef(null);
 
@@ -64,6 +81,11 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     setIsSubmitted(false);
     setScore(0);
     setShowConfirmModal(false);
+    setClozeAnswersByQuestion({});
+    setClozeFeedbackByQuestion({});
+    setQuestionScores({});
+    setSubmittingQuestionId(null);
+    setIsFinalSubmitting(false);
 
     return () => {
       isCurrent = false;
@@ -107,32 +129,39 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   };
 
   const calculateAndSubmit = async () => {
-    let correctCount = 0;
-    questions.forEach((q) => {
-      if (selectedAnswers[q.id] === q.correctAnswer) {
-        correctCount++;
-      }
-    });
+    if (isFinalSubmitting) return;
+    setIsFinalSubmitting(true);
 
-    setScore(correctCount);
+    let correctCount = questions.reduce((total, question) => {
+      const type = getEffectiveQuestionType(question);
+      if (type === 'multiple_choice') {
+        return total + (selectedAnswers[question.id] === question.correctAnswer ? 1 : 0);
+      }
+      return total + (Number(questionScores[question.id]) || 0) / 100;
+    }, 0);
+
     setIsSubmitted(true);
     setShowConfirmModal(false);
 
-    if (correctCount > 0 && correctCount === questions.length && triggerBadgeUnlock) {
-      triggerBadgeUnlock('badge-quiz-100');
-    }
-
     if (actualQuizId) {
       try {
-        await submitQuizAttempt(actualQuizId, selectedAnswers);
+        const result = await submitQuizAttempt(actualQuizId, selectedAnswers);
+        const authoritativeCount = Number(result?.data?.correct_count);
+        if (Number.isFinite(authoritativeCount)) correctCount = authoritativeCount;
       } catch (err) {
         console.warn("⚠️ Không thể lưu kết quả thi lên máy chủ:", err.message);
       }
     }
 
+    setScore(correctCount);
+    if (correctCount > 0 && correctCount === questions.length && triggerBadgeUnlock) {
+      triggerBadgeUnlock('badge-quiz-100');
+    }
+
     if (onComplete) {
       onComplete(correctCount, questions.length);
     }
+    setIsFinalSubmitting(false);
   };
 
   const handleRetake = () => {
@@ -141,6 +170,56 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     setIsSubmitted(false);
     setScore(0);
     setTimeLeft(timeLimit * 60);
+    setClozeAnswersByQuestion({});
+    setClozeFeedbackByQuestion({});
+    setQuestionScores({});
+    setSubmittingQuestionId(null);
+    setIsFinalSubmitting(false);
+  };
+
+  const handleClozeAnswerChange = (questionId, gapId, value) => {
+    if (isSubmitted || clozeFeedbackByQuestion[questionId]) return;
+    setClozeAnswersByQuestion(prev => ({
+      ...prev,
+      [questionId]: {
+        ...(prev[questionId] || {}),
+        [gapId]: String(value || '').slice(0, 100)
+      }
+    }));
+  };
+
+  const handleClozeSubmit = async (event, question) => {
+    event.preventDefault();
+    const gaps = Array.isArray(question.options) ? question.options : [];
+    const answers = clozeAnswersByQuestion[question.id] || {};
+    const hasEmptyGap = gaps.length === 0 || gaps.some(gap => !String(answers[gap?.id] || '').trim());
+
+    if (hasEmptyGap) {
+      showToast('Vui lòng điền đầy đủ tất cả chỗ trống trước khi nộp.', 'warning');
+      return;
+    }
+    if (!actualQuizId) {
+      showToast('Không xác định được bài quiz để chấm điểm. Vui lòng tải lại trang.', 'error');
+      return;
+    }
+
+    try {
+      setSubmittingQuestionId(question.id);
+      const result = await submitOpenClozeAnswer(actualQuizId, question.id, answers);
+      if (!result?.success || !result?.data) throw new Error('Phản hồi chấm điểm không hợp lệ.');
+
+      setClozeFeedbackByQuestion(prev => ({ ...prev, [question.id]: result.data }));
+      setQuestionScores(prev => ({ ...prev, [question.id]: Number(result.data.score) || 0 }));
+      setSelectedAnswers(prev => ({
+        ...prev,
+        [question.id]: { type: 'open_cloze', answers: { ...answers } }
+      }));
+    } catch (err) {
+      console.error('Lỗi chấm câu Open Cloze:', err);
+      showToast(err.response?.data?.message || 'Không thể chấm câu điền từ. Vui lòng thử lại.', 'error');
+    } finally {
+      setSubmittingQuestionId(null);
+    }
   };
 
   // Format time (MM:SS)
@@ -161,6 +240,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   }
 
   const currentQuestion = questions[activeQuestionIdx];
+  const currentQuestionType = getEffectiveQuestionType(currentQuestion);
   const totalQuestions = questions.length;
   const answeredCount = Object.keys(selectedAnswers).length;
   const isTimeCritical = timeLeft < 60; // Dưới 1 phút
@@ -234,10 +314,12 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
             </p>
           </div>
 
-          {/* Options List */}
+          {/* Multiple-choice options */}
+          {currentQuestionType === 'multiple_choice' && (
           <div className="flex flex-col space-y-3">
-            {currentQuestion.options.map((option, idx) => {
+            {(Array.isArray(currentQuestion.options) ? currentQuestion.options : []).map((option, idx) => {
               const optionKey = String.fromCharCode(65 + idx); // A, B, C, D
+              const optionLabel = formatQuizOption(option);
               const isSelected = selectedAnswers[currentQuestion.id] === optionKey;
               const isCorrect = currentQuestion.correctAnswer === optionKey;
 
@@ -271,11 +353,48 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                   <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold mr-3.5 shrink-0 transition-colors ${labelBadge}`}>
                     {optionKey}
                   </span>
-                  <span className="flex-1">{option.replace(/^[A-D]\.\s*/, '')}</span>
+                  <span className="flex-1 break-words">{optionLabel || `Lựa chọn ${optionKey}`}</span>
                 </button>
               );
             })}
+            {(!Array.isArray(currentQuestion.options) || currentQuestion.options.length === 0) && (
+              <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800">
+                Câu hỏi này chưa có phương án trả lời hợp lệ. Vui lòng báo cho giảng viên để cập nhật đề.
+              </div>
+            )}
           </div>
+          )}
+
+          {currentQuestionType === 'open_cloze' && (
+            <OpenClozeQuestion
+              question={currentQuestion}
+              answers={clozeAnswersByQuestion[currentQuestion.id] || {}}
+              onAnswerChange={(gapId, value) => handleClozeAnswerChange(currentQuestion.id, gapId, value)}
+              onSubmit={(event) => handleClozeSubmit(event, currentQuestion)}
+              disabled={isSubmitted || Boolean(clozeFeedbackByQuestion[currentQuestion.id])}
+              loading={submittingQuestionId === currentQuestion.id}
+              feedback={clozeFeedbackByQuestion[currentQuestion.id] || null}
+              showSubmit={!isSubmitted && !clozeFeedbackByQuestion[currentQuestion.id]}
+            />
+          )}
+
+          {(currentQuestionType === 'writing' || currentQuestionType === 'pronunciation') && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-5 text-sm text-slate-700">
+              <p className="font-semibold">
+                {currentQuestionType === 'writing'
+                  ? 'Câu tự luận này cần trình chấm bài AI đầy đủ.'
+                  : 'Câu phát âm này cần quyền Micro và trình chấm giọng nói đầy đủ.'}
+              </p>
+              {actualQuizId && (
+                <a
+                  href={`/quizzes/play/${actualQuizId}`}
+                  className="mt-3 inline-flex min-h-11 items-center rounded-xl bg-smart-indigo px-4 py-2 text-xs font-bold text-white hover:bg-indigo-600"
+                >
+                  Mở trình làm bài đầy đủ
+                </a>
+              )}
+            </div>
+          )}
 
           {/* Explanation in review mode */}
           {isSubmitted && currentQuestion.explanation && (
@@ -394,9 +513,10 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               </button>
               <button
                 onClick={calculateAndSubmit}
-                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-xs rounded-xl tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
+                disabled={isFinalSubmitting}
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 disabled:cursor-wait text-white font-semibold text-xs rounded-xl tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
               >
-                Xác nhận nộp
+                {isFinalSubmitting ? 'Đang nộp...' : 'Xác nhận nộp'}
               </button>
             </div>
           </div>
