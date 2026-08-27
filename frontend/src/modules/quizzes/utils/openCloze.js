@@ -67,7 +67,7 @@ export const normalizeQuestion = (q) => {
     type = 'open_cloze';
   }
 
-  const text = String(q.question_text || q.questionText || '').trim();
+  const text = String(q.question_text || q.questionText || q.question || '').trim();
   const explanation = String(q.explanation || '').trim();
 
   if (type === 'multiple_choice') {

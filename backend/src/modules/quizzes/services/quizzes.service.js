@@ -13,14 +13,14 @@ class QuizzesService {
 
       if (courseId === 'free') {
         quizzesQuery = `
-          SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+          SELECT quiz_id, course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
           FROM quizzes
           WHERE course_id IS NULL AND (is_private IS FALSE OR is_private IS NULL)
           ORDER BY quiz_id ASC
         `;
       } else {
         quizzesQuery = `
-          SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+          SELECT quiz_id, course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
           FROM quizzes
           WHERE course_id = $1
           ORDER BY quiz_id ASC
@@ -69,7 +69,7 @@ class QuizzesService {
   async getQuizById(quizId) {
     try {
       const quizQuery = `
-        SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+        SELECT quiz_id, course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
         FROM quizzes
         WHERE quiz_id = $1
       `;
@@ -100,7 +100,7 @@ class QuizzesService {
     try {
       if (!pinCode) return null;
       const quizQuery = `
-        SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+        SELECT quiz_id, course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
         FROM quizzes
         WHERE UPPER(pin_code) = UPPER($1)
       `;
@@ -444,24 +444,64 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
   }
 
   async createQuiz(title, description, difficulty, timeLimit, questions, isPrivate = false, pinCode = null, courseId = null, lessonId = null) {
+    const client = await db.pool.connect();
     try {
-      await db.query('BEGIN');
-      const insertQuizQuery = `
-        INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code)
-        VALUES ($7, $8, $1, $2, $3, $4, $5, $6)
-        RETURNING quiz_id
-      `;
-      const quizResult = await db.query(insertQuizQuery, [
-        title,
-        description,
-        difficulty || 'Medium',
-        parseInt(timeLimit, 10) || 10,
-        Boolean(isPrivate),
-        pinCode ? String(pinCode).trim() : null,
-        courseId ? parseInt(courseId, 10) : null,
-        lessonId ? parseInt(lessonId, 10) : null
-      ]);
-      const quizId = quizResult.rows[0].quiz_id;
+      await client.query('BEGIN');
+      const parsedCourseId = courseId ? parseInt(courseId, 10) : null;
+      const parsedLessonId = lessonId ? parseInt(lessonId, 10) : null;
+      let quizId;
+
+      if (parsedLessonId) {
+        const lessonResult = await client.query(
+          `SELECT l.lesson_id, s.course_id
+           FROM lessons l JOIN sections s ON s.section_id = l.section_id
+           WHERE l.lesson_id = $1 FOR UPDATE`,
+          [parsedLessonId]
+        );
+        if (lessonResult.rows.length === 0 || (parsedCourseId && Number(lessonResult.rows[0].course_id) !== parsedCourseId)) {
+          const error = new Error('Bài học không tồn tại trong khóa học đã chọn.');
+          error.status = 400;
+          error.code = 'QUIZ_LESSON_COURSE_MISMATCH';
+          throw error;
+        }
+
+        const existingResult = await client.query(
+          'SELECT quiz_id FROM quizzes WHERE lesson_id = $1 ORDER BY quiz_id DESC LIMIT 1 FOR UPDATE',
+          [parsedLessonId]
+        );
+        if (existingResult.rows.length > 0) {
+          quizId = existingResult.rows[0].quiz_id;
+          await client.query(
+            `UPDATE quizzes
+             SET course_id = $1, lesson_id = $2, title = $3, description = $4,
+                 difficulty = $5, time_limit = $6, is_private = $7, pin_code = $8
+             WHERE quiz_id = $9`,
+            [parsedCourseId || lessonResult.rows[0].course_id, parsedLessonId, title, description,
+              difficulty || 'Medium', parseInt(timeLimit, 10) || 10, Boolean(isPrivate),
+              pinCode ? String(pinCode).trim() : null, quizId]
+          );
+          await client.query('DELETE FROM questions WHERE quiz_id = $1', [quizId]);
+        }
+      }
+
+      if (!quizId) {
+        const insertQuizQuery = `
+          INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code)
+          VALUES ($7, $8, $1, $2, $3, $4, $5, $6)
+          RETURNING quiz_id
+        `;
+        const quizResult = await client.query(insertQuizQuery, [
+          title,
+          description,
+          difficulty || 'Medium',
+          parseInt(timeLimit, 10) || 10,
+          Boolean(isPrivate),
+          pinCode ? String(pinCode).trim() : null,
+          parsedCourseId,
+          parsedLessonId
+        ]);
+        quizId = quizResult.rows[0].quiz_id;
+      }
 
       if (questions && Array.isArray(questions) && questions.length > 0) {
         for (const q of questions) {
@@ -481,7 +521,7 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
             qCorr = '';
           }
 
-          await db.query(insertQuestionQuery, [
+          await client.query(insertQuestionQuery, [
             quizId,
             qText,
             JSON.stringify(opts),
@@ -491,12 +531,14 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
           ]);
         }
       }
-      await db.query('COMMIT');
+      await client.query('COMMIT');
       return { quizId, title, description };
     } catch (error) {
-      await db.query('ROLLBACK');
+      await client.query('ROLLBACK');
       console.error("Lỗi xảy ra tại QuizzesService.createQuiz:", error);
       throw error;
+    } finally {
+      client.release();
     }
   }
 

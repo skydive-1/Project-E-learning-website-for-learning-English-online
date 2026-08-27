@@ -32,6 +32,7 @@ exports.getQuizzes = async (req, res, next) => {
     const sanitizedData = data.map(quiz => ({
       quiz_id: quiz.quiz_id,
       course_id: quiz.course_id,
+      lesson_id: quiz.lesson_id,
       title: quiz.title,
       description: quiz.description,
       difficulty: quiz.difficulty,
@@ -164,6 +165,7 @@ exports.getQuizByPin = async (req, res, next) => {
     const sanitizedQuiz = {
       quiz_id: quiz.quiz_id,
       course_id: quiz.course_id,
+      lesson_id: quiz.lesson_id,
       title: quiz.title,
       description: quiz.description,
       difficulty: quiz.difficulty,
@@ -200,6 +202,7 @@ exports.getQuizById = async (req, res, next) => {
     const sanitizedQuiz = {
       quiz_id: quiz.quiz_id,
       course_id: quiz.course_id,
+      lesson_id: quiz.lesson_id,
       title: quiz.title,
       description: quiz.description,
       difficulty: quiz.difficulty,
