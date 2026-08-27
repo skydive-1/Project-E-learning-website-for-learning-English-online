@@ -574,15 +574,17 @@ const LessonDetailPage = () => {
 
   // Đồng bộ sidebar tab 2 chiều khi chuyển đổi giữa PDF và Video (TASK-PDF-SMART-NOTES-01-R1)
   useEffect(() => {
+    if (!currentLesson?.id) return;
+
     if (isPdfLesson) {
       if (activeRightTab === 'transcript') {
         setActiveRightTab('ai');
       }
-      if (activeRightTab === 'notes') {
-        setActiveRightTab('ai');
-      }
+    } else if (activeRightTab === 'notes') {
+      // Tab ghi chú PDF không hợp lệ khi chuyển sang bài video.
+      setActiveRightTab('playlist');
     }
-  }, [isPdfLesson, activeRightTab]);
+  }, [currentLesson?.id, currentLesson?.type, isPdfLesson, activeRightTab]);
 
   // TanStack Query for PDF Notes
   const {
@@ -1698,9 +1700,18 @@ const LessonDetailPage = () => {
               <div className="col-span-1 lg:col-span-5 xl:col-span-4 flex flex-col min-h-[520px] h-[580px] lg:h-[calc(100vh-110px)] lg:sticky lg:top-20 border rounded-2xl overflow-hidden shadow-sm transition-all duration-300" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
 
                 {/* Sidebar Tabs Headers */}
-                <div className="flex border-b shrink-0" style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}>
+                <div
+                  role="tablist"
+                  aria-label="Nội dung hỗ trợ bài học"
+                  className="flex border-b shrink-0"
+                  style={{ backgroundColor: 'var(--bg-color)', borderBottomColor: 'var(--border-color)' }}
+                >
                   <button
                     type="button"
+                    role="tab"
+                    id="right-tab-playlist"
+                    aria-selected={activeRightTab === "playlist"}
+                    aria-controls="right-panel-playlist"
                     onClick={() => setActiveRightTab("playlist")}
                     style={{
                       borderBottomColor: activeRightTab === "playlist" ? "#3b82f6" : "transparent",
@@ -1716,6 +1727,10 @@ const LessonDetailPage = () => {
                   {isPdfLesson && (
                     <button
                       type="button"
+                      role="tab"
+                      id="right-tab-notes"
+                      aria-selected={activeRightTab === "notes"}
+                      aria-controls="right-panel-notes"
                       onClick={() => setActiveRightTab("notes")}
                       style={{
                         borderBottomColor: activeRightTab === "notes" ? "#f59e0b" : "transparent",
@@ -1737,6 +1752,10 @@ const LessonDetailPage = () => {
 
                   <button
                     type="button"
+                    role="tab"
+                    id="right-tab-ai"
+                    aria-selected={activeRightTab === "ai"}
+                    aria-controls="right-panel-ai"
                     onClick={() => setActiveRightTab("ai")}
                     style={{
                       borderBottomColor: activeRightTab === "ai" ? "#3b82f6" : "transparent",
@@ -1755,7 +1774,12 @@ const LessonDetailPage = () => {
 
                   {/* Playlist View */}
                   {activeRightTab === "playlist" && course && (
-                    <div className="h-full overflow-y-auto px-4 py-4 space-y-4">
+                    <div
+                      role="tabpanel"
+                      id="right-panel-playlist"
+                      aria-labelledby="right-tab-playlist"
+                      className="h-full overflow-y-auto px-4 py-4 space-y-4"
+                    >
                       {course.sections.map((sec) => {
                         const isExpanded = !!expandedSections[sec.id];
                         return (
@@ -1844,7 +1868,12 @@ const LessonDetailPage = () => {
 
                   {/* PDF Notes View */}
                   {activeRightTab === "notes" && isPdfLesson && (
-                    <div className="h-full">
+                    <div
+                      role="tabpanel"
+                      id="right-panel-notes"
+                      aria-labelledby="right-tab-notes"
+                      className="h-full"
+                    >
                       <React.Suspense
                         fallback={
                           <div className="flex items-center justify-center p-8 text-slate-400 text-xs">
@@ -1869,7 +1898,12 @@ const LessonDetailPage = () => {
 
                   {/* AI Assistant ChatBox View */}
                   {activeRightTab === "ai" && (
-                    <div className="h-full p-2">
+                    <div
+                      role="tabpanel"
+                      id="right-panel-ai"
+                      aria-labelledby="right-tab-ai"
+                      className="h-full p-2"
+                    >
                       <ErrorBoundary title="Không thể kết nối với Trợ lý AI" message="Khung hội thoại RAG AI đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài giảng bằng video bình thường.">
                         <ChatBox 
                           lessonId={targetLessonId || currentLesson?.id} 

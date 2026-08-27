@@ -47,6 +47,18 @@ vi.mock('../src/components/common/Footer', () => ({
   default: () => <div data-testid="mock-footer">Footer</div>
 }));
 
+vi.mock('../src/modules/lessons/components/PdfStudyViewer', () => ({
+  default: () => <div data-testid="mock-pdf-viewer">PDF Viewer</div>
+}));
+
+vi.mock('../src/modules/lessons/components/PdfNotesPanel', () => ({
+  default: () => <div data-testid="mock-pdf-notes-panel">PDF Notes Panel</div>
+}));
+
+vi.mock('../src/modules/chatbot/components/ChatBox', () => ({
+  default: () => <div data-testid="mock-ai-chat">AI Chat</div>
+}));
+
 // Mock Auth service
 vi.mock('../src/modules/auth/services/auth.service', () => ({
   getProfile: vi.fn().mockResolvedValue({
@@ -213,6 +225,53 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
 
     await waitFor(() => {
       expect(ticketSpy).toHaveBeenCalledWith('201');
+    });
+  });
+
+  it('3. Tab Ghi chú của bài PDF giữ nguyên trạng thái và không bị chuyển sang AI Chat', async () => {
+    const pdfLesson = {
+      id: '52',
+      title: 'Mind maps PDF',
+      type: 'pdf',
+      pdfUrl: '/api/lessons/52/pdf',
+      courseId: 26,
+      pdfVersion: 1
+    };
+    const mockCourse = {
+      id: 26,
+      title: 'Khóa học PDF',
+      sections: [
+        {
+          id: 260,
+          title: 'Chương PDF',
+          lessons: [pdfLesson]
+        }
+      ]
+    };
+
+    vi.spyOn(lessonsService, 'getCourseDetails').mockResolvedValue(mockCourse);
+    vi.spyOn(lessonsService, 'getLessonById').mockResolvedValue(pdfLesson);
+    vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { data: [] } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/lessons/52']}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/lessons/:lessonId" element={<LessonDetailPage />} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const notesTab = await screen.findByRole('tab', { name: /Ghi chú/i });
+    fireEvent.click(notesTab);
+
+    await waitFor(() => {
+      expect(notesTab).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByTestId('mock-pdf-notes-panel')).toBeInTheDocument();
+      expect(screen.queryByTestId('mock-ai-chat')).not.toBeInTheDocument();
     });
   });
 });
