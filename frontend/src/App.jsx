@@ -29,6 +29,7 @@ import AnalyticsDashboardPage from './modules/analytics/pages/AnalyticsDashboard
 import { GamificationProvider } from './context/GamificationContext';
 import { ToastProvider } from './context/ToastContext';
 import BadgeUnlockModal from './modules/gamification/components/BadgeUnlockModal';
+import ClickParticleEffect from './components/common/ClickParticleEffect';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -168,6 +169,7 @@ function App() {
                   <MobileBottomNav />
                   <BadgeUnlockModal />
                   <OfflineIndicator />
+                  <ClickParticleEffect />
                   </GamificationProvider>
                 </AuthProvider>
               </BrowserRouter>

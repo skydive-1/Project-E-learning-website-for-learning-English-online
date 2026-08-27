@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FiBookOpen, FiGlobe, FiHeart, FiCpu, FiShield } from 'react-icons/fi';
+import { FiBookOpen, FiGlobe, FiCpu, FiShield } from 'react-icons/fi';
 import { useLanguage } from '../../context/LanguageContext';
 
 const Footer = () => {
@@ -60,11 +60,8 @@ const Footer = () => {
         </div>
 
         {/* Bottom copyright */}
-        <div className="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500">
+        <div className="pt-6 border-t border-slate-800 text-xs text-slate-500">
           <p>© 2026 EngLearn Pro. All rights reserved.</p>
-          <p className="flex items-center gap-1 mt-2 sm:mt-0">
-            {t('Phát triển với')} <FiHeart className="text-red-500 w-3.5 h-3.5" /> {t('cho trải nghiệm học chuẩn Impeccable & UI-UX Pro Max')}
-          </p>
         </div>
       </div>
     </footer>
