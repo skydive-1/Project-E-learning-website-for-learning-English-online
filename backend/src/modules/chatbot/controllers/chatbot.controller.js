@@ -122,7 +122,9 @@ exports.clearHistory = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Người dùng chưa xác thực' });
     }
 
-    const targetUserId = req.params.userId || req.body.userId || req.query.userId || currentUserId;
+    // DELETE requests normally have no request body. Optional chaining prevents
+    // a body-less request from throwing before the authenticated owner is used.
+    const targetUserId = req.params.userId || req.body?.userId || req.query.userId || currentUserId;
     const isOwner = String(currentUserId) === String(targetUserId);
     const isAdmin = req.user?.roleId === 1 || req.user?.role_id === 1;
 
@@ -133,7 +135,9 @@ exports.clearHistory = async (req, res, next) => {
       throw err;
     }
 
-    const lessonId = req.params.lessonId !== undefined ? req.params.lessonId : (req.query.lessonId !== undefined ? req.query.lessonId : req.body.lessonId);
+    const lessonId = req.params.lessonId !== undefined
+      ? req.params.lessonId
+      : (req.query.lessonId !== undefined ? req.query.lessonId : req.body?.lessonId);
     const result = await chatbotService.clearHistory(targetUserId, lessonId);
     res.status(200).json({
       success: true,

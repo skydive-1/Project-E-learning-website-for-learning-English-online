@@ -412,7 +412,7 @@ const ChatBox = ({
 
     try {
       if (user?.userId && (lessonId !== undefined && lessonId !== null)) {
-        await clearChatHistory(user.userId, lessonId);
+        await clearChatHistory(lessonId);
       }
 
       const resetText = (lessonId === 0 || lessonId === '0' || !lessonId)
