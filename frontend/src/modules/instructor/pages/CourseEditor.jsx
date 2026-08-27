@@ -17,7 +17,7 @@ import {
   fetchAndCacheQuizzes,
   deleteQuizById
 } from '../../quizzes/services/quizzes.service';
-import { syncClozeGaps, validateClozeDraft } from '../../quizzes/utils/openCloze';
+import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { useToast } from '../../../context/ToastContext';
 import '../styles/instructor.scss';
 
@@ -484,20 +484,7 @@ const CourseEditor = () => {
         questionTypes: quizAiTypes
       });
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        const normalized = res.questions.map(q => {
-          const type = q.question_type || q.questionType || 'multiple_choice';
-          const text = q.question_text || q.questionText || '';
-          const opts = type === 'open_cloze'
-            ? syncClozeGaps(text, q.options || [])
-            : (Array.isArray(q.options) ? q.options : []);
-          return {
-            question_text: text,
-            question_type: type,
-            options: opts,
-            correct_answer: q.correct_answer ?? q.correctAnswer ?? (type === 'multiple_choice' ? 'A' : ''),
-            explanation: q.explanation || ''
-          };
-        });
+        const normalized = normalizeQuestionsList(res.questions);
         setQuizDialogQuestions(normalized);
         setQuizDialogMode('manual');
         showToast(`Trợ lý AI đã tạo thành công ${normalized.length} câu hỏi!`, 'success');
@@ -523,7 +510,10 @@ const CourseEditor = () => {
       return;
     }
 
-    const invalidQuestion = quizDialogQuestions.find(q => {
+    // Auto-normalize questions ensuring strictly valid formats
+    const cleanedQuestions = normalizeQuestionsList(quizDialogQuestions);
+
+    const invalidQuestion = cleanedQuestions.find(q => {
       const type = q.question_type || 'multiple_choice';
       if (!String(q.question_text || '').trim()) return true;
       if (type === 'multiple_choice') {
@@ -553,7 +543,7 @@ const CourseEditor = () => {
       quizDescription: quizDialogDesc.trim(),
       quizDifficulty: quizDialogDifficulty,
       quizTimeLimit: quizDialogTimeLimit,
-      quizQuestions: quizDialogQuestions
+      quizQuestions: cleanedQuestions
     };
     setSections(updatedSections);
 
@@ -569,9 +559,9 @@ const CourseEditor = () => {
           pinCode: null,
           courseId: parseInt(courseId, 10),
           lessonId: targetLesson.id,
-          questions: quizDialogQuestions
+          questions: cleanedQuestions
         });
-        showToast(`Đã lưu ${quizDialogQuestions.length} câu hỏi cho bài học "${targetLesson.title}"!`, 'success');
+        showToast(`Đã lưu ${cleanedQuestions.length} câu hỏi cho bài học "${targetLesson.title}"!`, 'success');
       } catch (err) {
         console.warn('Lỗi lưu trực tiếp quiz:', err?.message);
         showToast(`Đã cập nhật câu hỏi cho bài học! Sẽ lưu cùng khóa học khi xuất bản.`, 'info');
@@ -579,7 +569,7 @@ const CourseEditor = () => {
         setQuizDialogSubmitting(false);
       }
     } else {
-      showToast(`Đã cập nhật ${quizDialogQuestions.length} câu hỏi vào bài học "${targetLesson.title}"!`, 'success');
+      showToast(`Đã cập nhật ${cleanedQuestions.length} câu hỏi vào bài học "${targetLesson.title}"!`, 'success');
     }
 
     setQuizDialogTarget(null);

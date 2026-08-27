@@ -43,7 +43,7 @@ export const tokenizeClozeTemplate = (template = '') => {
 };
 
 export const validateClozeDraft = (question) => {
-  const gapIds = extractClozeGapIds(question?.questionText || '');
+  const gapIds = extractClozeGapIds(question?.questionText || question?.question_text || '');
   if (gapIds.length === 0) return 'Hãy thêm ít nhất một chỗ trống bằng cú pháp {{1}}.';
   if (new Set(gapIds).size !== gapIds.length) return 'Mỗi mã chỗ trống phải là duy nhất.';
 
@@ -51,4 +51,113 @@ export const validateClozeDraft = (question) => {
   const gapsById = new Map(gaps.map(gap => [String(gap.id), gap]));
   const missing = gapIds.filter(id => !String(gapsById.get(id)?.answer || '').trim());
   return missing.length > 0 ? `Chưa nhập đáp án cho ô ${missing.join(', ')}.` : '';
+};
+
+export const normalizeQuestion = (q) => {
+  if (!q) return null;
+  const rawType = String(q.question_type || q.questionType || 'multiple_choice').toLowerCase().trim();
+  
+  // Normalize type
+  let type = 'multiple_choice';
+  if (['pronunciation', 'speaking', 'speech', 'voice'].includes(rawType)) {
+    type = 'pronunciation';
+  } else if (['writing', 'essay', 'paragraph', 'text'].includes(rawType)) {
+    type = 'writing';
+  } else if (['open_cloze', 'cloze', 'fill_in_the_blank', 'fill_blank'].includes(rawType)) {
+    type = 'open_cloze';
+  }
+
+  const text = String(q.question_text || q.questionText || '').trim();
+  const explanation = String(q.explanation || '').trim();
+
+  if (type === 'multiple_choice') {
+    // Clean and normalize options
+    const rawOptions = Array.isArray(q.options) ? q.options : [];
+    let cleanOptions = rawOptions.map(opt => {
+      if (typeof opt === 'object' && opt !== null) {
+        return String(opt.text || opt.value || opt.label || '').trim();
+      }
+      return String(opt || '').replace(/^[A-D]\s*[\.\:\-\)]\s*/i, '').trim();
+    }).filter(opt => opt.length > 0);
+
+    // If options are fewer than 4, provide reasonable default fillers
+    while (cleanOptions.length < 4) {
+      cleanOptions.push(`Lựa chọn ${String.fromCharCode(65 + cleanOptions.length)}`);
+    }
+    cleanOptions = cleanOptions.slice(0, 4);
+
+    // Resolve correct answer (must be strictly 'A', 'B', 'C', or 'D')
+    const rawAnswer = String(q.correct_answer ?? q.correctAnswer ?? '').trim();
+    let correctAnswer = 'A';
+    
+    // Check if rawAnswer starts with A, B, C, D
+    const letterMatch = rawAnswer.match(/^([A-D])(\.|\:|\s|\-|\)|$)/i);
+    if (letterMatch) {
+      correctAnswer = letterMatch[1].toUpperCase();
+    } else {
+      // Check if rawAnswer matches one of the option texts
+      const matchIdx = cleanOptions.findIndex(opt => opt.toLowerCase() === rawAnswer.toLowerCase());
+      if (matchIdx >= 0) {
+        correctAnswer = ['A', 'B', 'C', 'D'][matchIdx];
+      } else {
+        correctAnswer = 'A';
+      }
+    }
+
+    return {
+      question_text: text,
+      question_type: 'multiple_choice',
+      options: cleanOptions,
+      correct_answer: correctAnswer,
+      explanation
+    };
+  }
+
+  if (type === 'pronunciation') {
+    let rawAnswer = String(q.correct_answer ?? q.correctAnswer ?? '').trim();
+    if (!rawAnswer) {
+      rawAnswer = text.replace(/^Read the following sentence.*?:\s*/i, '').trim() || text;
+    }
+    return {
+      question_text: text,
+      question_type: 'pronunciation',
+      options: [],
+      correct_answer: rawAnswer,
+      explanation
+    };
+  }
+
+  if (type === 'writing') {
+    return {
+      question_text: text,
+      question_type: 'writing',
+      options: [],
+      correct_answer: '',
+      explanation
+    };
+  }
+
+  if (type === 'open_cloze') {
+    const gaps = syncClozeGaps(text, Array.isArray(q.options) ? q.options : []);
+    return {
+      question_text: text,
+      question_type: 'open_cloze',
+      options: gaps,
+      correct_answer: '',
+      explanation
+    };
+  }
+
+  return {
+    question_text: text,
+    question_type: type,
+    options: Array.isArray(q.options) ? q.options : [],
+    correct_answer: String(q.correct_answer ?? q.correctAnswer ?? ''),
+    explanation
+  };
+};
+
+export const normalizeQuestionsList = (list) => {
+  if (!Array.isArray(list)) return [];
+  return list.map(normalizeQuestion).filter(Boolean);
 };
