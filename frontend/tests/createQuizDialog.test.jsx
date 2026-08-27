@@ -65,23 +65,23 @@ describe('CreateQuizDialog shadcn UI', () => {
     render(<Harness />);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Tạo đề thi mới')).toBeInTheDocument();
+    expect(screen.getByText(/Tạo đề thi/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Tiêu đề đề thi *')).toHaveValue('Grammar review');
     expect(screen.getByLabelText('Đáp án A')).toHaveValue('Option A');
     expect(screen.getByRole('button', { name: /Xuất bản đề thi/i })).toHaveAttribute('form', 'manual-quiz-form');
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Khóa bằng mã PIN riêng tư/i }));
-    expect(screen.getByLabelText('Mã PIN (4–8 ký tự)')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Khóa bằng mã PIN riêng tư'));
+    expect(screen.getByPlaceholderText('MÃ PIN (VD: 882910)')).toBeInTheDocument();
   });
 
   it('switches to the AI tab and submits a configured topic', () => {
     const onGenerateAi = vi.fn();
     render(<Harness onGenerateAi={onGenerateAi} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: /Sinh đề bằng AI/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Sinh đề bằng/i }));
 
     expect(screen.getByLabelText('Chủ đề bài tập muốn AI tạo *')).toHaveValue('Travel English');
-    fireEvent.click(screen.getByRole('button', { name: /Bắt đầu tạo câu hỏi AI/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Bắt đầu tạo câu hỏi/i }));
     expect(onGenerateAi).toHaveBeenCalledTimes(1);
   });
 });

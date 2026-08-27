@@ -220,7 +220,7 @@ exports.getQuizById = async (req, res, next) => {
 
 exports.createQuiz = async (req, res, next) => {
   try {
-    const { title, description, difficulty, timeLimit, questions, isPrivate, pinCode } = req.body;
+    const { title, description, difficulty, timeLimit, questions, isPrivate, pinCode, courseId, lessonId } = req.body;
     if (!title) {
       const err = new Error("Tiêu đề đề thi không được trống.");
       err.status = 400;
@@ -231,7 +231,7 @@ exports.createQuiz = async (req, res, next) => {
       err.status = 400;
       throw err;
     }
-    const result = await quizzesService.createQuiz(title, description, difficulty, timeLimit, questions, isPrivate, pinCode);
+    const result = await quizzesService.createQuiz(title, description, difficulty, timeLimit, questions, isPrivate, pinCode, courseId, lessonId);
     res.status(201).json({
       success: true,
       message: "Tạo đề thi tự luyện mới thành công",

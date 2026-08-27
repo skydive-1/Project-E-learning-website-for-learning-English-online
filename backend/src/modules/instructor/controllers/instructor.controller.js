@@ -7,7 +7,9 @@ const instructorService = require('../services/instructor.service');
 exports.getStudents = async (req, res, next) => {
   try {
     const instructorId = req.user.id;
-    const students = await instructorService.getStudents(instructorId);
+    const roleId = req.user.roleId || req.user.role;
+    const isAdmin = roleId === 1 || roleId === '1' || Boolean(req.user.is_super_admin);
+    const students = await instructorService.getStudents(instructorId, isAdmin);
     
     res.status(200).json({
       success: true,
@@ -22,7 +24,9 @@ exports.getStudents = async (req, res, next) => {
 exports.getPerformance = async (req, res, next) => {
   try {
     const instructorId = req.user.id;
-    const performanceData = await instructorService.getPerformance(instructorId);
+    const roleId = req.user.roleId || req.user.role;
+    const isAdmin = roleId === 1 || roleId === '1' || Boolean(req.user.is_super_admin);
+    const performanceData = await instructorService.getPerformance(instructorId, isAdmin);
     
     res.status(200).json({
       success: true,
@@ -38,7 +42,9 @@ exports.getAnalytics = async (req, res, next) => {
   try {
     const instructorId = req.user.id;
     const range = req.query.range || 30;
-    const analytics = await instructorService.getAnalytics(instructorId, range);
+    const roleId = req.user.roleId || req.user.role;
+    const isAdmin = roleId === 1 || roleId === '1' || Boolean(req.user.is_super_admin);
+    const analytics = await instructorService.getAnalytics(instructorId, range, isAdmin);
 
     res.status(200).json({
       success: true,

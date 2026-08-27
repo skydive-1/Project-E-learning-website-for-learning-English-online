@@ -172,6 +172,7 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
                   </span>
                   <Input
                     required
+                    aria-label={`Đáp án ${letter}`}
                     value={options[optIdx] || ''}
                     placeholder={`Lựa chọn ${letter}...`}
                     onChange={(event) => {
@@ -386,9 +387,11 @@ const CreateQuizDialog = ({
         {/* 2. TABS SWITCHER (Manual vs AI)                           */}
         {/* ========================================================= */}
         <div className="px-6 py-3 shrink-0 bg-slate-50/60 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800/60">
-          <div className="grid grid-cols-2 w-full h-10 p-1 bg-slate-200/70 dark:bg-slate-800/80 rounded-xl">
+          <div role="tablist" className="grid grid-cols-2 w-full h-10 p-1 bg-slate-200/70 dark:bg-slate-800/80 rounded-xl">
             <button
               type="button"
+              role="tab"
+              aria-selected={createMode === 'manual'}
               onClick={() => onCreateModeChange('manual')}
               className={`rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                 createMode === 'manual'
@@ -403,6 +406,8 @@ const CreateQuizDialog = ({
             {canUseAi && (
               <button
                 type="button"
+                role="tab"
+                aria-selected={createMode === 'ai'}
                 onClick={() => onCreateModeChange('ai')}
                 className={`rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                   createMode === 'ai'
