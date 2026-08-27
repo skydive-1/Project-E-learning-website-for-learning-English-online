@@ -16,7 +16,7 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
-import { syncClozeGaps, validateClozeDraft } from '../../quizzes/utils/openCloze';
+import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import CreateQuizDialog from './CreateQuizDialog';
 
 // Skeleton loading cho Quiz Cards
@@ -199,27 +199,13 @@ const TestsAndQuizzesPanel = () => {
       });
 
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        const normalizedQuestions = res.questions.map(question => {
-          const questionType = question.question_type || question.questionType || 'multiple_choice';
-          const questionText = question.question_text || question.questionText || '';
-          const options = questionType === 'open_cloze'
-            ? syncClozeGaps(questionText, question.options || [])
-            : (Array.isArray(question.options) ? question.options : []);
-
-          return {
-            question_text: questionText,
-            question_type: questionType,
-            options,
-            correct_answer: question.correct_answer ?? question.correctAnswer ?? (questionType === 'multiple_choice' ? 'A' : ''),
-            explanation: question.explanation || ''
-          };
-        });
+        const normalizedQuestions = normalizeQuestionsList(res.questions);
 
         setQuestionsList(normalizedQuestions);
         if (!quizTitle) setQuizTitle(`Bài tập AI: ${aiTopic.trim()}`);
         if (!quizDesc) setQuizDesc(`Đề thi tự động tạo bởi Trợ lý AI E-Learn về chủ đề ${aiTopic.trim()}.`);
         setCreateMode('manual'); // Chuyển sang xem lại câu hỏi
-        showToast(`AI đã tạo thành công ${res.questions.length} câu hỏi!`, 'success');
+        showToast(`AI đã tạo thành công ${normalizedQuestions.length} câu hỏi!`, 'success');
       } else {
         showToast('Không thể sinh câu hỏi từ AI, vui lòng thử lại!', 'error');
       }
@@ -247,7 +233,10 @@ const TestsAndQuizzesPanel = () => {
       return;
     }
 
-    const invalidQuestion = questionsList.find(question => {
+    // Auto-normalize questions before saving
+    const cleanedQuestions = normalizeQuestionsList(questionsList);
+
+    const invalidQuestion = cleanedQuestions.find(question => {
       const type = question.question_type || 'multiple_choice';
       if (!String(question.question_text || '').trim()) return true;
       if (type === 'multiple_choice') {
@@ -278,7 +267,7 @@ const TestsAndQuizzesPanel = () => {
         timeLimit: quizTimeLimit,
         isPrivate: isPrivateQuiz,
         pinCode: isPrivateQuiz ? quizPinCode.trim() : null,
-        questions: questionsList
+        questions: cleanedQuestions
       });
 
       showToast('Đã tạo đề thi thành công!', 'success');
