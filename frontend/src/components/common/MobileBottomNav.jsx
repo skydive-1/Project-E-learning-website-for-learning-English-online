@@ -30,6 +30,7 @@ const MobileBottomNav = () => {
     },
     {
       to: '/courses',
+      state: { activeHubTab: 'course' },
       label: t('learn') || 'Học tập',
       icon: <FiBook className="text-lg" />
     },
@@ -53,6 +54,7 @@ const MobileBottomNav = () => {
     },
     {
       to: '/courses',
+      state: { activeHubTab: 'course' },
       label: t('learn') || 'Học tập',
       icon: <FiBook className="text-lg" />
     },
@@ -83,6 +85,7 @@ const MobileBottomNav = () => {
           <NavLink
             key={idx}
             to={item.to}
+            state={item.state}
             end={item.to === '/'}
             className={({ isActive }) =>
               `flex flex-col items-center justify-center flex-1 h-full min-w-[48px] min-h-[44px] px-1 py-1 transition-all duration-200 cursor-pointer ${

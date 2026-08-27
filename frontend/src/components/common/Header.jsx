@@ -81,10 +81,15 @@ const Header = () => {
         )}
 
         <nav id="main-nav" className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}>
-          <Link to="/courses" onClick={() => setIsMobileMenuOpen(false)}>{t('learn')}</Link>
+          <Link
+            to="/courses"
+            state={{ activeHubTab: 'course' }}
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            {t('learn')}
+          </Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>{t('roadmap')}</Link>
           <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
-          <a href="#pricing" onClick={() => setIsMobileMenuOpen(false)}>{t('pricing')}</a>
 
           {/* Mobile-only auth links or user menu */}
           {!user && isMobileMenuOpen && (

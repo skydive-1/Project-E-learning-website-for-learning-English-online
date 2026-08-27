@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
@@ -38,10 +38,11 @@ export const fetchCoursesFromApi = async () => {
 
 const CourseListPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useLanguage();
 
-  // Navigation Hub Sub-tab: 'vocab' (Default) | 'course' | 'quizzes'
-  const [activeHubTab, setActiveHubTab] = useState('vocab');
+  // Trang Learn luôn mở catalog khóa học trước; Vocab/Quizzes là các sub-tab.
+  const [activeHubTab, setActiveHubTab] = useState('course');
 
   // Modals & Active Selections
   const [selectedCollection, setSelectedCollection] = useState(null);
@@ -160,6 +161,15 @@ const CourseListPage = () => {
 
   // Course Catalog Filter & Search States
   const [courseSearch, setCourseSearch] = useState('');
+
+  // Kể cả khi đang đứng tại /courses, bấm lại Learn vẫn phải quay về đúng
+  // catalog Course như màn hình đích, thay vì giữ sub-tab trước đó.
+  useEffect(() => {
+    if (location.state?.activeHubTab === 'course') {
+      setActiveHubTab('course');
+      setCourseSearch('');
+    }
+  }, [location.key, location.state]);
 
   const filteredDbCourses = useMemo(() => {
     return dbCourses.filter(c => {
