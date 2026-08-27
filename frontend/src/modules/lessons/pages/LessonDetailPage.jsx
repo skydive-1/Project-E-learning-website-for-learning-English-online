@@ -698,7 +698,10 @@ const LessonDetailPage = () => {
 
   // Tự động tải phụ đề khi đổi bài học (Đặt sau khi currentLesson đã được khai báo an toàn)
   useEffect(() => {
-    if (!currentLesson?.id) return;
+    if (!currentLesson?.id || currentLesson.type !== 'video') {
+      setSubtitleData(null);
+      return;
+    }
     const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
     subtitlesService.getSubtitles(rawLessonId).then(data => {
       if (data) {
@@ -709,7 +712,7 @@ const LessonDetailPage = () => {
     }).catch(() => {
       setSubtitleData(null);
     });
-  }, [currentLesson?.id]);
+  }, [currentLesson?.id, currentLesson?.type]);
 
 
 

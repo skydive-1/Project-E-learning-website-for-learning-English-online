@@ -1,6 +1,14 @@
 import apiClient from '../../../config/api.config';
 import { getCourseQuizQuestions, fetchAndCacheQuizzes } from '../../quizzes/services/quizzes.service';
 
+const getApiBaseUrl = () => (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
+const getBackendHost = () => getApiBaseUrl().replace(/\/api$/, '');
+
+export const getLessonPdfUrl = (lessonId) => {
+  const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
+  return `${getApiBaseUrl()}/lessons/${encodeURIComponent(cleanId)}/pdf`;
+};
+
 /**
  * Lấy vé xem video bài học ngắn hạn (Short-lived 60s Ticket - TASK-VIDEO-TICKET-CONTRACT-HOTFIX-01)
  * Session JWT được truyền an toàn qua Authorization header của axios, không gắn vào query string.
@@ -226,15 +234,16 @@ export const getCourseDetails = async (courseId = 1) => {
               // ticket và từ chối nguồn không thể bảo vệ.
               resolvedUrl = l.content_type === 'video' ? 'protected-video-source' : l.content_url;
             } else {
-              const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-              const backendHost = apiUrl.replace(/\/api\/?$/, '');
               if (l.content_type === 'video') {
                 // Video nội bộ: Không gắn session JWT vào URL; Active lesson player sẽ xin ticket 60s riêng
                 resolvedUrl = l.content_url;
               } else {
-                resolvedUrl = `${backendHost}${l.content_url}`;
+                resolvedUrl = `${getBackendHost()}${l.content_url}`;
               }
             }
+          }
+          if (l.content_type === 'pdf' && (l.content_url || l.storage_key)) {
+            resolvedUrl = getLessonPdfUrl(l.lesson_id);
           }
           const isSpeakingType = l.content_type === 'speaking';
           
@@ -428,15 +437,16 @@ export const getLessonById = async (lessonId) => {
       if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
         resolvedUrl = l.content_type === 'video' ? 'protected-video-source' : l.content_url;
       } else {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        const backendHost = apiUrl.replace(/\/api\/?$/, '');
         if (l.content_type === 'video') {
           // Video nội bộ: Không gắn session JWT vào URL; Active lesson player sẽ xin ticket 60s riêng
           resolvedUrl = l.content_url;
         } else {
-          resolvedUrl = `${backendHost}${l.content_url}`;
+          resolvedUrl = `${getBackendHost()}${l.content_url}`;
         }
       }
+    }
+    if (l.content_type === 'pdf' && (l.content_url || l.storage_key)) {
+      resolvedUrl = getLessonPdfUrl(l.lesson_id);
     }
 
     if (isQuiz) {
@@ -486,7 +496,7 @@ export const getLessonById = async (lessonId) => {
       resolvedResources = l.materials.map(m => ({
         id: m.material_id || m.id,
         name: m.file_name || m.name,
-        url: m.file_url ? (m.file_url.startsWith('http') ? m.file_url : `${backendHost}${m.file_url}`) : (m.url || ''),
+        url: m.file_url ? (m.file_url.startsWith('http') ? m.file_url : `${getBackendHost()}${m.file_url}`) : (m.url || ''),
         fileType: m.file_type || m.fileType || 'application/pdf',
         sizeKb: m.file_size_kb || m.sizeKb || 0,
         createdAt: m.created_at || m.createdAt
@@ -529,7 +539,7 @@ export const getLessonById = async (lessonId) => {
 export const getLessonMaterials = async (lessonId) => {
   try {
     const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-    const response = await api.get(`/lessons/${cleanId}/materials`);
+    const response = await apiClient.get(`/lessons/${cleanId}/materials`);
     return response.data?.materials || [];
   } catch (error) {
     console.error("Lỗi getLessonMaterials:", error);
@@ -542,7 +552,7 @@ export const getLessonMaterials = async (lessonId) => {
  */
 export const uploadLessonMaterial = async (lessonId, formData) => {
   const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-  const response = await api.post(`/lessons/${cleanId}/materials`, formData, {
+  const response = await apiClient.post(`/lessons/${cleanId}/materials`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
   return response.data?.material;
@@ -553,6 +563,6 @@ export const uploadLessonMaterial = async (lessonId, formData) => {
  */
 export const deleteLessonMaterial = async (lessonId, materialId) => {
   const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
-  const response = await api.delete(`/lessons/${cleanId}/materials/${materialId}`);
+  const response = await apiClient.delete(`/lessons/${cleanId}/materials/${materialId}`);
   return response.data;
 };

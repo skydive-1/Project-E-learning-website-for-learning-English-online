@@ -31,6 +31,7 @@ router.get('/dash/:lessonId/manifest.mpd', authenticateVideoToken, streamingLimi
 router.get('/dash/:lessonId/:segmentFile', authenticateVideoToken, streamingLimiter, lessonsController.streamDashSegment);
 
 // Tài liệu đính kèm bài học (Lesson Materials / Resources PDF)
+router.get('/:lessonId/pdf', authenticate, lessonsController.streamLessonPdf);
 router.post('/:lessonId/materials', authenticate, authorize([1, 2]), uploadLimiter, upload.materialPdf.single('file'), lessonsController.uploadMaterial);
 router.get('/:lessonId/materials', authenticate, lessonsController.getMaterialsByLesson);
 router.get('/:lessonId/materials/:materialId/preview', authenticate, lessonsController.previewMaterial);

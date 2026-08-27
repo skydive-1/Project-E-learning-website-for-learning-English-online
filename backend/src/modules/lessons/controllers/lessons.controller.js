@@ -47,6 +47,73 @@ function isUnprotectedExternalUrl(lesson) {
   return /^https?:\/\//i.test(source) && !source.includes('supabase.co');
 }
 
+function setProtectedPdfHeaders(res, filename = 'lesson.pdf') {
+  const originalFilename = String(filename || 'lesson.pdf').replace(/["\r\n]/g, '_');
+  const asciiFilename = originalFilename
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '_');
+  const encodedFilename = encodeURIComponent(originalFilename);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`
+  );
+}
+
+async function proxyPrivateStoragePdf(req, res, lesson, storageKey) {
+  const upstream = await supabaseStorage.fetchPrivateObject(
+    storageKey,
+    lesson.storage_bucket || 'documents',
+    req.headers.range || null
+  );
+
+  if (!upstream || upstream.status === 404) {
+    return res.status(404).json({
+      success: false,
+      code: 'PDF_MISSING_SOURCE',
+      message: 'Tài liệu PDF không còn tồn tại trên hệ thống lưu trữ.'
+    });
+  }
+
+  if (upstream.status === 416) {
+    const contentRange = upstream.headers.get('content-range');
+    if (contentRange) res.setHeader('Content-Range', contentRange);
+    return res.status(416).end();
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    upstream.body?.cancel?.().catch(() => {});
+    return res.status(502).json({
+      success: false,
+      code: 'PDF_STORAGE_UNAVAILABLE',
+      message: 'Không thể đọc tài liệu PDF từ hệ thống lưu trữ.'
+    });
+  }
+
+  setProtectedPdfHeaders(res, `${lesson.title || 'lesson'}.pdf`);
+  res.status(upstream.status === 206 ? 206 : 200);
+
+  const contentLength = upstream.headers.get('content-length');
+  const contentRange = upstream.headers.get('content-range');
+  const acceptRanges = upstream.headers.get('accept-ranges');
+  if (contentLength) res.setHeader('Content-Length', contentLength);
+  if (contentRange) res.setHeader('Content-Range', contentRange);
+  if (acceptRanges || upstream.status === 206) res.setHeader('Accept-Ranges', acceptRanges || 'bytes');
+
+  const upstreamStream = Readable.fromWeb(upstream.body);
+  res.once('close', () => {
+    if (!res.writableEnded) upstreamStream.destroy();
+  });
+  upstreamStream.once('error', (error) => {
+    if (!res.destroyed) res.destroy(error);
+  });
+  return upstreamStream.pipe(res);
+}
+
 function sendRangeNotSatisfiable(res, fileSize) {
   const headers = { 'Content-Type': 'video/mp4' };
   if (Number.isFinite(fileSize) && fileSize > 0) headers['Content-Range'] = `bytes */${fileSize}`;
@@ -619,6 +686,82 @@ exports.previewMaterial = async (req, res, next) => {
       code: 'MISSING_SOURCE',
       message: 'Tài liệu không còn tồn tại trên máy chủ lưu trữ.'
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Stream PDF chính của bài học qua backend. Tệp Supabase được proxy server-side,
+ * còn đường dẫn /uploads chỉ được giữ làm fallback cho dữ liệu legacy.
+ */
+exports.streamLessonPdf = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role || 3, 10);
+
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, userRole);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        code: 'PDF_ACCESS_DENIED',
+        message: 'Bạn không có quyền truy cập tài liệu của bài học này.'
+      });
+    }
+
+    const lesson = await coursesService.getLessonById(lessonId);
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        code: 'LESSON_NOT_FOUND',
+        message: 'Không tìm thấy bài học.'
+      });
+    }
+
+    if (String(lesson.content_type || '').toLowerCase() !== 'pdf') {
+      return res.status(400).json({
+        success: false,
+        code: 'LESSON_NOT_PDF',
+        message: 'Bài học này không chứa tài liệu PDF.'
+      });
+    }
+
+    const source = lesson.storage_key || lesson.content_url || '';
+    if (!source || lesson.media_status === 'MISSING_SOURCE') {
+      return res.status(404).json({
+        success: false,
+        code: 'PDF_MISSING_SOURCE',
+        message: 'Tài liệu PDF không còn tồn tại. Giảng viên cần tải lên lại tệp.'
+      });
+    }
+
+    if (/^https?:\/\//i.test(source) && !source.includes('supabase.co')) {
+      return res.redirect(source);
+    }
+
+    const isLegacyLocal = source.startsWith('/uploads/') || source.startsWith('uploads/');
+    if (isLegacyLocal) {
+      const filePath = resolveSafePath(UPLOADS_ROOT, source, { checkExists: true });
+      if (!filePath || !fs.existsSync(filePath)) {
+        return res.status(404).json({
+          success: false,
+          code: 'PDF_MISSING_SOURCE',
+          message: 'Tài liệu PDF local đã mất sau khi máy chủ được triển khai lại. Giảng viên cần tải lên lại tệp.'
+        });
+      }
+      return sendDashFile(req, res, filePath, 'application/pdf');
+    }
+
+    if (lesson.media_status && lesson.media_status !== 'READY') {
+      return res.status(409).json({
+        success: false,
+        code: 'PDF_NOT_READY',
+        message: 'Tài liệu PDF chưa sẵn sàng.'
+      });
+    }
+
+    return proxyPrivateStoragePdf(req, res, lesson, source.replace(/^\/+/, ''));
   } catch (error) {
     next(error);
   }

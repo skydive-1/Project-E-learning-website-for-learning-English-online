@@ -7,6 +7,7 @@ import PdfSelectionPopover from '../src/modules/lessons/components/PdfSelectionP
 import PdfHighlightOverlay from '../src/modules/lessons/components/PdfHighlightOverlay';
 import PdfStudyViewer from '../src/modules/lessons/components/PdfStudyViewer';
 import * as pdfNotesService from '../src/modules/lessons/services/pdfNotes.service';
+import { getLessonById, getLessonPdfUrl } from '../src/modules/lessons/services/lessons.service';
 import apiClient from '../src/config/api.config';
 
 if (typeof global !== 'undefined' && !global.DOMMatrix) {
@@ -19,7 +20,11 @@ if (typeof global !== 'undefined' && !global.DOMMatrix) {
 
 vi.mock('react-pdf', () => ({
   Document: ({ children, onLoadSuccess, file }) => (
-    <div data-testid="mock-pdf-document" data-file={file}>
+    <div
+      data-testid="mock-pdf-document"
+      data-file-url={typeof file === 'string' ? file : file?.url}
+      data-auth-header={typeof file === 'object' ? file?.httpHeaders?.Authorization : ''}
+    >
       {file ? (
         <button
           data-testid="trigger-load-success"
@@ -91,6 +96,7 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   // =========================================================================
@@ -352,12 +358,48 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       expect(screen.getByText(/1 \/ 5/i)).toBeInTheDocument();
       expect(screen.getByTestId('mock-pdf-page-1')).toBeInTheDocument();
     });
+
+    it('4.4 sends the session JWT only to the protected lesson PDF endpoint', () => {
+      localStorage.setItem('token', 'session-token-for-pdf');
+      render(
+        <PdfStudyViewer
+          pdfUrl="/api/lessons/52/pdf"
+          title="Mind maps"
+          user={{ email: 'test@example.com' }}
+          notes={[]}
+        />
+      );
+
+      const document = screen.getByTestId('mock-pdf-document');
+      expect(document.getAttribute('data-file-url')).toMatch(/\/api\/lessons\/52\/pdf$/);
+      expect(document).toHaveAttribute('data-auth-header', 'Bearer session-token-for-pdf');
+    });
   });
 
   // =========================================================================
   // 5. PDF NOTES SERVICE TESTS
   // =========================================================================
   describe('5. pdfNotes.service', () => {
+    it('5.0 maps a legacy /uploads PDF to the protected lesson endpoint', async () => {
+      apiClient.get.mockResolvedValueOnce({
+        data: {
+          lesson: {
+            lesson_id: 52,
+            course_id: 26,
+            title: 'Mind maps',
+            content_type: 'pdf',
+            content_url: '/uploads/courses/documents/Mind_maps.pdf',
+            storage_key: null
+          }
+        }
+      });
+
+      const lesson = await getLessonById(52);
+      expect(getLessonPdfUrl(52)).toBe('/api/lessons/52/pdf');
+      expect(lesson.pdfUrl).toBe('/api/lessons/52/pdf');
+      expect(lesson.pdfUrl).not.toContain('/uploads/');
+    });
+
     it('5.1 fetchPdfNotes should call GET endpoint with correct params', async () => {
       apiClient.get.mockResolvedValueOnce({ data: { data: mockNotes } });
 
