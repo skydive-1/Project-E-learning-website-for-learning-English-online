@@ -47,8 +47,86 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Session & Interceptor Test Suite
   // 1. CRITICAL 401 vs NON-CRITICAL 401 & 4xx (NO FALLBACK TO !errorCode)
   // =========================================================================
   describe('1. Error Code Classification on /auth/profile', () => {
+    it('0. Restores cached user immediately while profile validation is pending', async () => {
+      localStorageStore['token'] = 'valid-cached-token';
+      localStorageStore['auth_user_cache'] = JSON.stringify({
+        userId: 1,
+        username: 'cached-user',
+        email: 'cached@example.com',
+        roleId: 3
+      });
+
+      let resolveProfile;
+      vi.spyOn(authService, 'getProfile').mockReturnValueOnce(new Promise((resolve) => {
+        resolveProfile = resolve;
+      }));
+
+      render(
+        <MemoryRouter>
+          <AuthProvider>
+            <TestAuthConsumer />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      expect(screen.getByTestId('user-email').textContent).toBe('cached@example.com');
+      expect(screen.getByTestId('auth-status').textContent).toBe('checking');
+      expect(screen.getByTestId('loading-status').textContent).toBe('loading');
+
+      await act(async () => {
+        resolveProfile({
+          data: { userId: 1, username: 'fresh-user', email: 'fresh@example.com', roleId: 3 }
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user-email').textContent).toBe('fresh@example.com');
+        expect(screen.getByTestId('auth-status').textContent).toBe('authenticated');
+      });
+
+      expect(JSON.parse(localStorageStore['auth_user_cache']).email).toBe('fresh@example.com');
+    });
+
+    it('0b. Uses JWT claims immediately when a verified profile cache does not exist yet', async () => {
+      const encodedPayload = btoa(JSON.stringify({
+        id: 7,
+        email: 'first-load@example.com',
+        username: 'first-load-user',
+        roleId: 1,
+        exp: Math.floor(Date.now() / 1000) + 3600
+      })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      localStorageStore['token'] = `header.${encodedPayload}.signature`;
+
+      let resolveProfile;
+      vi.spyOn(authService, 'getProfile').mockReturnValueOnce(new Promise((resolve) => {
+        resolveProfile = resolve;
+      }));
+
+      render(
+        <MemoryRouter>
+          <AuthProvider>
+            <TestAuthConsumer />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      expect(screen.getByTestId('user-email').textContent).toBe('first-load@example.com');
+      expect(screen.getByTestId('auth-status').textContent).toBe('checking');
+
+      await act(async () => {
+        resolveProfile({
+          data: { userId: 7, email: 'verified@example.com', username: 'verified-user', roleId: 1 }
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user-email').textContent).toBe('verified@example.com');
+      });
+    });
+
     it('1. 401 TOKEN_EXPIRED removes token and transitions to unauthenticated', async () => {
       localStorageStore['token'] = 'expired-jwt-token';
+      localStorageStore['auth_user_cache'] = JSON.stringify({ email: 'stale@example.com' });
       const expiredError = new Error('TokenExpired');
       expiredError.response = {
         status: 401,
@@ -69,6 +147,7 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Session & Interceptor Test Suite
       });
 
       expect(localStorageStore['token']).toBeUndefined();
+      expect(localStorageStore['auth_user_cache']).toBeUndefined();
       expect(screen.getByTestId('user-email').textContent).toBe('no-user');
     });
 
@@ -354,6 +433,7 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Session & Interceptor Test Suite
 
     it('13. Manual logout does not call clearChatHistory or any authenticated API', async () => {
       localStorageStore['token'] = 'user-token';
+      localStorageStore['auth_user_cache'] = JSON.stringify({ email: 'student@example.com' });
 
       render(
         <MemoryRouter>
@@ -368,6 +448,7 @@ describe('=== TASK-AUTH-SESSION-HOTFIX-01: Auth Session & Interceptor Test Suite
       });
 
       expect(localStorageStore['token']).toBeUndefined();
+      expect(localStorageStore['auth_user_cache']).toBeUndefined();
       expect(screen.getByTestId('auth-status').textContent).toBe('unauthenticated');
     });
 

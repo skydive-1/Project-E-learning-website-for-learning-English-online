@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, useReducedMotion, useScroll, useTransform, useSpring } from 'motion/react';
 
+const KINETIC_CLOSE_RANGE = [0, 0.42, 0.94];
+
 /**
  * KineticDirectionSection - 100% Exact Alignment with Div Block Above
  * Initial video width matches 100% of the comparison block above (spanning the full container width).
@@ -28,7 +30,7 @@ const KineticDirectionSection = () => {
   // Crop on the compositor instead of animating width and forcing layout every frame.
   const videoClipPath = useTransform(
     smoothProgress,
-    [0, 0.42, 0.88],
+    KINETIC_CLOSE_RANGE,
     [
       'inset(0% 0% round 16px)',
       'inset(0% 0% round 16px)',
@@ -38,13 +40,13 @@ const KineticDirectionSection = () => {
 
   const leftWordX = useTransform(
     smoothProgress,
-    [0, 0.42, 0.88],
+    KINETIC_CLOSE_RANGE,
     ['-50cqw', '-50cqw', '0cqw']
   );
 
   const rightWordX = useTransform(
     smoothProgress,
-    [0, 0.42, 0.88],
+    KINETIC_CLOSE_RANGE,
     ['50cqw', '50cqw', '0cqw']
   );
 

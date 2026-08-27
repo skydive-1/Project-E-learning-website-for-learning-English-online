@@ -1,47 +1,76 @@
 import React, { useState, useEffect } from 'react';
-import { FiCpu, FiMessageSquare, FiBookOpen, FiHelpCircle, FiZap, FiChevronRight } from 'react-icons/fi';
+import { FiCpu, FiBookOpen, FiHelpCircle, FiZap } from 'react-icons/fi';
 import { getSuggestedQuestions } from '../services/chatbot.service';
+
+const CLIENT_LESSON_FALLBACKS = [
+  'Bài này có những ý chính nào?',
+  'Khái niệm nào cần ghi nhớ?',
+  'Từ nào xuất hiện trong bài?',
+  'Kiểm tra nhanh kiến thức bài này?'
+];
+
+const LEGACY_QUESTION_PATTERNS = [
+  /Mục đích và nội dung chính/i,
+  /Giải thích các điểm ngữ pháp và cấu trúc câu/i,
+  /Trích xuất các từ vựng mới và ví dụ minh họa/i,
+  /Tóm tắt những kiến thức cốt lõi/i
+];
+
+const normalizeLessonQuestions = (questions) => {
+  if (!Array.isArray(questions)) return [];
+
+  const uniqueQuestions = [];
+  const seen = new Set();
+
+  questions.forEach((rawQuestion) => {
+    if (uniqueQuestions.length >= 4 || typeof rawQuestion !== 'string') return;
+    const question = rawQuestion.replace(/\s+/g, ' ').trim();
+    const normalized = question.toLocaleLowerCase('vi');
+    if (
+      !question ||
+      question.length > 92 ||
+      seen.has(normalized) ||
+      LEGACY_QUESTION_PATTERNS.some(pattern => pattern.test(question))
+    ) return;
+
+    seen.add(normalized);
+    uniqueQuestions.push(question);
+  });
+
+  return uniqueQuestions.length === 4 ? uniqueQuestions : [];
+};
 
 /**
  * EmptyState & SuggestedQuestions Component (Udemy-like AI Assistant Feature)
  * - Tự động nạp 4 câu hỏi gợi ý chuyên biệt theo từng bài học
- * - Hiển thị dưới dạng các thẻ Chip/Pill trực quan, bấm 1 chạm để gửi ngay câu hỏi
+ * - Hiển thị thành danh sách câu hỏi ngắn, phẳng và có thể gửi bằng một lần bấm
  * - Tự động ẩn đi sau khi cuộc hội thoại bắt đầu
  */
-const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
+const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
   const isGlobal = Number(lessonId) === 0;
-  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState(() => (
+    isGlobal ? [] : CLIENT_LESSON_FALLBACKS
+  ));
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
-
-  // Template fallback nhanh tại Client (0ms)
-  const getClientFallbackQuestions = (title) => {
-    const cleanTitle = (title || '').trim() || 'bài học này';
-    return [
-      `Mục đích và nội dung chính của bài "${cleanTitle}" là gì?`,
-      `Giải thích các điểm ngữ pháp và cấu trúc câu quan trọng trong "${cleanTitle}".`,
-      `Trích xuất các từ vựng mới và ví dụ minh họa xuất hiện trong bài này.`,
-      `Tóm tắt những kiến thức cốt lõi tôi cần ghi nhớ sau khi học xong "${cleanTitle}".`
-    ];
-  };
 
   useEffect(() => {
     let isMounted = true;
 
     if (!isGlobal && Number(lessonId) > 0) {
+      setSuggestedQuestions(CLIENT_LESSON_FALLBACKS);
       setIsLoadingQuestions(true);
       getSuggestedQuestions(lessonId)
         .then((questions) => {
           if (isMounted) {
-            if (Array.isArray(questions) && questions.length > 0) {
-              setSuggestedQuestions(questions);
-            } else {
-              setSuggestedQuestions(getClientFallbackQuestions(lessonTitle));
-            }
+            const normalizedQuestions = normalizeLessonQuestions(questions);
+            setSuggestedQuestions(
+              normalizedQuestions.length === 4 ? normalizedQuestions : CLIENT_LESSON_FALLBACKS
+            );
           }
         })
         .catch(() => {
           if (isMounted) {
-            setSuggestedQuestions(getClientFallbackQuestions(lessonTitle));
+            setSuggestedQuestions(CLIENT_LESSON_FALLBACKS);
           }
         })
         .finally(() => {
@@ -52,7 +81,7 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
     return () => {
       isMounted = false;
     };
-  }, [lessonId, lessonTitle, isGlobal]);
+  }, [lessonId, isGlobal]);
 
   const globalPrompts = [
     {
@@ -78,20 +107,37 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
     }
   ];
 
-  const quickActionPrompts = [
-    {
-      icon: <FiZap className="text-amber-500" />,
-      title: "Từ vựng trọng tâm",
-      promptText: "Từ vựng trọng tâm của bài học này là gì?",
-      action: "LESSON_KEY_VOCAB"
-    },
-    {
-      icon: <FiMessageSquare className="text-emerald-500" />,
-      title: "Tạo bài tập ôn nhanh",
-      promptText: "Tạo bài tập ôn nhanh cho bài học này.",
-      action: "LESSON_QUICK_QUIZ"
-    }
-  ];
+  if (!isGlobal) {
+    return (
+      <div className="w-full px-4 py-6 text-left animate-fade-in">
+        <div className="mb-4">
+          <h4 className="text-[14px] font-semibold leading-snug text-slate-900 dark:text-slate-100">
+            Bạn có câu hỏi về bài học này?
+          </h4>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+            Các gợi ý chỉ dựa trên nội dung xuất hiện trong bài.
+          </p>
+        </div>
+
+        <div
+          className="grid grid-cols-1 gap-2"
+          aria-label="Câu hỏi gợi ý cho bài học"
+          aria-busy={isLoadingQuestions}
+        >
+          {suggestedQuestions.map((questionText) => (
+            <button
+              key={questionText}
+              type="button"
+              onClick={() => onSelectPrompt(questionText, null)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-left text-[12px] font-medium leading-snug text-slate-800 transition-colors duration-150 hover:border-violet-500 hover:bg-violet-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 active:bg-violet-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100 dark:hover:border-violet-400 dark:hover:bg-violet-950/20 dark:focus-visible:ring-offset-slate-900"
+            >
+              {questionText}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center text-center py-4 px-3 space-y-4 animate-fade-in">
@@ -101,88 +147,15 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
           <FiCpu className="text-xl" />
         </div>
         <h4 className="font-bold text-slate-800 dark:text-slate-100 text-[13.5px] leading-tight">
-          {isGlobal
-            ? "Xin chào! Bạn muốn tìm hiểu gì hôm nay?"
-            : (lessonTitle ? `Hỏi đáp về: "${lessonTitle}"` : "Bạn có thắc mắc gì về bài học này?")}
+          Xin chào! Bạn muốn tìm hiểu gì hôm nay?
         </h4>
         <p className="text-[11.5px] text-slate-500 dark:text-slate-400 max-w-[320px] leading-relaxed">
-          {isGlobal
-            ? "Tôi là Trợ lý AI sẵn sàng giải đáp ngữ pháp, tra cứu nội dung bài học và gợi ý lộ trình học tập."
-            : "Hỏi đáp nội dung bài giảng, giải thích ngữ pháp, từ vựng hoặc tạo bài tập ôn luyện nhanh."}
+          Tôi là Trợ lý AI sẵn sàng giải đáp ngữ pháp, tra cứu nội dung bài học và gợi ý lộ trình học tập.
         </p>
       </div>
 
-      {/* 2. Suggested Questions Chips / Pills (Udemy-like) */}
-      {!isGlobal && (
-        <div className="w-full space-y-2 text-left pt-1">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-smart-indigo animate-pulse"></span>
-              Gợi ý câu hỏi bài học:
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-1.5">
-            {isLoadingQuestions && suggestedQuestions.length === 0 ? (
-              // Loading Skeleton
-              [1, 2, 3, 4].map((n) => (
-                <div
-                  key={n}
-                  className="h-10 rounded-xl bg-slate-100 dark:bg-slate-800/60 animate-pulse border border-slate-200/50 dark:border-slate-700/50"
-                />
-              ))
-            ) : (
-              // 4 Suggested Question Chips
-              (suggestedQuestions.length > 0 ? suggestedQuestions : getClientFallbackQuestions(lessonTitle)).map((questionText, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onSelectPrompt(questionText, null)}
-                  className="w-full flex items-center justify-between gap-2.5 p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/70 hover:border-smart-indigo dark:hover:border-indigo-500 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30 hover:shadow-xs transition-all duration-150 group text-left cursor-pointer active:scale-[0.99]"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="p-1 rounded-md bg-white dark:bg-slate-700/60 text-slate-400 group-hover:text-smart-indigo dark:group-hover:text-indigo-400 shrink-0 transition-colors shadow-xs">
-                      <FiHelpCircle className="text-[13px]" />
-                    </div>
-                    <span className="text-[12px] font-medium text-slate-700 dark:text-slate-200 group-hover:text-smart-indigo dark:group-hover:text-indigo-300 transition-colors leading-snug line-clamp-2">
-                      {questionText}
-                    </span>
-                  </div>
-                  <FiChevronRight className="text-slate-300 dark:text-slate-600 group-hover:text-smart-indigo group-hover:translate-x-0.5 transition-all text-xs shrink-0" />
-                </button>
-              ))
-            )}
-          </div>
-
-          {/* Quick Action Pills (Quiz & Vocab) */}
-          <div className="pt-2">
-            <p className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1 mb-1.5">
-              Hành động nhanh:
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {quickActionPrompts.map((act, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => onSelectPrompt(act.promptText, act.action)}
-                  className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 hover:border-smart-indigo dark:hover:border-indigo-500 hover:shadow-xs transition-all duration-150 group text-left cursor-pointer"
-                >
-                  <span className="p-1 rounded-md bg-slate-50 dark:bg-slate-700/50 shrink-0">
-                    {act.icon}
-                  </span>
-                  <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 group-hover:text-smart-indigo dark:group-hover:text-indigo-300 truncate">
-                    {act.title}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 3. Global Prompts (When outside lessons) */}
-      {isGlobal && (
-        <div className="w-full space-y-2 pt-1 text-left">
+      <div className="w-full space-y-2 pt-1 text-left">
           <p className="text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
             Gợi ý câu hỏi nhanh:
           </p>
@@ -208,8 +181,7 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
               </button>
             ))}
           </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
