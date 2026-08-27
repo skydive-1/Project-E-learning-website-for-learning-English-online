@@ -173,8 +173,8 @@ const CourseEditor = () => {
             const quizByLessonId = {};
             if (Array.isArray(quizzesData)) {
               quizzesData.forEach(q => {
-                if (q.lesson_id) {
-                  quizByLessonId[String(q.lesson_id)] = q;
+                if (q.lessonId) {
+                  quizByLessonId[String(q.lessonId)] = q;
                 }
               });
             }
@@ -207,12 +207,12 @@ const CourseEditor = () => {
                     fileName: l.content_url ? l.content_url.split('/').pop() : '',
                     speakingSentences: l.speaking_sentences || '',
                     speakingQuestions: l.speaking_questions || '',
-                    quizId: attachedQuiz?.quiz_id || null,
+                    quizId: attachedQuiz?.id || null,
                     quizTitle: attachedQuiz?.title || '',
                     quizDescription: attachedQuiz?.description || '',
                     quizDifficulty: attachedQuiz?.difficulty || 'Medium',
-                    quizTimeLimit: attachedQuiz?.time_limit || 15,
-                    quizQuestions: Array.isArray(attachedQuiz?.questions) ? attachedQuiz.questions : []
+                    quizTimeLimit: attachedQuiz?.timeLimit || 15,
+                    quizQuestions: Array.isArray(attachedQuiz?.questions) ? normalizeQuestionsList(attachedQuiz.questions) : []
                   };
                 })
               })));
@@ -543,7 +543,8 @@ const CourseEditor = () => {
       quizDescription: quizDialogDesc.trim(),
       quizDifficulty: quizDialogDifficulty,
       quizTimeLimit: quizDialogTimeLimit,
-      quizQuestions: cleanedQuestions
+      quizQuestions: cleanedQuestions,
+      quizDeleted: false
     };
     setSections(updatedSections);
 
@@ -595,7 +596,8 @@ const CourseEditor = () => {
       quizId: null,
       quizTitle: '',
       quizDescription: '',
-      quizQuestions: []
+      quizQuestions: [],
+      quizDeleted: true
     };
     setSections(updatedSections);
     showToast(`Đã xóa bộ trắc nghiệm của bài học "${lesson.title}".`, 'info');
@@ -696,7 +698,13 @@ const CourseEditor = () => {
           pendingUploadId: les.pendingUploadId || null,
           orderIndex: lIdx + 1,
           speakingSentences: les.speakingSentences || '',
-          speakingQuestions: les.speakingQuestions || ''
+          speakingQuestions: les.speakingQuestions || '',
+          quizTitle: les.quizTitle || `Trắc nghiệm: ${les.title}`,
+          quizDescription: les.quizDescription || `Bài kiểm tra cho bài học: ${les.title}`,
+          quizDifficulty: les.quizDifficulty || 'Medium',
+          quizTimeLimit: les.quizTimeLimit || 15,
+          quizQuestions: normalizeQuestionsList(les.quizQuestions || []),
+          quizDeleted: les.quizDeleted === true
         }))
       }))
     };
@@ -707,33 +715,6 @@ const CourseEditor = () => {
         : await apiClient.post('/courses', payload);
 
       if (response.data && response.data.success) {
-        const targetCourseId = response.data?.course?.course_id || courseId;
-
-        // Lưu đồng bộ các bộ quizzes cho từng bài học nếu có cấu hình
-        if (targetCourseId) {
-          for (const sec of sections) {
-            for (const les of sec.lessons) {
-              if (Array.isArray(les.quizQuestions) && les.quizQuestions.length > 0) {
-                try {
-                  await createQuiz({
-                    title: les.quizTitle || `Trắc nghiệm: ${les.title}`,
-                    description: les.quizDescription || `Bài kiểm tra cho bài học: ${les.title}`,
-                    difficulty: les.quizDifficulty || 'Medium',
-                    timeLimit: les.quizTimeLimit || 15,
-                    isPrivate: false,
-                    pinCode: null,
-                    courseId: parseInt(targetCourseId, 10),
-                    lessonId: typeof les.id === 'number' ? les.id : null,
-                    questions: les.quizQuestions
-                  });
-                } catch (qErr) {
-                  console.debug('Lưu quiz theo bài học:', qErr?.message);
-                }
-              }
-            }
-          }
-        }
-
         setSuccessMsg(
           status === 0
             ? 'Đã lưu bản nháp khóa học thành công!'

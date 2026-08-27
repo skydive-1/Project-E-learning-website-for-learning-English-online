@@ -2,6 +2,7 @@ const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
+const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
 
 class CoursesService {
   async getAllCourses(filterPublished = true) {
@@ -104,6 +105,89 @@ class CoursesService {
       mediaStatus,
       isNonMedia: false
     };
+  }
+
+  /**
+   * Đồng bộ bộ câu hỏi gắn với một bài học ngay trong transaction của khóa học.
+   * Chỉ xử lý khi client gửi quizQuestions; payload cũ không có field này sẽ
+   * không vô tình xóa quiz đã tồn tại.
+   */
+  async _syncLessonQuiz(client, courseId, lessonId, lessonData) {
+    if (!Object.prototype.hasOwnProperty.call(lessonData, 'quizQuestions')) return;
+
+    const questions = Array.isArray(lessonData.quizQuestions) ? lessonData.quizQuestions : [];
+    if (questions.length === 0) {
+      // Không suy diễn "không tải được quiz" thành lệnh xóa dữ liệu. Chỉ xóa
+      // khi giao diện gửi ý định xóa tường minh.
+      if (lessonData.quizDeleted === true) {
+        await client.query(
+          'DELETE FROM quizzes WHERE course_id = $1 AND lesson_id = $2',
+          [courseId, lessonId]
+        );
+      }
+      return;
+    }
+
+    const existingQuizRes = await client.query(
+      `SELECT quiz_id FROM quizzes
+       WHERE course_id = $1 AND lesson_id = $2
+       ORDER BY quiz_id DESC
+       LIMIT 1 FOR UPDATE`,
+      [courseId, lessonId]
+    );
+
+    const title = String(lessonData.quizTitle || `Trắc nghiệm: ${lessonData.title || ''}`).trim();
+    const description = String(lessonData.quizDescription || `Bài kiểm tra cho bài học: ${lessonData.title || ''}`).trim();
+    const difficulty = lessonData.quizDifficulty || 'Medium';
+    const timeLimit = parseInt(lessonData.quizTimeLimit, 10) || 15;
+    let quizId;
+
+    if (existingQuizRes.rows.length > 0) {
+      quizId = existingQuizRes.rows[0].quiz_id;
+      await client.query(
+        `UPDATE quizzes
+         SET title = $1, description = $2, difficulty = $3, time_limit = $4,
+             course_id = $5, lesson_id = $6
+         WHERE quiz_id = $7`,
+        [title, description, difficulty, timeLimit, courseId, lessonId, quizId]
+      );
+      await client.query('DELETE FROM questions WHERE quiz_id = $1', [quizId]);
+    } else {
+      const quizResult = await client.query(
+        `INSERT INTO quizzes (course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code)
+         VALUES ($1, $2, $3, $4, $5, $6, FALSE, NULL)
+         RETURNING quiz_id`,
+        [courseId, lessonId, title, description, difficulty, timeLimit]
+      );
+      quizId = quizResult.rows[0].quiz_id;
+    }
+
+    for (const question of questions) {
+      const questionText = String(question.question_text || question.questionText || question.question || '').trim();
+      const explanation = String(question.explanation || '').trim();
+      const questionType = String(question.question_type || question.questionType || 'multiple_choice').toLowerCase();
+      let options = Array.isArray(question.options) ? question.options : [];
+      let correctAnswer = question.correct_answer ?? question.correctAnswer ?? question.answer ?? '';
+
+      if (!questionText) {
+        const error = new Error('Nội dung câu hỏi quiz không được để trống.');
+        error.status = 400;
+        error.code = 'INVALID_QUIZ_QUESTION';
+        throw error;
+      }
+
+      if (questionType === 'open_cloze') {
+        const validated = validateOpenClozeQuestion({ questionText, gaps: options });
+        options = validated.gaps;
+        correctAnswer = '';
+      }
+
+      await client.query(
+        `INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type)
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6)`,
+        [quizId, questionText, JSON.stringify(options), correctAnswer, explanation, questionType]
+      );
+    }
   }
 
   async _validateStoredCourseForPublish(client, courseId) {
@@ -262,14 +346,14 @@ class CoursesService {
     if (sectionData.lessons && Array.isArray(sectionData.lessons)) {
       for (let i = 0; i < sectionData.lessons.length; i++) {
         await this._insertLesson(
-          client, sectionId, sectionData.lessons[i], i + 1,
+          client, courseId, sectionId, sectionData.lessons[i], i + 1,
           trackedKeys, claimedUploadIds, instructorId, userRole
         );
       }
     }
   }
 
-  async _insertLesson(client, sectionId, lessonData, defaultOrder, trackedKeys = [], claimedUploadIds = [], instructorId, userRole) {
+  async _insertLesson(client, courseId, sectionId, lessonData, defaultOrder, trackedKeys = [], claimedUploadIds = [], instructorId, userRole) {
     const orderIndex = lessonData.orderIndex !== undefined ? lessonData.orderIndex : defaultOrder;
     const speakingSentences = lessonData.speakingSentences || lessonData.speaking_sentences || '';
     const speakingQuestions = lessonData.speakingQuestions || lessonData.speaking_questions || '';
@@ -300,16 +384,19 @@ class CoursesService {
       err.status = 400; err.code = 'PENDING_UPLOAD_REQUIRED'; throw err;
     }
 
-    await client.query(`
+    const lessonResult = await client.query(`
       INSERT INTO lessons (
         section_id, title, content_type, content_url, order_index, speaking_sentences, speaking_questions,
         storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING lesson_id
     `, [
       sectionId, lessonData.title, meta.contentType, meta.contentUrl, orderIndex, speakingSentences, speakingQuestions,
       meta.storageProvider, meta.storageBucket, meta.storageKey, meta.mimeType, meta.sizeBytes, meta.checksumSha256, meta.mediaStatus
     ]);
+
+    await this._syncLessonQuiz(client, courseId, lessonResult.rows[0].lesson_id, lessonData);
   }
 
   async getLessonById(lessonId) {
@@ -650,6 +737,7 @@ class CoursesService {
                 lesId = insertLesRes.rows[0].lesson_id;
               }
               currentLessonIds.push(lesId);
+              await this._syncLessonQuiz(client, courseId, lesId, les);
             }
           }
 
