@@ -23,6 +23,7 @@ describe('=== Chatbot History Auth & Authorization Security Test Suite ===', () 
   let baseUrl;
   let originalQuery;
   let originalJwtSecret;
+  const deleteQueries = [];
 
   const mockUsers = [
     { user_id: 1, email: 'user1@example.com', username: 'user1', full_name: 'User One', role_id: 3 },
@@ -52,6 +53,10 @@ describe('=== Chatbot History Auth & Authorization Security Test Suite ===', () 
             { ai_chat: 102, sender_type: 'bot', title: 'Hello User!', created_date: new Date().toISOString() }
           ]
         };
+      }
+      if (cleanSql === 'DELETE FROM ai_chat WHERE student_id = $1 AND lesson_id = $2') {
+        deleteQueries.push({ sql: cleanSql, params });
+        return { rows: [], rowCount: 1 };
       }
       return { rows: [] };
     };
@@ -182,5 +187,23 @@ describe('=== Chatbot History Auth & Authorization Security Test Suite ===', () 
     const data = await res.json();
     assert.strictEqual(res.status, 200);
     assert.strictEqual(Array.isArray(data), true);
+  });
+
+  it('8. DELETE /api/chatbot/history/:lessonId should accept an authenticated body-less request', async () => {
+    const user1Token = jwt.sign(
+      { id: 1, email: 'user1@example.com', roleId: 3 },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const res = await fetch(`${baseUrl}/api/chatbot/history/10`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${user1Token}` }
+    });
+    const data = await res.json();
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(data.success, true);
+    assert.deepStrictEqual(deleteQueries.at(-1)?.params, [1, 10]);
   });
 });
