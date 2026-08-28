@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX, FiGlobe, FiActivity } from 'react-icons/fi';
+import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX, FiActivity } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -119,7 +119,7 @@ const Header = () => {
 
               {canAccessInstructorPanel && (
                 <Link to="/instructor/dashboard" className="mobile-btn-login" onClick={() => setIsMobileMenuOpen(false)}>
-                  Instructor Panel
+                  {t('instructorDashboard')}
                 </Link>
               )}
 
@@ -132,18 +132,18 @@ const Header = () => {
 
         <div className="auth-buttons">
           {/* iOS Segmented Language Switcher Button */}
-          <div 
+          <button
+            type="button"
             onClick={toggleLanguage}
             className={`ios-lang-switch ${language === 'ENG' ? 'en' : 'vn'}`}
             title={t('switchLangTip')}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && toggleLanguage()}
+            aria-label={t('switchLangTip')}
+            aria-pressed={language === 'ENG'}
           >
-            <div className="ios-switch-thumb" />
-            <span className={`ios-switch-option ${language === 'VIE' ? 'active' : ''}`}>VN</span>
-            <span className={`ios-switch-option ${language === 'ENG' ? 'active' : ''}`}>EN</span>
-          </div>
+            <span className="ios-switch-thumb" aria-hidden="true" />
+            <span className={`ios-switch-option ${language === 'VIE' ? 'active' : ''}`} aria-hidden="true">VN</span>
+            <span className={`ios-switch-option ${language === 'ENG' ? 'active' : ''}`} aria-hidden="true">EN</span>
+          </button>
 
           {/* Flame Streak Gamification Widget (Chỉ hiển thị khi đã đăng nhập) */}
           {user && <FlameStreakWidget />}
@@ -153,7 +153,8 @@ const Header = () => {
             type="button"
             onClick={toggleTheme}
             className="theme-toggle-btn"
-            title={theme === 'dark' ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}
+            title={theme === 'dark' ? t('lightMode') : t('darkMode')}
+            aria-label={theme === 'dark' ? t('lightMode') : t('darkMode')}
           >
             {theme === 'dark' ? <FiSun style={{ color: '#f59e0b' }} /> : <FiMoon />}
           </button>
@@ -164,7 +165,7 @@ const Header = () => {
                 {user?.profilePictureUrl || user?.profile_picture_url ? (
                   <img 
                     src={user.profilePictureUrl || user.profile_picture_url} 
-                    alt="Avatar" 
+                    alt={t('profileAvatar')}
                     className="user-avatar-img" 
                   />
                 ) : (
@@ -198,7 +199,7 @@ const Header = () => {
                   {canAccessInstructorPanel && (
                     <Link to="/instructor/dashboard" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                       <FiLayout className="dropdown-icon" />
-                      <span>Instructor Panel</span>
+                      <span>{t('instructorDashboard')}</span>
                     </Link>
                   )}
 
@@ -209,7 +210,7 @@ const Header = () => {
 
                   <Link to="/analytics" className="dropdown-item" onClick={() => setIsDropdownOpen(false)}>
                     <FiActivity className="dropdown-icon" />
-                    <span>Phân tích học tập</span>
+                    <span>{t('learningAnalytics')}</span>
                   </Link>
 
                   <div className="dropdown-divider"></div>
@@ -235,7 +236,8 @@ const Header = () => {
               setIsMobileMenuOpen(!isMobileMenuOpen);
             }}
             className="mobile-menu-toggle-btn"
-            title="Menu"
+            title={t('menu')}
+            aria-label={t('menu')}
             aria-expanded={isMobileMenuOpen}
             aria-controls="main-nav"
           >

@@ -50,6 +50,8 @@
     "start": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "audit:i18n": "node scripts/audit-i18n.mjs --check",
+    "sync:i18n": "node scripts/sync-i18n.mjs",
     "test:auth": "vitest run tests/authSession.test.jsx",
     "test:speaking": "vitest run tests"
   },
