@@ -20,7 +20,7 @@ class SubtitlesService {
   }
 
   /**
-   * Kích hoạt Gemini 2.5 Flash sinh phụ đề song ngữ tự động
+   * Kích hoạt Gemini 3.7 Flash sinh phụ đề song ngữ tự động
    */
   async generateSubtitles(lessonId) {
     const response = await apiClient.post(`/lessons/${lessonId}/generate-subtitles`);

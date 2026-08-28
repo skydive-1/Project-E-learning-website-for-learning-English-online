@@ -210,7 +210,7 @@ def create_report():
     )
     add_body_p("Bước 1: Xác thực người dùng và thẩm tra quyền truy cập khóa học qua verifyLessonAndCourseAccess(userId, lessonId) trên PostgreSQL.")
     add_body_p("Bước 2: Phân giải toàn bộ ngữ cảnh thực tế của bài học từ PostgreSQL qua getLessonFullContext(lessonId): Lấy tiêu đề bài học, chương học, tên khóa học, toàn bộ phụ đề transcript (lesson_subtitles), tài liệu đính kèm (lesson_materials), và câu hỏi luyện nói.")
-    add_body_p("Bước 3: Gửi prompt chuyên biệt với quy tắc Grounding nghiêm ngặt (Strict Grounding Rule, Temperature 0.2) đến mô hình Google Gemini.")
+    add_body_p("Bước 3: Gửi prompt chuyên biệt với quy tắc Grounding nghiêm ngặt (Strict Grounding Rule) đến mô hình Google Gemini 3.7 Flash.")
     add_body_p("Bước 4: Trả về kết quả streaming Markdown kèm Verified Source Card (cho từ vựng) hoặc JSON Schema câu hỏi trắc nghiệm (cho bài tập ôn nhanh).")
 
     add_heading_1("3. Chi Tiết Hai Hành Động Nhanh (Quick Actions Contract)")

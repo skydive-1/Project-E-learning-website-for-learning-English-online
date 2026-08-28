@@ -48,7 +48,7 @@ Frontend: React 19 + Vite + TailwindCSS + Sass/SCSS
 Backend: Node.js + Express 5.2 (Modular Monolith)
 Database: PostgreSQL (via Supabase)
 Vector DB: Pinecone (for RAG embeddings)
-AI Services: Google Gemini API (2.5-flash model)
+AI Services: Google Gemini API (3.7-flash model)
 Deployment: Vercel (Frontend)
 ```
 

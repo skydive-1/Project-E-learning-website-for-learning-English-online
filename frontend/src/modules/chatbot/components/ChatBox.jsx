@@ -5,7 +5,6 @@ import {
   getChatHistory, 
   saveChatHistory, 
   askChatbotAudio, 
-  getTokenBalance, 
   generateChatbotQuiz, 
   clearChatHistory 
 } from '../services/chatbot.service';
@@ -19,6 +18,11 @@ import MessageList from './MessageList';
 import EmptyState from './EmptyState';
 import Composer from './Composer';
 import DeleteConfirmModal from './DeleteConfirmModal';
+
+const AI_QUOTA_ERROR_CODES = new Set([
+  'AI_QUESTION_LIMIT_REACHED',
+  'GEMINI_QUOTA_EXHAUSTED'
+]);
 
 /**
  * ChatBox Component (Udemy-like AI Assistant Panel)
@@ -147,11 +151,16 @@ const ChatBox = ({
         });
       }
     } catch (error) {
+      const errorCode = error.code || error.response?.data?.code || 'CHATBOT_AUDIO_ERROR';
+      const isQuotaError = AI_QUOTA_ERROR_CODES.has(errorCode);
       setMessages(prev => prev.map(m => m.id === aiMessageId ? {
         ...m,
-        text: "Không thể nhận diện đoạn ghi âm. Vui lòng thử lại hoặc gõ câu hỏi.",
+        text: isQuotaError
+          ? error.message
+          : "Không thể nhận diện đoạn ghi âm. Vui lòng thử lại hoặc gõ câu hỏi.",
         isStreaming: false,
-        isError: true
+        isError: true,
+        errorCode
       } : m));
     } finally {
       setIsLoading(false);
@@ -341,8 +350,12 @@ const ChatBox = ({
 
       console.error('⚠️ Lỗi phản hồi chatbot:', error);
       let errorMsg = "Dịch vụ AI đang gặp sự cố kết nối. Hãy thử lại sau ít phút hoặc đặt câu hỏi khác.";
+      const errorCode = error.code || error.response?.data?.code || 'CHATBOT_REQUEST_ERROR';
+      const isQuotaError = AI_QUOTA_ERROR_CODES.has(errorCode);
 
-      if (error instanceof ReferenceError || error instanceof TypeError) {
+      if (isQuotaError) {
+        errorMsg = error.message;
+      } else if (error instanceof ReferenceError || error instanceof TypeError) {
         errorMsg = `Lỗi thực thi giao diện: ${error.message}`;
       } else if (error.message && (error.message.includes("hết hạn mức") || error.message.includes("429") || error.message.includes("403"))) {
         errorMsg = error.message;
@@ -361,7 +374,9 @@ const ChatBox = ({
           ...m,
           text: errorMsg,
           isStreaming: false,
-          isError: true
+          isError: true,
+          errorCode,
+          quota: error.quota || null
         } : m));
       }
     } finally {

@@ -47,6 +47,8 @@ services:
       - PINECONE_ENV=${PINECONE_ENV:-us-east-1-aws}
       - PINECONE_INDEX=${PINECONE_INDEX:-elearning-rag}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.7-flash}
+      - GEMINI_SPEAKING_MODEL=${GEMINI_SPEAKING_MODEL:-gemini-3.7-flash}
       - FRONTEND_URL=http://localhost:3001
     depends_on:
       - db

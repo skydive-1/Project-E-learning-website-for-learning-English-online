@@ -123,4 +123,22 @@ describe('Chatbot Stream Client-Side Character Buffer Queue & Throttle', () => {
 
     await expect(streamPromise).rejects.toThrow();
   });
+
+  it('preserves structured daily quota errors from the backend', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: vi.fn().mockResolvedValue({
+        code: 'AI_QUESTION_LIMIT_REACHED',
+        message: 'Bạn đã dùng hết 10 câu hỏi AI trong 24 giờ.',
+        quota: { limit: 10, used: 10, remaining: 0 }
+      })
+    });
+
+    await expect(askChatbotStream('Câu thứ 11', 1, vi.fn())).rejects.toMatchObject({
+      code: 'AI_QUESTION_LIMIT_REACHED',
+      status: 429,
+      quota: { limit: 10, remaining: 0 }
+    });
+  });
 });

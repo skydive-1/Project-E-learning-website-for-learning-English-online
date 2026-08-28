@@ -31,6 +31,10 @@ const startTestApp = async ({ limit = 2 } = {}) => {
   app.get('/api/general', apiLimiter, (req, res) => res.json({ success: true }));
   app.post('/api/chatbot/ask', aiLimiter, (req, res) => res.json({ success: true }));
   app.post('/api/quizzes/submit-audio', aiLimiter, (req, res) => res.json({ success: true }));
+  app.post('/api/chatbot/admin-ask', (req, res, next) => {
+    req.user = { id: 1, roleId: 1 };
+    next();
+  }, aiLimiter, (req, res) => res.json({ success: true }));
 
   const server = app.listen(0);
   await once(server, 'listening');
@@ -112,4 +116,22 @@ test('3. AI endpoints (/api/chatbot/ask, /api/quizzes/submit-audio) are protecte
 
   const audioRes = await fetch(`${baseUrl}/api/quizzes/submit-audio`, { method: 'POST' });
   assert.equal(audioRes.status, 200);
+});
+
+test('4. Admin and Super Admin role bypasses the route-specific AI limiter', async (t) => {
+  setRateLimitEnabled(true);
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+
+  const { server, baseUrl } = await startTestApp();
+  t.after(async () => {
+    restoreEnvironmentVariable('NODE_ENV', previousNodeEnv);
+    setRateLimitEnabled(true);
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  for (let requestIndex = 0; requestIndex < 35; requestIndex += 1) {
+    const response = await fetch(`${baseUrl}/api/chatbot/admin-ask`, { method: 'POST' });
+    assert.equal(response.status, 200);
+  }
 });

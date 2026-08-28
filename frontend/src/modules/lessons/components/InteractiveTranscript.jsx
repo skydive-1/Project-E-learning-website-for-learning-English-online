@@ -115,7 +115,7 @@ export default function InteractiveTranscript({
               <button
                 onClick={onGenerateSubtitles}
                 disabled={isGenerating}
-                title="Tạo lại phụ đề bằng Gemini 2.5 Flash"
+                title="Tạo lại phụ đề bằng Gemini 3.7 Flash"
                 className="p-2 rounded-xl bg-gradient-to-r from-teal-500/20 to-indigo-500/20 hover:from-teal-500/30 hover:to-indigo-500/30 border border-teal-500/30 text-teal-300 text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
               >
                 <FiZap className={`text-xs ${isGenerating ? 'animate-spin' : ''}`} />

@@ -1,7 +1,7 @@
 /**
- * Subtitles Service - Hệ thống Tự động Trích xuất Audio & Sinh Phụ đề Song ngữ bằng Gemini 2.5 Flash
+ * Subtitles Service - Hệ thống Tự động Trích xuất Audio & Sinh Phụ đề Song ngữ bằng Gemini 3.7 Flash
  * Author: NGUYỄN THANH LIÊM (Backend & Security Developer)
- * Module: FFmpeg Audio Extraction, Multimodal Gemini 2.5 Flash Speech-to-Text & Bilingual Cues
+ * Module: FFmpeg Audio Extraction, Multimodal Gemini 3.7 Flash Speech-to-Text & Bilingual Cues
  */
 
 const fs = require('fs');
@@ -309,7 +309,6 @@ Quy tắc:
         }
       ],
       generationConfig: {
-        temperature: 0.1,
         maxOutputTokens: 65536, // Tăng tối đa để tránh JSON bị truncate với audio dài
         responseMimeType: "application/json"
       }

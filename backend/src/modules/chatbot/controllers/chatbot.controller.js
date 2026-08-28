@@ -3,6 +3,7 @@
  */
 
 const chatbotService = require('../services/chatbot.service');
+const { releaseQuestionLimit } = require('../../../middleware/tokenLimit.middleware');
 
 exports.ask = async (req, res, next) => {
   try {
@@ -17,6 +18,7 @@ exports.ask = async (req, res, next) => {
       actions: answer.actions || []
     });
   } catch (error) {
+    await releaseQuestionLimit(req);
     next(error);
   }
 };
@@ -43,10 +45,15 @@ exports.askStream = async (req, res, next) => {
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (error) {
+    await releaseQuestionLimit(req);
     if (!res.headersSent) {
       next(error);
     } else {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'Stream error' })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        type: 'error',
+        code: error.code || 'AI_STREAM_ERROR',
+        error: error.message || 'Stream error'
+      })}\n\n`);
       res.end();
     }
   }
@@ -157,6 +164,7 @@ exports.generateQuiz = async (req, res, next) => {
       data: quiz.questions || quiz.quizData || quiz
     });
   } catch (error) {
+    await releaseQuestionLimit(req);
     next(error);
   }
 };

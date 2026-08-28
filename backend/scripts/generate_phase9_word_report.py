@@ -134,7 +134,7 @@ def create_report():
         "                                      └──> Lesson Grouping & Reranking (Max Candidate Aggregation)\n"
         "                                            └──> Confidence Threshold & OOD Rejection (Threshold = 0.55)\n"
         "                                                  └──> Prompt Context Builder (Metadata V2 + Authoritative Transcript)\n"
-        "                                                        └──> Google Gemini 2.5 Flash LLM Generation\n"
+        "                                                        └──> Google Gemini 3.7 Flash LLM Generation\n"
         "                                                              └──> Structured Source & Action Builder (SEEK_VIDEO / OPEN_LESSON)\n"
         "                                                                    └──> SSE Streaming Output & Zero-Migration Persistence\n"
         "                                                                          └──> Frontend Lesson Cards & Player Click-to-Seek"

@@ -1,5 +1,14 @@
 import apiClient from '../../../config/api.config';
 
+export const createChatbotApiError = (message, options = {}) => {
+  const error = new Error(message || 'Dịch vụ AI hiện không thể xử lý yêu cầu.');
+  error.name = 'ChatbotApiError';
+  error.code = options.code || 'CHATBOT_API_ERROR';
+  error.status = options.status || null;
+  error.quota = options.quota || null;
+  return error;
+};
+
 /**
  * Gửi câu hỏi của học viên đến API RAG Chatbot của backend
  */
@@ -18,8 +27,15 @@ export const askChatbot = async (question, lessonId, scope = 'lesson', currentTi
     }
     throw new Error('API response invalid structure');
   } catch (error) {
-    if (error.response && (error.response.status === 429 || error.response.status === 403)) {
-      throw new Error(error.response.data?.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!");
+    if (error.response) {
+      throw createChatbotApiError(
+        error.response.data?.message || 'Dịch vụ AI hiện không thể xử lý yêu cầu.',
+        {
+          code: error.response.data?.code,
+          status: error.response.status,
+          quota: error.response.data?.quota
+        }
+      );
     }
     console.error('⚠️ Lỗi kết nối tới API Chatbot:', error.message);
     throw error;
@@ -84,12 +100,15 @@ export const askChatbotStream = async (
   });
 
   if (!response.ok) {
-    if (response.status === 429 || response.status === 403) {
-      const errJson = await response.json().catch(() => ({}));
-      const limitMsg = errJson.message || "Xin lỗi, bạn đã hết hạn mức sử dụng AI trong ngày hôm nay. Vui lòng quay lại vào ngày mai nhé!";
-      throw new Error(limitMsg);
-    }
-    throw new Error(`HTTP Error ${response.status}`);
+    const errJson = await response.json().catch(() => ({}));
+    throw createChatbotApiError(
+      errJson.message || `Dịch vụ AI phản hồi lỗi HTTP ${response.status}.`,
+      {
+        code: errJson.code,
+        status: response.status,
+        quota: errJson.quota
+      }
+    );
   }
 
   const reader = response.body.getReader();
@@ -292,7 +311,11 @@ export const askChatbotStream = async (
                   // Đẩy vào rawFullText, KHÔNG gọi onChunk ngay lập tức ở đây
                   // Display Ticker Loop sẽ nhả mượt từng chữ!
                 } else if (parsed.error) {
-                  throw new Error(parsed.error);
+                  throw createChatbotApiError(parsed.error, {
+                    code: parsed.code,
+                    status: parsed.status,
+                    quota: parsed.quota
+                  });
                 }
               } catch (e) {
                 if (e.message && !e.message.includes('JSON')) {
@@ -324,6 +347,16 @@ export const generateChatbotQuiz = async (lessonId) => {
     throw new Error(response.data?.message || 'Không thể tạo quiz');
   } catch (error) {
     console.error('⚠️ Lỗi API generateChatbotQuiz:', error.message);
+    if (error.response) {
+      throw createChatbotApiError(
+        error.response.data?.message || 'Không thể tạo bài tập trắc nghiệm lúc này.',
+        {
+          code: error.response.data?.code,
+          status: error.response.status,
+          quota: error.response.data?.quota
+        }
+      );
+    }
     throw error;
   }
 };
@@ -462,6 +495,8 @@ export const askChatbotAudio = async (arg1, arg2, arg3 = null, arg4 = false) => 
     const backendMsg = error.response?.data?.message || error.message || 'Lỗi kết nối máy chủ AI để chấm điểm.';
     const enhancedErr = new Error(backendMsg);
     enhancedErr.status = error.response?.status || 500;
+    enhancedErr.code = error.response?.data?.code || error.code || 'CHATBOT_AUDIO_ERROR';
+    enhancedErr.quota = error.response?.data?.quota || null;
     enhancedErr.originalError = error;
     throw enhancedErr;
   }

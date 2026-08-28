@@ -4,7 +4,7 @@ const chatbotController = require('./controllers/chatbot.controller');
 const { authenticate } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validation.middleware');
 const upload = require('../../middleware/upload.middleware');
-const { checkTokenLimit } = require('../../middleware/tokenLimit.middleware');
+const { checkQuestionLimit } = require('../../middleware/tokenLimit.middleware');
 const { aiLimiter, uploadLimiter } = require('../../middleware/rateLimit.middleware');
 
 // Schema Validation
@@ -17,9 +17,9 @@ const askSchema = {
 };
 
 // Route: POST /api/chatbot/ask (Yêu cầu đăng nhập để tránh lạm dụng hạn mức dịch vụ AI)
-router.post('/ask', authenticate, aiLimiter, checkTokenLimit, validate(askSchema), chatbotController.ask);
-router.post('/ask-stream', authenticate, aiLimiter, checkTokenLimit, validate(askSchema), chatbotController.askStream);
-router.post('/generate-quiz', authenticate, aiLimiter, checkTokenLimit, chatbotController.generateQuiz);
+router.post('/ask', authenticate, aiLimiter, validate(askSchema), checkQuestionLimit, chatbotController.ask);
+router.post('/ask-stream', authenticate, aiLimiter, validate(askSchema), checkQuestionLimit, chatbotController.askStream);
+router.post('/generate-quiz', authenticate, aiLimiter, checkQuestionLimit, chatbotController.generateQuiz);
 
 // API Kiểm tra ví Token AI còn lại
 router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBalance);

@@ -263,7 +263,7 @@ def generate_thesis_defense_doc():
         "| 5. Time-Window Transcript Retrieval (Nhận diện video currentTime [t-45s, t+45s])        |\n"
         "| 6. Hybrid Search: 60% Dense Vector (Pinecone) + 40% Lexical (PostgreSQL) + 15% Title Boost|\n"
         "| 7. Lesson Grouping & Diversity Reranker (Top-8 Chunks -> Đảm bảo nguồn đa dạng)        |\n"
-        "| 8. Grounded Context Injection -> Google Gemini 2.5/Pro (Strict Temperature: 0.2)        |\n"
+        "| 8. Grounded Context Injection -> Google Gemini 3.7 Flash (Structured Output)           |\n"
         "| 9. Server-Sent Events (SSE) Stream -> Markdown Render + Interactive Quiz + Video Seek   |\n"
         "+-----------------------------------------------------------------------------------------+"
     )
@@ -465,7 +465,7 @@ def generate_thesis_defense_doc():
         ),
         (
             "Câu 9: Chi phí gọi API của mô hình có đắt không? Nhóm quản lý hạn mức ra sao?",
-            "Dạ, nhóm sử dụng mô hình Google Gemini 2.5 Flash / Pro kết hợp với cơ chế Rate Limiting và Token Balance trong database. Mỗi học viên có một số lượng token nhất định trong ngày, giúp kiểm soát 100% chi phí và tránh bị lạm dụng DDoS."
+            "Dạ, nhóm sử dụng mô hình Google Gemini 3.7 Flash kết hợp với cơ chế Rate Limiting và Token Balance trong database. Mỗi học viên có một số lượng token nhất định trong ngày, giúp kiểm soát 100% chi phí và tránh bị lạm dụng DDoS."
         ),
         (
             "Câu 10: Điểm khác biệt lớn nhất giữa AI Chatbot này với ChatGPT thông thường là gì?",
@@ -501,7 +501,7 @@ def generate_thesis_defense_doc():
         ),
         (
             "Câu 18: Tính năng 'Từ vựng trọng tâm' có bịa thêm từ vựng không có trong bài không?",
-            "Dạ không ạ. Nhóm đã áp dụng Strict Grounding Prompt với Temperature 0.2 và quy tắc ép buộc: 'CHỈ trích xuất từ vựng xuất hiện trong nội dung bài học dưới đây, nếu không có đủ dữ liệu hãy trả lời lịch sự là chưa có đủ thông tin'."
+            "Dạ không ạ. Nhóm đã áp dụng Strict Grounding Prompt và quy tắc ép buộc: 'CHỈ trích xuất từ vựng xuất hiện trong nội dung bài học dưới đây, nếu không có đủ dữ liệu hãy trả lời lịch sự là chưa có đủ thông tin'."
         ),
         (
             "Câu 19: Hệ thống có hỗ trợ tìm kiếm tài liệu PDF đính kèm của bài học không?",

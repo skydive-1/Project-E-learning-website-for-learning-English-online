@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { createUiTranslator } from '../i18n/dom-translator';
+import { aiQuotaUiTranslations } from '../i18n/ai-quota-translations';
 import { externalUiTranslations } from '../i18n/external-ui-translations';
 import { globalUiTranslations } from '../i18n/global-ui-translations';
 
@@ -34,6 +35,19 @@ const translations = {
     darkMode: "Chuyển sang chế độ tối",
     profileAvatar: "Ảnh đại diện",
     menu: "Menu",
+
+    // Admin dashboard
+    adminSystemTitle: "Hệ Thống Quản Trị E-Learn Academy",
+    adminSystemSubtitle: "Quản lý tài khoản, khóa học và vận hành nội dung học tập",
+    adminAccounts: "Quản lý tài khoản",
+    adminCourses: "Quản lý khóa học",
+    adminCreateQuiz: "Tạo đề trắc nghiệm (Quiz)",
+    adminSecurity: "Cấu hình bảo mật",
+    adminUserAnalytics: "Phân tích người dùng",
+    adminAiTokenManagement: "Quản lý Token AI",
+    adminSystemRole: "Quản trị viên hệ thống",
+    adminRoleLabel: "Admin",
+    instructorRoleLabel: "Giảng viên",
 
     // Hero / Home Page
     heroBadge: "🚀 Trợ Lý Học Tiếng Anh AI Thông Minh",
@@ -113,6 +127,19 @@ const translations = {
     darkMode: "Switch to dark mode",
     profileAvatar: "Profile picture",
     menu: "Menu",
+
+    // Admin dashboard
+    adminSystemTitle: "E-Learn Academy Management System",
+    adminSystemSubtitle: "Manage accounts, courses, and learning content operations",
+    adminAccounts: "Account management",
+    adminCourses: "Instructor Panel",
+    adminCreateQuiz: "Create quiz",
+    adminSecurity: "Security configuration",
+    adminUserAnalytics: "User Analytics",
+    adminAiTokenManagement: "AI Token Management",
+    adminSystemRole: "System Admin",
+    adminRoleLabel: "Admin",
+    instructorRoleLabel: "Instructor",
 
     // Hero / Home Page
     heroBadge: "🚀 Smart AI English Learning Assistant",
@@ -410,6 +437,7 @@ const keyedPhraseMap = Object.keys(translations.VIE).reduce((phrases, key) => {
 const allUiPhraseTranslations = {
   ...externalUiTranslations,
   ...globalUiTranslations,
+  ...aiQuotaUiTranslations,
   ...directPhraseMap,
   ...keyedPhraseMap,
 };

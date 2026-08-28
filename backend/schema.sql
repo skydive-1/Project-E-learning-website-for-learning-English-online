@@ -180,6 +180,17 @@ CREATE TABLE IF NOT EXISTS user_token_limits (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 12b. Quota câu hỏi AI theo cửa sổ rolling 24 giờ
+CREATE TABLE IF NOT EXISTS ai_question_quotas (
+  user_id INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+  used_questions INT NOT NULL DEFAULT 0 CHECK (used_questions >= 0),
+  window_started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_question_quotas_window
+  ON ai_question_quotas(window_started_at);
+
 -- 13. Tạo bảng Lesson Comments (Bình luận bài học)
 CREATE TABLE IF NOT EXISTS lesson_comments (
   comment_id SERIAL PRIMARY KEY,
