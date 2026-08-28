@@ -1,9 +1,9 @@
 /**
- * Comprehensive E2E Verification Script for Gemini 2.5 & RAG Chatbot
+ * Comprehensive E2E Verification Script for Gemini 3.7 Flash & RAG Chatbot
  * 
  * Tests:
  * 1. Gemini Authentication
- * 2. Simple Gemini 2.5 Flash Request
+ * 2. Simple Gemini 3.7 Flash Request
  * 3. Backend Express Server Loading
  * 4. RAG Vector Embedding & Retrieval (Pinecone)
  * 5. End-to-End Chatbot Service (Global Chat & Lesson RAG Chat)
@@ -32,7 +32,7 @@ const {
 
 async function runE2ETests() {
   console.log('================================================================');
-  console.log('🚀 KIỂM THỬ TOÀN DIỆN HỆ THỐNG RAG CHATBOT GEMINI 2.5 (FREE TIER)');
+  console.log('🚀 KIỂM THỬ TOÀN DIỆN HỆ THỐNG RAG CHATBOT GEMINI 3.7 FLASH (FREE TIER)');
   console.log('================================================================\n');
 
   let passedTests = 0;
@@ -52,17 +52,17 @@ async function runE2ETests() {
   }
 
   // -------------------------------------------------------------
-  // TEST 2: Gọi thực tế Gemini 2.5 Flash Request đơn giản
+  // TEST 2: Gọi thực tế Gemini 3.7 Flash Request đơn giản
   // -------------------------------------------------------------
-  console.log('\n👉 [TEST 2/7] Kiểm tra Request Gemini 2.5 Flash đơn giản...');
+  console.log('\n👉 [TEST 2/7] Kiểm tra Request Gemini 3.7 Flash đơn giản...');
   if (key && key.trim() !== '') {
     try {
-      const prompt = 'Trả lời đúng 1 câu ngắn: "Gemini 2.5 Flash Free Tier đang hoạt động chính xác."';
+      const prompt = 'Trả lời đúng 1 câu ngắn: "Gemini 3.7 Flash đang hoạt động chính xác."';
       const result = await geminiModel.generateContent(prompt);
       const text = result.response.text();
       console.log(`   Phản hồi thực tế từ Gemini: "${text.trim()}"`);
       if (text && text.length > 0) {
-        console.log('   ✅ Test 2 Thành công: Gemini 2.5 Flash phản hồi thành công!');
+        console.log('   ✅ Test 2 Thành công: Gemini 3.7 Flash phản hồi thành công!');
         passedTests++;
       }
     } catch (err) {

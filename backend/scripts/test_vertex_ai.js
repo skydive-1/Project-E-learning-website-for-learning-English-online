@@ -1,10 +1,10 @@
 /**
- * Script Kiểm Thử Gemini 2.5 (Google AI Studio - Chế độ Miễn Phí 100%)
+ * Script Kiểm Thử Gemini 3.7 Flash (Google AI Studio)
  * 
  * Kiểm tra:
  * 1. Khởi tạo Client Gemini API
- * 2. Gọi thực tế Gemini 2.5 Flash sinh văn bản (Text Generation)
- * 3. Gọi thực tế Gemini 2.5 Flash sinh Stream chunks (SSE)
+ * 2. Gọi thực tế Gemini 3.7 Flash sinh văn bản (Text Generation)
+ * 3. Gọi thực tế Gemini 3.7 Flash sinh Stream chunks (SSE)
  * 4. Đếm số lượng Token (countTokens)
  * 5. Tạo vector Embedding 768 chiều (gemini-embedding-001)
  * 
@@ -29,7 +29,7 @@ const {
 
 async function runTests() {
   console.log('====================================================');
-  console.log('🚀 KIỂM THỬ HỆ THỐNG GEMINI 2.5 (CHẾ ĐỘ MIỄN PHÍ 100%)');
+  console.log('🚀 KIỂM THỬ HỆ THỐNG GEMINI 3.7 FLASH (CHẾ ĐỘ FREE TIER)');
   console.log('====================================================\n');
 
   let passedTests = 0;
@@ -48,24 +48,24 @@ async function runTests() {
     console.error('   ❌ Test 1 Thất bại:', err.message);
   }
 
-  // TEST 2: Gọi thực tế Gemini 2.5 Flash Text Generation
-  console.log('\n👉 [TEST 2/5] Kiểm tra Gọi thực tế Gemini 2.5 Flash Generate Content...');
+  // TEST 2: Gọi thực tế Gemini 3.7 Flash Text Generation
+  console.log('\n👉 [TEST 2/5] Kiểm tra Gọi thực tế Gemini 3.7 Flash Generate Content...');
   try {
-    const prompt = 'Hãy trả lời ngắn gọn đúng 1 câu: "Hệ thống E-learning AI Gemini 2.5 đang hoạt động miễn phí và ổn định."';
+    const prompt = 'Hãy trả lời ngắn gọn đúng 1 câu: "Hệ thống E-learning AI Gemini 3.7 Flash đang hoạt động ổn định."';
     const result = await geminiModel.generateContent(prompt);
     const text = result.response.text();
     console.log(`   Phản hồi thực tế từ Gemini: "${text.trim()}"`);
     if (!text || text.length === 0) {
       throw new Error('Gemini trả về chuỗi rỗng');
     }
-    console.log('   ✅ Test 2 Thành công: Gemini 2.5 Flash đã phản hồi văn bản thực tế!');
+    console.log('   ✅ Test 2 Thành công: Gemini 3.7 Flash đã phản hồi văn bản thực tế!');
     passedTests++;
   } catch (err) {
     console.error('   ❌ Test 2 Thất bại:', err.message);
   }
 
-  // TEST 3: Gọi thực tế Gemini 2.5 Flash Stream
-  console.log('\n👉 [TEST 3/5] Kiểm tra Gọi thực tế Gemini 2.5 Flash Generate Content Stream...');
+  // TEST 3: Gọi thực tế Gemini 3.7 Flash Stream
+  console.log('\n👉 [TEST 3/5] Kiểm tra Gọi thực tế Gemini 3.7 Flash Generate Content Stream...');
   try {
     const prompt = 'Hãy đếm từ 1 đến 3 bằng tiếng Anh.';
     const resultStream = await geminiModel.generateContentStream(prompt);
@@ -82,7 +82,7 @@ async function runTests() {
     if (chunkCount === 0 || !fullStreamText) {
       throw new Error('Stream không nhận được chunk nào');
     }
-    console.log('   ✅ Test 3 Thành công: Gemini 2.5 Flash Stream hoạt động hoàn hảo!');
+    console.log('   ✅ Test 3 Thành công: Gemini 3.7 Flash Stream hoạt động hoàn hảo!');
     passedTests++;
   } catch (err) {
     console.error('   ❌ Test 3 Thất bại:', err.message);
@@ -127,7 +127,7 @@ async function runTests() {
   console.log('====================================================');
 
   if (passedTests === totalTests) {
-    console.log('🎉 TẤT CẢ CÁC BÀI KIỂM THỬ GEMINI 2.5 ĐÃ HOÀN TẤT THÀNH CÔNG!');
+    console.log('🎉 TẤT CẢ CÁC BÀI KIỂM THỬ GEMINI 3.7 FLASH ĐÃ HOÀN TẤT THÀNH CÔNG!');
     process.exit(0);
   } else {
     process.exit(1);

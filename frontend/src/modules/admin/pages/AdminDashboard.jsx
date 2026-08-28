@@ -17,26 +17,30 @@ import {
   FiRefreshCw,
   FiShield,
   FiTrendingUp,
-  FiEdit
+  FiEdit,
+  FiCpu
 } from 'react-icons/fi';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import UserAnalyticsDashboard from '../components/UserAnalyticsDashboard';
+import AIQuotaUsageBoard from '../components/AIQuotaUsageBoard';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const showToast = useToast();
+  const { t } = useLanguage();
   
   const isAdmin = currentUser?.role === 'admin' || currentUser?.roleId === 1 || currentUser?.role_id === 1;
   // Backend là nguồn sự thật về đặc quyền; frontend chỉ dùng cờ này để hiển thị UI.
   const isSuperAdmin = currentUser?.isSuperAdmin === true || currentUser?.is_super_admin === true;
   
-  // Cho phép mở thẳng một tab từ URL, ví dụ /admin/dashboard?tab=analytics.
+  // Cho phép mở thẳng một tab từ URL, ví dụ /admin/dashboard?tab=ai-quota.
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
-    return ['users', 'courses', 'quizzes', 'security', 'analytics'].includes(requestedTab) ? requestedTab : 'users';
+    return ['users', 'courses', 'quizzes', 'security', 'analytics', 'ai-quota'].includes(requestedTab) ? requestedTab : 'users';
   });
 
   // State Cấu hình bảo mật
@@ -258,20 +262,22 @@ const AdminDashboard = () => {
   };
 
   const handleBulkResetTokens = async (roleId) => {
-    const roleName = roleId === 2 ? 'Giảng viên' : 'Học sinh';
-    if (!window.confirm(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn reset lượng Token AI đã sử dụng của TOÀN BỘ ${roleName} về 0?`)) {
+    const roleName = roleId === 2
+      ? t('instructorRoleLabel').toLowerCase()
+      : t('student').toLowerCase();
+    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượng token AI đã dùng của tất cả {{role}} về 0?', { role: roleName }))) {
       return;
     }
 
     try {
       const response = await apiClient.post('/admin/users/reset-tokens', { roleId });
       if (response.data && response.data.success) {
-        showToast(response.data.message || `Đã reset thành công hạn mức Token AI của toàn bộ ${roleName}!`, 'success');
+        showToast(t('Đã đặt lại token cho tất cả {{role}}.', { role: roleName }), 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi reset token hàng loạt:', err);
-      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi reset token', 'error');
+      showToast(t('Không thể đặt lại token hàng loạt. Vui lòng thử lại.'), 'error');
     }
   };
 
@@ -502,10 +508,10 @@ const AdminDashboard = () => {
           
           <div className="admin-header">
             <div>
-              <h1>Hệ Thống Quản Trị E-Learn Academy</h1>
-              <p className="text-slate-500 text-sm mt-1">Quản lý tài khoản, khóa học và vận hành nội dung học tập</p>
+              <h1>{t('adminSystemTitle')}</h1>
+              <p className="text-slate-500 text-sm mt-1">{t('adminSystemSubtitle')}</p>
             </div>
-            <span className="admin-badge">{isSuperAdmin ? 'Super Admin' : 'System Admin Role'}</span>
+            <span className="admin-badge">{isSuperAdmin ? 'Super Admin' : t('adminSystemRole')}</span>
           </div>
 
           {/* Tab Navigation */}
@@ -514,31 +520,37 @@ const AdminDashboard = () => {
               className={`admin-tab ${activeTab === 'users' ? 'active' : ''}`}
               onClick={() => setActiveTab('users')}
             >
-              <FiUsers className="inline mr-2" /> Quản lý tài khoản
+              <FiUsers className="inline mr-2" /> {t('adminAccounts')}
             </button>
             <button
               className={`admin-tab ${activeTab === 'courses' ? 'active' : ''}`}
               onClick={() => setActiveTab('courses')}
             >
-              <FiFolder className="inline mr-2" /> Quản lý khóa học
+              <FiFolder className="inline mr-2" /> {t('adminCourses')}
             </button>
             <button 
               className={`admin-tab ${activeTab === 'quizzes' ? 'active' : ''}`}
               onClick={() => setActiveTab('quizzes')}
             >
-              <FiPlus className="inline mr-2" /> Tạo đề trắc nghiệm (Quiz)
+              <FiPlus className="inline mr-2" /> {t('adminCreateQuiz')}
             </button>
             <button 
               className={`admin-tab ${activeTab === 'security' ? 'active' : ''}`}
               onClick={() => setActiveTab('security')}
             >
-              <FiAlertTriangle className="inline mr-2" /> Cấu hình bảo mật
+              <FiAlertTriangle className="inline mr-2" /> {t('adminSecurity')}
             </button>
             <button 
               className={`admin-tab analytics-tab ${activeTab === 'analytics' ? 'active' : ''}`}
               onClick={() => setActiveTab('analytics')}
             >
-              <FiTrendingUp className="inline mr-2" /> User Analytics
+              <FiTrendingUp className="inline mr-2" /> {t('adminUserAnalytics')}
+            </button>
+            <button 
+              className={`admin-tab ${activeTab === 'ai-quota' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ai-quota')}
+            >
+              <FiCpu className="inline mr-2" /> {t('adminAiTokenManagement')}
             </button>
           </div>
 
@@ -553,7 +565,7 @@ const AdminDashboard = () => {
                     className={`filter-btn ${filterRole === 'all' ? 'active' : ''}`}
                     onClick={() => setFilterRole('all')}
                   >
-                    Tất cả ({users.length})
+                    {t('Tất cả')} ({users.length})
                   </button>
                   <button 
                     className={`filter-btn ${filterRole === 'admin' ? 'active' : ''}`}
@@ -565,13 +577,13 @@ const AdminDashboard = () => {
                     className={`filter-btn ${filterRole === 'instructor' ? 'active' : ''}`}
                     onClick={() => setFilterRole('instructor')}
                   >
-                    Giảng viên ({users.filter(u => u.role_id === 2).length})
+                    {t('instructorRoleLabel')} ({users.filter(u => u.role_id === 2).length})
                   </button>
                   <button 
                     className={`filter-btn ${filterRole === 'student' ? 'active' : ''}`}
                     onClick={() => setFilterRole('student')}
                   >
-                    Học sinh ({users.filter(u => u.role_id === 3).length})
+                    {t('student')} ({users.filter(u => u.role_id === 3).length})
                   </button>
                 </div>
 
@@ -581,14 +593,14 @@ const AdminDashboard = () => {
                     className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                     onClick={() => handleBulkResetTokens(3)}
                   >
-                    <FiRefreshCw className="text-xs" /> Reset toàn bộ Token của Học sinh
+                    <FiRefreshCw className="text-xs" /> {t('Đặt lại token của tất cả học viên')}
                   </button>
                   <button 
                     type="button"
                     className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                     onClick={() => handleBulkResetTokens(2)}
                   >
-                    <FiRefreshCw className="text-xs" /> Reset toàn bộ Token của Giảng viên
+                    <FiRefreshCw className="text-xs" /> {t('Đặt lại token của tất cả giảng viên')}
                   </button>
                 </div>
 
@@ -609,11 +621,11 @@ const AdminDashboard = () => {
                     <thead>
                       <tr>
                         <th>ID</th>
-                        <th>Tên hiển thị</th>
-                        <th>Email / Tên đăng nhập</th>
-                        <th>Vai trò</th>
-                        <th>Ngày tạo</th>
-                        <th>Hành động</th>
+                        <th>{t('Tên hiển thị')}</th>
+                        <th>{t('Email / Tên đăng nhập')}</th>
+                        <th>{t('Vai trò')}</th>
+                        <th>{t('Ngày tạo')}</th>
+                        <th>{t('Hành động')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -632,7 +644,11 @@ const AdminDashboard = () => {
                             }`}>
                               {user.is_super_admin
                                 ? 'Super Admin'
-                                : (user.role_name || (user.role_id === 1 ? 'Admin' : user.role_id === 2 ? 'Instructor' : 'Student'))}
+                                : (user.role_id === 1
+                                  ? t('adminRoleLabel')
+                                  : user.role_id === 2
+                                    ? t('instructorRoleLabel')
+                                    : t('student'))}
                             </span>
                           </td>
                           <td className="text-xs text-slate-500">
@@ -1213,6 +1229,9 @@ const AdminDashboard = () => {
 
             {/* TAB 4: USER & SYSTEM ANALYTICS */}
             {activeTab === 'analytics' && <UserAnalyticsDashboard />}
+
+            {/* TAB 5: AI QUOTA & TOKEN USAGE BOARD */}
+            {activeTab === 'ai-quota' && <AIQuotaUsageBoard />}
 
 
           </div>

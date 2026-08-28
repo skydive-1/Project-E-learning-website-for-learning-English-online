@@ -257,6 +257,23 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tạo bảng user_token_limits:', migErr.message);
     }
 
+    // 3.1b. Bảng quota câu hỏi AI theo cửa sổ rolling 24 giờ
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS ai_question_quotas (
+          user_id INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+          used_questions INT NOT NULL DEFAULT 0 CHECK (used_questions >= 0),
+          window_started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_question_quotas_window
+          ON ai_question_quotas(window_started_at);
+      `);
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tạo bảng ai_question_quotas:', migErr.message);
+    }
+
     // 3.2. Bảng `lesson_comments` & `comment_upvotes`
     try {
       await client.query(`

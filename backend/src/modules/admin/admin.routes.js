@@ -18,6 +18,12 @@ router.get('/users', adminController.getAllUsers);
 // GET /api/admin/analytics - Tiến trình toàn bộ học viên và sức khỏe hệ thống
 router.get('/analytics', adminController.getAnalyticsDashboard);
 
+// GET /api/admin/ai-quota - Bảng Quản trị Toàn diện Hạn mức và Tiêu thụ Token AI
+router.get('/ai-quota', adminController.getAiQuotaDashboard);
+
+// PUT /api/admin/users/:userId/quota - Cập nhật hạn mức Token (max_tokens) cho người dùng
+router.put('/users/:userId/quota', adminController.updateUserQuotaLimit);
+
 // PUT /api/admin/users/:userId/role - Thay đổi vai trò người dùng
 router.put('/users/:userId/role', adminController.updateUserRole);
 

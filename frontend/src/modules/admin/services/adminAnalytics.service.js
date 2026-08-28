@@ -11,3 +11,30 @@ export const getAdminAnalytics = async (range = 30) => {
 
   return response.data.data;
 };
+
+export const getAiQuotaAnalytics = async (range = 30) => {
+  const response = await apiClient.get('/admin/ai-quota', {
+    params: { range }
+  });
+
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error('Dữ liệu AI Quota trả về không hợp lệ');
+  }
+
+  return response.data.data;
+};
+
+export const updateUserQuota = async (userId, maxTokens) => {
+  const response = await apiClient.put(`/admin/users/${userId}/quota`, { maxTokens });
+  return response.data;
+};
+
+export const resetUserAiToken = async (userId) => {
+  const response = await apiClient.post(`/admin/users/${userId}/reset-token`);
+  return response.data;
+};
+
+export const resetBulkAiTokens = async (roleId) => {
+  const response = await apiClient.post('/admin/users/reset-tokens', { roleId });
+  return response.data;
+};

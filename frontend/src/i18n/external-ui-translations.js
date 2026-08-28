@@ -1110,7 +1110,7 @@ export const externalUiTranslations = {
   "Tạo đề thi tự luyện công khai mới thành công!": "Successfully created a public self-practice exam!",
   "Tạo đề trắc nghiệm, bài tập tự luận và phát âm trực tiếp gắn liền vào từng bài học.": "Create multiple choice questions, essay exercises and pronunciation directly attached to each lesson.",
   "Tạo ghi chú vùng": "Create zone notes",
-  "Tạo lại phụ đề bằng Gemini 2.5 Flash": "Regenerate subtitles using Gemini 2.5 Flash",
+  "Tạo lại phụ đề bằng Gemini 3.7 Flash": "Regenerate subtitles using Gemini 3.7 Flash",
   "Tạo Phụ Đề AI Ngay": "Create AI Subtitles Now",
   "Tạo Quizzes vào bài học": "Create Quizzes into lessons",
   "Tạo sổ tay từ vựng cá nhân để ôn tập flashcard mỗi ngày": "Create a personal vocabulary notebook to review flashcards every day",

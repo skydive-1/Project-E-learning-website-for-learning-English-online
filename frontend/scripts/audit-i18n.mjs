@@ -8,6 +8,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(scriptDirectory, '..');
 const sourceRoot = path.join(frontendRoot, 'src');
 const languageContextPath = path.join(sourceRoot, 'context', 'LanguageContext.jsx');
+const aiQuotaTranslationsPath = path.join(sourceRoot, 'i18n', 'ai-quota-translations.js');
 const globalTranslationsPath = path.join(sourceRoot, 'i18n', 'global-ui-translations.js');
 const externalTranslationsPath = path.join(sourceRoot, 'i18n', 'external-ui-translations.js');
 const vietnamesePattern = /[À-ỹĐđ]/;
@@ -71,6 +72,7 @@ const loadCoveredVietnamesePhrases = async () => {
   const languageAst = parseSource(languageContextPath);
   const keyedTranslations = findVariableObject(languageAst, 'translations');
   const directPhraseMap = findVariableObject(languageAst, 'directPhraseMap');
+  const { aiQuotaUiTranslations } = await import(pathToFileURL(aiQuotaTranslationsPath).href);
   const { globalUiTranslations } = await import(pathToFileURL(globalTranslationsPath).href);
   const externalModule = fs.existsSync(externalTranslationsPath)
     ? await import(`${pathToFileURL(externalTranslationsPath).href}?audit=${Date.now()}`)
@@ -79,6 +81,7 @@ const loadCoveredVietnamesePhrases = async () => {
 
   Object.values(keyedTranslations.VIE || {}).forEach((value) => phrases.add(normalized(value)));
   Object.keys(directPhraseMap).forEach((value) => phrases.add(normalized(value)));
+  Object.keys(aiQuotaUiTranslations).forEach((value) => phrases.add(normalized(value)));
   Object.keys(globalUiTranslations).forEach((value) => phrases.add(normalized(value)));
   Object.keys(externalModule.externalUiTranslations || {}).forEach((value) => phrases.add(normalized(value)));
 

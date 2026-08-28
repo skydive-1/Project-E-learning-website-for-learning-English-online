@@ -47,6 +47,8 @@ const authenticatedUserKey = (req) => {
   return userId ? `user:${userId}` : clientKey(req);
 };
 
+const hasUnlimitedAiRole = (req) => Number(req.user?.roleId || req.user?.role_id) === 1;
+
 const createRateLimiter = ({
   name,
   windowMs,
@@ -115,8 +117,9 @@ const passwordResetLimiter = createRateLimiter({
 const aiLimiter = createRateLimiter({
   name: 'ai',
   windowMs: readPositiveInteger('RATE_LIMIT_AI_WINDOW_MS', FIFTEEN_MINUTES),
-  limit: readPositiveInteger('RATE_LIMIT_AI_MAX', 10),
-  keyGenerator: authenticatedUserKey
+  limit: readPositiveInteger('RATE_LIMIT_AI_MAX', 30),
+  keyGenerator: authenticatedUserKey,
+  skip: hasUnlimitedAiRole
 });
 
 const quizLimiter = createRateLimiter({

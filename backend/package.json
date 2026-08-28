@@ -8,7 +8,7 @@
     "dev": "nodemon src/server.js",
 
 
-    "test": "node --test tests/auth_middleware.test.js tests/gamification_auth.test.js tests/super_admin.test.js tests/admin_role_auth.test.js tests/chatbot_history_auth.test.js tests/password_reset.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/rate_limit.test.js tests/quizzes_question_type.test.js tests/suggested_questions.test.js",
+    "test": "node --test tests/auth_middleware.test.js tests/gamification_auth.test.js tests/super_admin.test.js tests/admin_role_auth.test.js tests/chatbot_history_auth.test.js tests/password_reset.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/rate_limit.test.js tests/ai_question_quota.test.js tests/quizzes_question_type.test.js tests/suggested_questions.test.js",
 
     "test:media": "node --test tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js",
     "test:auth": "node --test tests/auth_middleware.test.js",

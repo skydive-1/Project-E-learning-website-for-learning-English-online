@@ -48,6 +48,49 @@ exports.getAnalyticsDashboard = async (req, res, next) => {
 };
 
 /**
+ * Lấy toàn diện Dashboard Quota & Token AI của tất cả User
+ */
+exports.getAiQuotaDashboard = async (req, res, next) => {
+  try {
+    const requestedRange = Number.parseInt(req.query.range, 10);
+    const rangeDays = [7, 30, 90, 365].includes(requestedRange) ? requestedRange : 30;
+    const dashboard = await adminService.getAiQuotaDashboard(rangeDays);
+
+    res.status(200).json({
+      success: true,
+      data: dashboard
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Cập nhật hạn mức Token tối đa (max_tokens) cho người dùng
+ */
+exports.updateUserQuotaLimit = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { maxTokens } = req.body;
+
+    if (maxTokens === undefined || maxTokens === null) {
+      const err = new Error('Thiếu thông tin maxTokens');
+      err.status = 400;
+      throw err;
+    }
+
+    const updated = await adminService.updateUserQuotaLimit(userId, maxTokens);
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật hạn mức Token thành công',
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Cập nhật vai trò cho người dùng
  */
 exports.updateUserRole = async (req, res, next) => {

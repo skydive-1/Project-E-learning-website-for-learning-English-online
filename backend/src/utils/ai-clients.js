@@ -17,6 +17,29 @@ dotenv.config();
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const pineconeApiKey = process.env.PINECONE_API_KEY;
 const pineconeIndexName = process.env.PINECONE_INDEX_NAME || process.env.PINECONE_INDEX || "elearning-rag";
+const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
+const DEFAULT_GEMINI_SPEAKING_MODEL = DEFAULT_GEMINI_MODEL;
+
+const isGeminiQuotaError = (error) => {
+  const message = String(error?.message || '');
+  return error?.status === 429
+    || error?.code === 429
+    || error?.code === 'RESOURCE_EXHAUSTED'
+    || /\b429\b|resource[_ ]exhausted|quota exceeded|rate limit exceeded/i.test(message);
+};
+
+const normalizeGeminiError = (error) => {
+  if (!isGeminiQuotaError(error)) return error;
+
+  const quotaError = new Error(
+    'Gemini 3.7 Flash hiện đã hết hạn mức sử dụng của hệ thống. Vui lòng thử lại sau khi Google tự động đặt lại hạn mức.'
+  );
+  quotaError.name = 'GeminiQuotaError';
+  quotaError.status = 503;
+  quotaError.code = 'GEMINI_QUOTA_EXHAUSTED';
+  quotaError.cause = error;
+  return quotaError;
+};
 
 // Khởi tạo Google Gen AI client theo chế độ Gemini Developer API (100% Miễn phí qua Google AI Studio)
 let ai = null;
@@ -62,10 +85,7 @@ function normalizeRequest(request) {
 
     const srcConfig = request.generationConfig || request.config || {};
     if (srcConfig.responseMimeType) config.responseMimeType = srcConfig.responseMimeType;
-    if (srcConfig.temperature !== undefined) config.temperature = srcConfig.temperature;
     if (srcConfig.maxOutputTokens !== undefined) config.maxOutputTokens = srcConfig.maxOutputTokens;
-    if (srcConfig.topP !== undefined) config.topP = srcConfig.topP;
-    if (srcConfig.topK !== undefined) config.topK = srcConfig.topK;
   }
 
   return { contents, config: Object.keys(config).length > 0 ? config : undefined };
@@ -75,8 +95,8 @@ function normalizeRequest(request) {
  * Helper gọi generateContent có fallback tự động giữa các model Flash
  */
 async function executeGenerate(client, contents, config) {
-  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
-  const fallbackModels = [preferredModel, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"];
+  const preferredModel = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const fallbackModels = [preferredModel, DEFAULT_GEMINI_MODEL];
   const triedModels = new Set();
   let lastError = null;
 
@@ -109,15 +129,15 @@ async function executeGenerate(client, contents, config) {
       throw err;
     }
   }
-  throw lastError || new Error("Không thể kết nối đến mô hình Gemini Flash khả dụng.");
+  throw normalizeGeminiError(lastError || new Error("Không thể kết nối đến mô hình Gemini Flash khả dụng."));
 }
 
 /**
  * Helper gọi generateContentStream có fallback tự động
  */
 async function executeGenerateStream(client, contents, config) {
-  const preferredModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
-  const fallbackModels = [preferredModel, "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"];
+  const preferredModel = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const fallbackModels = [preferredModel, DEFAULT_GEMINI_MODEL];
   const triedModels = new Set();
   let lastError = null;
 
@@ -150,7 +170,7 @@ async function executeGenerateStream(client, contents, config) {
       throw err;
     }
   }
-  throw lastError || new Error("Không thể kết nối đến mô hình Gemini Flash Stream khả dụng.");
+  throw normalizeGeminiError(lastError || new Error("Không thể kết nối đến mô hình Gemini Flash Stream khả dụng."));
 }
 
 /**
@@ -226,7 +246,7 @@ const geminiModel = {
 
     try {
       const client = getAiClient();
-      const modelName = process.env.GEMINI_MODEL || "gemini-3.7-flash";
+      const modelName = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
       const response = await client.models.countTokens({
         model: modelName,
         contents
@@ -279,7 +299,7 @@ const embeddingModel = {
       };
     } catch (error) {
       console.error(`[Embedding Model Error] Lỗi khi tạo vector từ ${modelName}:`, error.message);
-      throw error;
+      throw normalizeGeminiError(error);
     }
   }
 };
@@ -389,9 +409,6 @@ Hãy trả lời một cách tự nhiên, dễ hiểu, định dạng markdown �
   }
 };
 
-const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
-const DEFAULT_GEMINI_SPEAKING_MODEL = "gemini-3.7-flash";
-
 function getSpeakingModelName() {
   return process.env.GEMINI_SPEAKING_MODEL || process.env.GEMINI_MODEL || DEFAULT_GEMINI_SPEAKING_MODEL;
 }
@@ -404,7 +421,6 @@ const geminiSpeakingModel = {
     const client = getAiClient();
     const model = getSpeakingModelName();
     const config = {
-      temperature: 0,
       responseMimeType
     };
 
@@ -424,7 +440,7 @@ const geminiSpeakingModel = {
     } catch (error) {
       console.error(`[Gemini Speaking Model Error] (${model}):`, error.message);
       // Không âm thầm fallback sang model khác để bảo đảm tính nhất quán của chuẩn chấm điểm
-      throw error;
+      throw normalizeGeminiError(error);
     }
   }
 };
@@ -435,6 +451,8 @@ module.exports = {
   getSpeakingModelName,
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_SPEAKING_MODEL,
+  isGeminiQuotaError,
+  normalizeGeminiError,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,

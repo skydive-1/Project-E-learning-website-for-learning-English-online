@@ -78,7 +78,7 @@ describe('=== TASK-AI-SPEAKING-01-HOTFIX-R2 AUTOMATED TEST SUITE ===', () => {
       const savedGeneral = process.env.GEMINI_MODEL;
       try {
         process.env.GEMINI_SPEAKING_MODEL = 'gemini-3.7-flash-custom';
-        process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+        process.env.GEMINI_MODEL = 'gemini-3.7-flash-general';
         assert.strictEqual(getSpeakingModelName(), 'gemini-3.7-flash-custom');
       } finally {
         process.env.GEMINI_SPEAKING_MODEL = savedSpeaking;

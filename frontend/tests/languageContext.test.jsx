@@ -13,6 +13,13 @@ const LanguageHarness = () => {
       <button type="button" onClick={() => setLanguage('ENG')}>Use English</button>
       <button type="button" onClick={() => setStatus('Đang tải...')}>Load later</button>
       <p>{t('login')}</p>
+      <nav aria-label="Admin navigation">
+        <span>{t('adminAccounts')}</span>
+        <span>{t('adminCourses')}</span>
+        <span>{t('adminCreateQuiz')}</span>
+        <span>{t('adminSecurity')}</span>
+        <span>{t('adminUserAnalytics')}</span>
+      </nav>
       <p>Thông tin cá nhân</p>
       <p>Học từ vựng &amp; Đọc sách tiếng Anh</p>
       <p>12 giờ</p>
@@ -50,12 +57,22 @@ describe('LanguageProvider', () => {
     );
 
     expect(screen.getByText('Đăng nhập')).toBeInTheDocument();
+    expect(screen.getByText('Quản lý tài khoản')).toBeInTheDocument();
+    expect(screen.getByText('Quản lý khóa học')).toBeInTheDocument();
+    expect(screen.getByText('Tạo đề trắc nghiệm (Quiz)')).toBeInTheDocument();
+    expect(screen.getByText('Cấu hình bảo mật')).toBeInTheDocument();
+    expect(screen.getByText('Phân tích người dùng')).toBeInTheDocument();
     expect(screen.getByText('Thông tin cá nhân')).toBeInTheDocument();
     expect(document.documentElement).toHaveAttribute('lang', 'vi');
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch VIE' }));
 
     expect(screen.getByText('Login')).toBeInTheDocument();
+    expect(screen.getByText('Account management')).toBeInTheDocument();
+    expect(screen.getByText('Instructor Panel')).toBeInTheDocument();
+    expect(screen.getByText('Create quiz')).toBeInTheDocument();
+    expect(screen.getByText('Security configuration')).toBeInTheDocument();
+    expect(screen.getByText('User Analytics')).toBeInTheDocument();
     expect(screen.getByText('Personal information')).toBeInTheDocument();
     expect(screen.getByText('Learn vocabulary & Read English books')).toBeInTheDocument();
     expect(screen.getByText('12 hours')).toBeInTheDocument();
@@ -87,6 +104,8 @@ describe('LanguageProvider', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Switch ENG' }));
 
     expect(screen.getByText('Đang tải...')).toBeInTheDocument();
+    expect(screen.getByText('Quản lý tài khoản')).toBeInTheDocument();
+    expect(screen.getByText('Quản lý khóa học')).toBeInTheDocument();
     expect(screen.getByText('Thông tin cá nhân')).toBeInTheDocument();
     expect(screen.getByText('Học từ vựng & Đọc sách tiếng Anh')).toBeInTheDocument();
     expect(screen.getByText('12 giờ')).toBeInTheDocument();

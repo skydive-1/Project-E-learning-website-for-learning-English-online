@@ -7,6 +7,9 @@ const os = require("os");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { getQuestionQuotaStatus } = require('./aiQuestionQuota.service');
+
+const isGeminiQuotaExhausted = (error) => error?.code === 'GEMINI_QUOTA_EXHAUSTED';
 
 /**
  * Trích xuất thời lượng audio an toàn qua FFmpeg metadata (không dùng shell: true)
@@ -65,16 +68,6 @@ async function extractAudioDurationSafely(audioBuffer, ext = 'webm') {
   }
 }
 
-
-// Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
-const getVietnamDateString = (date = new Date()) => {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date);
-};
 
 let hasLoggedPineconeAuthWarning = false;
 
@@ -673,7 +666,6 @@ ${lessonContext.combinedContext}`;
     const result = await geminiModel.generateContent({
       contents: [{ role: 'user', parts: [{ text: quizPrompt }] }],
       generationConfig: {
-        temperature: 0.2,
         responseMimeType: "application/json"
       }
     });
@@ -686,6 +678,7 @@ ${lessonContext.combinedContext}`;
       throw new Error("Dữ liệu Quiz không phải là mảng hợp lệ.");
     }
   } catch (err) {
+    if (isGeminiQuotaExhausted(err)) throw err;
     console.warn(`[QuickQuiz] Cảnh báo parse JSON từ Gemini, fallback sang cấu trúc chuẩn:`, err.message);
     parsedQuestions = [
       {
@@ -922,6 +915,7 @@ CÂU HỎI CỦA HỌC VIÊN:
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChat:", error);
+    if (isGeminiQuotaExhausted(error)) throw error;
     return {
       success: false,
       reply: "Rất tiếc, đã có sự cố kết nối tới hệ thống AI Assistant. Vui lòng thử lại sau ít phút.",
@@ -1122,6 +1116,7 @@ CÂU HỎI CỦA HỌC VIÊN:
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChatStream:", error);
+    if (isGeminiQuotaExhausted(error)) throw error;
     throw new Error("Hệ thống AI Assistant đang bận.");
   }
 };
@@ -1142,6 +1137,8 @@ class ChatbotService {
       return result;
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.ask:", error);
+
+      if (isGeminiQuotaExhausted(error)) throw error;
 
       const chatbotError = new Error(error.message || "Dịch vụ Chatbot AI tạm thời gặp sự cố");
       chatbotError.name = "ChatbotError";
@@ -1403,6 +1400,7 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
       return parsedQuiz;
     } catch (error) {
       console.error("Lỗi xảy ra tại ChatbotService.generateQuiz:", error);
+      if (isGeminiQuotaExhausted(error)) throw error;
       throw new Error("Không thể tạo bài tập trắc nghiệm tự động: " + error.message);
     }
   }
@@ -1690,6 +1688,7 @@ Format response as strict JSON object with keys:
         }
         break; // Validation thành công
       } catch (err) {
+        if (isGeminiQuotaExhausted(err)) throw err;
         lastError = err;
         console.warn(`[Speaking Assessment Attempt ${attempt + 1} Failed]:`, err.message);
       }
@@ -1842,49 +1841,25 @@ Format response as strict JSON object with keys:
 
   async getTokenBalance(userId) {
     try {
-      // 1. Lấy role của user
       const userRes = await db.query('SELECT role_id FROM users WHERE user_id = $1', [userId]);
       if (userRes.rows.length === 0) {
         throw new Error('Người dùng không tồn tại');
       }
 
       const roleId = userRes.rows[0].role_id;
-      let limit = 6000; // Học viên
-      if (roleId === 1) limit = 999999999; // Admin
-      else if (roleId === 2) limit = 7000; // Giảng viên
-
-      const today = getVietnamDateString();
-
-      // 2. Lấy thông tin ví token từ bảng user_token_limits
-      const usageRes = await db.query(
-        'SELECT max_tokens, used_tokens, remaining_tokens, reset_date FROM user_token_limits WHERE user_id = $1',
-        [userId]
-      );
-
-      let tokens_used = 0;
-      let tokens_remaining = limit;
-
-      if (usageRes.rows.length > 0) {
-        const record = usageRes.rows[0];
-        const recordResetDate = record.reset_date ? new Date(record.reset_date).toISOString().split('T')[0] : '';
-
-        if (recordResetDate !== today) {
-          // Ngày mới: tự động reset hiển thị về 0/đầy
-          tokens_used = 0;
-          tokens_remaining = limit;
-        } else {
-          tokens_used = record.used_tokens;
-          limit = record.max_tokens;
-          tokens_remaining = record.remaining_tokens !== null && record.remaining_tokens !== undefined
-            ? record.remaining_tokens
-            : Math.max(0, limit - tokens_used);
-        }
-      }
+      const quota = await getQuestionQuotaStatus({ userId, roleId });
 
       return {
-        tokens_used,
-        token_max_limit: limit,
-        tokens_remaining
+        unlimited: quota.unlimited,
+        questions_used: quota.used,
+        question_limit: quota.limit,
+        questions_remaining: quota.remaining,
+        window_started_at: quota.windowStartedAt,
+        reset_at: quota.resetAt,
+        // Alias tương thích ngược cho client cũ của endpoint token-balance.
+        tokens_used: quota.used,
+        token_max_limit: quota.limit,
+        tokens_remaining: quota.remaining
       };
     } catch (error) {
       console.error('Lỗi tại ChatbotService.getTokenBalance:', error);

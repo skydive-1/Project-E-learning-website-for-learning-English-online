@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiCpu, FiUser } from 'react-icons/fi';
+import { FiAlertTriangle, FiClock, FiCpu } from 'react-icons/fi';
 import LessonCard from './LessonCard';
 import AiThinkingState from './AiThinkingState';
 
@@ -48,6 +48,8 @@ const MessageList = ({
       {messages.map((msg) => {
         const isUser = msg.sender === 'user';
         const isError = msg.isError;
+        const isQuotaNotice = msg.errorCode === 'AI_QUESTION_LIMIT_REACHED'
+          || msg.errorCode === 'GEMINI_QUOTA_EXHAUSTED';
 
         return (
           <div
@@ -67,10 +69,14 @@ const MessageList = ({
                 className={`px-4 py-3 rounded-2xl text-[13px] sm:text-[13.5px] leading-[1.65] transition-all ${
                   isUser
                     ? 'bg-smart-indigo text-white rounded-tr-xs shadow-sm shadow-indigo-600/10'
+                    : isQuotaNotice
+                    ? 'bg-amber-50 dark:bg-amber-950/25 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800/60 rounded-tl-xs'
                     : isError
                     ? 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50 rounded-tl-xs'
                     : 'bg-white dark:bg-slate-800 text-slate-750 dark:text-slate-200 border border-slate-200/90 dark:border-slate-700/80 rounded-tl-xs shadow-2xs'
                 }`}
+                role={isError ? 'status' : undefined}
+                aria-live={isError ? 'polite' : undefined}
               >
                 {/* Interactive Quiz Mode */}
                 {msg.quizData ? (
@@ -205,6 +211,12 @@ const MessageList = ({
                 ) : (
                   /* Standard AI / User Text Response */
                   <>
+                    {isError && !isUser && (
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.04em]">
+                        {isQuotaNotice ? <FiClock aria-hidden="true" /> : <FiAlertTriangle aria-hidden="true" />}
+                        <span>{isQuotaNotice ? 'Hạn mức trợ lý AI' : 'Không thể xử lý yêu cầu'}</span>
+                      </div>
+                    )}
                     <div className="whitespace-pre-wrap selection:bg-indigo-100 selection:text-indigo-900">
                       {msg.text}
                     </div>
