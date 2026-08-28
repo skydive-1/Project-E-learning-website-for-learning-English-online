@@ -3,7 +3,6 @@ import {
   FiRefreshCw, 
   FiSearch, 
   FiDownload, 
-  FiEdit, 
   FiAlertTriangle, 
   FiCpu, 
   FiZap, 
@@ -11,8 +10,7 @@ import {
   FiMessageSquare, 
   FiCheck, 
   FiX, 
-  FiTrendingUp,
-  FiSliders
+  FiTrendingUp
 } from 'react-icons/fi';
 import {
   ResponsiveContainer,
@@ -29,19 +27,10 @@ import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { 
   getAiQuotaAnalytics, 
-  updateUserQuota, 
   resetUserAiToken, 
   resetBulkAiTokens 
 } from '../services/adminAnalytics.service';
 import '../styles/ai-quota-board.scss';
-
-const PRESET_QUOTAS = [
-  { label: '6.000 (Mặc định)', value: 6000 },
-  { label: '10.000 (Nâng cao)', value: 10000 },
-  { label: '20.000 (Giảng viên)', value: 20000 },
-  { label: '50.000 (VIP / Pro)', value: 50000 },
-  { label: '100.000 (Không giới hạn)', value: 100000 }
-];
 
 const AIQuotaUsageBoard = () => {
   const showToast = useToast();
@@ -56,6 +45,13 @@ const AIQuotaUsageBoard = () => {
     day: '2-digit',
     month: '2-digit'
   }), [locale]);
+  const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }), [locale]);
 
   // State dữ liệu
   const [rangeDays, setRangeDays] = useState(30);
@@ -68,12 +64,6 @@ const AIQuotaUsageBoard = () => {
   const [filterTab, setFilterTab] = useState('all'); // all, exhausted, critical, normal, unused, student, instructor, admin
   const [searchTerm, setSearchTerm] = useState('');
   const [showChart, setShowChart] = useState(true);
-
-  // State Modal điều chỉnh Quota
-  const [quotaModalOpen, setQuotaModalOpen] = useState(false);
-  const [targetUserQuota, setTargetUserQuota] = useState(null);
-  const [newMaxTokens, setNewMaxTokens] = useState(6000);
-  const [submittingQuota, setSubmittingQuota] = useState(false);
 
   // State Modal xem lịch sử tương tác AI
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -106,60 +96,33 @@ const AIQuotaUsageBoard = () => {
   // Xử lý Reset Token cho 1 người dùng
   const handleResetToken = async (user) => {
     const name = user.full_name || user.username;
-    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượng token AI đã dùng của "{{name}}" về 0?', { name }))) {
+    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượt hỏi AI của "{{name}}" về 0?', { name }))) {
       return;
     }
 
     try {
       await resetUserAiToken(user.user_id);
-      showToast(t('Đã đặt lại token cho {{name}}.', { name }), 'success');
+      showToast(t('Đã đặt lại lượt hỏi cho {{name}}.', { name }), 'success');
       fetchQuotaData(true);
     } catch (err) {
       console.error('Lỗi reset token:', err);
-      showToast(t('Không thể đặt lại token. Vui lòng thử lại.'), 'error');
+      showToast(t('Không thể đặt lại lượt hỏi. Vui lòng thử lại.'), 'error');
     }
   };
 
   // Xử lý Reset Token hàng loạt theo Role
   const handleBulkReset = async (roleId, roleName) => {
-    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượng token AI đã dùng của tất cả {{role}} về 0?', { role: roleName }))) {
+    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượt hỏi AI của tất cả {{role}} về 0?', { role: roleName }))) {
       return;
     }
 
     try {
       await resetBulkAiTokens(roleId);
-      showToast(t('Đã đặt lại token cho tất cả {{role}}.', { role: roleName }), 'success');
+      showToast(t('Đã đặt lại lượt hỏi cho tất cả {{role}}.', { role: roleName }), 'success');
       fetchQuotaData(true);
     } catch (err) {
       console.error('Lỗi reset token hàng loạt:', err);
-      showToast(t('Không thể đặt lại token hàng loạt. Vui lòng thử lại.'), 'error');
-    }
-  };
-
-  // Mở Modal điều chỉnh Quota
-  const handleOpenQuotaModal = (user) => {
-    setTargetUserQuota(user);
-    setNewMaxTokens(user.max_tokens || 6000);
-    setQuotaModalOpen(true);
-  };
-
-  // Lưu Quota mới
-  const handleSaveQuota = async () => {
-    if (!targetUserQuota) return;
-    try {
-      setSubmittingQuota(true);
-      await updateUserQuota(targetUserQuota.user_id, newMaxTokens);
-      showToast(t('Đã cập nhật hạn mức {{tokens}} token cho {{name}}.', {
-        tokens: numberFormatter.format(newMaxTokens),
-        name: targetUserQuota.full_name || targetUserQuota.username
-      }), 'success');
-      setQuotaModalOpen(false);
-      fetchQuotaData(true);
-    } catch (err) {
-      console.error('Lỗi cập nhật quota:', err);
-      showToast(t('Không thể cập nhật hạn mức token. Vui lòng thử lại.'), 'error');
-    } finally {
-      setSubmittingQuota(false);
+      showToast(t('Không thể đặt lại lượt hỏi hàng loạt. Vui lòng thử lại.'), 'error');
     }
   };
 
@@ -184,7 +147,8 @@ const AIQuotaUsageBoard = () => {
       critical: t('Sắp hết hạn mức'),
       warning: t('Cảnh báo'),
       normal: t('Bình thường'),
-      unused: t('Chưa sử dụng')
+      unused: t('Chưa sử dụng'),
+      unlimited: t('Không giới hạn')
     })[status] || status;
     const headers = [
       t('ID người dùng'),
@@ -192,12 +156,12 @@ const AIQuotaUsageBoard = () => {
       t('Tên đăng nhập'),
       'Email',
       t('Vai trò'),
-      t('Hạn mức tối đa'),
-      t('Token đã dùng'),
-      t('Token còn lại'),
-      t('Phần trăm đã dùng'),
-      t('Trạng thái'),
+      t('Token mô hình đã dùng'),
       t('Lượt hỏi trong 24 giờ'),
+      t('Hạn mức câu hỏi trong 24 giờ'),
+      t('Số câu hỏi còn lại'),
+      t('Thời điểm đặt lại'),
+      t('Trạng thái'),
       t('Tương tác gần nhất')
     ];
     const rows = dashboardData.users.map(u => [
@@ -206,12 +170,12 @@ const AIQuotaUsageBoard = () => {
       `"${u.username || ''}"`,
       `"${u.email || ''}"`,
       `"${getRoleLabel(u.role_id)}"`,
-      u.max_tokens,
       u.used_tokens,
-      u.remaining_tokens,
-      `${u.usage_percentage}%`,
-      `"${getStatusLabel(u.quota_status)}"`,
-      u.used_questions_24h,
+      u.question_quota_unlimited ? t('Không giới hạn') : u.used_questions_24h,
+      u.question_quota_unlimited ? t('Không giới hạn') : u.question_limit_24h,
+      u.question_quota_unlimited ? t('Không giới hạn') : u.questions_remaining_24h,
+      `"${u.question_reset_at || ''}"`,
+      `"${getStatusLabel(u.question_quota_status)}"`,
       `"${u.last_ai_activity_at || 'N/A'}"`
     ]);
 
@@ -241,11 +205,11 @@ const AIQuotaUsageBoard = () => {
 
       // Lọc theo filter tab
       if (filterTab === 'all') return true;
-      if (filterTab === 'exhausted') return user.quota_status === 'exhausted';
-      if (filterTab === 'critical') return user.quota_status === 'critical';
-      if (filterTab === 'warning') return user.quota_status === 'warning';
-      if (filterTab === 'normal') return user.quota_status === 'normal';
-      if (filterTab === 'unused') return user.quota_status === 'unused';
+      if (filterTab === 'exhausted') return user.question_quota_status === 'exhausted';
+      if (filterTab === 'critical') return user.question_quota_status === 'critical';
+      if (filterTab === 'warning') return user.question_quota_status === 'warning';
+      if (filterTab === 'normal') return user.question_quota_status === 'normal';
+      if (filterTab === 'unused') return user.question_quota_status === 'unused';
       if (filterTab === 'student') return user.role_id === 3;
       if (filterTab === 'instructor') return user.role_id === 2;
       if (filterTab === 'admin') return user.role_id === 1;
@@ -258,8 +222,8 @@ const AIQuotaUsageBoard = () => {
   const counts = useMemo(() => {
     return {
       all: allUsers.length,
-      exhausted: allUsers.filter(u => u.quota_status === 'exhausted').length,
-      critical: allUsers.filter(u => u.quota_status === 'critical').length,
+      exhausted: allUsers.filter(u => u.question_quota_status === 'exhausted').length,
+      critical: allUsers.filter(u => u.question_quota_status === 'critical').length,
       student: allUsers.filter(u => u.role_id === 3).length,
       instructor: allUsers.filter(u => u.role_id === 2).length,
       admin: allUsers.filter(u => u.role_id === 1).length
@@ -269,8 +233,6 @@ const AIQuotaUsageBoard = () => {
   // Tóm tắt số liệu
   const summary = dashboardData?.summary || {};
   const totalUsed = Number(summary.total_used_tokens || 0);
-  const totalMax = Number(summary.total_max_tokens || 1);
-  const overallPercentage = Math.min(100, Math.round((totalUsed / totalMax) * 100)) || 0;
 
   // Lọc lịch sử câu hỏi của user đang chọn
   const userAuditLogs = useMemo(() => {
@@ -285,20 +247,16 @@ const AIQuotaUsageBoard = () => {
         {/* KPI 1 */}
         <div className="ai-kpi-box primary">
           <div className="ai-kpi-header">
-            <span className="ai-kpi-title">{t('Tổng token đã sử dụng')}</span>
+            <span className="ai-kpi-title">{t('Tổng token mô hình đã dùng')}</span>
             <FiZap className="ai-kpi-icon text-blue-500" />
           </div>
           <div className="ai-kpi-number-row">
             <span className="ai-kpi-num">{numberFormatter.format(totalUsed)}</span>
-            <span className="ai-kpi-denom">/ {compactFormatter.format(totalMax)} token</span>
+            <span className="ai-kpi-denom">{t('token mô hình')}</span>
           </div>
-          <div className="ai-kpi-bar-track">
-            <div className="ai-kpi-bar-fill blue" style={{ width: `${overallPercentage}%` }} />
-          </div>
-          <div className="ai-kpi-subtext">
-            <span>{t('Đã dùng: {{percentage}}%', { percentage: overallPercentage })}</span>
-            <span>{t('Còn lại: {{tokens}}', { tokens: compactFormatter.format(summary.total_remaining_tokens || 0) })}</span>
-          </div>
+          <p className="ai-kpi-desc">
+            {t('Token mô hình chỉ dùng để đo mức tiêu thụ, không phải hạn mức câu hỏi.')}
+          </p>
         </div>
 
         {/* KPI 2 */}
@@ -310,7 +268,7 @@ const AIQuotaUsageBoard = () => {
           <div className="ai-kpi-number-row">
             <span className="ai-kpi-num">{numberFormatter.format(summary.active_ai_users_period || 0)}</span>
             <span className="ai-kpi-badge-green">
-              {t('{{count}} lượt hỏi', { count: numberFormatter.format(summary.total_ai_messages_period || 0) })}
+              {t('{{count}} lượt hỏi', { count: numberFormatter.format(summary.total_questions_rolling_24h || 0) })}
             </span>
           </div>
           <p className="ai-kpi-desc">
@@ -340,7 +298,7 @@ const AIQuotaUsageBoard = () => {
           type="button"
           className={`ai-kpi-box clickable ${(counts.exhausted > 0 || counts.critical > 0) ? 'has-alert' : ''}`}
           onClick={() => setFilterTab(counts.exhausted > 0 ? 'exhausted' : 'critical')}
-          title={t('Nhấp để lọc người dùng đã hết hoặc sắp hết hạn mức')}
+          title={t('Nhấp để lọc người dùng đã hết hoặc sắp hết hạn mức câu hỏi')}
         >
           <div className="ai-kpi-header">
             <span className="ai-kpi-title">{t('Cảnh báo hạn mức')}</span>
@@ -486,14 +444,14 @@ const AIQuotaUsageBoard = () => {
           className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
           onClick={() => handleBulkReset(3, t('Học viên').toLowerCase())}
         >
-          <FiRefreshCw className="text-xs" /> {t('Đặt lại token của tất cả học viên')}
+          <FiRefreshCw className="text-xs" /> {t('Đặt lại lượt hỏi của tất cả học viên')}
         </button>
         <button 
           type="button"
           className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
           onClick={() => handleBulkReset(2, t('Giảng viên').toLowerCase())}
         >
-          <FiRefreshCw className="text-xs" /> {t('Đặt lại token của tất cả giảng viên')}
+          <FiRefreshCw className="text-xs" /> {t('Đặt lại lượt hỏi của tất cả giảng viên')}
         </button>
         <button 
           type="button"
@@ -539,9 +497,9 @@ const AIQuotaUsageBoard = () => {
                 <th>{t('Tên hiển thị')}</th>
                 <th>{t('Email / Tên đăng nhập')}</th>
                 <th>{t('Vai trò')}</th>
-                <th>{t('Hạn mức token (Đã dùng / Tối đa)')}</th>
-                <th>{t('Token còn lại')}</th>
-                <th>{t('Lượt hỏi trong 24 giờ')}</th>
+                <th>{t('Token mô hình đã dùng')}</th>
+                <th>{t('Câu hỏi / hạn mức (24 giờ)')}</th>
+                <th>{t('Còn lại / đặt lại')}</th>
                 <th style={{ textAlign: 'center' }}>{t('Hành động')}</th>
               </tr>
             </thead>
@@ -554,7 +512,8 @@ const AIQuotaUsageBoard = () => {
                 </tr>
               ) : (
                 filteredUsers.map((user) => {
-                  const pct = user.usage_percentage || 0;
+                  const pct = user.question_usage_percentage || 0;
+                  const isUnlimited = Boolean(user.question_quota_unlimited);
                   const isExhausted = pct >= 100;
                   const isCritical = pct >= 80 && pct < 100;
                   const isWarning = pct >= 50 && pct < 80;
@@ -590,41 +549,58 @@ const AIQuotaUsageBoard = () => {
                         </span>
                       </td>
 
-                      {/* Hạn mức Token (Progress Bar) */}
+                      {/* Token mô hình đã tiêu thụ, không phải hạn mức lượt hỏi */}
                       <td>
-                        <div className="ai-quota-bar-cell">
-                          <div className="flex justify-between items-center text-xs font-mono mb-1">
-                            <span className="font-bold text-slate-200">
-                              {numberFormatter.format(user.used_tokens)}
-                            </span>
-                            <span className="text-slate-400">
-                              / {numberFormatter.format(user.max_tokens)}
-                            </span>
-                            <span className={`ai-pct-pill ${isExhausted ? 'red' : isCritical ? 'orange' : isWarning ? 'yellow' : 'blue'}`}>
-                              {pct}%
-                            </span>
-                          </div>
-                          <div className="ai-table-progress-track">
-                            <div 
-                              className={`ai-table-progress-fill ${isExhausted ? 'red' : isCritical ? 'orange' : isWarning ? 'yellow' : 'blue'}`}
-                              style={{ width: `${Math.min(100, pct)}%` }}
-                            />
-                          </div>
+                        <div className="font-mono font-bold text-sm text-slate-200">
+                          {numberFormatter.format(user.used_tokens || 0)}
                         </div>
+                        <div className="text-[11px] text-slate-500">{t('token mô hình')}</div>
                       </td>
 
-                      {/* Token còn lại */}
+                      {/* Lượt hỏi theo role */}
                       <td>
-                        <span className={`font-mono font-bold text-sm ${user.remaining_tokens <= 0 ? 'text-rose-400' : 'text-slate-200'}`}>
-                          {numberFormatter.format(user.remaining_tokens)}
-                        </span>
+                        {isUnlimited ? (
+                          <span className="ai-unlimited-badge">{t('Không giới hạn')}</span>
+                        ) : (
+                          <div className="ai-quota-bar-cell">
+                            <div className="flex justify-between items-center text-xs font-mono mb-1">
+                              <span className="font-bold text-slate-200">
+                                {numberFormatter.format(user.used_questions_24h || 0)} / {numberFormatter.format(user.question_limit_24h || 0)}
+                              </span>
+                              <span className={`ai-pct-pill ${isExhausted ? 'red' : isCritical ? 'orange' : isWarning ? 'yellow' : 'blue'}`}>
+                                {pct}%
+                              </span>
+                            </div>
+                            <div className="ai-table-progress-track">
+                              <div
+                                className={`ai-table-progress-fill ${isExhausted ? 'red' : isCritical ? 'orange' : isWarning ? 'yellow' : 'blue'}`}
+                                style={{ width: `${Math.min(100, pct)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </td>
 
-                      {/* Hỏi 24h */}
+                      {/* Số câu còn lại và thời điểm mở lại */}
                       <td>
-                        <span className="text-xs font-mono text-slate-300">
-                          <strong>{user.used_questions_24h}</strong> / 50
-                        </span>
+                        {isUnlimited ? (
+                          <span className="font-semibold text-emerald-400">{t('Không giới hạn')}</span>
+                        ) : (
+                          <div>
+                            <div className={`font-mono font-bold text-sm ${user.questions_remaining_24h <= 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                              {t('{{count}} câu còn lại', {
+                                count: numberFormatter.format(user.questions_remaining_24h || 0)
+                              })}
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-1">
+                              {user.question_reset_at
+                                ? t('Đặt lại lúc {{time}}', {
+                                  time: dateTimeFormatter.format(new Date(user.question_reset_at))
+                                })
+                                : t('Chu kỳ bắt đầu từ câu hỏi đầu tiên.')}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Hành động (Nút icon vuông chuẩn screenshot) */}
@@ -634,20 +610,10 @@ const AIQuotaUsageBoard = () => {
                           <button
                             type="button"
                             className="btn-action"
-                            title={t('Đặt lại lượng token đã dùng về 0')}
+                            title={t('Đặt lại lượt hỏi trong 24 giờ về 0')}
                             onClick={() => handleResetToken(user)}
                           >
                             <FiRefreshCw className="text-xs text-emerald-400" />
-                          </button>
-
-                          {/* Nút Chỉnh Max Quota */}
-                          <button
-                            type="button"
-                            className="btn-action"
-                            title={t('Điều chỉnh hạn mức token tối đa')}
-                            onClick={() => handleOpenQuotaModal(user)}
-                          >
-                            <FiEdit className="text-xs text-blue-400" />
                           </button>
 
                           {/* Nút Xem lịch sử prompt */}
@@ -667,90 +633,6 @@ const AIQuotaUsageBoard = () => {
               )}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* 6. MODAL: ĐIỀU CHỈNH HẠN MỨC TOKEN */}
-      {quotaModalOpen && targetUserQuota && (
-        <div className="admin-modal-overlay">
-          <div className="admin-modal-box">
-            <div className="admin-modal-header">
-              <div className="flex items-center gap-2">
-                <FiSliders className="text-blue-500" />
-                <h3>{t('Điều chỉnh hạn mức token cho học viên')}</h3>
-              </div>
-              <button 
-                type="button" 
-                className="admin-modal-close"
-                aria-label={t('Đóng hộp thoại')}
-                onClick={() => setQuotaModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="admin-modal-body">
-              <div className="target-user-card mb-4">
-                <div className="font-bold text-slate-100">{targetUserQuota.full_name || targetUserQuota.username}</div>
-                <div className="text-xs text-slate-400">{targetUserQuota.email}</div>
-                <div className="text-xs text-blue-400 mt-1">
-                  {t('Đã dùng hiện tại: {{used}} / {{maximum}} token', {
-                    used: numberFormatter.format(targetUserQuota.used_tokens),
-                    maximum: numberFormatter.format(targetUserQuota.max_tokens)
-                  })}
-                </div>
-              </div>
-
-              <label className="text-xs font-semibold text-slate-300 block mb-2">
-                {t('Chọn nhanh hạn mức:')}
-              </label>
-              <div className="preset-grid mb-4">
-                {PRESET_QUOTAS.map((pq) => (
-                  <button
-                    key={pq.value}
-                    type="button"
-                    className={`preset-btn ${newMaxTokens === pq.value ? 'active' : ''}`}
-                    onClick={() => setNewMaxTokens(pq.value)}
-                  >
-                    {t(pq.label)}
-                  </button>
-                ))}
-              </div>
-
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                {t('Hoặc nhập số token cụ thể:')}
-              </label>
-              <input
-                type="number"
-                step="1000"
-                min="0"
-                className="admin-number-input"
-                value={newMaxTokens}
-                onChange={(e) => setNewMaxTokens(Number(e.target.value))}
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                {t('Hạn mức mặc định là 6.000 token/ngày. Có thể tăng cho học viên VIP.')}
-              </p>
-            </div>
-
-            <div className="admin-modal-footer">
-              <button
-                type="button"
-                className="btn-cancel"
-                onClick={() => setQuotaModalOpen(false)}
-              >
-                {t('Hủy')}
-              </button>
-              <button
-                type="button"
-                className="btn-save"
-                onClick={handleSaveQuota}
-                disabled={submittingQuota}
-              >
-                {submittingQuota ? t('Đang lưu...') : t('Lưu hạn mức mới')}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

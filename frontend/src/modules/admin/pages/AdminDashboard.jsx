@@ -245,19 +245,19 @@ const AdminDashboard = () => {
   };
 
   const handleResetUserToken = async (userId, username) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn reset lượng Token AI đã sử dụng của "${username}" về 0?`)) {
+    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượt hỏi AI của "{{name}}" về 0?', { name: username }))) {
       return;
     }
 
     try {
       const response = await apiClient.post(`/admin/users/${userId}/reset-token`);
       if (response.data && response.data.success) {
-        showToast(`Đã reset thành công hạn mức Token AI của "${username}"!`, 'success');
+        showToast(t('Đã đặt lại lượt hỏi cho {{name}}.', { name: username }), 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi reset token:', err);
-      showToast(err.response?.data?.message || 'Có lỗi xảy ra khi reset token', 'error');
+      showToast(t('Không thể đặt lại lượt hỏi. Vui lòng thử lại.'), 'error');
     }
   };
 
@@ -265,19 +265,19 @@ const AdminDashboard = () => {
     const roleName = roleId === 2
       ? t('instructorRoleLabel').toLowerCase()
       : t('student').toLowerCase();
-    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượng token AI đã dùng của tất cả {{role}} về 0?', { role: roleName }))) {
+    if (!window.confirm(t('Bạn có chắc muốn đặt lại lượt hỏi AI của tất cả {{role}} về 0?', { role: roleName }))) {
       return;
     }
 
     try {
       const response = await apiClient.post('/admin/users/reset-tokens', { roleId });
       if (response.data && response.data.success) {
-        showToast(t('Đã đặt lại token cho tất cả {{role}}.', { role: roleName }), 'success');
+        showToast(t('Đã đặt lại lượt hỏi cho tất cả {{role}}.', { role: roleName }), 'success');
         fetchUsers();
       }
     } catch (err) {
       console.error('Lỗi reset token hàng loạt:', err);
-      showToast(t('Không thể đặt lại token hàng loạt. Vui lòng thử lại.'), 'error');
+      showToast(t('Không thể đặt lại lượt hỏi hàng loạt. Vui lòng thử lại.'), 'error');
     }
   };
 
@@ -593,14 +593,14 @@ const AdminDashboard = () => {
                     className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                     onClick={() => handleBulkResetTokens(3)}
                   >
-                    <FiRefreshCw className="text-xs" /> {t('Đặt lại token của tất cả học viên')}
+                    <FiRefreshCw className="text-xs" /> {t('Đặt lại lượt hỏi của tất cả học viên')}
                   </button>
                   <button 
                     type="button"
                     className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                     onClick={() => handleBulkResetTokens(2)}
                   >
-                    <FiRefreshCw className="text-xs" /> {t('Đặt lại token của tất cả giảng viên')}
+                    <FiRefreshCw className="text-xs" /> {t('Đặt lại lượt hỏi của tất cả giảng viên')}
                   </button>
                 </div>
 
@@ -693,7 +693,7 @@ const AdminDashboard = () => {
                                   <button 
                                     className="btn-action btn-reset"
                                     onClick={() => handleResetUserToken(user.user_id, user.username)}
-                                    title="Reset ví Token AI"
+                                    title={t('Đặt lại lượt hỏi trong 24 giờ về 0')}
                                   >
                                     <FiRefreshCw />
                                   </button>

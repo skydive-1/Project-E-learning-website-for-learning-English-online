@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../src/context/LanguageContext';
 import AIQuotaUsageBoard from '../src/modules/admin/components/AIQuotaUsageBoard';
 import { getAiQuotaAnalytics } from '../src/modules/admin/services/adminAnalytics.service';
@@ -36,6 +36,40 @@ const dashboardFixture = {
     usage_percentage: 20,
     quota_status: 'normal',
     used_questions_24h: 4,
+    question_limit_24h: 10,
+    questions_remaining_24h: 6,
+    question_quota_unlimited: false,
+    question_reset_at: '2026-08-29T12:00:00.000Z',
+    question_usage_percentage: 40,
+    question_quota_status: 'normal',
+  }, {
+    user_id: 13,
+    full_name: 'Demo Instructor',
+    username: 'instructor13',
+    email: 'instructor@example.com',
+    role_id: 2,
+    used_tokens: 800,
+    used_questions_24h: 3,
+    question_limit_24h: 20,
+    questions_remaining_24h: 17,
+    question_quota_unlimited: false,
+    question_reset_at: '2026-08-29T12:00:00.000Z',
+    question_usage_percentage: 15,
+    question_quota_status: 'normal',
+  }, {
+    user_id: 14,
+    full_name: 'System Admin',
+    username: 'admin14',
+    email: 'admin@example.com',
+    role_id: 1,
+    used_tokens: 0,
+    used_questions_24h: null,
+    question_limit_24h: null,
+    questions_remaining_24h: null,
+    question_quota_unlimited: true,
+    question_reset_at: null,
+    question_usage_percentage: 0,
+    question_quota_status: 'unlimited',
   }],
 };
 
@@ -57,17 +91,16 @@ describe('AI quota management translations', () => {
 
     renderBoard();
 
-    expect(await screen.findByText('Total tokens used')).toBeInTheDocument();
+    expect(await screen.findByText('Total model tokens used')).toBeInTheDocument();
     expect(screen.getByText('Users using AI')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reset all student tokens' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Token quota (Used / Maximum)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reset all student question usage' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Model tokens used' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Questions / quota (24 hours)' })).toBeInTheDocument();
     expect(screen.getByText('Student')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTitle('Change maximum token quota'));
-
-    expect(screen.getByRole('heading', { name: 'Change student token quota' })).toBeInTheDocument();
-    expect(screen.getByText('Choose a quota preset:')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save new quota' })).toBeInTheDocument();
+    expect(screen.getByText('4 / 10')).toBeInTheDocument();
+    expect(screen.getByText('3 / 20')).toBeInTheDocument();
+    expect(screen.getAllByText('Unlimited').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/\/ 50/)).not.toBeInTheDocument();
   });
 
   it('renders a localized, actionable 404 state in Vietnamese', async () => {

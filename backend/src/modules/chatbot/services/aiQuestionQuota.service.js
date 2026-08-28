@@ -12,6 +12,48 @@ const getQuestionLimitForRole = (roleId) => {
   return QUESTION_LIMIT_BY_ROLE[normalizedRoleId] || QUESTION_LIMIT_BY_ROLE[3];
 };
 
+const getQuestionQuotaSnapshot = ({
+  roleId,
+  usedQuestions = 0,
+  windowStartedAt = null,
+  now = Date.now()
+}) => {
+  const limit = getQuestionLimitForRole(roleId);
+  if (limit === null) {
+    return {
+      unlimited: true,
+      limit: null,
+      used: null,
+      remaining: null,
+      windowStartedAt: null,
+      resetAt: null
+    };
+  }
+
+  const startedAtMs = windowStartedAt ? new Date(windowStartedAt).getTime() : NaN;
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  if (!Number.isFinite(startedAtMs) || startedAtMs + QUESTION_QUOTA_WINDOW_MS <= nowMs) {
+    return {
+      unlimited: false,
+      limit,
+      used: 0,
+      remaining: limit,
+      windowStartedAt: null,
+      resetAt: null
+    };
+  }
+
+  const used = Math.max(0, Number(usedQuestions || 0));
+  return {
+    unlimited: false,
+    limit,
+    used,
+    remaining: Math.max(0, limit - used),
+    windowStartedAt: new Date(startedAtMs).toISOString(),
+    resetAt: new Date(startedAtMs + QUESTION_QUOTA_WINDOW_MS).toISOString()
+  };
+};
+
 const toQuotaState = (row, limit, granted = true) => {
   const windowStartedAt = row?.window_started_at ? new Date(row.window_started_at) : new Date();
   const usedQuestions = Number(row?.used_questions || 0);
@@ -108,24 +150,18 @@ const getQuestionQuotaStatus = async ({ userId, roleId }) => {
   );
 
   const row = result.rows[0];
-  if (!row || new Date(row.window_started_at).getTime() + QUESTION_QUOTA_WINDOW_MS <= Date.now()) {
-    return {
-      unlimited: false,
-      limit,
-      used: 0,
-      remaining: limit,
-      windowStartedAt: null,
-      resetAt: null
-    };
-  }
-
-  return toQuotaState(row, limit, true);
+  return getQuestionQuotaSnapshot({
+    roleId,
+    usedQuestions: row?.used_questions,
+    windowStartedAt: row?.window_started_at
+  });
 };
 
 module.exports = {
   QUESTION_LIMIT_BY_ROLE,
   QUESTION_QUOTA_WINDOW_MS,
   getQuestionLimitForRole,
+  getQuestionQuotaSnapshot,
   getQuestionQuotaStatus,
   releaseQuestion,
   reserveQuestion
