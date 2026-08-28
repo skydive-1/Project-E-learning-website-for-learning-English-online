@@ -283,6 +283,19 @@
     }
   }
 
+  .ai-unlimited-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 9px;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.1);
+    color: #34d399;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
   @media (max-width: 767px) {
     .table-filters {
       align-items: stretch;

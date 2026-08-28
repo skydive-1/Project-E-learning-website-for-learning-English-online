@@ -5,6 +5,7 @@
 const { pool } = require('../../../config/database');
 const { supabaseAdmin } = require('../../../config/supabase');
 const { handleServiceError } = require('../../../utils/service-errors');
+const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
 
 // Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
 const getVietnamDateString = (date = new Date()) => {
@@ -519,7 +520,9 @@ const getAiQuotaDashboard = async (days = 30) => {
       (SELECT COUNT(*)::int FROM user_token_limits WHERE used_tokens >= max_tokens AND max_tokens > 0) AS exhausted_users_count,
       (SELECT COUNT(*)::int FROM user_token_limits WHERE used_tokens >= (max_tokens * 0.8) AND used_tokens < max_tokens AND max_tokens > 0) AS critical_users_count,
       (SELECT COUNT(*)::int FROM user_token_limits WHERE used_tokens > 0) AS total_users_with_usage,
-      (SELECT COALESCE(SUM(used_questions), 0)::int FROM ai_question_quotas) AS total_questions_rolling_24h,
+      (SELECT COALESCE(SUM(
+        CASE WHEN window_started_at > NOW() - INTERVAL '24 hours' THEN used_questions ELSE 0 END
+      ), 0)::int FROM ai_question_quotas) AS total_questions_rolling_24h,
       COALESCE(active_ai.active_ai_users, 0) AS active_ai_users_period,
       COALESCE(chat_stats.total_ai_messages, 0) AS total_ai_messages_period,
       COALESCE(chat_stats.total_user_prompts, 0) AS total_user_prompts_period,
@@ -575,6 +578,7 @@ const getAiQuotaDashboard = async (days = 30) => {
       COALESCE(utl.remaining_tokens, COALESCE(utl.max_tokens, 6000) - COALESCE(utl.used_tokens, 0))::int AS remaining_tokens,
       utl.reset_date,
       COALESCE(aqq.used_questions, 0)::int AS used_questions_24h,
+      aqq.window_started_at AS question_window_started_at,
       COALESCE(chat_agg.total_messages, 0)::int AS ai_messages_count,
       chat_agg.last_chat_at AS last_ai_activity_at,
       CASE 
@@ -636,13 +640,47 @@ const getAiQuotaDashboard = async (days = 30) => {
   const totalUsed = Number(summary.total_used_tokens || 0);
   const estimatedCostUsd = ((totalUsed / 1000000) * 0.075).toFixed(4);
 
+  const users = usersRes.rows.map((user) => {
+    const questionQuota = getQuestionQuotaSnapshot({
+      roleId: user.role_id,
+      usedQuestions: user.used_questions_24h,
+      windowStartedAt: user.question_window_started_at
+    });
+    const usagePercentage = questionQuota.unlimited || !questionQuota.limit
+      ? 0
+      : Math.min(100, Math.round((questionQuota.used / questionQuota.limit) * 100));
+    const quotaStatus = questionQuota.unlimited
+      ? 'unlimited'
+      : usagePercentage >= 100
+        ? 'exhausted'
+        : usagePercentage >= 80
+          ? 'critical'
+          : usagePercentage >= 50
+            ? 'warning'
+            : questionQuota.used === 0
+              ? 'unused'
+              : 'normal';
+
+    return {
+      ...user,
+      used_questions_24h: questionQuota.used,
+      question_limit_24h: questionQuota.limit,
+      questions_remaining_24h: questionQuota.remaining,
+      question_quota_unlimited: questionQuota.unlimited,
+      question_window_started_at: questionQuota.windowStartedAt,
+      question_reset_at: questionQuota.resetAt,
+      question_usage_percentage: usagePercentage,
+      question_quota_status: quotaStatus
+    };
+  });
+
   const modelBreakdown = [
     { name: 'Gemini 3.7 Flash Reasoning', share: 74, tokens: Math.round(totalUsed * 0.74), color: '#3B82F6' },
     { name: 'Gemini Embedding-001 (768D)', share: 18, tokens: Math.round(totalUsed * 0.18), color: '#10B981' },
     { name: 'Speaking / Voice Multimodal', share: 8, tokens: Math.round(totalUsed * 0.08), color: '#F59E0B' }
   ];
 
-  const topConsumers = usersRes.rows.slice(0, 5);
+  const topConsumers = users.slice(0, 5);
 
   return {
     rangeDays: safeDays,
@@ -653,7 +691,7 @@ const getAiQuotaDashboard = async (days = 30) => {
     },
     modelBreakdown,
     trends: trendsRes.rows,
-    users: usersRes.rows,
+    users,
     topConsumers,
     recentAiLogs: logsRes.rows
   };

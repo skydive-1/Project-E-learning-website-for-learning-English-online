@@ -4,6 +4,7 @@ const test = require('node:test');
 const db = require('../src/config/database');
 const {
   getQuestionLimitForRole,
+  getQuestionQuotaSnapshot,
   releaseQuestion,
   reserveQuestion
 } = require('../src/modules/chatbot/services/aiQuestionQuota.service');
@@ -20,6 +21,48 @@ test('role limits are Student=10, Instructor=20 and Admin/Super Admin=unlimited'
   assert.equal(getQuestionLimitForRole(3), 10);
   assert.equal(getQuestionLimitForRole(2), 20);
   assert.equal(getQuestionLimitForRole(1), null);
+});
+
+test('admin dashboard quota snapshots expose 10/20/unlimited and rolling reset data', () => {
+  const now = new Date('2026-08-28T12:00:00.000Z');
+  const student = getQuestionQuotaSnapshot({
+    roleId: 3,
+    usedQuestions: 4,
+    windowStartedAt: '2026-08-28T00:00:00.000Z',
+    now
+  });
+  const instructor = getQuestionQuotaSnapshot({
+    roleId: 2,
+    usedQuestions: 3,
+    windowStartedAt: '2026-08-28T00:00:00.000Z',
+    now
+  });
+  const admin = getQuestionQuotaSnapshot({ roleId: 1, now });
+
+  assert.deepEqual(
+    { limit: student.limit, used: student.used, remaining: student.remaining },
+    { limit: 10, used: 4, remaining: 6 }
+  );
+  assert.equal(student.resetAt, '2026-08-29T00:00:00.000Z');
+  assert.deepEqual(
+    { limit: instructor.limit, used: instructor.used, remaining: instructor.remaining },
+    { limit: 20, used: 3, remaining: 17 }
+  );
+  assert.equal(admin.unlimited, true);
+  assert.equal(admin.limit, null);
+});
+
+test('an expired rolling window is shown as unused with a full role quota', () => {
+  const snapshot = getQuestionQuotaSnapshot({
+    roleId: 3,
+    usedQuestions: 10,
+    windowStartedAt: '2026-08-27T11:59:59.000Z',
+    now: new Date('2026-08-28T12:00:00.000Z')
+  });
+
+  assert.equal(snapshot.used, 0);
+  assert.equal(snapshot.remaining, 10);
+  assert.equal(snapshot.resetAt, null);
 });
 
 test('Admin bypasses the database-backed question quota', async () => {
