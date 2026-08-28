@@ -1,4 +1,15 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { createUiTranslator } from '../i18n/dom-translator';
+import { externalUiTranslations } from '../i18n/external-ui-translations';
+import { globalUiTranslations } from '../i18n/global-ui-translations';
 
 const translations = {
   VIE: {
@@ -18,6 +29,11 @@ const translations = {
     logout: "Đăng xuất",
     student: "Học viên",
     switchLangTip: "Chuyển sang Tiếng Anh",
+    learningAnalytics: "Phân tích học tập",
+    lightMode: "Chuyển sang chế độ sáng",
+    darkMode: "Chuyển sang chế độ tối",
+    profileAvatar: "Ảnh đại diện",
+    menu: "Menu",
 
     // Hero / Home Page
     heroBadge: "🚀 Trợ Lý Học Tiếng Anh AI Thông Minh",
@@ -92,6 +108,11 @@ const translations = {
     logout: "Logout",
     student: "Student",
     switchLangTip: "Switch to Vietnamese",
+    learningAnalytics: "Learning Analytics",
+    lightMode: "Switch to light mode",
+    darkMode: "Switch to dark mode",
+    profileAvatar: "Profile picture",
+    menu: "Menu",
 
     // Hero / Home Page
     heroBadge: "🚀 Smart AI English Learning Assistant",
@@ -378,31 +399,123 @@ const directPhraseMap = {
   "Giải đề Cambridge IELTS mới nhất, canh thời gian áp lực thực tế và hoàn thiện kỹ năng đạt Band 6.5+ - 7.5+.": "Solve latest Cambridge IELTS tests under real timed pressure to achieve Band 6.5+ - 7.5+."
 };
 
+const supportedLanguages = new Set(['VIE', 'ENG']);
+const normalizeLanguage = (value) => (supportedLanguages.has(value) ? value : 'VIE');
+
+const keyedPhraseMap = Object.keys(translations.VIE).reduce((phrases, key) => {
+  phrases[translations.VIE[key]] = translations.ENG[key];
+  return phrases;
+}, {});
+
+const allUiPhraseTranslations = {
+  ...externalUiTranslations,
+  ...globalUiTranslations,
+  ...directPhraseMap,
+  ...keyedPhraseMap,
+};
+
+const uiTranslator = createUiTranslator(allUiPhraseTranslations);
+
+const readStoredLanguage = () => {
+  if (typeof window === 'undefined') return 'VIE';
+
+  try {
+    return normalizeLanguage(window.localStorage.getItem('language'));
+  } catch {
+    return 'VIE';
+  }
+};
+
+const interpolate = (value, variables) => {
+  if (!variables) return value;
+  return Object.entries(variables).reduce(
+    (result, [name, replacement]) => result.replaceAll(`{{${name}}}`, String(replacement)),
+    value,
+  );
+};
+
 const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
-  const [language, setLanguage] = useState(() => {
-    return localStorage.getItem('language') || 'VIE';
-  });
+  const [language, setLanguageState] = useState(readStoredLanguage);
 
   useEffect(() => {
-    localStorage.setItem('language', language);
+    try {
+      window.localStorage.setItem('language', language);
+    } catch {
+      // The selected language still works for the current session when storage
+      // is unavailable (for example, strict private browsing settings).
+    }
   }, [language]);
 
-  const toggleLanguage = () => {
-    setLanguage(prev => (prev === 'VIE' ? 'ENG' : 'VIE'));
-  };
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key === 'language') {
+        setLanguageState(normalizeLanguage(event.newValue));
+      }
+    };
 
-  const t = (key) => {
-    if (!key) return '';
-    if (language === 'ENG') {
-      return translations['ENG']?.[key] || directPhraseMap[key] || directPhraseMap[translations['VIE']?.[key]] || key;
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    return uiTranslator.observe(document.body, language);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    document.documentElement.lang = language === 'ENG' ? 'en' : 'vi';
+    document.documentElement.dataset.language = language.toLowerCase();
+    document.title = uiTranslator.translateValue(document.title, language);
+
+    const description = document.querySelector('meta[name="description"]');
+    if (description?.content) {
+      description.content = uiTranslator.translateValue(description.content, language);
     }
-    return translations['VIE']?.[key] || key;
-  };
+
+    uiTranslator.setLanguage(language);
+    document.dispatchEvent(new CustomEvent('languagechange', { detail: { language } }));
+  }, [language]);
+
+  const setLanguage = useCallback((nextLanguage) => {
+    setLanguageState((currentLanguage) => normalizeLanguage(
+      typeof nextLanguage === 'function' ? nextLanguage(currentLanguage) : nextLanguage,
+    ));
+  }, []);
+
+  const toggleLanguage = useCallback(() => {
+    setLanguageState((currentLanguage) => (currentLanguage === 'VIE' ? 'ENG' : 'VIE'));
+  }, []);
+
+  const t = useCallback((key, variables) => {
+    if (!key) return '';
+    let translatedValue;
+
+    if (language === 'ENG') {
+      translatedValue = translations.ENG?.[key]
+        || allUiPhraseTranslations[key]
+        || allUiPhraseTranslations[translations.VIE?.[key]]
+        || key;
+    } else {
+      translatedValue = translations.VIE?.[key] || key;
+    }
+
+    return interpolate(translatedValue, variables);
+  }, [language]);
+
+  const contextValue = useMemo(() => ({
+    language,
+    setLanguage,
+    toggleLanguage,
+    t,
+  }), [language, setLanguage, t, toggleLanguage]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t }}>
+    <LanguageContext.Provider value={contextValue}>
       {children}
     </LanguageContext.Provider>
   );
