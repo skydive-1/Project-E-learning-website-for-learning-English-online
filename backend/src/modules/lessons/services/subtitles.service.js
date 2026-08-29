@@ -14,6 +14,8 @@ const db = require('../../../config/database');
 const { geminiModel } = require('../../../utils/ai-clients');
 const lessonsService = require('./lessons.service');
 
+const DEFAULT_GEMINI_SUBTITLE_MODEL = 'gemini-3.6-flash';
+
 /**
  * Format số giây thành chuỗi thời gian WebVTT: 00:01:23.456
  */
@@ -50,12 +52,18 @@ function buildVttFromCues(cues, type = 'bilingual') {
 }
 
 class SubtitlesService {
+  constructor() {
+    this.activeAutoGenerationJobs = new Set();
+    this.autoGenerationQueue = new Map();
+    this.autoQueueRunning = false;
+  }
+
   /**
    * Lấy dữ liệu phụ đề của bài học theo lessonId
    */
   async getSubtitlesByLessonId(lessonId) {
     const queryText = `
-      SELECT subtitle_id, lesson_id, en_vtt, vi_vtt, bilingual_vtt, cues, created_at, updated_at
+      SELECT subtitle_id, lesson_id, en_vtt, vi_vtt, bilingual_vtt, cues, subtitle_status, created_at, updated_at
       FROM lesson_subtitles
       WHERE lesson_id = $1
       LIMIT 1;
@@ -68,29 +76,203 @@ class SubtitlesService {
   }
 
   /**
+   * Lấy trạng thái xử lý phụ đề (none | pending | processing | ready | failed)
+   */
+  async getSubtitleStatus(lessonId) {
+    const queryText = `
+      SELECT subtitle_status, updated_at
+      FROM lesson_subtitles
+      WHERE lesson_id = $1
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(queryText, [lessonId]);
+    if (rows.length > 0) {
+      return { status: rows[0].subtitle_status || 'ready', updatedAt: rows[0].updated_at };
+    }
+    return { status: 'none', updatedAt: null };
+  }
+
+  /**
+   * Đặt trạng thái phụ đề (dùng để track tiến trình xử lý nền)
+   */
+  async setSubtitleStatus(lessonId, status, sourceContentUrl = null) {
+    const queryText = `
+      INSERT INTO lesson_subtitles (lesson_id, cues, subtitle_status, source_content_url, updated_at)
+      VALUES ($1, '[]'::jsonb, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (lesson_id)
+      DO UPDATE SET
+        subtitle_status = EXCLUDED.subtitle_status,
+        source_content_url = COALESCE(EXCLUDED.source_content_url, lesson_subtitles.source_content_url),
+        updated_at = CURRENT_TIMESTAMP;
+    `;
+    await db.query(queryText, [lessonId, status, sourceContentUrl]);
+  }
+
+  /**
+   * Ghi nhận video mới và khởi chạy pipeline nền sau khi transaction gắn
+   * media vào lesson đã COMMIT. Việc ghi pending là đồng bộ; phần AI là
+   * fire-and-forget nên response lưu course không phải chờ FFmpeg/Gemini.
+   */
+  async queueAutoGeneration(lessonId) {
+    const cleanLessonId = parseInt(lessonId, 10);
+    const lessonResult = await db.query(
+      `SELECT lesson_id, content_type, content_url
+       FROM lessons
+       WHERE lesson_id = $1`,
+      [cleanLessonId]
+    );
+    const lesson = lessonResult.rows[0];
+    if (!lesson || lesson.content_type !== 'video' || !lesson.content_url) return false;
+
+    await db.query(
+      `INSERT INTO lesson_subtitles (
+         lesson_id, en_vtt, vi_vtt, bilingual_vtt, cues,
+         subtitle_status, source_content_url, updated_at
+       )
+       VALUES ($1, NULL, NULL, NULL, '[]'::jsonb, 'pending', $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (lesson_id)
+       DO UPDATE SET
+         en_vtt = NULL,
+         vi_vtt = NULL,
+         bilingual_vtt = NULL,
+         cues = '[]'::jsonb,
+         subtitle_status = 'pending',
+         source_content_url = EXCLUDED.source_content_url,
+         updated_at = CURRENT_TIMESTAMP`,
+      [cleanLessonId, lesson.content_url]
+    );
+
+    this.scheduleAutoGeneration(cleanLessonId, lesson.content_url);
+    return true;
+  }
+
+  scheduleAutoGeneration(lessonId, expectedSourceUrl) {
+    const jobKey = String(lessonId);
+    this.autoGenerationQueue.set(jobKey, { lessonId, expectedSourceUrl });
+    this.drainAutoGenerationQueue();
+  }
+
+  drainAutoGenerationQueue() {
+    if (this.autoQueueRunning) return;
+    this.autoQueueRunning = true;
+
+    setImmediate(async () => {
+      try {
+        while (this.autoGenerationQueue.size > 0) {
+          const [jobKey, job] = this.autoGenerationQueue.entries().next().value;
+          this.autoGenerationQueue.delete(jobKey);
+          if (this.activeAutoGenerationJobs.has(jobKey)) continue;
+
+          this.activeAutoGenerationJobs.add(jobKey);
+          try {
+            console.log(`[Auto-Subtitle] Bắt đầu xử lý nền cho bài học ${job.lessonId}`);
+            await this.generateSubtitlesWithGemini(job.lessonId, {
+              expectedSourceUrl: job.expectedSourceUrl
+            });
+            console.log(`[Auto-Subtitle] Hoàn tất xử lý nền cho bài học ${job.lessonId}`);
+          } catch (error) {
+            console.warn(`[Auto-Subtitle] Xử lý bài học ${job.lessonId} thất bại: ${error.message}`);
+          } finally {
+            this.activeAutoGenerationJobs.delete(jobKey);
+          }
+
+          // Nếu video bị thay trong lúc job cũ đang chạy, row vẫn là pending
+          // và cần được chạy lại với source mới.
+          try {
+            const pending = await db.query(
+              `SELECT source_content_url
+               FROM lesson_subtitles
+               WHERE lesson_id = $1 AND subtitle_status = 'pending'`,
+              [job.lessonId]
+            );
+            if (pending.rows[0]?.source_content_url) {
+              this.autoGenerationQueue.set(jobKey, {
+                lessonId: job.lessonId,
+                expectedSourceUrl: pending.rows[0].source_content_url
+              });
+            }
+          } catch (_) {}
+        }
+      } finally {
+        this.autoQueueRunning = false;
+        if (this.autoGenerationQueue.size > 0) this.drainAutoGenerationQueue();
+      }
+    });
+  }
+
+  async resumePendingAutoGeneration() {
+    const { rows } = await db.query(
+      `SELECT ls.lesson_id, l.content_url AS source_content_url
+       FROM lesson_subtitles ls
+       JOIN lessons l ON l.lesson_id = ls.lesson_id
+       WHERE l.content_type = 'video'
+         AND l.content_url IS NOT NULL
+         AND l.content_url <> ''
+         AND ls.subtitle_status IN ('pending', 'processing')`
+    );
+
+    for (const row of rows) {
+      await db.query(
+        `UPDATE lesson_subtitles
+         SET subtitle_status = 'pending', source_content_url = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE lesson_id = $1`,
+        [row.lesson_id, row.source_content_url]
+      );
+      this.scheduleAutoGeneration(row.lesson_id, row.source_content_url);
+    }
+    return rows.length;
+  }
+
+  /**
    * Lưu hoặc cập nhật phụ đề bài học vào CSDL
    */
-  async saveSubtitles(lessonId, { en_vtt, vi_vtt, bilingual_vtt, cues }) {
+  async saveSubtitles(lessonId, { en_vtt, vi_vtt, bilingual_vtt, cues, subtitle_status = 'ready', source_content_url = null }) {
     const parsedCues = typeof cues === 'string' ? cues : JSON.stringify(cues || []);
     const enVtt = en_vtt || buildVttFromCues(cues, 'en');
     const viVtt = vi_vtt || buildVttFromCues(cues, 'vi');
     const bilingualVtt = bilingual_vtt || buildVttFromCues(cues, 'bilingual');
 
     const queryText = `
-      INSERT INTO lesson_subtitles (lesson_id, en_vtt, vi_vtt, bilingual_vtt, cues, updated_at)
-      VALUES ($1, $2, $3, $4, $5::jsonb, CURRENT_TIMESTAMP)
+      INSERT INTO lesson_subtitles (lesson_id, en_vtt, vi_vtt, bilingual_vtt, cues, subtitle_status, source_content_url, updated_at)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, CURRENT_TIMESTAMP)
       ON CONFLICT (lesson_id)
       DO UPDATE SET
         en_vtt = EXCLUDED.en_vtt,
         vi_vtt = EXCLUDED.vi_vtt,
         bilingual_vtt = EXCLUDED.bilingual_vtt,
         cues = EXCLUDED.cues,
+        subtitle_status = EXCLUDED.subtitle_status,
+        source_content_url = COALESCE(EXCLUDED.source_content_url, lesson_subtitles.source_content_url),
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;
     `;
 
-    const { rows } = await db.query(queryText, [lessonId, enVtt, viVtt, bilingualVtt, parsedCues]);
+    const { rows } = await db.query(queryText, [lessonId, enVtt, viVtt, bilingualVtt, parsedCues, subtitle_status, source_content_url]);
     return rows[0];
+  }
+
+  async saveGeneratedSubtitles(lessonId, expectedSourceUrl, { en_vtt, vi_vtt, bilingual_vtt, cues }) {
+    const parsedCues = typeof cues === 'string' ? cues : JSON.stringify(cues || []);
+    const queryText = `
+      UPDATE lesson_subtitles
+      SET en_vtt = $3,
+          vi_vtt = $4,
+          bilingual_vtt = $5,
+          cues = $6::jsonb,
+          subtitle_status = 'ready',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE lesson_id = $1 AND source_content_url = $2
+      RETURNING *;
+    `;
+    const { rows } = await db.query(queryText, [
+      lessonId,
+      expectedSourceUrl,
+      en_vtt,
+      vi_vtt,
+      bilingual_vtt,
+      parsedCues
+    ]);
+    return rows[0] || null;
   }
 
   /**
@@ -166,6 +348,7 @@ class SubtitlesService {
         env: { 
           ...process.env, 
           PYTHONIOENCODING: 'utf-8',
+          PYTHONUNBUFFERED: '1',
           FFMPEG_PATH: ffmpegInstaller.path
         }
       });
@@ -292,8 +475,10 @@ Quy tắc:
 - QUAN TRọNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 `;
 
-    console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên Gemini 3.7 Flash...`);
+    const subtitleModel = process.env.GEMINI_SUBTITLE_MODEL || DEFAULT_GEMINI_SUBTITLE_MODEL;
+    console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên ${subtitleModel}...`);
     const response = await geminiModel.generateContent({
+      model: subtitleModel,
       contents: [
         {
           role: 'user',
@@ -408,27 +593,50 @@ Quy tắc:
    *   - Supabase storage key: courses/xxx/uuid/video.mp4 — tải tạm về qua Signed URL
    *   - Signed HTTPS URL: https://...supabase.co/... — tải tạm trực tiếp
    */
-  async generateSubtitlesWithGemini(lessonId) {
-    // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
-    // server-side; URL/khoá nguồn này không được trả về player phía client.
-    const rawResult = await db.query(
-      'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
-      [parseInt(lessonId, 10)]
-    );
-    if (rawResult.rows.length === 0) {
-      throw new Error(`Không tìm thấy bài học có ID ${lessonId}`);
-    }
-    const rawLesson = rawResult.rows[0];
-
-    if (rawLesson.content_type !== 'video') {
-      throw new Error(`Bài học ${lessonId} không phải là video (content_type = ${rawLesson.content_type})`);
-    }
-
-    const rawContentUrl = rawLesson.content_url || '';
+  async generateSubtitlesWithGemini(lessonId, options = {}) {
+    const expectedSourceUrl = options.expectedSourceUrl || null;
+    let rawContentUrl = '';
     let videoFilePath = null;
     let tempVideoPath = null; // File tạm cần xóa sau khi xử lý xong
 
     try {
+      // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
+      // server-side; URL/khoá nguồn này không được trả về player phía client.
+      const rawResult = await db.query(
+        'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
+        [parseInt(lessonId, 10)]
+      );
+      if (rawResult.rows.length === 0) {
+        throw new Error(`Không tìm thấy bài học có ID ${lessonId}`);
+      }
+      const rawLesson = rawResult.rows[0];
+
+      if (rawLesson.content_type !== 'video') {
+        throw new Error(`Bài học ${lessonId} không phải là video (content_type = ${rawLesson.content_type})`);
+      }
+
+      rawContentUrl = rawLesson.content_url || '';
+      if (!rawContentUrl) {
+        throw new Error(`Bài học ${lessonId} chưa có nguồn video`);
+      }
+
+      if (expectedSourceUrl && rawContentUrl !== expectedSourceUrl) {
+        return null;
+      }
+
+      if (expectedSourceUrl) {
+        const claimed = await db.query(
+          `UPDATE lesson_subtitles
+           SET subtitle_status = 'processing', updated_at = CURRENT_TIMESTAMP
+           WHERE lesson_id = $1 AND source_content_url = $2
+           RETURNING lesson_id`,
+          [lessonId, expectedSourceUrl]
+        );
+        if (claimed.rows.length === 0) return null;
+      } else {
+        await this.setSubtitleStatus(lessonId, 'processing', rawContentUrl);
+      }
+
       // --- Nhận diện nguồn video ---
       if (rawContentUrl.startsWith('/uploads/')) {
         // PATH C (legacy): Video cũ còn nằm trên local disk
@@ -479,16 +687,20 @@ Quy tắc:
 
       let generatedCues = [];
 
-      // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python
-      try {
-        console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
-        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
-        if (vadCues && vadCues.length > 0) {
-          console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp 100% khoảng lặng thật!`);
-          generatedCues = vadCues;
+      // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python khi được bật.
+      // Local dev mặc định dùng direct audio để tránh hàng chục request/lesson.
+      const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'false').toLowerCase() === 'true';
+      if (vadEnabled) {
+        try {
+          console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
+          const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
+          if (vadCues && vadCues.length > 0) {
+            console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp khoảng lặng thật!`);
+            generatedCues = vadCues;
+          }
+        } catch (vadErr) {
+          console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
         }
-      } catch (vadErr) {
-        console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
       }
 
       // ƯU TIÊN 2: Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio (CHỈ chạy khi Ưu tiên 1 thất bại / không có cues)
@@ -583,18 +795,45 @@ Quy tắc:
       const viVtt = buildVttFromCues(generatedCues, 'vi');
       const bilingualVtt = buildVttFromCues(generatedCues, 'bilingual');
 
-      const savedResult = await this.saveSubtitles(lessonId, {
+      const generatedPayload = {
         en_vtt: enVtt,
         vi_vtt: viVtt,
         bilingual_vtt: bilingualVtt,
         cues: generatedCues
-      });
+      };
+      const savedResult = expectedSourceUrl
+        ? await this.saveGeneratedSubtitles(lessonId, expectedSourceUrl, generatedPayload)
+        : await this.saveSubtitles(lessonId, {
+            ...generatedPayload,
+            subtitle_status: 'ready',
+            source_content_url: rawContentUrl
+          });
+
+      // Video đã bị thay trong lúc job cũ đang chạy: bỏ kết quả cũ,
+      // giữ row pending để scheduler chạy source mới.
+      if (!savedResult) return null;
 
       // Tự động nạp transcript vào Pinecone RAG Vector DB (chạy nền non-blocking)
       const { ingestLessonTranscript } = require('./ragIngestion.service');
       ingestLessonTranscript(lessonId, generatedCues);
 
       return savedResult;
+    } catch (pipelineErr) {
+      // Chỉ job của đúng source được phép ghi failed; job cũ không
+      // được ghi đè trạng thái pending của video mới.
+      try {
+        if (expectedSourceUrl) {
+          await db.query(
+            `UPDATE lesson_subtitles
+             SET subtitle_status = 'failed', updated_at = CURRENT_TIMESTAMP
+             WHERE lesson_id = $1 AND source_content_url = $2`,
+            [lessonId, expectedSourceUrl]
+          );
+        } else {
+          await this.setSubtitleStatus(lessonId, 'failed', rawContentUrl || null);
+        }
+      } catch (_) {}
+      throw pipelineErr;
     } finally {
       // Dọn dẹp file video tạm nếu đã tải từ Supabase — LUÔN chạy dù thành công hay thất bại
       if (tempVideoPath && fs.existsSync(tempVideoPath)) {

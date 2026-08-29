@@ -19,6 +19,20 @@ const pineconeApiKey = process.env.PINECONE_API_KEY;
 const pineconeIndexName = process.env.PINECONE_INDEX_NAME || process.env.PINECONE_INDEX || "elearning-rag";
 const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
 const DEFAULT_GEMINI_SPEAKING_MODEL = DEFAULT_GEMINI_MODEL;
+const DEFAULT_GEMINI_FALLBACK_MODELS = ["gemini-3.6-flash"];
+
+function getGeminiFallbackModels(preferredModel) {
+  const configuredFallbacks = String(process.env.GEMINI_FALLBACK_MODELS || '')
+    .split(',')
+    .map(model => model.trim())
+    .filter(Boolean);
+  return [
+    preferredModel,
+    DEFAULT_GEMINI_MODEL,
+    ...configuredFallbacks,
+    ...DEFAULT_GEMINI_FALLBACK_MODELS
+  ];
+}
 
 const isGeminiQuotaError = (error) => {
   const message = String(error?.message || '');
@@ -71,10 +85,12 @@ function getAiClient() {
 function normalizeRequest(request) {
   let contents;
   let config = {};
+  let model;
 
   if (typeof request === "string") {
     contents = request;
   } else if (typeof request === "object" && request !== null) {
+    model = request.model;
     if (request.contents) {
       contents = request.contents;
     } else if (request.prompt) {
@@ -88,15 +104,15 @@ function normalizeRequest(request) {
     if (srcConfig.maxOutputTokens !== undefined) config.maxOutputTokens = srcConfig.maxOutputTokens;
   }
 
-  return { contents, config: Object.keys(config).length > 0 ? config : undefined };
+  return { contents, config: Object.keys(config).length > 0 ? config : undefined, model };
 }
 
 /**
  * Helper gọi generateContent có fallback tự động giữa các model Flash
  */
-async function executeGenerate(client, contents, config) {
-  const preferredModel = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-  const fallbackModels = [preferredModel, DEFAULT_GEMINI_MODEL];
+async function executeGenerate(client, contents, config, modelOverride = null) {
+  const preferredModel = modelOverride || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const fallbackModels = getGeminiFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
 
@@ -135,9 +151,9 @@ async function executeGenerate(client, contents, config) {
 /**
  * Helper gọi generateContentStream có fallback tự động
  */
-async function executeGenerateStream(client, contents, config) {
-  const preferredModel = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-  const fallbackModels = [preferredModel, DEFAULT_GEMINI_MODEL];
+async function executeGenerateStream(client, contents, config, modelOverride = null) {
+  const preferredModel = modelOverride || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const fallbackModels = getGeminiFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
 
@@ -181,10 +197,10 @@ async function executeGenerateStream(client, contents, config) {
 const geminiModel = {
   async generateContent(request) {
     const client = getAiClient();
-    const { contents, config } = normalizeRequest(request);
+    const { contents, config, model } = normalizeRequest(request);
 
     try {
-      const response = await executeGenerate(client, contents, config);
+      const response = await executeGenerate(client, contents, config, model);
       const responseText = response.text || "";
 
       // Trả về cấu trúc tương thích cả SDK mới và cú pháp cũ (result.response.text())
@@ -204,10 +220,10 @@ const geminiModel = {
 
   async generateContentStream(request) {
     const client = getAiClient();
-    const { contents, config } = normalizeRequest(request);
+    const { contents, config, model } = normalizeRequest(request);
 
     try {
-      const responseStream = await executeGenerateStream(client, contents, config);
+      const responseStream = await executeGenerateStream(client, contents, config, model);
 
       // Tạo Async Generator bọc các chunk để đảm bảo hàm chunk.text() hoạt động chuẩn xác
       async function* wrapStream() {

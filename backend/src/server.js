@@ -7,6 +7,12 @@
  */
 
 require('dotenv').config();
+const { assertProductionAiEnvironment } = require('./config/environment');
+
+// RAG Assistant và auto-subtitle đều phụ thuộc Gemini; RAG production còn cần Pinecone.
+// Dừng sớm thay vì khởi động một deployment production bị thiếu secrets rồi lỗi âm thầm.
+assertProductionAiEnvironment();
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -140,10 +146,16 @@ app.use(errorHandler);
 // ===== 8. START SERVER =====
 const { testConnection } = require('./config/database');
 const { startMediaCleanupWorker } = require('./utils/mediaCleanup.worker');
+const subtitlesService = require('./modules/lessons/services/subtitles.service');
 
 const server = app.listen(PORT, async () => {
   // Kiểm tra kết nối Database khi khởi chạy
   await testConnection();
+  subtitlesService.resumePendingAutoGeneration()
+    .then(count => {
+      if (count > 0) console.log(`[Auto-Subtitle] Đã khôi phục ${count} job sau khi server khởi động`);
+    })
+    .catch(error => console.warn(`[Auto-Subtitle] Không thể khôi phục job: ${error.message}`));
   const mediaCleanupWorker = startMediaCleanupWorker();
   const shutdown = () => {
     mediaCleanupWorker?.stop();
