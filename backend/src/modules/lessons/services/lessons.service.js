@@ -97,6 +97,15 @@ class LessonsService {
         triggerLessonRagIngestion(createdLesson.lesson_id, null, 'lesson-created-no-video').catch(() => {});
       }
 
+      if (finalContentType === 'video' && finalContentUrl && createdLesson?.lesson_id) {
+        try {
+          const subtitlesService = require('./subtitles.service');
+          await subtitlesService.queueAutoGeneration(createdLesson.lesson_id);
+        } catch (subtitleErr) {
+          console.warn(`[Auto-Subtitle] Không thể xếp hàng bài học ${createdLesson.lesson_id}: ${subtitleErr.message}`);
+        }
+      }
+
       return createdLesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi tạo bài giảng mới');
@@ -117,6 +126,17 @@ class LessonsService {
         speakingSentences, speaking_sentences,
         speakingQuestions, speaking_questions
       } = lessonData;
+
+      const mediaMayChange = contentUrl !== undefined || content_url !== undefined
+        || contentType !== undefined || content_type !== undefined;
+      let previousLesson = null;
+      if (mediaMayChange) {
+        const previousResult = await db.query(
+          'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
+          [parseInt(lessonId, 10)]
+        );
+        previousLesson = previousResult.rows[0] || null;
+      }
       
       const updates = [];
       const values = [];
@@ -186,6 +206,22 @@ class LessonsService {
           isSupabaseKey ? newContentUrl : null,
           'video-assigned'
         ).catch(() => {});
+      }
+
+      const videoSourceChanged = mediaMayChange
+        && updatedLesson?.content_type === 'video'
+        && Boolean(updatedLesson.content_url)
+        && (!previousLesson
+          || previousLesson.content_type !== 'video'
+          || previousLesson.content_url !== updatedLesson.content_url);
+
+      if (videoSourceChanged) {
+        try {
+          const subtitlesService = require('./subtitles.service');
+          await subtitlesService.queueAutoGeneration(updatedLesson.lesson_id);
+        } catch (subtitleErr) {
+          console.warn(`[Auto-Subtitle] Không thể xếp hàng bài học ${updatedLesson.lesson_id}: ${subtitleErr.message}`);
+        }
       }
 
       return updatedLesson;

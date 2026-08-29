@@ -27,6 +27,9 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      # GEMINI_API_KEY và PINECONE_API_KEY được nạp nguyên vẹn từ backend/.env ở trên.
+      # Không khai báo lại secrets bằng ${VAR} tại đây: Compose nội suy từ shell/root .env
+      # trước khi đọc env_file và có thể ghi đè secret hợp lệ thành chuỗi rỗng.
       - PORT=5000
       - NODE_ENV=development
       # Xóa DATABASE_URL để ép backend dùng cấu hình DB_HOST cục bộ không có SSL
@@ -43,10 +46,8 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-this}
       - SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-quocanh26012004@gmail.com}
       - JWT_EXPIRE=${JWT_EXPIRE:-7d}
-      - PINECONE_API_KEY=${PINECONE_API_KEY}
       - PINECONE_ENV=${PINECONE_ENV:-us-east-1-aws}
       - PINECONE_INDEX=${PINECONE_INDEX:-elearning-rag}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.7-flash}
       - GEMINI_SPEAKING_MODEL=${GEMINI_SPEAKING_MODEL:-gemini-3.7-flash}
       - FRONTEND_URL=http://localhost:3001

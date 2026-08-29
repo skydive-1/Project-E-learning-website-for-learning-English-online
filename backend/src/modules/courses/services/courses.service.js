@@ -5,6 +5,23 @@ const supabaseStorage = require('../../../utils/supabaseStorage');
 const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
 
 class CoursesService {
+  async _queueAutoSubtitles(lessonIds = []) {
+    const uniqueLessonIds = [...new Set(lessonIds.map(Number).filter(Number.isInteger))];
+    if (uniqueLessonIds.length === 0) return;
+
+    const subtitlesService = require('../../lessons/services/subtitles.service');
+    const results = await Promise.allSettled(
+      uniqueLessonIds.map(lessonId => subtitlesService.queueAutoGeneration(lessonId))
+    );
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.warn(
+          `[Auto-Subtitle] Không thể xếp hàng bài học ${uniqueLessonIds[index]}: ${result.reason?.message || result.reason}`
+        );
+      }
+    });
+  }
+
   async getAllCourses(filterPublished = true) {
     try {
       let queryText = `
@@ -251,6 +268,7 @@ class CoursesService {
     const client = await db.pool.connect();
     const newlyUploadedKeys = [];
     const claimedUploadIds = [];
+    const subtitleLessonIds = [];
 
     try {
       await client.query('BEGIN');
@@ -311,7 +329,7 @@ class CoursesService {
         for (let i = 0; i < sections.length; i++) {
           await this._insertSection(
             client, courseId, sections[i], i + 1,
-            newlyUploadedKeys, claimedUploadIds, instructorId, userRole
+            newlyUploadedKeys, claimedUploadIds, instructorId, userRole, subtitleLessonIds
           );
         }
       }
@@ -321,6 +339,8 @@ class CoursesService {
       }
       if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
+
+      await this._queueAutoSubtitles(subtitleLessonIds);
 
       newCourse.status = newCourse.status === 'published' ? 1 : 0;
       return newCourse;
@@ -332,7 +352,7 @@ class CoursesService {
     }
   }
 
-  async _insertSection(client, courseId, sectionData, defaultOrder, trackedKeys = [], claimedUploadIds = [], instructorId, userRole) {
+  async _insertSection(client, courseId, sectionData, defaultOrder, trackedKeys = [], claimedUploadIds = [], instructorId, userRole, subtitleLessonIds = []) {
     const orderIndex = sectionData.orderIndex !== undefined ? sectionData.orderIndex : defaultOrder;
 
     const result = await client.query(`
@@ -347,13 +367,13 @@ class CoursesService {
       for (let i = 0; i < sectionData.lessons.length; i++) {
         await this._insertLesson(
           client, courseId, sectionId, sectionData.lessons[i], i + 1,
-          trackedKeys, claimedUploadIds, instructorId, userRole
+          trackedKeys, claimedUploadIds, instructorId, userRole, subtitleLessonIds
         );
       }
     }
   }
 
-  async _insertLesson(client, courseId, sectionId, lessonData, defaultOrder, trackedKeys = [], claimedUploadIds = [], instructorId, userRole) {
+  async _insertLesson(client, courseId, sectionId, lessonData, defaultOrder, trackedKeys = [], claimedUploadIds = [], instructorId, userRole, subtitleLessonIds = []) {
     const orderIndex = lessonData.orderIndex !== undefined ? lessonData.orderIndex : defaultOrder;
     const speakingSentences = lessonData.speakingSentences || lessonData.speaking_sentences || '';
     const speakingQuestions = lessonData.speakingQuestions || lessonData.speaking_questions || '';
@@ -396,7 +416,9 @@ class CoursesService {
       meta.storageProvider, meta.storageBucket, meta.storageKey, meta.mimeType, meta.sizeBytes, meta.checksumSha256, meta.mediaStatus
     ]);
 
-    await this._syncLessonQuiz(client, courseId, lessonResult.rows[0].lesson_id, lessonData);
+    const lessonId = lessonResult.rows[0].lesson_id;
+    await this._syncLessonQuiz(client, courseId, lessonId, lessonData);
+    if (meta.contentType === 'video' && meta.contentUrl) subtitleLessonIds.push(lessonId);
   }
 
   async getLessonById(lessonId) {
@@ -495,6 +517,7 @@ class CoursesService {
     const newlyUploadedKeys = [];
     const claimedUploadIds = [];
     const assetsToCleanup = [];
+    const subtitleLessonIds = [];
 
     try {
       await client.query('BEGIN');
@@ -629,7 +652,9 @@ class CoursesService {
           let existingLessons = [];
           if (isExistingSection) {
             const existingLessonsRes = await client.query(
-              'SELECT lesson_id, storage_provider, storage_key, storage_bucket, mime_type, size_bytes, checksum_sha256, media_status FROM lessons WHERE section_id = $1',
+              `SELECT lesson_id, content_type, content_url, storage_provider, storage_key,
+                      storage_bucket, mime_type, size_bytes, checksum_sha256, media_status
+               FROM lessons WHERE section_id = $1`,
               [secId]
             );
             existingLessons = existingLessonsRes.rows;
@@ -719,6 +744,11 @@ class CoursesService {
                       lesId
                     ]
                   );
+
+                  if (meta.contentType === 'video' && meta.contentUrl
+                    && (oldLesson?.content_type !== 'video' || oldLesson?.content_url !== meta.contentUrl)) {
+                    subtitleLessonIds.push(lesId);
+                  }
                 }
               } else {
                 // Thêm mới bài học vào section
@@ -735,6 +765,7 @@ class CoursesService {
                   ]
                 );
                 lesId = insertLesRes.rows[0].lesson_id;
+                if (meta.contentType === 'video' && meta.contentUrl) subtitleLessonIds.push(lesId);
               }
               currentLessonIds.push(lesId);
               await this._syncLessonQuiz(client, courseId, lesId, les);
@@ -780,6 +811,8 @@ class CoursesService {
       const resultingStatus = finalStatus === undefined ? existingCourse.status : finalStatus;
       if (resultingStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
+
+      await this._queueAutoSubtitles(subtitleLessonIds);
 
       // Dọn dẹp các storage object mồ côi ngoài luồng sau khi DB Commit thành công
       if (assetsToCleanup.length > 0) {

@@ -3,7 +3,8 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   FiPlay, FiCheckSquare, FiSquare, FiFileText,
   FiArrowLeft, FiChevronDown, FiChevronUp, FiAward,
-  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic, FiGlobe
+  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic, FiGlobe,
+  FiSettings, FiChevronRight
 } from 'react-icons/fi';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
@@ -15,10 +16,12 @@ import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import CaptionOverlay from '../components/CaptionOverlay';
+import CaptionSettingsDialog from '../components/CaptionSettingsDialog';
 const PdfStudyViewer = React.lazy(() => import('../components/PdfStudyViewer'));
 const PdfNotesPanel = React.lazy(() => import('../components/PdfNotesPanel'));
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
 import { subtitlesService } from '../services/subtitles.service';
+import { loadCaptionSettings, saveCaptionSettings } from '../utils/captionSettings';
 import {
   fetchPdfNotes,
   createPdfNote,
@@ -51,6 +54,8 @@ const LessonDetailPage = () => {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const containerRef = useRef(null);
+  const captionMenuRef = useRef(null);
+  const captionTriggerRef = useRef(null);
   const shakaPlayerRef = useRef(null);
   const shakaAttachedToRef = useRef(null); // theo dõi element nào Shaka đang attach vào
   const isScreenRecordingDetectedRef = useRef(false);
@@ -82,13 +87,48 @@ const LessonDetailPage = () => {
   const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
-  const [captionMode, setCaptionMode] = useState('off'); // 'off' | 'en' | 'vi' | 'bilingual' (Mặc định tắt phụ đề, người dùng bật khi có nhu cầu)
+  const [subtitleStatus, setSubtitleStatus] = useState('none'); // 'none'|'pending'|'processing'|'ready'|'failed'
+  const [captionMode, setCaptionMode] = useState('off'); // 'off' | 'en' | 'vi' | 'bilingual'
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [isCaptionMenuOpen, setIsCaptionMenuOpen] = useState(false);
+  const [isCaptionSettingsOpen, setIsCaptionSettingsOpen] = useState(false);
+  const [captionSettings, setCaptionSettings] = useState(loadCaptionSettings);
 
 
   // Forensic Dynamic Watermark State
   const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
+
+  useEffect(() => {
+    saveCaptionSettings(captionSettings);
+  }, [captionSettings]);
+
+  useEffect(() => {
+    if (!isCaptionMenuOpen) return undefined;
+
+    const focusFrame = requestAnimationFrame(() => {
+      const selectedItem = captionMenuRef.current?.querySelector('[role="menuitemradio"][aria-checked="true"]');
+      const firstItem = captionMenuRef.current?.querySelector('[role^="menuitem"]');
+      (selectedItem || firstItem)?.focus();
+    });
+
+    const closeOnOutsidePointer = (event) => {
+      if (!captionMenuRef.current?.contains(event.target)) {
+        setIsCaptionMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsCaptionMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+      captionTriggerRef.current?.focus();
+    };
+  }, [isCaptionMenuOpen]);
 
   // Refs for DRM and Video Control
   const blackoutLockUntilRef = useRef(0);
@@ -131,23 +171,6 @@ const LessonDetailPage = () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
   }, [isVideoPlaying]);
-
-  // Lắng nghe sự thay đổi Fullscreen để giữ dấu bản quyền hiển thị đè lên Video ngay cả trong Chế độ Toàn Màn Hình
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
-      setIsFullscreenMode(isFS);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-    };
-  }, []);
 
   /**
    * ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
@@ -698,23 +721,62 @@ const LessonDetailPage = () => {
     }, 1500);
   };
 
-  // Tự động tải phụ đề khi đổi bài học (Đặt sau khi currentLesson đã được khai báo an toàn)
+  // Tự động tải phụ đề khi đổi bài học.
   useEffect(() => {
     if (!currentLesson?.id || currentLesson.type !== 'video') {
       setSubtitleData(null);
+      setSubtitleStatus('none');
       return;
     }
     const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
+    let cancelled = false;
     subtitlesService.getSubtitles(rawLessonId).then(data => {
-      if (data) {
+      if (cancelled) return;
+      if (data && data.cues && data.cues.length > 0) {
         setSubtitleData(data);
+        setSubtitleStatus(data.subtitleStatus || 'ready');
       } else {
         setSubtitleData(null);
+        // Kiểm tra xem có đang xử lý nền không
+        setSubtitleStatus(data?.subtitleStatus || 'none');
       }
     }).catch(() => {
+      if (cancelled) return;
       setSubtitleData(null);
+      setSubtitleStatus('none');
     });
+    return () => { cancelled = true; };
   }, [currentLesson?.id, currentLesson?.type]);
+
+  // Polling phụ đề khi đang xử lý nền (YouTube-style: tự động cập nhật khi hoàn tất)
+  useEffect(() => {
+    if (!currentLesson?.id || currentLesson.type !== 'video') return;
+    if (subtitleStatus !== 'processing' && subtitleStatus !== 'pending') return;
+
+    const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusData = await subtitlesService.getSubtitleStatus(rawLessonId);
+        setSubtitleStatus(statusData.status);
+
+        if (statusData.status === 'ready') {
+          clearInterval(pollInterval);
+          // Tải lại phụ đề hoàn chỉnh
+          const freshData = await subtitlesService.getSubtitles(rawLessonId);
+          if (freshData && freshData.cues && freshData.cues.length > 0) {
+            setSubtitleData(freshData);
+          }
+        } else if (statusData.status === 'failed') {
+          clearInterval(pollInterval);
+        }
+      } catch (_) {
+        // Im lặng nếu network error trong khi polling
+      }
+    }, 5000); // Poll mỗi 5 giây
+
+    return () => clearInterval(pollInterval);
+  }, [currentLesson?.id, currentLesson?.type, subtitleStatus]);
 
 
 
@@ -1450,14 +1512,20 @@ const LessonDetailPage = () => {
 
                                 {/* Floating Smart Subtitle [CC] Pill on Video Player */}
                                 <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5 pointer-events-auto">
-                                  <div className="relative">
+                                  <div ref={captionMenuRef} className="relative">
                                     <button
+                                      ref={captionTriggerRef}
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setIsCaptionMenuOpen(!isCaptionMenuOpen);
                                       }}
-                                      title="Tùy chọn Phụ đề Song ngữ (Captions)"
+                                      aria-haspopup="menu"
+                                      aria-expanded={isCaptionMenuOpen}
+                                      aria-controls="caption-language-menu"
+                                      title={subtitleStatus === 'pending' || subtitleStatus === 'processing'
+                                        ? 'Phụ đề đang được xử lý tự động'
+                                        : 'Tùy chọn Phụ đề Song ngữ (Captions)'}
                                       className={`px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 backdrop-blur-md border transition-all cursor-pointer shadow-lg ${
                                         captionMode !== 'off'
                                           ? 'bg-teal-500/80 hover:bg-teal-500 text-white border-teal-400/40 shadow-teal-500/20'
@@ -1465,16 +1533,45 @@ const LessonDetailPage = () => {
                                       }`}
                                     >
                                       <FiGlobe className="text-xs" />
-                                      <span>CC {captionMode === 'bilingual' ? 'Song ngữ' : captionMode === 'en' ? 'EN' : captionMode === 'vi' ? 'VI' : 'Tắt'}</span>
+                                      <span>
+                                        {subtitleStatus === 'pending' || subtitleStatus === 'processing'
+                                          ? 'CC Đang xử lý…'
+                                          : `CC ${captionMode === 'bilingual' ? 'Song ngữ' : captionMode === 'en' ? 'EN' : captionMode === 'vi' ? 'VI' : 'Tắt'}`}
+                                      </span>
                                     </button>
 
                                     {isCaptionMenuOpen && (
                                       <div
+                                        id="caption-language-menu"
+                                        role="menu"
+                                        aria-label="Chọn phụ đề"
                                         onClick={(e) => e.stopPropagation()}
+                                        onKeyDown={(event) => {
+                                          if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                                          event.preventDefault();
+                                          const items = Array.from(event.currentTarget.querySelectorAll('[role^="menuitem"]'));
+                                          if (items.length === 0) return;
+                                          const currentIndex = items.indexOf(document.activeElement);
+                                          const nextIndex = event.key === 'Home'
+                                            ? 0
+                                            : event.key === 'End'
+                                              ? items.length - 1
+                                              : event.key === 'ArrowDown'
+                                                ? (currentIndex + 1 + items.length) % items.length
+                                                : (currentIndex - 1 + items.length) % items.length;
+                                          items[nextIndex].focus();
+                                        }}
                                         className="absolute right-0 mt-1.5 w-48 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-1.5 z-40 text-xs flex flex-col gap-1 animate-fade-in"
                                       >
+                                        {(subtitleStatus === 'pending' || subtitleStatus === 'processing') && (
+                                          <div role="status" className="px-3 py-1.5 text-[11px] leading-snug text-amber-200">
+                                            Phụ đề đang được chuẩn bị. Bạn vẫn có thể chọn trước cách hiển thị.
+                                          </div>
+                                        )}
                                         <button
                                           type="button"
+                                          role="menuitemradio"
+                                          aria-checked={captionMode === 'bilingual'}
                                           onClick={() => { setCaptionMode('bilingual'); setIsCaptionMenuOpen(false); }}
                                           className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
                                             captionMode === 'bilingual' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
@@ -1485,6 +1582,8 @@ const LessonDetailPage = () => {
                                         </button>
                                         <button
                                           type="button"
+                                          role="menuitemradio"
+                                          aria-checked={captionMode === 'en'}
                                           onClick={() => { setCaptionMode('en'); setIsCaptionMenuOpen(false); }}
                                           className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
                                             captionMode === 'en' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
@@ -1495,6 +1594,8 @@ const LessonDetailPage = () => {
                                         </button>
                                         <button
                                           type="button"
+                                          role="menuitemradio"
+                                          aria-checked={captionMode === 'vi'}
                                           onClick={() => { setCaptionMode('vi'); setIsCaptionMenuOpen(false); }}
                                           className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
                                             captionMode === 'vi' ? 'bg-teal-500/20 text-teal-300 font-bold' : 'text-slate-300 hover:bg-slate-800'
@@ -1505,6 +1606,8 @@ const LessonDetailPage = () => {
                                         </button>
                                         <button
                                           type="button"
+                                          role="menuitemradio"
+                                          aria-checked={captionMode === 'off'}
                                           onClick={() => { setCaptionMode('off'); setIsCaptionMenuOpen(false); }}
                                           className={`w-full text-left px-3 py-1.5 rounded-xl font-medium flex items-center justify-between transition-all cursor-pointer ${
                                             captionMode === 'off' ? 'bg-rose-500/20 text-rose-300 font-bold' : 'text-slate-400 hover:bg-slate-800'
@@ -1513,10 +1616,34 @@ const LessonDetailPage = () => {
                                           <span>🚫 Tắt phụ đề</span>
                                           {captionMode === 'off' && <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>}
                                         </button>
+                                        <div className="mx-2 my-0.5 h-px bg-slate-700/80" />
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          onClick={() => {
+                                            setIsCaptionMenuOpen(false);
+                                            setIsCaptionSettingsOpen(true);
+                                          }}
+                                          className="flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-left font-semibold text-slate-200 transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            <FiSettings aria-hidden="true" className="text-sm text-teal-300" />
+                                            Tùy chọn
+                                          </span>
+                                          <FiChevronRight aria-hidden="true" className="text-slate-500" />
+                                        </button>
                                       </div>
                                     )}
                                   </div>
                                 </div>
+
+                                <CaptionSettingsDialog
+                                  open={isCaptionSettingsOpen}
+                                  value={captionSettings}
+                                  onChange={setCaptionSettings}
+                                  onClose={() => setIsCaptionSettingsOpen(false)}
+                                  returnFocusRef={captionTriggerRef}
+                                />
 
                                 <video
                                   ref={videoRef}
@@ -1525,7 +1652,7 @@ const LessonDetailPage = () => {
                                   controls
                                   autoPlay
                                   preload="auto"
-                                  controlsList="nodownload noremoteplayback nofullscreen"
+                                  controlsList="nodownload noremoteplayback"
                                   disablePictureInPicture
                                   disableRemotePlayback
                                   onClick={toggleVideoPlayPause}
@@ -1559,6 +1686,7 @@ const LessonDetailPage = () => {
                                   cues={subtitleData?.cues || []}
                                   currentTime={videoCurrentTime}
                                   mode={captionMode}
+                                  settings={captionSettings}
                                 />
                               </>
                             )}

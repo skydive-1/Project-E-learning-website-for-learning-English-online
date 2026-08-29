@@ -4,10 +4,9 @@
  */
 
 import React, { useMemo } from 'react';
+import { getCaptionVisualStyles } from '../utils/captionSettings';
 
-export default function CaptionOverlay({ cues = [], currentTime = 0, mode = 'bilingual' }) {
-  if (mode === 'off' || !cues || cues.length === 0) return null;
-
+export default function CaptionOverlay({ cues = [], currentTime = 0, mode = 'bilingual', settings }) {
   // Tìm câu subtitle tương ứng với thời gian phát hiện tại của video (kèm cơ chế chuyển câu mượt mà không khựng)
   const activeCue = useMemo(() => {
     if (!cues || cues.length === 0) return null;
@@ -30,19 +29,28 @@ export default function CaptionOverlay({ cues = [], currentTime = 0, mode = 'bil
     return null;
   }, [cues, currentTime]);
 
-  if (!activeCue) return null;
+  const visualStyles = useMemo(() => getCaptionVisualStyles(settings), [settings]);
+
+  if (mode === 'off' || !activeCue) return null;
 
   return (
-    <div className="absolute bottom-14 inset-x-0 flex justify-center items-center pointer-events-none z-20 px-4 transition-all duration-200 ease-out">
-      <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] bg-slate-950/85 backdrop-blur-md border border-white/15 text-center py-2.5 px-5 sm:px-7 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.6)] transition-all duration-200 select-none">
+    <div aria-hidden="true" className="absolute inset-x-0 bottom-14 z-20 flex items-center justify-center px-4 pointer-events-none">
+      <div
+        className="max-w-[94%] select-none rounded-xl px-3 py-2 text-center leading-relaxed sm:max-w-[86%] sm:px-5 md:max-w-[76%]"
+        style={visualStyles.window}
+      >
         {(mode === 'en' || mode === 'bilingual') && (
-          <p className="text-white font-semibold text-sm sm:text-base md:text-lg leading-relaxed drop-shadow-md tracking-wide">
-            {activeCue.en}
+          <p className="text-[1em] font-semibold">
+            <span className="box-decoration-clone px-1.5 py-0.5" style={visualStyles.line}>
+              {activeCue.en}
+            </span>
           </p>
         )}
         {(mode === 'vi' || mode === 'bilingual') && (
-          <p className={`font-normal text-xs sm:text-sm md:text-[15px] text-amber-300/95 leading-relaxed drop-shadow ${mode === 'bilingual' ? 'mt-1 pt-1.5 border-t border-white/10' : ''}`}>
-            {activeCue.vi}
+          <p className={`text-[0.84em] font-normal ${mode === 'bilingual' ? 'mt-1.5' : ''}`}>
+            <span className="box-decoration-clone px-1.5 py-0.5" style={visualStyles.line}>
+              {activeCue.vi}
+            </span>
           </p>
         )}
       </div>

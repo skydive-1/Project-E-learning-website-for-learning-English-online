@@ -16,6 +16,8 @@ async function main() {
         vi_vtt TEXT,
         bilingual_vtt TEXT,
         cues JSONB NOT NULL DEFAULT '[]',
+        subtitle_status VARCHAR(20) NOT NULL DEFAULT 'ready',
+        source_content_url TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       );

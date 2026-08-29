@@ -12,22 +12,13 @@ const subtitlesService = require('../services/subtitles.service');
 exports.getSubtitles = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
-    let subtitles = await subtitlesService.getSubtitlesByLessonId(lessonId);
-
-    // Nếu chưa có phụ đề -> Tự động kích hoạt Gemini sinh nhanh lần đầu
-    if (!subtitles) {
-      try {
-        subtitles = await subtitlesService.generateSubtitlesWithGemini(lessonId);
-      } catch (genErr) {
-        console.warn(`[Subtitles Controller]: Không thể tự sinh phụ đề cho lesson ${lessonId}:`, genErr.message);
-      }
-    }
+    const subtitles = await subtitlesService.getSubtitlesByLessonId(lessonId);
 
     if (!subtitles) {
       return res.status(200).json({
-        success: false,
+        success: true,
         data: null,
-        message: 'Không thể tự động sinh phụ đề cho bài học này, vui lòng thử lại hoặc liên hệ giảng viên tải phụ đề thủ công'
+        message: 'Bài học chưa có phụ đề'
       });
     }
 
@@ -41,7 +32,28 @@ exports.getSubtitles = async (req, res, next) => {
         viVtt: subtitles.vi_vtt,
         bilingualVtt: subtitles.bilingual_vtt,
         cues: typeof subtitles.cues === 'string' ? JSON.parse(subtitles.cues) : (subtitles.cues || []),
+        subtitleStatus: subtitles.subtitle_status || 'ready',
         updatedAt: subtitles.updated_at
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/lessons/:lessonId/subtitle-status - Poll trạng thái xử lý phụ đề (cho frontend polling)
+ */
+exports.getSubtitleStatus = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const result = await subtitlesService.getSubtitleStatus(lessonId);
+    return res.status(200).json({
+      success: true,
+      data: {
+        lessonId: Number(lessonId),
+        status: result.status,   // none | pending | processing | ready | failed
+        updatedAt: result.updatedAt
       }
     });
   } catch (error) {
@@ -94,7 +106,8 @@ exports.updateSubtitles = async (req, res, next) => {
       en_vtt,
       vi_vtt,
       bilingual_vtt,
-      cues
+      cues,
+      subtitle_status: 'ready'
     });
 
     // Đồng bộ ngay transcript mới nhất vào Pinecone RAG Vector DB (chạy nền non-blocking)

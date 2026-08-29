@@ -338,11 +338,15 @@ const testConnection = async () => {
           vi_vtt TEXT,
           bilingual_vtt TEXT,
           cues JSONB NOT NULL DEFAULT '[]',
+          subtitle_status VARCHAR(20) NOT NULL DEFAULT 'ready',
+          source_content_url TEXT,
           is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         ALTER TABLE lesson_subtitles ADD COLUMN IF NOT EXISTS is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE lesson_subtitles ADD COLUMN IF NOT EXISTS subtitle_status VARCHAR(20) NOT NULL DEFAULT 'ready';
+        ALTER TABLE lesson_subtitles ADD COLUMN IF NOT EXISTS source_content_url TEXT;
       `);
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tạo bảng lesson_subtitles:', migErr.message);
