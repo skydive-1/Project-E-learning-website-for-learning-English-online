@@ -72,6 +72,24 @@ HTMLCanvasElement.prototype.getContext = () => ({
 window.requestAnimationFrame = (cb) => setTimeout(cb, 16);
 window.cancelAnimationFrame = (id) => clearTimeout(id);
 
+// jsdom does not implement matchMedia. Media UI libraries such as Plyr read
+// it during module initialization to detect pointer and motion capabilities.
+if (!window.matchMedia) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  });
+}
+
 // Mock navigator.mediaDevices.getUserMedia
 if (!navigator.mediaDevices) {
   navigator.mediaDevices = {};

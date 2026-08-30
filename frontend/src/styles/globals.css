@@ -1,6 +1,32 @@
 @import "./theme.css";
 @import "./typography.css";
 
+.lesson-plyr-host,
+.lesson-plyr-host .plyr,
+.lesson-plyr-host .plyr__video-wrapper,
+.lesson-plyr-video {
+  width: 100%;
+  height: 100%;
+}
+
+.lesson-plyr-host {
+  position: relative;
+}
+
+.lesson-plyr-host .plyr {
+  border-radius: inherit;
+}
+
+.lesson-plyr-host .plyr__video-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lesson-plyr-video {
+  object-fit: contain;
+}
+
 /* The next theme is revealed by ThemeToggle from the exact interaction point.
  * Native view-transition crossfades are disabled so only the soft circular
  * clip-path animation runs; unsupported browsers simply ignore these rules. */

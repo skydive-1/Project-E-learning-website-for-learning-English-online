@@ -43,6 +43,9 @@ services:
       - ENABLE_MEDIA_CLEANUP_WORKER=${ENABLE_MEDIA_CLEANUP_WORKER:-true}
       - ENABLE_DRM_PACKAGING=${ENABLE_DRM_PACKAGING:-true}
       - MEDIA_CLEANUP_INTERVAL_MS=${MEDIA_CLEANUP_INTERVAL_MS:-300000}
+      # Local Docker development: avoid one shared localhost IP exhausting the
+      # API-wide quota while React StrictMode/HMR remount application providers.
+      - DISABLE_RATE_LIMIT=${DISABLE_RATE_LIMIT:-true}
       - JWT_SECRET=${JWT_SECRET:-your-super-secret-key-change-this}
       - SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-quocanh26012004@gmail.com}
       - JWT_EXPIRE=${JWT_EXPIRE:-7d}
@@ -67,6 +70,9 @@ services:
       context: ./frontend
     container_name: elearning_frontend
     restart: always
+    command: >-
+      sh -c "npm install --no-audit --no-fund &&
+      npm run start -- --host 0.0.0.0 --no-open"
     ports:
       - "3001:3001"
     environment:
