@@ -83,11 +83,13 @@ const globalLimiter = createRateLimiter({
   keyGenerator: clientKey
 });
 
-// Applies to every /api route (100 req / 15 minutes / IP). Streaming is skipped
+// Applies to every /api route (300 req / 15 minutes / IP). Streaming is skipped.
+// Keep this fallback aligned with .env.example; narrower endpoint-specific
+// limiters still protect auth, AI, uploads, quizzes and media tickets.
 const apiLimiter = createRateLimiter({
   name: 'api',
   windowMs: readPositiveInteger('RATE_LIMIT_API_WINDOW_MS', FIFTEEN_MINUTES),
-  limit: readPositiveInteger('RATE_LIMIT_API_MAX', 100),
+  limit: readPositiveInteger('RATE_LIMIT_API_MAX', 300),
   keyGenerator: clientKey,
   skip: isStreamingRequest
 });
