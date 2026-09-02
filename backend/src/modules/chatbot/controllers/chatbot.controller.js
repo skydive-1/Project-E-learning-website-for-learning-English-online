@@ -95,11 +95,13 @@ exports.askStream = async (req, res, next) => {
       res.flushHeaders();
     }
 
+    // Gửi dữ liệu ngay sau headers để proxy/browser xác nhận stream đã mở.
     if (!writeRaw(': connected\n\n')) {
       await releaseQuestionLimit(req);
       return;
     }
 
+    // Giữ kết nối sống trong lúc chờ truy xuất RAG hoặc token đầu tiên từ Gemini.
     heartbeatId = setInterval(() => {
       if (!writeRaw(': heartbeat\n\n')) stopHeartbeat();
     }, CHATBOT_STREAM_HEARTBEAT_MS);

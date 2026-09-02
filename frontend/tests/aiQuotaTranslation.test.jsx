@@ -95,7 +95,7 @@ describe('AI quota management translations', () => {
     expect(screen.getByText('Users using AI')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reset all student question usage' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Model tokens used' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Questions / quota (24 hours)' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Questions / quota (today)' })).toBeInTheDocument();
     expect(screen.getByText('Student')).toBeInTheDocument();
     expect(screen.getByText('4 / 10')).toBeInTheDocument();
     expect(screen.getByText('3 / 20')).toBeInTheDocument();

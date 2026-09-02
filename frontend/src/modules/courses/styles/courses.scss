@@ -1341,13 +1341,14 @@ $slate-950: #020617;
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: rgba(15, 23, 42, 0.6);
-    backdrop-filter: blur(5px);
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
-    animation: fadeIn 0.2s ease-out;
+    animation: fadeIn 0.18s ease-out;
 
     .vocab-modal-card {
       background: var(--card-bg, #ffffff);
@@ -1358,9 +1359,12 @@ $slate-950: #020617;
       max-height: 90vh;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
       overflow: hidden;
-      animation: scaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: center center;
+      transform: translateZ(0);
+      will-change: transform, opacity;
+      animation: scaleUp 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
 
       &.add-word-dialog,
       &.how-it-works-dialog {
@@ -2239,15 +2243,21 @@ $slate-950: #020617;
   }
 }
 
-// Animations
+// Animations (120fps GPU Compositor)
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @keyframes scaleUp {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from { 
+    opacity: 0; 
+    transform: translate3d(0, 12px, 0) scale(0.96); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translate3d(0, 0, 0) scale(1); 
+  }
 }
 
 @keyframes pulse {

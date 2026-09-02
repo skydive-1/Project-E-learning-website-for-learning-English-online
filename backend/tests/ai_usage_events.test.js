@@ -18,6 +18,8 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
   });
 
   test('COST_PER_M_TOKENS has accurate pricing for Gemini 3.7 Flash and Embedding-001', () => {
+    // Giá thật đã verify 2026-09-02 (introductory pricing, hết hạn 31/12/2026):
+    // https://ai.google.dev/gemini-api/docs/pricing
     assert.equal(COST_PER_M_TOKENS['gemini-3.7-flash'].input, 0.75);
     assert.equal(COST_PER_M_TOKENS['gemini-3.7-flash'].output, 3.75);
     assert.equal(COST_PER_M_TOKENS['gemini-embedding-001'].input, 0.15);

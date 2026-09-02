@@ -147,6 +147,14 @@
   --button-transition-ms: 150ms;
   --input-transition-ms:  150ms;
 
+  /* 120fps Motion Design Tokens (8.33ms Frame Budget Easing) */
+  --ease-spring-120: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth-120: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-pop-120:    cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast-120: 160ms;
+  --duration-normal-120: 220ms;
+  --duration-modal-120: 260ms;
+
   /* Semantic tokens — light mode */
   --color-foreground-full:               var(--color-white);
   --color-foreground-icon-primary:       var(--color-neutral-950);

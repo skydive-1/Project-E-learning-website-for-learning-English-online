@@ -126,6 +126,92 @@
   --chatbot-thinking-strong: #f1f5f9;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * 120fps GPU-Accelerated Keyframes & Micro-Animations
+ * Strict rules: Only transform & opacity, hardware layer promotion, zero reflow.
+ * ────────────────────────────────────────────────────────────────────────── */
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-card-in-120 {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes dropdown-pop-120 {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -8px, 0) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes drawer-slide-up-120 {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes drawer-slide-right-120 {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes toast-slide-in-120 {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* 120fps Hardware Acceleration Utility Classes */
+.gpu-layer-120 {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.modal-animate-120 {
+  animation: modal-card-in-120 var(--duration-modal-120, 240ms) var(--ease-spring-120, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+.dropdown-animate-120 {
+  animation: dropdown-pop-120 var(--duration-fast-120, 180ms) var(--ease-spring-120, cubic-bezier(0.16, 1, 0.3, 1)) both;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-progress-loading-text {
     color: var(--color-text-secondary);
@@ -149,6 +235,15 @@
     background-image: none;
     animation: none;
     will-change: auto;
+  }
+
+  .modal-animate-120,
+  .dropdown-animate-120,
+  .gpu-layer-120 {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    will-change: auto !important;
   }
 }
 

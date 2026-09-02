@@ -49,6 +49,8 @@ function getAiContext() {
 // Source: Gemini Developer API pricing — https://ai.google.dev/gemini-api/docs/pricing
 // Date verified: 2026-09-02 (giá trước đó trong file này bị sai ~10 lần, đã
 // nhầm với giá cache-read $0.075/1M thay vì giá input chuẩn).
+// Date verified: 2026-09-02 (re-checked; giá trước đó trong file này bị sai ~10 lần,
+// đã nhầm với giá cache-read $0.075/1M thay vì giá input chuẩn).
 // Giá ưu đãi (introductory pricing) áp dụng tới hết 31/12/2026, sau đó Google tăng
 // gấp đôi từ 01/01/2027 — cần cập nhật lại nếu chạy sau mốc đó.
 // NOTE: This project uses the free tier (actual cost = $0).  estimated_cost_usd

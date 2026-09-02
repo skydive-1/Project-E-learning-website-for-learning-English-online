@@ -26,23 +26,25 @@
   justify-content: center;
   box-shadow: 0 14px 36px -8px rgba(29, 78, 216, 0.32), 0 10px 24px -10px rgba(255, 122, 48, 0.16);
   position: relative;
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease;
+  transform: translateZ(0);
+  will-change: transform;
   outline: none;
 }
 
 .chatbot-floating-trigger:hover {
-  transform: scale(1.12) rotate(6deg);
+  transform: scale(1.1) rotate(6deg) translateZ(0);
   box-shadow: 0 18px 44px -8px rgba(29, 78, 216, 0.4), 0 12px 28px -10px rgba(255, 122, 48, 0.2);
 }
 
 .chatbot-floating-trigger:active {
-  transform: scale(0.98);
+  transform: scale(0.96) translateZ(0);
 }
 
 .chatbot-floating-trigger.active-open {
   background: linear-gradient(135deg, #ff7a30 0%, #ff4d00 100%);
   box-shadow: 0 12px 30px -6px rgba(255, 122, 48, 0.35);
-  transform: scale(1.02) rotate(90deg);
+  transform: scale(1.02) rotate(90deg) translateZ(0);
 }
 
 .chatbot-trigger-icon-wrapper {
@@ -162,7 +164,10 @@
   flex-direction: column;
   overflow: hidden;
   z-index: 1002;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: bottom right;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark .chatbot-floating-window {
@@ -267,33 +272,36 @@
   transform: scale(1.05);
 }
 
-/* 5. Animations */
+/* 5. Animations (120fps GPU Compositor) */
 @keyframes slide-up {
   from {
-    transform: translateY(20px);
+    transform: translate3d(0, 20px, 0) scale(0.97);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0) scale(1);
     opacity: 1;
   }
 }
 
 .animate-slide-up {
-  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slide-up 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 @keyframes bounce-subtle {
   0%, 100% {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
   50% {
-    transform: translateY(-5px);
+    transform: translate3d(0, -6px, 0);
   }
 }
 
 .animate-bounce-subtle {
   animation: bounce-subtle 4s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* Responsive cho màn hình nhỏ di động (Impeccable Floating Sheet) */
