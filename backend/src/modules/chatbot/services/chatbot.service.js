@@ -192,7 +192,11 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     ? pineconeIndex.namespace(targetNamespace)
     : pineconeIndex;
 
-const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch.service');
+  const {
+    searchPostgreSQLLexical,
+    mergeGroupAndRerank,
+    CONFIDENCE_THRESHOLD
+  } = require('./hybridSearch.service');
 
   let matches = [];
   let rankedLessons = [];
@@ -263,7 +267,14 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
     try {
       if (targetIndex) {
         const queryResponse = await targetIndex.query(queryOptions);
-        matches = queryResponse.matches || [];
+        const configuredThreshold = Number(process.env.RAG_CONFIDENCE_THRESHOLD);
+        const minimumConfidence = Number.isFinite(configuredThreshold)
+          ? configuredThreshold
+          : CONFIDENCE_THRESHOLD;
+        matches = (queryResponse.matches || []).filter(match => (
+          Number.isFinite(Number(match.score))
+          && Number(match.score) >= minimumConfidence
+        ));
       }
     } catch (pcErr) {
       handlePineconeError(pcErr, 'Pinecone Retrieval');
@@ -318,6 +329,48 @@ const { searchPostgreSQLLexical, mergeGroupAndRerank } = require('./hybridSearch
 const { routeIntent, INTENTS } = require('./intentRouter.service');
 const { contextualizeQuery, getRecentConversationHistory } = require('./queryRewriter.service');
 const { buildVerifiedSources, formatTimestamp, validateTimestamp } = require('./sourceBuilder.service');
+const {
+  requiresSourceGrounding,
+  hasUsableGrounding,
+  getInsufficientGroundingReply,
+  getPromptGroundingRules
+} = require('./groundingPolicy.service');
+
+async function buildVerifiedEvidence({
+  retrievalRes,
+  timestampInfo,
+  isGlobalChat,
+  detectedIntent,
+  lessonId,
+  courseId
+}) {
+  const isCurrentLessonIntent = detectedIntent?.intent === INTENTS.CURRENT_LESSON_QA
+    || detectedIntent?.intent === 'SUMMARIZE_CURRENT_LESSON'
+    || detectedIntent?.intent === INTENTS.SUMMARIZE_CURRENT_LESSON;
+
+  if (!retrievalRes && !timestampInfo && (isGlobalChat || !isCurrentLessonIntent)) {
+    return { sources: [], actions: [] };
+  }
+
+  const verifiedOutput = await buildVerifiedSources({
+    intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
+    rankedLessons: retrievalRes?.rankedLessons
+      || (retrievalRes?.matches
+        ? retrievalRes.matches.map(match => ({
+          lessonId: match.metadata?.lesson_id,
+          rerankScore: match.score
+        }))
+        : []),
+    currentLessonId: lessonId,
+    courseId,
+    timestampInfo
+  });
+
+  return {
+    sources: verifiedOutput.sources || [],
+    actions: verifiedOutput.actions || []
+  };
+}
 
 /**
  * Trích xuất các đoạn phụ đề theo mốc thời gian (Time-Window Subtitle Retrieval)
@@ -834,6 +887,26 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
       }
     }
 
+    const verifiedEvidence = await buildVerifiedEvidence({
+      retrievalRes,
+      timestampInfo,
+      isGlobalChat,
+      detectedIntent,
+      lessonId,
+      courseId: accessInfo.courseId
+    });
+    const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
+
+    if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources)) {
+      return {
+        success: true,
+        reply: getInsufficientGroundingReply(detectedIntent?.intent),
+        intent: detectedIntent?.intent || 'CURRENT_LESSON_QA',
+        sources: verifiedEvidence.sources,
+        actions: verifiedEvidence.actions
+      };
+    }
+
     // 3. Tạo Prompt Engineering gửi cho Gemini (Sử dụng Original Question và Context)
     const historySnippet = conversationHistory.length > 0
       ? `\nLỊCH SỬ HỘI THOẠI GẦN NHẤT:\n${conversationHistory.map(h => `${h.role}: ${h.content}`).join('\n')}\n`
@@ -844,7 +917,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
   
 HƯỚNG DẪN TRẢ LỜI:
 - Hãy trả lời một cách tự nhiên, thân thiện và trực tiếp (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
-- Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, hãy sử dụng NGỮ CẢNH HỆ THỐNG dưới đây để cung cấp thông tin chính xác về các khóa học thực tế đang hoạt động trên trang web. Hãy giới thiệu tự nhiên và hấp dẫn.
+- Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, chỉ sử dụng NGỮ CẢNH HỆ THỐNG dưới đây. Nếu dữ liệu không có hoặc đang lỗi, hãy nói rõ rằng chưa thể xác minh thay vì tự bổ sung thông tin.
 - Nếu học viên hỏi các câu hỏi tiếng Anh chung (ví dụ: giải thích ngữ pháp, từ vựng, giao tiếp tự do, dịch thuật), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để giảng dạy và hỗ trợ họ một cách chuyên nghiệp. Khi cung cấp từ vựng/câu mẫu tiếng Anh, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
 - Tuyệt đối không nhắc đến các cụm từ kỹ thuật như "dựa vào ngữ cảnh cung cấp", "theo tài liệu".
 - Nếu người dùng hỏi về bản chất kỹ thuật của bạn (model AI nào, framework nào, được xây dựng ra sao), 
@@ -861,11 +934,10 @@ CÂU HỎI CỦA HỌC VIÊN:
 HƯỚNG DẪN TRẢ LỜI:
 - Trả lời một cách trực tiếp, tự nhiên và thân thiện (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
 - TUYỆT ĐỐI KHÔNG sử dụng các cụm từ máy móc như: "dựa vào ngữ cảnh", "theo tài liệu cung cấp", "không có tài liệu cụ thể nào", "trong ngữ cảnh này", v.v. Học viên không cần biết về hệ thống tài liệu phía sau.
-- Nếu NGỮ CẢNH dưới đây có chứa thông tin liên quan đến câu hỏi, hãy ưu tiên sử dụng nó để trả lời.
-- Nếu NGỮ CẢNH trống hoặc không liên quan trực tiếp (ví dụ học viên hỏi ngữ pháp chung, chào hỏi, hoặc yêu cầu từ vựng), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để trả lời học viên một cách chính xác nhất.
+${getPromptGroundingRules(groundingRequired)}
 - Khi cung cấp từ vựng, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
 
-NGỮ CẢNH BÀI HỌC (Nếu có):
+NGỮ CẢNH ĐÃ XÁC MINH:
 ${contextText || "(Không có tài liệu bổ trợ cụ thể)"}
 ${historySnippet}
 CÂU HỎI CỦA HỌC VIÊN:
@@ -874,31 +946,12 @@ CÂU HỎI CỦA HỌC VIÊN:
     const result = await geminiModel.generateContent(systemPrompt);
     const reply = result.response ? result.response.text() : (typeof result === 'string' ? result : "");
 
-    // 4. Xây dựng Structured Sources & Actions đã qua xác thực PostgreSQL
-    let sources = [];
-    let actions = [];
-    const isCurrentLessonIntent = detectedIntent?.intent === INTENTS.CURRENT_LESSON_QA || 
-      detectedIntent?.intent === 'SUMMARIZE_CURRENT_LESSON' || 
-      detectedIntent?.intent === INTENTS.SUMMARIZE_CURRENT_LESSON;
-
-    if (retrievalRes || timestampInfo || (!isGlobalChat && isCurrentLessonIntent)) {
-      const verifiedOutput = await buildVerifiedSources({
-        intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
-        rankedLessons: retrievalRes?.rankedLessons || (retrievalRes?.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
-        currentLessonId: lessonId,
-        courseId: accessInfo.courseId,
-        timestampInfo
-      });
-      sources = verifiedOutput.sources || [];
-      actions = verifiedOutput.actions || [];
-    }
-
     return {
       success: true,
       reply: reply || "Tôi đã nhận được câu hỏi nhưng không thể phản hồi ngay lúc này.",
       intent: detectedIntent?.intent || (isGlobalChat ? 'GENERAL_ENGLISH_QA' : 'CURRENT_LESSON_QA'),
-      sources,
-      actions
+      sources: verifiedEvidence.sources,
+      actions: verifiedEvidence.actions
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChat:", error);
@@ -1022,6 +1075,16 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       }
     }
 
+    const verifiedEvidence = await buildVerifiedEvidence({
+      retrievalRes,
+      timestampInfo,
+      isGlobalChat,
+      detectedIntent,
+      lessonId,
+      courseId: accessInfo.courseId
+    });
+    const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
+
     // 1. Phát sự kiện Metadata (SSE)
     if (onChunk) {
       onChunk({
@@ -1032,12 +1095,32 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       });
     }
 
+    if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources)) {
+      const safeReply = getInsufficientGroundingReply(detectedIntent?.intent);
+      if (onChunk) {
+        onChunk({ type: 'token', text: safeReply });
+        if (verifiedEvidence.sources.length > 0) {
+          onChunk({
+            type: 'sources',
+            sources: verifiedEvidence.sources,
+            actions: verifiedEvidence.actions
+          });
+        }
+      }
+      return {
+        fullText: safeReply,
+        intent: detectedIntent?.intent || 'CURRENT_LESSON_QA',
+        sources: verifiedEvidence.sources,
+        actions: verifiedEvidence.actions
+      };
+    }
+
     const systemPrompt = isGlobalChat
       ? `Bạn là Trợ lý ảo học tiếng Anh của E-Learn Academy. E-Learn Academy là một nền tảng học tiếng Anh trực tuyến thông minh với các tính năng chính: Học từ vựng, ngữ pháp, luyện nghe qua video bảo mật, luyện phát âm/nói (Speaking) chấm điểm bằng AI, và làm bài trắc nghiệm (Quiz).
   
 HƯỚNG DẪN TRẢ LỜI:
 - Hãy trả lời một cách tự nhiên, thân thiện và trực tiếp (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
-- Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, hãy sử dụng NGỮ CẢNH HỆ THỐNG dưới đây để cung cấp thông tin chính xác về các khóa học thực tế đang hoạt động trên trang web. Hãy giới thiệu tự nhiên và hấp dẫn.
+- Nếu học viên hỏi về các khóa học, chương trình học hoặc giới thiệu website, chỉ sử dụng NGỮ CẢNH HỆ THỐNG dưới đây. Nếu dữ liệu không có hoặc đang lỗi, hãy nói rõ rằng chưa thể xác minh thay vì tự bổ sung thông tin.
 - Nếu học viên hỏi các câu hỏi tiếng Anh chung (ví dụ: giải thích ngữ pháp, từ vựng, giao tiếp tự do, dịch thuật), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để giảng dạy và hỗ trợ họ một cách chuyên nghiệp. Khi cung cấp từ vựng/câu mẫu tiếng Anh, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
 - Tuyệt đối không nhắc đến các cụm từ kỹ thuật như "dựa vào ngữ cảnh cung cấp", "theo tài liệu".
 
@@ -1051,11 +1134,10 @@ CÂU HỎI CỦA HỌC VIÊN:
 HƯỚNG DẪN TRẢ LỜI:
 - Trả lời một cách trực tiếp, tự nhiên và thân thiện (sử dụng xưng hô như "Chào bạn", "Mình", "Tôi").
 - TUYỆT ĐỐI KHÔNG sử dụng các cụm từ máy móc như: "dựa vào ngữ cảnh", "theo tài liệu cung cấp", "không có tài liệu cụ thể nào", "trong ngữ cảnh này", v.v. Học viên không cần biết về hệ thống tài liệu phía sau.
-- Nếu NGỮ CẢNH dưới đây có chứa thông tin liên quan đến câu hỏi, hãy ưu tiên sử dụng nó để trả lời.
-- Nếu NGỮ CẢNH trống hoặc không liên quan trực tiếp (ví dụ học viên hỏi ngữ pháp chung, chào hỏi, hoặc yêu cầu từ vựng), hãy sử dụng kiến thức tiếng Anh chuẩn của bạn để trả lời học viên một cách chính xác nhất.
+${getPromptGroundingRules(groundingRequired)}
 - Khi cung cấp từ vựng, hãy kèm theo phiên âm chuẩn (IPA), nghĩa tiếng Việt và ví dụ đặt câu rõ ràng.
 
-NGỮ CẢNH BÀI HỌC (Nếu có):
+NGỮ CẢNH ĐÃ XÁC MINH:
 ${contextText || "(Không có tài liệu bổ trợ cụ thể)"}
 
 CÂU HỎI CỦA HỌC VIÊN:
@@ -1072,34 +1154,20 @@ CÂU HỎI CỦA HỌC VIÊN:
       }
     }
 
-    // 2. Phát sự kiện Sources & Actions (SSE)
-    let sources = [];
-    let actions = [];
-    const isCurrentLessonIntent = detectedIntent?.intent === INTENTS.CURRENT_LESSON_QA || 
-      detectedIntent?.intent === 'SUMMARIZE_CURRENT_LESSON' || 
-      detectedIntent?.intent === INTENTS.SUMMARIZE_CURRENT_LESSON;
-
-    if (retrievalRes || timestampInfo || (!isGlobalChat && isCurrentLessonIntent)) {
-      const verifiedOutput = await buildVerifiedSources({
-        intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
-        rankedLessons: retrievalRes?.rankedLessons || (retrievalRes?.matches ? retrievalRes.matches.map(m => ({ lessonId: m.metadata?.lesson_id, rerankScore: m.score })) : []),
-        currentLessonId: lessonId,
-        courseId: accessInfo.courseId,
-        timestampInfo
+    // 2. Phát Sources & Actions đã được xác minh trước khi gọi model
+    if (onChunk && verifiedEvidence.sources.length > 0) {
+      onChunk({
+        type: 'sources',
+        sources: verifiedEvidence.sources,
+        actions: verifiedEvidence.actions
       });
-      sources = verifiedOutput.sources || [];
-      actions = verifiedOutput.actions || [];
-    }
-
-    if (onChunk && sources.length > 0) {
-      onChunk({ type: 'sources', sources, actions });
     }
 
     return {
       fullText,
       intent: detectedIntent?.intent || (isGlobalChat ? 'GENERAL_ENGLISH_QA' : 'CURRENT_LESSON_QA'),
-      sources,
-      actions
+      sources: verifiedEvidence.sources,
+      actions: verifiedEvidence.actions
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChatStream:", error);

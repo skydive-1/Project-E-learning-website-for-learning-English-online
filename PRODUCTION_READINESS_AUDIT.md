@@ -10,7 +10,7 @@ Ngày đối soát: 02/09/2026. Kết luận chung: **chưa đủ căn cứ đ�
 - Nếu điểm đã lưu nhỏ hơn 50, service trả HTTP 422 với mã `LESSON_COMPLETION_SCORE_TOO_LOW`: `backend/src/modules/progress/services/progress.service.js:49`.
 - Controller yêu cầu `isCompleted` là boolean rõ ràng, không còn mặc định ngầm thành `true`: `backend/src/modules/progress/controllers/progress.controller.js:50`.
 - Bài test gửi raw HTTP request với điểm đã lưu 49%, đồng thời thử nhét `score: 100` vào body để giả mạo: `backend/tests/progress_completion_threshold.test.js:106` và `backend/tests/progress_completion_threshold.test.js:120`.
-- Bằng chứng chạy: `npm --prefix backend test` đạt **160 test, 160 pass, 0 fail, 0 skipped, 0 todo**. Hai ca kiểm thử ngưỡng hoàn thành đều nằm trong lần chạy này.
+- Bằng chứng chạy: `npm --prefix backend test` đạt **165 test, 165 pass, 0 fail, 0 skipped, 0 todo**. Hai ca kiểm thử ngưỡng hoàn thành và năm ca grounding đều nằm trong lần chạy này.
 
 ### 1.2. Pipeline tạo phụ đề tự động đã được khôi phục ở mức xử lý cục bộ
 
@@ -62,7 +62,7 @@ Ngày đối soát: 02/09/2026. Kết luận chung: **chưa đủ căn cứ đ�
 ### 1.6. Logging, cấu hình production và rate limit đã được siết lại
 
 - Mỗi request có ID, response header và log gồm status, thời gian, user và path: `backend/src/middleware/logger.middleware.js:1`, `:14`. Logger được gắn trước các route tại `backend/src/server.js:89`.
-- Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 160 test.
+- Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 165 test.
 - Production startup kiểm tra JWT, URL frontend, Gemini, Pinecone, Supabase, SMTP, database, `ENABLE_DRM_PACKAGING` và `ENABLE_SUBTITLE_VAD`: `backend/src/config/environment.js:1`. Có năm test cho validator này và cả năm đều đạt.
 - Khi database không kết nối được ở production, server đóng thay vì tiếp tục chạy nửa vời: `backend/src/server.js:152`.
 - CORS không còn chấp nhận tùy ý mọi subdomain `vercel.app`: `backend/src/server.js:76`.
@@ -78,6 +78,22 @@ Ngày đối soát: 02/09/2026. Kết luận chung: **chưa đủ căn cứ đ�
 
 Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệu hiện tại. Trình duyệt thật, EME và nhà cung cấp AI/vector được tách sang mục UNVERIFIED.
 
+### 1.8. Dependency Python của pipeline phụ đề đã khớp SDK được import
+
+- `auto_subtitle_pipeline.py` dùng SDK mới qua `from google import genai`; requirements nay cài `google-genai>=2.10.0,<3.0.0`: `backend/requirements.txt:3` và `backend/scripts/requirements.txt:3`. Package cũ `google-generativeai` đã được bỏ khỏi hai file này.
+- Virtualenv mới tại thư mục tạm đã cài sạch từ `backend/requirements.txt`; pip chọn `google-genai 2.21.0`, kết thúc exit code 0. `pip check` trả `No broken requirements found`.
+- Chạy `auto_subtitle_pipeline.py --help` bằng đúng Python trong virtualenv mới trả exit code 0 và hiển thị đầy đủ CLI. Việc gọi Gemini với audio có tiếng vẫn được giữ ở mục UNVERIFIED.
+
+### 1.9. Request RAG theo bài học đã có cổng grounding trước lời gọi Gemini
+
+- Policy phân biệt intent cần nguồn (`current_lesson`, `course_wide`) với câu hỏi tiếng Anh tổng quát: `backend/src/modules/chatbot/services/groundingPolicy.service.js:5`.
+- Cả đường sync và SSE đều xây dựng nguồn đã xác minh trước, rồi từ chối trả lời nếu thiếu một trong hai thành phần: context tin cậy và source đã đối chiếu PostgreSQL: `backend/src/modules/chatbot/services/chatbot.service.js:890`, `:900`, `:1078`, `:1098`.
+- Prompt của intent theo bài học cấm dùng kiến thức ngoài và yêu cầu nói rõ khi context không đủ: `backend/src/modules/chatbot/services/groundingPolicy.service.js:25`. Intent `GENERAL_ENGLISH_QA` vẫn được phép trả lời kiến thức tiếng Anh chung, không bị trộn với dữ liệu khóa học.
+- Nhánh current lesson nay lọc kết quả semantic theo ngưỡng mặc định 0.58; có thể cấu hình bằng `RAG_CONFIDENCE_THRESHOLD`: `backend/src/modules/chatbot/services/chatbot.service.js:270`, `backend/.env.example:29`.
+- Năm test policy đạt, gồm kiểm tra hai scope cần grounding, tách general English, yêu cầu đủ context + source, nội dung prompt và thứ tự gate đứng trước cả hai lời gọi Gemini: `backend/tests/chatbot_grounding_policy.test.js:15`, `:33`, `:40`, `:47`.
+- Generator luận văn không còn công bố `Grounded 100%`, `Faithfulness 98.2%`, hallucination 1.2%, Hit Rate 96.4% hoặc latency 0.68 giây như số đo thật. Bảng ghi rõ trạng thái chưa có phép đo đủ bằng chứng tại `backend/scripts/generate_thesis_defense_doc.py:365`; câu trả lời phản biện nêu đúng giới hạn tại dòng 472.
+- File `SO_TAY_THUYET_TRINH_VA_BAO_VE_DO_AN_RAG_AI.docx` đã được sinh lại. Kiểm tra trực tiếp toàn bộ paragraph và table trong DOCX xác nhận có câu “Chưa có phép đo đủ bằng chứng” và không còn năm cụm số liệu/tuyên bố cũ nêu trên.
+
 ## 2. CONFIRMED BROKEN / INCOMPLETE — Đã xác nhận hỏng hoặc còn thiếu
 
 ### 2.1. Schema chuẩn và schema đang chạy bị lệch nhau
@@ -87,50 +103,37 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 - Thư mục migration không có migration có phiên bản tương ứng cho hai thay đổi này. Nhiều boot migration bắt lỗi rồi chỉ cảnh báo và tiếp tục, nên một lần deploy lỗi có thể để schema ở trạng thái dở dang.
 - Cách sửa: tạo migration có version, chạy trong transaction, cập nhật `schema.sql`, thêm bài test so sánh catalog với schema mong đợi, rồi bỏ DDL best-effort khỏi startup. Đây là lỗi cấu trúc chưa nên vá tự động khi chưa chốt quy tắc nullability của `quiz_id`.
 
-### 2.2. Anti-hallucination của RAG chưa khóa câu trả lời vào nguồn
-
-- Prompt hiện cho phép Gemini dùng kiến thức chung khi context rỗng hoặc không liên quan: `backend/src/modules/chatbot/services/chatbot.service.js:848`, `:865`, `:1041`, `:1055`.
-- `buildVerifiedSources` chạy sau khi model đã sinh câu trả lời (`:885`, `:1083`). Nó xác thực thẻ nguồn, không chứng minh từng mệnh đề trong câu trả lời được nguồn hỗ trợ.
-- Nhánh truy xuất current lesson tại `backend/src/modules/chatbot/services/chatbot.service.js:243` không áp cùng ngưỡng confidence 0.58 như hybrid course search.
-- Cách sửa: buộc chế độ trả lời theo nguồn cho intent cần giáo trình, từ chối khi retrieval dưới ngưỡng, yêu cầu citation theo đoạn, kiểm tra citation trước khi trả response và tách rõ intent “kiến thức tiếng Anh chung”.
-
-### 2.3. Các con số “Grounded 100%” và “Faithfulness 98.2%” chưa có phép đo tương ứng
-
-- Mã sinh tài liệu vẫn ghi Faithfulness 98.2% và Grounded 100%: `backend/scripts/generate_thesis_defense_doc.py:365`, `:472`.
-- Nhiều script báo cáo cũ còn tuyên bố 100% PASS hoặc sẵn sàng production, trong khi một số “E2E” chỉ kiểm tra hàm tồn tại. Ví dụ `backend/scripts/test_e2e_rag.js:118` chỉ kiểm tra kiểu của `ask`/`askStream`.
-- Cách sửa: lập tập câu hỏi holdout, chấm retrieval và faithfulness bằng rubric có lưu output, nguồn và phiên bản model; chỉ đưa số đo có artifact tái chạy được vào luận văn.
-
-### 2.4. Chống quay màn hình không thể đáp ứng lời hứa “ngăn chặn”
+### 2.2. Chống quay màn hình không thể đáp ứng lời hứa “ngăn chặn”
 
 - Watermark và các cảnh báo trình duyệt có nối vào player, nhưng chính code ghi nhận không thể phát hiện OBS, quay ở cấp hệ điều hành hoặc camera ngoài: `frontend/src/modules/lessons/pages/LessonDetailPage.jsx:204`.
 - Cách sửa tài liệu: mô tả đúng là biện pháp răn đe và truy vết. Nếu cần DRM mạnh hơn, dùng Widevine/FairPlay/PlayReady theo nền tảng; vẫn không nên tuyên bố chặn tuyệt đối việc ghi hình.
 
-### 2.5. Profile còn hiển thị số liệu mẫu cố định
+### 2.3. Profile còn hiển thị số liệu mẫu cố định
 
 - Upload avatar còn comment dummy: `frontend/src/modules/profile/pages/ProfilePage.jsx:128`.
 - “2 Khóa học”, “8.5 điểm” và hoạt động gần đây là giá trị tĩnh: `frontend/src/modules/profile/pages/ProfilePage.jsx:382`, `:414`, `:421`.
 - Đây không phải fallback khi API lỗi, nhưng vẫn có thể làm người dùng hiểu nhầm dữ liệu. Cách sửa: nối endpoint thống kê thật hoặc ẩn toàn bộ khối cho tới khi có nguồn dữ liệu.
 
-### 2.6. Error handling chưa đồng nhất và log chưa có nơi lưu bền
+### 2.4. Error handling chưa đồng nhất và log chưa có nơi lưu bền
 
 - DRM controller và gamification controller vẫn tự trả 500 thay vì chuyển qua error middleware chung: `backend/src/modules/drm/drm.controller.js:110`, `:165`, `backend/src/modules/gamification/controllers/gamification.controller.js:10`.
 - Logger hiện ghi JSON qua `console`; repo không cấu hình transport/lưu trữ tập trung. Nếu nền tảng chạy container mà không thu stdout, log sự cố sẽ mất khi instance bị thay.
 - Health endpoint chỉ trả trạng thái process, chưa kiểm tra database, object storage, Pinecone hoặc Gemini.
 - Cách sửa: chuyển lỗi controller qua `next(error)`, dùng Pino/Winston với hệ thống thu log của môi trường triển khai, bổ sung `/health/live` và `/health/ready` với timeout ngắn cho dependency thiết yếu.
 
-### 2.7. Rate limit dùng bộ nhớ từng process
+### 2.5. Rate limit dùng bộ nhớ từng process
 
 - Factory trong `backend/src/middleware/rateLimit.middleware.js` không cấu hình shared store. Khi chạy nhiều instance, mỗi instance giữ bộ đếm riêng và giới hạn thực tế bị nhân lên.
 - Cách sửa: dùng Redis-compatible store, đặt key theo user/IP phù hợp từng route và thêm test hai instance dùng chung store.
 
-### 2.8. Một số test mang tên lớn hơn phạm vi chúng kiểm tra
+### 2.6. Một số test mang tên lớn hơn phạm vi chúng kiểm tra
 
 - `backend/tests/rate_limit.test.js:102` chỉ gửi một request cho từng endpoint giả lập; nó chứng minh middleware được gọi trong test app, chưa chứng minh route production thật trả 429.
 - `backend/tests/media_lifecycle_regression.test.js:27` chủ yếu kiểm tra module/router load được, không chạy DASH lifecycle.
 - `backend/scripts/test_e2e_rag.js:118` chỉ kiểm tra service export hàm.
 - Không có test bị `.skip`, `.todo` hoặc `.only`, nhưng ba trường hợp trên cần đổi tên hoặc thay bằng integration test thật để tránh hiểu nhầm mức bao phủ.
 
-### 2.9. Frontend bundle quá lớn
+### 2.7. Frontend bundle quá lớn
 
 - Production build thành công nhưng báo chunk chính **3,076.56 kB**, gzip **944.42 kB**; PDF worker **1,046.21 kB**. Vite cảnh báo chunk vượt 500 kB.
 - Cách sửa: route-level lazy loading, tách Shaka/PDF/editor/dashboard thành chunk riêng, kiểm tra bundle analyzer và đặt budget trong CI.
@@ -157,10 +160,6 @@ Code nay trả lỗi rõ ràng khi thiếu cấu hình hoặc gửi thất bại
 
 Frontend không có một script `test` tổng quát. Chỉ có production build và 13 test được chọn đã chạy. Do đó không có cơ sở báo số pass/fail/skip cho toàn bộ frontend. Cần chuẩn hóa `npm test` hoặc `vitest run`, khai báo môi trường jsdom và đưa lệnh đó vào CI.
 
-### 3.6. File luận văn nhị phân hiện tại
-
-Mã sinh tài liệu đã sửa tên embedding model, nhưng file DOCX/PDF hiện có chưa được sinh lại và đối chiếu nội dung trong lần kiểm tra này. Cần chạy generator, mở artifact mới và tìm cả `text-embedding-004`, các con số contraction cũ cùng các tuyên bố phần trăm chưa có benchmark.
-
-### 3.7. Cấu hình và quan sát trên môi trường production thật
+### 3.6. Cấu hình và quan sát trên môi trường production thật
 
 Validator và test startup đã đạt; máy cục bộ có các nhóm biến môi trường chính mà không cần in giá trị bí mật. Chưa có deploy production-like để chứng minh secret thực sự đúng, quyền database/object storage đủ, log được thu bền và readiness hoạt động qua restart. Cần một staging deploy bằng đúng manifest production và một checklist smoke test có lưu artifact.

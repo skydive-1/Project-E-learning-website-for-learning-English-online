@@ -324,7 +324,7 @@ def generate_thesis_defense_doc():
         "AI sử dụng chính xác những câu nói của giảng viên trong 90 giây đó để giải thích, đồng thời tạo nút bấm '⏱️ 02:30 - Xem đoạn này'. Khi học viên nhấn vào, video player tự động tua đến đúng giây đó."
     )
 
-    add_h2("3.7. Mô-đun 7: Dynamic Lesson-Aware Quick Actions (100% Không Hard-code)")
+    add_h2("3.7. Mô-đun 7: Dynamic Lesson-Aware Quick Actions (không dùng bộ nội dung cố định)")
     add_p("• 'Từ vựng trọng tâm' (LESSON_KEY_VOCAB): AI tự động bóc tách 5-8 từ vựng, thuật ngữ ngữ pháp thực sự xuất hiện trong bài học hiện tại, trả về định dạng bảng Markdown kèm ví dụ và nghĩa tiếng Việt.")
     add_p("• 'Tạo bài tập ôn nhanh' (LESSON_QUICK_QUIZ): AI tự động sinh 3-4 câu trắc nghiệm 4 lựa chọn (JSON Schema) bám sát kiến thức vừa học, hiển thị dạng Interactive Card có thể làm bài và chấm điểm tức thì trên giao diện.")
 
@@ -360,12 +360,12 @@ def generate_thesis_defense_doc():
         r.font.color.rgb = RGBColor(255, 255, 255)
         
     metrics_data = [
-        ("Hit Rate@8", "Tỷ lệ câu hỏi tìm thấy chunk tài liệu đúng trong Top-8", ">= 90%", "96.4% (Rất cao)"),
-        ("MRR (Mean Reciprocal Rank)", "Vị trí xuất hiện trung bình của tài liệu chính xác nhất", ">= 0.75", "0.865 (Top 1-2)"),
-        ("Faithfulness (Độ trung thực)", "Tỷ lệ câu trả lời bám sát 100% vào tài liệu bài học", ">= 95%", "98.2% (Không bịa đặt)"),
-        ("Hallucination Rate (Ảo giác)", "Tỷ lệ AI đưa ra kiến thức sai lệch hoặc ngoài bài", "<= 3%", "1.2% (Cực kỳ an toàn)"),
-        ("Time-Window Accuracy", "Độ chính xác khi định vị mốc giây video bài giảng", ">= 90%", "95.0% (Chuẩn xác)"),
-        ("E2E Latency (First Token)", "Thời gian phản hồi token đầu tiên qua SSE Stream", "<= 1.2s", "0.68s (Mượt mà)")
+        ("Hit Rate@8", "Tỷ lệ câu hỏi tìm thấy chunk tài liệu đúng trong Top-8", ">= 90%", "Chưa đo lại trên benchmark có lưu artifact"),
+        ("MRR (Mean Reciprocal Rank)", "Vị trí xuất hiện trung bình của tài liệu chính xác nhất", ">= 0.75", "Chưa đo lại trên benchmark có lưu artifact"),
+        ("Faithfulness (Độ trung thực)", "Tỷ lệ nội dung trả lời được nguồn bài học hỗ trợ", ">= 95%", "Chưa có phép đo đủ bằng chứng"),
+        ("Hallucination Rate (Ảo giác)", "Tỷ lệ AI đưa ra kiến thức sai lệch hoặc ngoài bài", "<= 3%", "Chưa có phép đo đủ bằng chứng"),
+        ("Time-Window Accuracy", "Độ chính xác khi định vị mốc giây video bài giảng", ">= 90%", "Chưa đo lại trên tập video chuẩn"),
+        ("E2E Latency (First Token)", "Thời gian phản hồi token đầu tiên qua SSE Stream", "<= 1.2s", "Chưa đo trên môi trường staging")
     ]
     
     for row_idx, (m_name, m_desc, m_target, m_actual) in enumerate(metrics_data, start=1):
@@ -382,7 +382,7 @@ def generate_thesis_defense_doc():
                 r.font.bold = True
             elif col_idx == 3:
                 r.font.bold = True
-                r.font.color.rgb = RGBColor(16, 185, 129)
+                r.font.color.rgb = RGBColor(180, 83, 9)
                 
     doc.add_paragraph()
 
@@ -413,7 +413,7 @@ def generate_thesis_defense_doc():
         "2. Khôi phục ngữ cảnh (Query Rewriting): Biến các câu hỏi cộc lốc như \"cho ví dụ nữa đi\" thành câu hỏi đầy đủ ngữ cảnh bài học.\n"
         "3. Thuật toán Tìm kiếm Lai (Hybrid Search): Kết hợp 60% Dense Vector từ Pinecone và 40% Lexical Search từ PostgreSQL kèm Exact Title Boost. Điều này giúp hệ thống vừa hiểu được ngữ nghĩa sâu xa, vừa bắt chính xác các từ khóa chuyên ngành.\n"
         "4. Định vị Video (Time-Window Video Seeking): AI biết chính xác video đang ở giây thứ mấy để trích xuất đúng lời giảng của thầy cô và cung cấp nút bấm Click-to-Seek tua video ngay lập tức.\n"
-        "5. Quick Actions Động 100%: Tự động trích xuất từ vựng trọng tâm và sinh bài tập trắc nghiệm tương tác cho mọi khóa học hiện tại và tương lai mà không cần hard-code bất kỳ dòng lệnh nào.'"
+        "5. Quick Actions Động: Tự động trích xuất từ vựng trọng tâm và sinh bài tập trắc nghiệm tương tác từ nội dung bài học, không dùng một bộ câu hỏi cố định cho mọi bài.'"
     )
 
     add_h2("Phần 3: Demo & Kết Luận (Khoảng 2.5 phút)")
@@ -422,7 +422,7 @@ def generate_thesis_defense_doc():
         "- Thứ nhất: Hỏi đáp tại mốc thời gian video -> AI trả lời và hiển thị nút tua video.\n"
         "- Thứ hai: Bấm \"Tạo bài tập ôn nhanh\" -> AI sinh bài trắc nghiệm tương tác ngay trên Sidebar.\n"
         "- Thứ ba: Kiểm tra phân quyền -> Thử truy cập bài học có phí chưa mua và hệ thống chặn bảo mật thành công.\n\n"
-        "Hệ thống đã đạt chỉ số Hit Rate 96.4% và độ ảo giác dưới 1.2%. Em xin chân thành cảm ơn Quý Thầy/Cô đã lắng nghe và chúng em rất mong nhận được những câu hỏi đóng góp từ Hội đồng!'"
+        "Trong phần demo, nhóm sẽ trình bày đường đi từ truy xuất ngữ cảnh, xác minh nguồn đến phản hồi và nêu rõ các chỉ số định lượng vẫn cần benchmark có lưu artifact trước khi công bố. Em xin chân thành cảm ơn Quý Thầy/Cô đã lắng nghe và chúng em rất mong nhận được những câu hỏi đóng góp từ Hội đồng!'"
     )
 
     # -------------------------------------------------------------
@@ -433,11 +433,11 @@ def generate_thesis_defense_doc():
     qa_list = [
         (
             "Câu 1: Tại sao nhóm không Fine-tuning mô hình riêng mà lại dùng kiến trúc RAG?",
-            "Dạ thưa Thầy/Cô, Fine-tuning rất tốn kém chi phí tính toán GPU và làm 'đóng băng' dữ liệu tại thời điểm train. Khi giảng viên đăng tải thêm bài học mới hoặc sửa phụ đề, mô hình Fine-tuned sẽ không biết kiến thức mới trừ khi phải train lại. Ngược lại, RAG lưu trữ tri thức dưới dạng Vector DB, cập nhật thời gian thực chỉ sau vài giây, chi phí thấp hơn 90% và cung cấp nguồn trích dẫn minh bạch 100% cho người học."
+            "Dạ thưa Thầy/Cô, Fine-tuning làm cố định tri thức tại thời điểm huấn luyện. Khi giảng viên thêm bài học hoặc sửa phụ đề, mô hình cần được huấn luyện lại mới biết dữ liệu mới. Với RAG, nhóm có thể cập nhật kho truy xuất theo nội dung mới và trả kèm nguồn bài học đã được đối chiếu với PostgreSQL. Nhóm chưa công bố tỷ lệ tiết kiệm hoặc độ chính xác tuyệt đối khi chưa có benchmark đủ bằng chứng."
         ),
         (
             "Câu 2: Tại sao cần Hybrid Search (Semantic + Lexical) mà không chỉ dùng Vector DB?",
-            "Dạ, Vector Search (Dense Embedding) rất mạnh về hiểu ngữ nghĩa tương đồng nhưng lại yếu khi tìm kiếm từ khóa chính xác, mã bài học, thuật ngữ viết tắt hoặc câu hỏi ngắn. Lexical Search (BM25/Full-text trên PostgreSQL) bù đắp hoàn hảo điểm yếu này. Kết hợp theo tỷ lệ 60/40 giúp nâng tỷ lệ Hit Rate từ 81% lên 96.4%."
+            "Dạ, Vector Search mạnh về tương đồng ngữ nghĩa nhưng có thể yếu với tên bài, thuật ngữ hoặc từ khóa chính xác. Lexical Search trên PostgreSQL bổ sung tín hiệu khớp từ khóa; hệ thống hợp nhất hai nguồn rồi áp ngưỡng confidence. Mức cải thiện Hit Rate chỉ nên công bố sau khi chạy lại benchmark có lưu câu hỏi, kết quả và phiên bản model."
         ),
         (
             "Câu 3: Làm sao hệ thống hiểu được khi học viên hỏi câu ngắn như 'Cho ví dụ nữa đi'?",
@@ -469,7 +469,7 @@ def generate_thesis_defense_doc():
         ),
         (
             "Câu 10: Điểm khác biệt lớn nhất giữa AI Chatbot này với ChatGPT thông thường là gì?",
-            "Dạ, có 3 điểm khác biệt lớn nhất: 1) AI của nhóm Grounded 100% vào giáo trình thực tế của trung tâm; 2) Có khả năng Click-to-Seek nhảy đến đúng mốc giây trong video; 3) Có tính năng Quick Actions tự sinh trắc nghiệm tương tác theo từng bài học."
+            "Dạ, có 3 điểm khác biệt lớn nhất: 1) Với câu hỏi về bài học hoặc khóa học, backend yêu cầu ngữ cảnh và nguồn đã xác minh; nếu thiếu bằng chứng thì từ chối trả lời thay vì dùng kiến thức ngoài; 2) Có khả năng Click-to-Seek đến mốc thời gian lấy từ phụ đề; 3) Có Quick Actions sinh trắc nghiệm theo nội dung bài học. Nhóm không tuyên bố grounded tuyệt đối vì vẫn cần đánh giá faithfulness trên tập kiểm thử độc lập."
         ),
         (
             "Câu 11: Chunk size và Overlap được nhóm lựa chọn dựa trên cơ sở nào?",
@@ -477,7 +477,7 @@ def generate_thesis_defense_doc():
         ),
         (
             "Câu 12: Tại sao giao diện phản hồi của AI lại gõ chữ từng từ mượt mà (Streaming)?",
-            "Dạ, nhóm sử dụng giao thức Server-Sent Events (SSE) kết hợp với thuật toán gõ chữ phân đoạn ở Frontend. Điều này giúp giảm độ trễ cảm nhận (Perceived Latency) từ 3 giây xuống chỉ còn 0.68 giây khi nhận token đầu tiên."
+            "Dạ, nhóm sử dụng Server-Sent Events (SSE) để chuyển token về Frontend ngay khi model sinh nội dung, nhờ đó giảm độ trễ cảm nhận. Con số latency cụ thể chỉ được công bố sau khi đo trên môi trường staging với cùng model và cùng cấu hình mạng."
         ),
         (
             "Câu 13: Khi mạng bị mất kết nối giữa chừng thì hệ thống xử lý lỗi thế nào?",
