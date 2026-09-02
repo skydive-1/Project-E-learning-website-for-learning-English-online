@@ -1,5 +1,6 @@
-require('dotenv').config();
-const { pool } = require('./src/config/database');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const { pool } = require('../../src/config/database');
 
 // Dùng user_id = 1 hoặc bất kỳ user có data để test
 const TEST_USER_ID = 1;

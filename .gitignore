@@ -20,6 +20,9 @@ mono_crash.*
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
+# `backend/tools/debug` contains reviewed project utilities, not build output.
+!backend/tools/debug/
+!backend/tools/debug/**
 [Rr]elease/
 [Rr]eleases/
 
