@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "60fps-animation": {
+      "source": "iart-ai/web-animation-skills",
+      "sourceType": "github",
+      "skillPath": "skills/60fps-animation/SKILL.md",
+      "computedHash": "3750e18ec8049d581f94f0f49a5204bc0b3ba2a6f9c5fcc4e3c1b08757143a46"
+    },
     "migrate-radix-to-base": {
       "source": "shadcn/ui",
       "sourceType": "github",
