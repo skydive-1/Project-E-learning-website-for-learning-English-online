@@ -223,4 +223,74 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
       db.pool.query = originalPoolQuery;
     }
   });
+
+  test('admin dashboard merges trusted Google history without replacing internal learner quota totals', async () => {
+    const originalPoolQuery = db.pool.query;
+    let trendsSql = '';
+    let breakdownSql = '';
+
+    db.pool.query = async (text) => {
+      if (text.includes('FROM bounds, active_ai, chat_stats')) {
+        return {
+          rows: [{
+            total_used_tokens: 5744,
+            total_max_tokens: 60000,
+            total_remaining_tokens: 54256,
+            avg_tokens_per_active_user: 5744,
+            exhausted_users_count: 0,
+            critical_users_count: 0,
+            total_users_with_usage: 1,
+            total_questions_rolling_24h: 0,
+            active_ai_users_period: 1,
+            total_ai_messages_period: 2,
+            total_user_prompts_period: 1,
+            total_bot_replies_period: 1
+          }]
+        };
+      }
+      if (text.includes('historical_usage AS')) {
+        trendsSql = text;
+        return {
+          rows: [
+            { day: '2026-08-17', estimated_tokens: 296740, backfilled_tokens: 296740 },
+            { day: '2026-09-02', estimated_tokens: 5744, backfilled_tokens: 0 }
+          ]
+        };
+      }
+      if (text.includes('FROM users u')) return { rows: [] };
+      if (text.includes('FROM ai_chat c')) return { rows: [] };
+      if (text.includes('combined_usage AS')) {
+        breakdownSql = text;
+        return {
+          rows: [
+            { purpose: 'historical_google_flash', tokens: '210601', cost: '0' },
+            { purpose: 'historical_google_embedding', tokens: '86139', cost: '0' },
+            { purpose: 'chat', tokens: '5744', cost: '0.0007' }
+          ]
+        };
+      }
+      return { rows: [] };
+    };
+
+    try {
+      const dashboard = await adminService.getAiQuotaDashboard(30);
+
+      assert.equal(dashboard.summary.total_used_tokens, 5744, 'internal learner total remains intact');
+      assert.equal(dashboard.summary.total_model_tokens_period, 302484);
+      assert.equal(dashboard.summary.backfilled_tokens_period, 296740);
+      assert.equal(dashboard.summary.historical_tokens_excluded_from_cost, 296740);
+      assert.equal(dashboard.summary.estimatedCostUsd, 0.0007);
+      assert.match(trendsSql, /ai_usage_daily_model_history/i);
+      assert.match(trendsSql, /h\.is_trusted = TRUE/i);
+      assert.match(trendsSql, /NOT EXISTS/i);
+      assert.match(breakdownSql, /historical_google_embedding/i);
+
+      const flash = dashboard.modelBreakdown.find(m => m.name === 'Gemini 3.7 Flash Reasoning');
+      const embedding = dashboard.modelBreakdown.find(m => m.name === 'Gemini Embedding-001 (768D)');
+      assert.equal(flash.tokens, 216345);
+      assert.equal(embedding.tokens, 86139);
+    } finally {
+      db.pool.query = originalPoolQuery;
+    }
+  });
 });

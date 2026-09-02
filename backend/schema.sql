@@ -210,6 +210,72 @@ CREATE INDEX IF NOT EXISTS idx_ai_usage_events_user_date
 CREATE INDEX IF NOT EXISTS idx_ai_usage_events_purpose_date
   ON ai_usage_events(purpose, created_at);
 
+CREATE INDEX IF NOT EXISTS idx_ai_usage_events_model_date
+  ON ai_usage_events(model, created_at);
+
+-- 12d. Dữ liệu usage lịch sử tổng hợp nhập từ dashboard nhà cung cấp.
+-- Không gán user_id/purpose vì nguồn Google AI Studio chỉ có project/model/ngày.
+CREATE TABLE IF NOT EXISTS ai_usage_daily_model_history (
+  usage_date DATE NOT NULL,
+  source TEXT NOT NULL DEFAULT 'google_ai_studio',
+  source_project TEXT NOT NULL,
+  source_project_ref TEXT NOT NULL,
+  model TEXT NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+  input_tokens BIGINT NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+  output_tokens BIGINT NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+  total_tokens BIGINT GENERATED ALWAYS AS (input_tokens + output_tokens) STORED,
+  is_trusted BOOLEAN NOT NULL DEFAULT TRUE,
+  imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (source, source_project_ref, usage_date, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_model_history_date
+  ON ai_usage_daily_model_history(usage_date);
+
+CREATE TABLE IF NOT EXISTS ai_usage_daily_project_history (
+  usage_date DATE NOT NULL,
+  source TEXT NOT NULL DEFAULT 'google_ai_studio',
+  source_project TEXT NOT NULL,
+  source_project_ref TEXT NOT NULL,
+  total_requests INTEGER NOT NULL DEFAULT 0 CHECK (total_requests >= 0),
+  successful_requests INTEGER NOT NULL DEFAULT 0 CHECK (successful_requests >= 0),
+  error_count INTEGER NOT NULL DEFAULT 0 CHECK (error_count >= 0),
+  success_rate NUMERIC(10, 9) CHECK (success_rate >= 0 AND success_rate <= 1),
+  errors_by_status JSONB NOT NULL DEFAULT '{}'::jsonb,
+  is_trusted BOOLEAN NOT NULL DEFAULT TRUE,
+  imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (source, source_project_ref, usage_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_daily_project_history_date
+  ON ai_usage_daily_project_history(usage_date);
+
+-- 12e. Hạn mức Gemini do admin xác nhận từ Google AI Studio
+-- Không có default cap để tránh coi giá trị gợi ý là hạn mức thật.
+CREATE TABLE IF NOT EXISTS ai_model_rate_limit_settings (
+  model TEXT PRIMARY KEY,
+  rpm_cap INTEGER NOT NULL CHECK (rpm_cap > 0),
+  tpm_cap INTEGER NOT NULL CHECK (tpm_cap > 0),
+  rpd_cap INTEGER NOT NULL CHECK (rpd_cap > 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by INT REFERENCES users(user_id) ON DELETE SET NULL
+);
+
+-- 12f. Tín hiệu 429 cho thấy cap cấu hình có thể lệch so với quota thật.
+CREATE TABLE IF NOT EXISTS ai_rate_limit_discrepancies (
+  model TEXT NOT NULL,
+  dimension VARCHAR(3) NOT NULL CHECK (dimension IN ('rpm', 'tpm', 'rpd')),
+  configured_cap INTEGER NOT NULL CHECK (configured_cap > 0),
+  observed_usage BIGINT NOT NULL DEFAULT 0,
+  provider_limit BIGINT,
+  raw_detail JSONB,
+  detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  occurrence_count INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (model, dimension)
+);
+
 -- 13. Tạo bảng Lesson Comments (Bình luận bài học)
 CREATE TABLE IF NOT EXISTS lesson_comments (
   comment_id SERIAL PRIMARY KEY,

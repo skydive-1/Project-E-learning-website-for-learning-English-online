@@ -21,6 +21,11 @@ router.get('/analytics', adminController.getAnalyticsDashboard);
 // GET /api/admin/ai-quota - Bảng Quản trị Toàn diện Hạn mức và Tiêu thụ Token AI
 router.get('/ai-quota', adminController.getAiQuotaDashboard);
 
+// Hạn mức thật của Gemini theo model (tách biệt với middleware rate-limit nội bộ)
+router.get('/gemini-rate-limits/status', adminController.getAiRateLimitStatus);
+router.get('/gemini-rate-limits/caps', adminController.getAiRateLimitCaps);
+router.put('/gemini-rate-limits/caps', adminController.updateAiRateLimitCaps);
+
 // PUT /api/admin/users/:userId/quota - Cập nhật hạn mức Token (max_tokens) cho người dùng
 router.put('/users/:userId/quota', adminController.updateUserQuotaLimit);
 

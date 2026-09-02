@@ -65,6 +65,44 @@ exports.getAiQuotaDashboard = async (req, res, next) => {
   }
 };
 
+exports.getAiRateLimitStatus = async (req, res, next) => {
+  try {
+    const status = await adminService.getRateLimitStatus();
+    res.status(200).json({ success: true, data: status });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getAiRateLimitCaps = async (req, res, next) => {
+  try {
+    const caps = await adminService.getAiRateLimitCaps();
+    res.status(200).json({ success: true, data: { models: caps } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateAiRateLimitCaps = async (req, res, next) => {
+  try {
+    const updated = await adminService.updateAiRateLimitCaps({
+      model: req.body?.model,
+      rpmCap: req.body?.rpmCap,
+      tpmCap: req.body?.tpmCap,
+      rpdCap: req.body?.rpdCap,
+      updatedBy: req.user?.id || req.user?.user_id
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã cập nhật hạn mức Gemini',
+      data: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * Cập nhật hạn mức Token tối đa (max_tokens) cho người dùng
  */
