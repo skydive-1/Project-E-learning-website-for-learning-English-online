@@ -1,6 +1,7 @@
-const db = require('./src/config/database');
-const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const db = require('../../src/config/database');
+const fs = require('fs');
 
 const TABLES_ORDERED = [
   'roles',
@@ -79,7 +80,7 @@ function escapeSqlVal(val) {
       }
     }
 
-    const outputPath = path.join(__dirname, 'seed_prod_data.sql');
+    const outputPath = path.resolve(__dirname, '../seed/seed-production-data.sql');
     fs.writeFileSync(outputPath, sqlOutput, 'utf8');
     console.log(`\n✅ Đã tạo file SQL seed dữ liệu Production thành công tại: ${outputPath}`);
 
