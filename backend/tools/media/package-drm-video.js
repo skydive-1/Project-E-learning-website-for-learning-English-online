@@ -3,14 +3,14 @@
  * Author: NGUYỄN THANH LIÊM (Backend & Security Developer)
  * 
  * Cú pháp sử dụng:
- * node package_drm_video.js <tên_file_mp4> <lesson_id>
+ * node tools/media/package-drm-video.js <tên_file_mp4> <lesson_id>
  * Ví dụ:
- * node package_drm_video.js HuyenBe_Grammar14_Les3_Sec1-1783306722938-705588741.mp4 1
+ * node tools/media/package-drm-video.js HuyenBe_Grammar14_Les3_Sec1-1783306722938-705588741.mp4 1
  */
 
 const path = require('path');
 const fs = require('fs');
-const { packageVideoToDrmDash } = require('./src/utils/drmPackager.util');
+const { packageVideoToDrmDash } = require('../../src/utils/drmPackager.util');
 
 const fileName = process.argv[2];
 const lessonId = process.argv[3] || 1;
@@ -18,12 +18,12 @@ const lessonId = process.argv[3] || 1;
 if (!fileName) {
   console.log(`
   ❌ THIẾU TÊN FILE VIDEO!
-  Cú pháp: node package_drm_video.js <tên_file_video.mp4> [lesson_id]
+  Cú pháp: node tools/media/package-drm-video.js <tên_file_video.mp4> [lesson_id]
   `);
   process.exit(1);
 }
 
-const videoPath = path.join(__dirname, 'uploads/courses/videos', fileName);
+const videoPath = path.resolve(__dirname, '../../uploads/courses/videos', fileName);
 
 if (!fs.existsSync(videoPath)) {
   console.error(`❌ Không tìm thấy file video tại: ${videoPath}`);
