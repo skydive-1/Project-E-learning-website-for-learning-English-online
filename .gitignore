@@ -434,11 +434,10 @@ FodyWeavers.xsd
 .agents/AGENTS.md
 .codex/hooks.json
 generate_sprint9_report.py
-backend/inspect_quiz_tables.js
-sprint10_content.txt
 backend/scripts/test_subtitle_suite.py
-scratch_sprint10.txt
-scratch/generate_comparison_report.py
+# Local experiments belong outside the working tree. Historical files were
+# preserved under _archive/scratch before this rule was added.
+/scratch/
 
 # Google Cloud & Security Credentials
 *credentials*.json

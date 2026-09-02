@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -230,7 +231,7 @@ def create_report():
     mem3_title.paragraph_format.space_after = Pt(4)
 
     b7 = doc.add_paragraph(style=bullet_style)
-    b7_run = b7.add_run("Xây dựng cấu trúc CSDL Quizzes: Thiết kế thành công 3 bảng dữ liệu quan hệ quizzes (đề thi), questions (câu hỏi liên kết qua quiz_id), và quiz_attempts (lượt làm bài thi của học viên). Thực thi kịch bản di chuyển migrate_quizzes.js dọn dẹp các bảng rác cũ và tạo dữ liệu trắc nghiệm mẫu hoàn chỉnh.")
+    b7_run = b7.add_run("Xây dựng cấu trúc CSDL Quizzes: Thiết kế thành công 3 bảng dữ liệu quan hệ quizzes (đề thi), questions (câu hỏi liên kết qua quiz_id), và quiz_attempts (lượt làm bài thi của học viên). Thực thi kịch bản backend/tools/migrations-adhoc/migrate-quizzes.js dọn dẹp các bảng rác cũ và tạo dữ liệu trắc nghiệm mẫu hoàn chỉnh.")
     b7_run.font.name = 'Arial'
     b7_run.font.size = Pt(10)
     b7_run.font.color.rgb = CHARCOAL
@@ -274,9 +275,11 @@ def create_report():
     sig_p.paragraph_format.space_before = Pt(24)
 
     # Lưu file
-    filename = "BAO CAO TIEN DO HOAN THANH TUAN 5.docx"
-    doc.save(filename)
-    print("Report generated successfully as: " + filename)
+    repo_root = Path(__file__).resolve().parents[2]
+    output_path = repo_root / 'docs' / 'reports' / 'week5-progress-report.docx'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    print("Report generated successfully as: " + str(output_path))
 
 if __name__ == "__main__":
     create_report()

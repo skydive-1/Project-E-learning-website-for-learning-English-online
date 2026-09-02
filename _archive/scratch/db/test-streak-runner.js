@@ -1,5 +1,5 @@
-const db = require('../backend/src/config/database');
-const gamificationService = require('../backend/src/modules/gamification/services/gamification.service');
+const db = require('../../../backend/src/config/database');
+const gamificationService = require('../../../backend/src/modules/gamification/services/gamification.service');
 
 async function testStreak() {
   console.log('=== BẮT ĐẦU TEST TOÀN DIỆN LOGIC STREAK VÀ LONGEST_STREAK ===');
