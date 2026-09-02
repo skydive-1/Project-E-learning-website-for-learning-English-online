@@ -137,19 +137,10 @@ const sendRoadmapEmail = async (fullname, recipientEmail) => {
   const transporter = createTransporter();
 
   if (!transporter) {
-    console.log('\n==================================================');
-    console.log('📧 [SIMULATION EMAIL MAILER - BÁO CÁO DEMO]');
-    console.log(`Đến: ${fullname} <${recipientEmail}>`);
-    console.log('Chủ đề: 🎯 Lộ trình học tiếng Anh cá nhân hóa cùng AI');
-    console.log('Trạng thái: Chưa cấu hình SMTP_PASS thực tế trong backend/.env.');
-    console.log('👉 Hệ thống vẫn phản hồi "Thành công" cho Client và in log để báo cáo đồ án mượt mà.');
-    console.log('==================================================\n');
-    
-    return {
-      success: true,
-      simulated: true,
-      message: 'Email đã được mô phỏng gửi thành công (Chưa cấu hình SMTP Gmail real).'
-    };
+    const error = new Error('Dịch vụ email chưa được cấu hình trên máy chủ.');
+    error.status = 503;
+    error.code = 'EMAIL_SERVICE_NOT_CONFIGURED';
+    throw error;
   }
 
   // Gửi email thật qua Nodemailer Gmail SMTP
@@ -169,17 +160,14 @@ const sendRoadmapEmail = async (fullname, recipientEmail) => {
       messageId: info.messageId
     };
   } catch (error) {
-    console.error(`⚠️ [EMAIL DISPATCH WARNING] Gửi mail thật qua Gmail thất bại: ${error.message}`);
+    console.error(`❌ [EMAIL DISPATCH ERROR] Gửi mail qua SMTP thất bại: ${error.message}`);
     if (error.code === 'EAUTH') {
       console.error('👉 LỖI XÁC THỰC GMAIL (EAUTH 535 BadCredentials): Google yêu cầu "Mật khẩu ứng dụng 16 ký tự" (App Password) chứ KHÔNG dùng mật khẩu đăng nhập Gmail thông thường.');
       console.error('👉 Hướng dẫn tạo: Vào https://myaccount.google.com/apppasswords -> Bật 2-Step Verification -> Tạo mã App Password 16 ký tự.');
     }
-    console.log('👉 Tự động chuyển sang phản hồi Thành công (Simulation Mode) để giao diện không bị gián đoạn.\n');
-    return {
-      success: true,
-      simulated: true,
-      error: error.message
-    };
+    error.status = 503;
+    error.code = error.code === 'EAUTH' ? 'EMAIL_AUTH_FAILED' : 'EMAIL_DELIVERY_FAILED';
+    throw error;
   }
 };
 

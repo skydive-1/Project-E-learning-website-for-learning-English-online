@@ -135,3 +135,19 @@ test('4. Admin and Super Admin role bypasses the route-specific AI limiter', asy
     assert.equal(response.status, 200);
   }
 });
+
+test('5. production cannot disable rate limiting through runtime or environment toggles', () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousRateLimitEnabled = process.env.RATE_LIMIT_ENABLED;
+  process.env.NODE_ENV = 'production';
+  process.env.RATE_LIMIT_ENABLED = 'false';
+
+  try {
+    assert.equal(setRateLimitEnabled(false), true);
+    assert.equal(isRateLimitEnabled(), true);
+  } finally {
+    restoreEnvironmentVariable('NODE_ENV', previousNodeEnv);
+    restoreEnvironmentVariable('RATE_LIMIT_ENABLED', previousRateLimitEnabled);
+    setRateLimitEnabled(true);
+  }
+});

@@ -196,8 +196,8 @@ const LessonDetailPage = () => {
    * ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
    * 
    * [PHẠM VI BẢO VỆ]:
-   * - Ngăn chặn 100% các thao tác chụp màn hình từ bàn phím (PrintScreen, Win+Shift+S, Alt+PrtScn)
-   * - Ngăn chặn chia sẻ màn hình qua getDisplayMedia của trình duyệt
+   * - Phát hiện một số phím chụp màn hình khi trang vẫn nhận được sự kiện bàn phím
+   * - Che video khi chính trang web gọi getDisplayMedia
    * - Tự động che đen khi người dùng chuyển tab (visibilitychange) hoặc mất focus (window blur)
    * 
    * [GIỚI HẠN KỸ THUẬT CLIENT-SIDE JAVASCRIPT]:
@@ -412,14 +412,22 @@ const LessonDetailPage = () => {
   useEffect(() => {
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
       const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
-      navigator.mediaDevices.getDisplayMedia = function (...args) {
+      const protectedGetDisplayMedia = function (...args) {
         if (videoRef.current) {
           videoRef.current.pause();
         }
         triggerZeroLatencyBlackout('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
         return originalGetDisplayMedia.apply(this, args);
       };
+      navigator.mediaDevices.getDisplayMedia = protectedGetDisplayMedia;
+
+      return () => {
+        if (navigator.mediaDevices.getDisplayMedia === protectedGetDisplayMedia) {
+          navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia;
+        }
+      };
     }
+    return undefined;
   }, []);
 
   // Bảo mật video (chặn DevTools, chuột phải theo vai trò và cấu hình admin)
@@ -746,10 +754,11 @@ const LessonDetailPage = () => {
         // Kiểm tra xem có đang xử lý nền không
         setSubtitleStatus(data?.subtitleStatus || 'none');
       }
-    }).catch(() => {
+    }).catch((error) => {
       if (cancelled) return;
+      console.error(`Không thể tải phụ đề cho bài học ${rawLessonId}:`, error);
       setSubtitleData(null);
-      setSubtitleStatus('none');
+      setSubtitleStatus('failed');
     });
     return () => { cancelled = true; };
   }, [currentLesson?.id, currentLesson?.type]);
@@ -776,8 +785,10 @@ const LessonDetailPage = () => {
         } else if (statusData.status === 'failed') {
           clearInterval(pollInterval);
         }
-      } catch (_) {
-        // Im lặng nếu network error trong khi polling
+      } catch (error) {
+        console.error(`Không thể cập nhật trạng thái phụ đề cho bài học ${rawLessonId}:`, error);
+        setSubtitleStatus('failed');
+        clearInterval(pollInterval);
       }
     }, 5000); // Poll mỗi 5 giây
 

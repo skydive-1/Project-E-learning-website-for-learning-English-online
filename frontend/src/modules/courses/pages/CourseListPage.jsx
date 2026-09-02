@@ -29,10 +29,13 @@ import '../styles/courses.scss';
 export const fetchCoursesFromApi = async () => {
   try {
     const response = await apiClient.get('/courses');
-    return Array.isArray(response.data?.courses) ? response.data.courses : [];
+    if (!Array.isArray(response.data?.courses)) {
+      throw new Error('Phản hồi danh sách khóa học không đúng định dạng.');
+    }
+    return response.data.courses;
   } catch (err) {
-    console.warn('Lỗi fetch courses từ DB:', err);
-    return [];
+    console.error('Lỗi fetch courses từ DB:', err);
+    throw err;
   }
 };
 
@@ -153,7 +156,14 @@ const CourseListPage = () => {
   }, [userProgressMap, customWords]);
 
   // Query Backend Courses (When Course tab is selected)
-  const { data: dbCourses = [], isLoading: isCoursesLoading } = useQuery({
+  const {
+    data: dbCourses = [],
+    isLoading: isCoursesLoading,
+    isFetching: isCoursesFetching,
+    isError: isCoursesError,
+    error: coursesError,
+    refetch: refetchCourses
+  } = useQuery({
     queryKey: ['courses'],
     queryFn: fetchCoursesFromApi,
     enabled: activeHubTab === 'course'
@@ -367,11 +377,24 @@ const CourseListPage = () => {
                   </div>
                 </div>
 
-                {isCoursesLoading ? (
+                {isCoursesError ? (
+                  <div role="alert" className="py-10 text-center text-slate-700 dark:text-slate-200">
+                    <p className="font-semibold">Không thể tải danh sách khóa học, vui lòng thử lại sau.</p>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{coursesError?.message}</p>
+                    <button
+                      type="button"
+                      onClick={() => refetchCourses()}
+                      disabled={isCoursesFetching}
+                      className="mt-4 min-h-11 rounded-xl bg-smart-indigo px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-70"
+                    >
+                      {isCoursesFetching ? 'Đang thử lại...' : 'Thử lại'}
+                    </button>
+                  </div>
+                ) : isCoursesLoading ? (
                   <p className="text-slate-500 py-8 text-center">Đang tải danh sách khóa học...</p>
                 ) : filteredDbCourses.length === 0 ? (
-                  <div className="py-12 text-center text-slate-400">
-                    <p>Không tìm thấy khóa học nào phù hợp với từ khóa.</p>
+                  <div role="status" className="py-12 text-center text-slate-400">
+                    <p>{courseSearch ? 'Không tìm thấy khóa học nào phù hợp với từ khóa.' : 'Chưa có khóa học nào.'}</p>
                   </div>
                 ) : (
                   <div className="course-cards-grid">

@@ -223,7 +223,12 @@ const InstructorDashboard = () => {
           explanation: q.explanation
         }));
 
-        saveCourseQuizQuestions(createLessonId, generatedQuestions);
+        const selectedLesson = allLessons.find((lesson) => String(lesson.id) === String(createLessonId));
+        await saveCourseQuizQuestions(createLessonId, generatedQuestions, {
+          courseId: createCourseId,
+          title: selectedLesson ? `Trắc nghiệm: ${selectedLesson.title}` : `Trắc nghiệm bài học ${createLessonId}`,
+          description: `Bộ câu hỏi do AI tạo cho bài học ${selectedLesson?.title || createLessonId}`
+        });
         
         setSelectedQuizCourseId(createCourseId);
         setSelectedQuizLessonId(createLessonId);
@@ -265,12 +270,20 @@ const InstructorDashboard = () => {
     setQuizMode('edit');
   };
 
-  const deleteQuiz = (item) => {
+  const deleteQuiz = async (item) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa toàn bộ câu hỏi trắc nghiệm của bài học "${item.lessonTitle}"?`)) return;
-    saveCourseQuizQuestions(item.id, []);
-    // Force reload by refreshing course data locally
-    setAllLessons(prev => prev.map(l => l.id === item.id ? { ...l } : l));
-    showToast('Đã xóa bộ trắc nghiệm thành công!', 'success');
+    try {
+      await saveCourseQuizQuestions(item.id, [], {
+        courseId: item.courseId,
+        title: `Trắc nghiệm: ${item.lessonTitle}`,
+        description: `Bộ câu hỏi luyện tập cho bài học: ${item.lessonTitle}`
+      });
+      setAllLessons(prev => prev.map(l => l.id === item.id ? { ...l } : l));
+      showToast('Đã xóa toàn bộ câu hỏi của bài trắc nghiệm!', 'success');
+    } catch (error) {
+      console.error('Lỗi xóa bộ câu hỏi:', error);
+      showToast(error.response?.data?.message || 'Không thể xóa bộ câu hỏi trên máy chủ.', 'error');
+    }
   };
 
   // Question editing form states
@@ -393,16 +406,25 @@ const InstructorDashboard = () => {
     setExplanationText(q.explanation || '');
   };
 
-  const handleDeleteQuestion = (idx) => {
+  const handleDeleteQuestion = async (idx) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa câu hỏi này không?')) return;
     const updated = [...quizQuestions];
     updated.splice(idx, 1);
-    setQuizQuestions(updated);
-    saveCourseQuizQuestions(selectedQuizLessonId, updated);
-    showToast('Xóa câu hỏi thành công!', 'success');
+    try {
+      const selectedLesson = allLessons.find((lesson) => String(lesson.id) === String(selectedQuizLessonId));
+      await saveCourseQuizQuestions(selectedQuizLessonId, updated, {
+        courseId: selectedQuizCourseId,
+        title: selectedLesson ? `Trắc nghiệm: ${selectedLesson.title}` : `Trắc nghiệm bài học ${selectedQuizLessonId}`
+      });
+      setQuizQuestions(updated);
+      showToast('Xóa câu hỏi thành công!', 'success');
+    } catch (error) {
+      console.error('Lỗi xóa câu hỏi:', error);
+      showToast(error.response?.data?.message || 'Không thể xóa câu hỏi trên máy chủ.', 'error');
+    }
   };
 
-  const handleSaveQuestion = (e) => {
+  const handleSaveQuestion = async (e) => {
     e.preventDefault();
     if (!questionText.trim()) {
       showToast('Vui lòng nhập nội dung câu hỏi.', 'warning');
@@ -429,10 +451,19 @@ const InstructorDashboard = () => {
       updated = [...quizQuestions, newQuestion];
     }
 
-    setQuizQuestions(updated);
-    saveCourseQuizQuestions(selectedQuizLessonId, updated);
-    showToast(isEditingIdx !== null ? 'Cập nhật câu hỏi thành công!' : 'Thêm câu hỏi mới thành công!', 'success');
-    handleCancelEdit();
+    try {
+      const selectedLesson = allLessons.find((lesson) => String(lesson.id) === String(selectedQuizLessonId));
+      await saveCourseQuizQuestions(selectedQuizLessonId, updated, {
+        courseId: selectedQuizCourseId,
+        title: selectedLesson ? `Trắc nghiệm: ${selectedLesson.title}` : `Trắc nghiệm bài học ${selectedQuizLessonId}`
+      });
+      setQuizQuestions(updated);
+      showToast(isEditingIdx !== null ? 'Cập nhật câu hỏi thành công!' : 'Thêm câu hỏi mới thành công!', 'success');
+      handleCancelEdit();
+    } catch (error) {
+      console.error('Lỗi lưu câu hỏi:', error);
+      showToast(error.response?.data?.message || 'Không thể lưu câu hỏi trên máy chủ.', 'error');
+    }
   };
 
 

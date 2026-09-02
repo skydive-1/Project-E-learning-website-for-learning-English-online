@@ -13,7 +13,8 @@ import {
   FiArrowLeft,
   FiTarget,
   FiBookOpen,
-  FiActivity
+  FiActivity,
+  FiAlertCircle
 } from 'react-icons/fi';
 import {
   ResponsiveContainer,
@@ -51,10 +52,12 @@ const AnalyticsDashboardPage = () => {
   const [summary, setSummary] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hoveredDay, setHoveredDay] = useState(null);
+  const [analyticsError, setAnalyticsError] = useState('');
 
   const fetchAnalyticsData = async (isAutoRefresh = false) => {
     try {
       if (!isAutoRefresh) setLoading(true);
+      setAnalyticsError('');
       const [hmData, sumData] = await Promise.all([
         getUserHeatmapData(timeRange),
         getUserAnalyticsSummary()
@@ -64,6 +67,7 @@ const AnalyticsDashboardPage = () => {
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Lỗi nạp dữ liệu phân tích học tập:", err);
+      setAnalyticsError(err.response?.data?.message || 'Không thể tải dữ liệu phân tích từ máy chủ.');
     } finally {
       setLoading(false);
     }
@@ -118,6 +122,33 @@ const AnalyticsDashboardPage = () => {
       default: return 'bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50';
     }
   };
+
+  if (analyticsError && !summary) {
+    return (
+      <div className="min-h-screen flex flex-col font-sans" style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}>
+        <Header />
+        <main className="flex-grow pt-24 pb-12">
+          <div className="mx-auto max-w-3xl px-4 sm:px-6">
+            <div role="alert" className="rounded-2xl border border-rose-200 bg-white p-6 text-center shadow-sm dark:border-rose-900/70 dark:bg-slate-900">
+              <FiAlertCircle className="mx-auto text-3xl text-rose-600 dark:text-rose-400" aria-hidden="true" />
+              <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-100">Không thể mở bảng phân tích</h1>
+              <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">{analyticsError}</p>
+              <button
+                type="button"
+                onClick={() => fetchAnalyticsData()}
+                disabled={loading}
+                className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-smart-indigo px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-70"
+              >
+                <FiRefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+                {loading ? 'Đang thử lại...' : 'Thử tải lại'}
+              </button>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col font-sans transition-colors duration-300" style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}>

@@ -313,8 +313,7 @@ class SubtitlesService {
     ];
     const pythonScript = candidates.find(c => fs.existsSync(c));
     if (!pythonScript) {
-      console.warn('[Silence VAD Subtitle]: Không tìm thấy file auto_subtitle_pipeline.py tại các đường dẫn kiểm tra.');
-      return null;
+      throw new Error('Không tìm thấy auto_subtitle_pipeline.py tại các đường dẫn đã cấu hình.');
     }
 
     const minSilence = options.minSilence || 400;
@@ -333,7 +332,7 @@ class SubtitlesService {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const args = [
         pythonScript,
         videoPath,
@@ -370,22 +369,25 @@ class SubtitlesService {
         stderrData += data.toString();
       });
 
+      pyProcess.on('error', (error) => {
+        reject(new Error(`Không thể khởi chạy Python VAD pipeline: ${error.message}`));
+      });
+
       pyProcess.on('close', (code) => {
         if (code === 0 && fs.existsSync(outputJsonPath)) {
           try {
             const fileContent = fs.readFileSync(outputJsonPath, 'utf8');
             const parsed = JSON.parse(fileContent);
-            if (parsed.cues && Array.isArray(parsed.cues) && parsed.cues.length > 0) {
+            if (Array.isArray(parsed.cues)) {
               try { fs.unlinkSync(outputJsonPath); } catch (_) {}
               return resolve(parsed.cues);
             }
           } catch (err) {
-            console.warn('[Silence VAD Subtitle]: Lỗi đọc kết quả JSON:', err.message);
+            return reject(new Error(`Không đọc được kết quả JSON của VAD pipeline: ${err.message}`));
           }
-          resolve(null);
+          reject(new Error('VAD pipeline không trả về trường cues hợp lệ.'));
         } else {
-          console.warn('[Silence VAD Subtitle Process Error]: Process exited with code', code, stderrData || stdoutData);
-          resolve(null);
+          reject(new Error(`VAD pipeline thoát với mã ${code}: ${stderrData || stdoutData}`));
         }
       });
     });
@@ -688,23 +690,22 @@ Quy tắc:
       let generatedCues = [];
 
       // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python khi được bật.
-      // Local dev mặc định dùng direct audio để tránh hàng chục request/lesson.
-      const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'false').toLowerCase() === 'true';
+      const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'true').toLowerCase() === 'true';
       if (vadEnabled) {
-        try {
-          console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
-          const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
-          if (vadCues && vadCues.length > 0) {
-            console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp khoảng lặng thật!`);
-            generatedCues = vadCues;
-          }
-        } catch (vadErr) {
-          console.warn(`[Silence VAD Warning]: ${vadErr.message}`);
+        console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
+        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
+        if (vadCues.length === 0) {
+          const noSpeechError = new Error('VAD pipeline không phát hiện đoạn giọng nói nào trong video.');
+          noSpeechError.status = 422;
+          noSpeechError.code = 'SUBTITLE_NO_SPEECH_DETECTED';
+          throw noSpeechError;
         }
+        console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp khoảng lặng thật!`);
+        generatedCues = vadCues;
       }
 
-      // ƯU TIÊN 2: Trích xuất Audio và bóc băng bằng Gemini Multimodal Audio (CHỈ chạy khi Ưu tiên 1 thất bại / không có cues)
-      if (!generatedCues || generatedCues.length === 0) {
+      // Direct-audio chỉ là chế độ tương thích được bật rõ bằng ENABLE_SUBTITLE_VAD=false.
+      if (!vadEnabled) {
         console.log(`[Ưu tiên 2 - Gemini Direct Audio] Kích hoạt bóc băng audio cho bài học ${lessonId}...`);
         const os = require('os');
         const tempAudioDir = path.join(os.tmpdir(), 'elearn_temp_audio');

@@ -15,22 +15,20 @@ describe('Lesson suggested questions', () => {
     getSuggestedQuestionsMock.mockReset();
   });
 
-  it('shows four concise lesson-only prompts immediately without legacy templates', () => {
+  it('shows a loading state instead of ungrounded client prompts while the API is pending', () => {
     getSuggestedQuestionsMock.mockReturnValue(new Promise(() => {}));
 
     render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
 
     const list = screen.getByLabelText('Câu hỏi gợi ý cho bài học');
-    const buttons = within(list).getAllByRole('button');
-
-    expect(buttons).toHaveLength(4);
-    buttons.forEach((button) => expect(button.textContent.length).toBeLessThanOrEqual(92));
+    expect(within(list).queryAllByRole('button')).toHaveLength(0);
+    expect(within(list).getByRole('status')).toHaveTextContent('Đang lấy câu hỏi từ nội dung bài học');
     expect(screen.queryByText(/Mục đích và nội dung chính/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Hành động nhanh/i)).not.toBeInTheDocument();
     expect(screen.getByText('Các gợi ý chỉ dựa trên nội dung xuất hiện trong bài.')).toBeInTheDocument();
   });
 
-  it('replaces fallbacks with short server questions and sends the selected prompt', async () => {
+  it('shows short server questions and sends the selected prompt', async () => {
     const onSelectPrompt = vi.fn();
     const groundedQuestions = [
       '“small talk” được dùng khi nào?',
@@ -50,7 +48,7 @@ describe('Lesson suggested questions', () => {
     expect(onSelectPrompt).toHaveBeenCalledWith(groundedQuestions[0], null);
   });
 
-  it('rejects legacy or oversized server suggestions', async () => {
+  it('surfaces invalid server suggestions instead of substituting client sample prompts', async () => {
     getSuggestedQuestionsMock.mockResolvedValue([
       'Mục đích và nội dung chính của bài này là gì?',
       'A'.repeat(120),
@@ -60,8 +58,26 @@ describe('Lesson suggested questions', () => {
 
     render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
 
-    await waitFor(() => expect(screen.getByLabelText('Câu hỏi gợi ý cho bài học')).toHaveAttribute('aria-busy', 'false'));
-    expect(screen.getByRole('button', { name: 'Bài này có những ý chính nào?' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Không thể tải câu hỏi gợi ý'));
+    expect(screen.getByRole('button', { name: 'Thử tải lại' })).toBeInTheDocument();
     expect(screen.queryByText(/Mục đích và nội dung chính/i)).not.toBeInTheDocument();
+  });
+
+  it('surfaces API failures and retries on demand', async () => {
+    getSuggestedQuestionsMock
+      .mockRejectedValueOnce(new Error('Backend unavailable'))
+      .mockResolvedValueOnce([
+        'Câu hỏi một từ bài học?',
+        'Câu hỏi hai từ bài học?',
+        'Câu hỏi ba từ bài học?',
+        'Câu hỏi bốn từ bài học?'
+      ]);
+
+    render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Thử tải lại' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Câu hỏi một từ bài học?' })).toBeInTheDocument());
+    expect(getSuggestedQuestionsMock).toHaveBeenCalledTimes(2);
   });
 });

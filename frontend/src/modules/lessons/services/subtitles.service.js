@@ -15,7 +15,7 @@ class SubtitlesService {
       return response.data?.data || null;
     } catch (error) {
       console.warn(`[Subtitles Service]: Không thể tải phụ đề bài học ${lessonId}:`, error?.message);
-      return null;
+      throw error;
     }
   }
 
@@ -26,10 +26,11 @@ class SubtitlesService {
   async getSubtitleStatus(lessonId) {
     try {
       const response = await apiClient.get(`/lessons/${lessonId}/subtitle-status`);
-      return response.data?.data || { status: 'none', updatedAt: null };
+      if (!response.data?.data) throw new Error('Phản hồi trạng thái phụ đề không đúng định dạng.');
+      return response.data.data;
     } catch (error) {
       console.warn(`[Subtitles Service]: Không thể lấy trạng thái phụ đề ${lessonId}:`, error?.message);
-      return { status: 'none', updatedAt: null };
+      throw error;
     }
   }
 

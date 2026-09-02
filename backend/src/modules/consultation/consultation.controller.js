@@ -40,7 +40,7 @@ const registerConsultation = async (req, res, next) => {
       data: {
         fullname: fullname.trim(),
         email: email.trim(),
-        emailSimulated: mailResult.simulated || false
+        messageId: mailResult.messageId
       }
     });
 

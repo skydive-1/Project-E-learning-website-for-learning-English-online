@@ -329,7 +329,7 @@ const AdminDashboard = () => {
     setQuestions(newQuestions);
   };
 
-  const handleSubmitQuiz = (e) => {
+  const handleSubmitQuiz = async (e) => {
     e.preventDefault();
 
     // Validate chung
@@ -363,7 +363,13 @@ const AdminDashboard = () => {
         }))
       };
 
-      saveFreeQuiz(newQuiz);
+      try {
+        await saveFreeQuiz(newQuiz);
+      } catch (error) {
+        console.error('Lỗi lưu bài Quiz tự do:', error);
+        showToast(error.response?.data?.message || 'Không thể lưu bài Quiz. Dữ liệu chưa được ghi lên máy chủ.', 'error');
+        return;
+      }
       showToast(`🎉 Đã tạo thành công bài Quiz tự do "${quizTitle}"! Bài học đã được đưa vào Kho Trắc Nghiệm.`, 'success');
       
       // Reset form
@@ -395,7 +401,18 @@ const AdminDashboard = () => {
         explanation: q.explanation.trim()
       }));
 
-      saveCourseQuizQuestions(selectedLessonId, formattedQuestions);
+      try {
+        const selectedLesson = lessons.find((lesson) => String(lesson.lesson_id) === String(selectedLessonId));
+        await saveCourseQuizQuestions(selectedLessonId, formattedQuestions, {
+          courseId: selectedCourseId,
+          title: selectedLesson ? `Trắc nghiệm: ${selectedLesson.title}` : `Trắc nghiệm bài học ${selectedLessonId}`,
+          description: selectedLesson ? `Bộ câu hỏi luyện tập cho bài học: ${selectedLesson.title}` : undefined
+        });
+      } catch (error) {
+        console.error('Lỗi lưu bộ câu hỏi bài học:', error);
+        showToast(error.response?.data?.message || 'Không thể lưu bộ câu hỏi. Dữ liệu chưa được ghi lên máy chủ.', 'error');
+        return;
+      }
       showToast('🎉 Đã tạo/cập nhật bộ đề trắc nghiệm cho bài học thành công!', 'success');
       
       // Reset form

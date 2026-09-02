@@ -52,19 +52,32 @@ const errorHandler = (err, req, res, next) => {
     else code = 'INTERNAL_ERROR';
   }
 
-  console.error(`
-    ❌ ERROR [${status} - ${code}]:
-    - Message: ${message}
-    - URL: ${req.method} ${req.url}
-    - Time: ${new Date().toISOString()}
-  `);
+  console.error(JSON.stringify({
+    level: 'error',
+    event: 'request_error',
+    requestId: req.requestId || null,
+    status,
+    code,
+    message,
+    method: req.method,
+    path: req.path,
+    stack: err.stack || null,
+    timestamp: new Date().toISOString()
+  }));
 
-  res.status(status).json({
+  const responseBody = {
     success: false,
     code: code,
-    message: message,
-    timestamp: new Date().toISOString()
-  });
+    message: status === 500 ? 'Lỗi nội bộ máy chủ.' : message,
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId || null
+  };
+
+  if (err.details && status < 500) {
+    responseBody.details = err.details;
+  }
+
+  res.status(status).json(responseBody);
 };
 
 module.exports = errorHandler;

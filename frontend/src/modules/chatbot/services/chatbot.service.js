@@ -370,7 +370,7 @@ export const getChatHistory = async (userId, lessonId) => {
     return response.data || [];
   } catch (error) {
     console.warn('⚠️ Lỗi tải lịch sử chat:', error.message);
-    return [];
+    throw error;
   }
 };
 
@@ -390,7 +390,7 @@ export const saveChatHistory = async (userId, lessonId, question, answer, source
     return response.data;
   } catch (error) {
     console.warn('⚠️ Lỗi lưu lịch sử chat:', error.message);
-    return null;
+    throw error;
   }
 };
 
@@ -514,7 +514,7 @@ export const getTokenBalance = async (userId) => {
     return response.data;
   } catch (error) {
     console.warn('⚠️ Lỗi gọi API ví token từ backend:', error.message);
-    return null;
+    throw error;
   }
 };
 
@@ -530,10 +530,10 @@ export const getSuggestedQuestions = async (lessonId) => {
     if (response.data && response.data.success && Array.isArray(response.data.questions)) {
       return response.data.questions;
     }
-    return [];
+    throw new Error('Phản hồi câu hỏi gợi ý từ máy chủ không đúng định dạng.');
   } catch (error) {
     console.warn(`⚠️ Lỗi lấy câu hỏi gợi ý cho lessonId=${lessonId}:`, error.message);
-    return [];
+    throw error;
   }
 };
 

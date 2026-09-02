@@ -71,7 +71,7 @@ exports.generateSubtitles = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Sinh phụ đề song ngữ bằng AI Gemini 3.7 Flash thành công',
+      message: 'Sinh phụ đề song ngữ bằng AI Gemini thành công',
       data: {
         subtitleId: subtitles.subtitle_id,
         lessonId: subtitles.lesson_id,
@@ -83,12 +83,7 @@ exports.generateSubtitles = async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error(`[Subtitles Controller]: Lỗi kích hoạt sinh phụ đề cho lesson ${req.params?.lessonId}:`, error.message);
-    return res.status(500).json({
-      success: false,
-      data: null,
-      message: error.message || 'Không thể tự động sinh phụ đề cho bài học này, vui lòng thử lại hoặc liên hệ giảng viên tải phụ đề thủ công'
-    });
+    next(error);
   }
 };
 
@@ -133,24 +128,22 @@ exports.getLessonRagStatus = async (req, res, next) => {
     const { lessonId } = req.params;
     const { pineconeIndex } = require('../../../utils/ai-clients');
 
-    let hasData = false;
-    let chunkCount = 0;
-
-    if (pineconeIndex && typeof pineconeIndex.query === 'function') {
-      const dummyVector = new Array(768).fill(0);
-      const queryResponse = await pineconeIndex.query({
-        vector: dummyVector,
-        topK: 100,
-        filter: {
-          lesson_id: { $eq: Number(lessonId) }
-        },
-        includeMetadata: true
-      });
-
-      const matches = queryResponse?.matches || [];
-      chunkCount = matches.length;
-      hasData = chunkCount > 0;
+    if (!pineconeIndex || typeof pineconeIndex.describeIndexStats !== 'function') {
+      const error = new Error('Pinecone chưa được cấu hình hoặc chưa sẵn sàng.');
+      error.status = 503;
+      error.code = 'RAG_VECTOR_DB_UNAVAILABLE';
+      throw error;
     }
+
+    const namespace = process.env.PINECONE_NAMESPACE_V2 || process.env.PINECONE_NAMESPACE || 'rag-v2';
+    const stats = await pineconeIndex.describeIndexStats({
+      filter: {
+        lesson_id: { $eq: Number(lessonId) },
+        schema_version: { $eq: 'v2' }
+      }
+    });
+    const chunkCount = Number(stats?.namespaces?.[namespace]?.recordCount || 0);
+    const hasData = chunkCount > 0;
 
     return res.status(200).json({
       success: true,
@@ -162,14 +155,6 @@ exports.getLessonRagStatus = async (req, res, next) => {
     });
   } catch (error) {
     console.error(`[RAG Status Controller Error] lessonId=${req.params?.lessonId}:`, error.message);
-    return res.status(200).json({
-      success: true,
-      data: {
-        lessonId: Number(req.params?.lessonId),
-        hasData: false,
-        chunkCount: 0,
-        warning: error.message
-      }
-    });
+    next(error);
   }
 };

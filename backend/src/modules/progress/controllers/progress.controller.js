@@ -45,22 +45,38 @@ exports.recordProgress = async (req, res, next) => {
 
     const lessonId = req.body.lessonId || req.body.lesson_id;
     
-    // Lấy isCompleted từ client, hỗ trợ cả camelCase và snake_case. Mặc định là true nếu không truyền.
+    // Lấy isCompleted từ client, hỗ trợ cả camelCase và snake_case.
     let isCompleted = req.body.isCompleted !== undefined ? req.body.isCompleted : req.body.is_completed;
     if (isCompleted === undefined) {
-      isCompleted = true;
-    } else {
-      isCompleted = String(isCompleted).toLowerCase() === 'true' || isCompleted === true || isCompleted === 1 || isCompleted === '1';
-    }
-
-    if (!userId || !lessonId) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu thông tin userId hoặc lessonId'
+        code: 'MISSING_COMPLETION_STATUS',
+        message: 'Thiếu trạng thái isCompleted.'
       });
     }
 
-    const progress = await progressService.recordProgress(userId, lessonId, isCompleted);
+    const normalizedCompletionStatus = String(isCompleted).toLowerCase();
+    if (![true, false, 1, 0, '1', '0', 'true', 'false'].includes(isCompleted)
+      && !['true', 'false', '1', '0'].includes(normalizedCompletionStatus)) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_COMPLETION_STATUS',
+        message: 'isCompleted phải là giá trị boolean.'
+      });
+    }
+    isCompleted = normalizedCompletionStatus === 'true' || normalizedCompletionStatus === '1';
+
+    const cleanUserId = parseInt(userId, 10);
+    const cleanLessonId = parseInt(lessonId, 10);
+    if (!Number.isInteger(cleanUserId) || cleanUserId <= 0 || !Number.isInteger(cleanLessonId) || cleanLessonId <= 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_PROGRESS_IDENTIFIERS',
+        message: 'userId và lessonId phải là số nguyên dương.'
+      });
+    }
+
+    const progress = await progressService.recordProgress(cleanUserId, cleanLessonId, isCompleted);
 
     res.status(200).json({
       success: true,

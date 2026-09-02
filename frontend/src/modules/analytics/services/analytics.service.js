@@ -14,7 +14,7 @@ export const getUserHeatmapData = async (timeRange = 'year') => {
     // Backend trả về { data: [...], heatmap: [...] } hoặc mảng trực tiếp
     const rows = response.data?.data || response.data?.heatmap || response.data;
 
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (Array.isArray(rows)) {
       return rows.map(r => {
         const minutes = Math.round(parseFloat(r.total_minutes ?? r.count ?? 0) * 10) / 10;
         // study_date là date object hoặc ISO string từ PostgreSQL
@@ -29,12 +29,11 @@ export const getUserHeatmapData = async (timeRange = 'year') => {
         };
       });
     }
+    throw new Error('Phản hồi heatmap từ máy chủ không đúng định dạng.');
   } catch (error) {
     console.error('[Analytics] Lỗi lấy heatmap:', error.message);
+    throw error;
   }
-
-  // Fallback: mảng rỗng (không fake data)
-  return [];
 };
 
 /**
@@ -53,7 +52,7 @@ export const sendStudyHeartbeat = async (lessonId, durationSeconds = 30, activit
     });
     return response.data;
   } catch (error) {
-    console.debug('[Analytics] Heartbeat skipped:', error?.message);
+    console.error('[Analytics] Study heartbeat failed:', error);
     return null;
   }
 };
@@ -67,45 +66,10 @@ export const getUserAnalyticsSummary = async () => {
     const response = await apiClient.get('/analytics/summary');
     const data = response.data;
 
-    if (data && data.kpi) {
-      return data;
-    }
+    if (!data || !data.kpi) throw new Error('Phản hồi analytics từ máy chủ không đúng định dạng.');
+    return data;
   } catch (error) {
     console.error('[Analytics] Lỗi lấy summary:', error.message);
+    throw error;
   }
-
-  // Fallback trả về cấu trúc rỗng — không fake số liệu
-  return {
-    kpi: {
-      totalStudyMinutes: 0,
-      totalStudyHours: '0',
-      completedLessonsCount: 0,
-      totalQuizzesTaken: 0,
-      avgQuizScorePercent: 0,
-      currentStreakDays: 0,
-      weeklyGrowthPercent: 0
-    },
-    courseCompletion: [
-      { name: 'Đã hoàn thành', value: 0, color: '#10b981' },
-      { name: 'Đang học',      value: 0, color: '#6366f1' },
-      { name: 'Chưa bắt đầu', value: 0, color: '#94a3b8' }
-    ],
-    skillRadar: [
-      { skill: 'Phát âm (Speaking)',       A: 0, fullMark: 100 },
-      { skill: 'Từ vựng (Vocabulary)',     A: 0, fullMark: 100 },
-      { skill: 'Ngữ pháp (Grammar)',       A: 0, fullMark: 100 },
-      { skill: 'Kỹ năng nghe (Listening)', A: 0, fullMark: 100 },
-      { skill: 'Viết tự luận (Writing)',   A: 0, fullMark: 100 }
-    ],
-    quizTrends: [],
-    weeklyActivity: [
-      { day: 'Thứ 2',    minutes: 0 },
-      { day: 'Thứ 3',    minutes: 0 },
-      { day: 'Thứ 4',    minutes: 0 },
-      { day: 'Thứ 5',    minutes: 0 },
-      { day: 'Thứ 6',    minutes: 0 },
-      { day: 'Thứ 7',    minutes: 0 },
-      { day: 'Chủ nhật', minutes: 0 }
-    ]
-  };
 };

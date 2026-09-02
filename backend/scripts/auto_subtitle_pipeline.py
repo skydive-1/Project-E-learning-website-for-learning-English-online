@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,8 +83,34 @@ def format_timestamp(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
 
 
+def resolve_ffmpeg_path() -> str:
+    configured = os.getenv("FFMPEG_PATH")
+    if configured:
+        configured_path = Path(configured).expanduser()
+        if configured_path.is_file():
+            return str(configured_path.resolve())
+        raise RuntimeError(f"FFMPEG_PATH không trỏ tới file hợp lệ: {configured_path}")
+
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
+
+    backend_root = Path(__file__).resolve().parents[1]
+    installer_root = backend_root / "node_modules" / "@ffmpeg-installer"
+    packaged_candidates = sorted(installer_root.glob("*/ffmpeg.exe"))
+    packaged_candidates.extend(sorted(installer_root.glob("*/ffmpeg")))
+    for candidate in packaged_candidates:
+        if candidate.is_file():
+            return str(candidate.resolve())
+
+    raise RuntimeError(
+        "Không tìm thấy ffmpeg. Hãy cài ffmpeg, cài dependency backend "
+        "@ffmpeg-installer/ffmpeg, hoặc đặt biến FFMPEG_PATH."
+    )
+
+
 def extract_audio(source_path: Path, audio_path: Path) -> None:
-    ffmpeg = os.getenv("FFMPEG_PATH") or "ffmpeg"
+    ffmpeg = resolve_ffmpeg_path()
     command = [
         ffmpeg,
         "-hide_banner",
