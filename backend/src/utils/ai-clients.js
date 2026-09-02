@@ -46,17 +46,21 @@ function getAiContext() {
 }
 
 // ─── Gemini API Pricing Constants ──────────────────────────────────────────
-// Source: Google AI Studio pricing page — https://ai.google.dev/pricing
-// Date verified: September 2026
+// Source: Gemini Developer API pricing — https://ai.google.dev/gemini-api/docs/pricing
+// Date verified: 2026-09-02 (giá trước đó trong file này bị sai ~10 lần, đã
+// nhầm với giá cache-read $0.075/1M thay vì giá input chuẩn).
+// Giá ưu đãi (introductory pricing) áp dụng tới hết 31/12/2026, sau đó Google tăng
+// gấp đôi từ 01/01/2027 — cần cập nhật lại nếu chạy sau mốc đó.
 // NOTE: This project uses the free tier (actual cost = $0).  estimated_cost_usd
 //       records what the usage WOULD cost at standard paid rates — useful for
 //       capacity planning and thesis defense, not because it is being billed.
 const COST_PER_M_TOKENS = Object.freeze({
-  'gemini-3.7-flash':      { input: 0.075, output: 0.30 },
-  'gemini-3.6-flash':      { input: 0.075, output: 0.30 },
-  'gemini-embedding-001':  { input: 0.025, output: 0 },
+  'gemini-3.7-flash':      { input: 0.75, output: 3.75 },
+  'gemini-3.6-flash':      { input: 0.75, output: 3.75 },
+  'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
+  'gemini-embedding-001':  { input: 0.15, output: 0 },
 });
-const DEFAULT_COST_RATE = Object.freeze({ input: 0.075, output: 0.30 });
+const DEFAULT_COST_RATE = Object.freeze({ input: 0.75, output: 3.75 });
 
 // ─── Usage Recording ───────────────────────────────────────────────────────
 
