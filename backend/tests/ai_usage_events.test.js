@@ -18,9 +18,11 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
   });
 
   test('COST_PER_M_TOKENS has accurate pricing for Gemini 3.7 Flash and Embedding-001', () => {
-    assert.equal(COST_PER_M_TOKENS['gemini-3.7-flash'].input, 0.075);
-    assert.equal(COST_PER_M_TOKENS['gemini-3.7-flash'].output, 0.30);
-    assert.equal(COST_PER_M_TOKENS['gemini-embedding-001'].input, 0.025);
+    // Giá thật đã verify 2026-09-02 (introductory pricing, hết hạn 31/12/2026):
+    // https://ai.google.dev/gemini-api/docs/pricing
+    assert.equal(COST_PER_M_TOKENS['gemini-3.7-flash'].input, 0.75);
+    assert.equal(COST_PER_M_TOKENS['gemini-3.7-flash'].output, 3.75);
+    assert.equal(COST_PER_M_TOKENS['gemini-embedding-001'].input, 0.15);
     assert.equal(COST_PER_M_TOKENS['gemini-embedding-001'].output, 0);
   });
 
@@ -55,8 +57,8 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
       assert.equal(insertEvent.params[4], 500); // output_tokens
       assert.equal(insertEvent.params[5], 1500); // total_tokens
 
-      // Cost calculation: (1000 * 0.075 + 500 * 0.30) / 1,000,000 = (75 + 150) / 1,000,000 = 0.000225 USD
-      const expectedCost = (1000 * 0.075 + 500 * 0.30) / 1000000;
+      // Cost calculation: (1000 * 0.75 + 500 * 3.75) / 1,000,000 = (750 + 1875) / 1,000,000 = 0.002625 USD
+      const expectedCost = (1000 * 0.75 + 500 * 3.75) / 1000000;
       assert.equal(insertEvent.params[6], expectedCost);
 
       // Verify user_token_limits upsert
@@ -93,8 +95,8 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
       assert.equal(insertEvent.params[3], 200); // input
       assert.equal(insertEvent.params[4], 0); // output
       assert.equal(insertEvent.params[5], 200); // total
-      // Cost: 200 * 0.025 / 1,000,000 = 0.000005 USD
-      assert.equal(insertEvent.params[6], (200 * 0.025) / 1000000);
+      // Cost: 200 * 0.15 / 1,000,000 = 0.00003 USD
+      assert.equal(insertEvent.params[6], (200 * 0.15) / 1000000);
     } finally {
       db.query = originalQuery;
     }
