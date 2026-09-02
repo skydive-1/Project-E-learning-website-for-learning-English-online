@@ -231,7 +231,7 @@ def create_report():
     mem3_title.paragraph_format.space_after = Pt(4)
 
     b7 = doc.add_paragraph(style=bullet_style)
-    b7_run = b7.add_run("Xây dựng cấu trúc CSDL Quizzes: Thiết kế thành công 3 bảng dữ liệu quan hệ quizzes (đề thi), questions (câu hỏi liên kết qua quiz_id), và quiz_attempts (lượt làm bài thi của học viên). Thực thi kịch bản di chuyển migrate_quizzes.js dọn dẹp các bảng rác cũ và tạo dữ liệu trắc nghiệm mẫu hoàn chỉnh.")
+    b7_run = b7.add_run("Xây dựng cấu trúc CSDL Quizzes: Thiết kế thành công 3 bảng dữ liệu quan hệ quizzes (đề thi), questions (câu hỏi liên kết qua quiz_id), và quiz_attempts (lượt làm bài thi của học viên). Thực thi kịch bản backend/tools/migrations-adhoc/migrate-quizzes.js dọn dẹp các bảng rác cũ và tạo dữ liệu trắc nghiệm mẫu hoàn chỉnh.")
     b7_run.font.name = 'Arial'
     b7_run.font.size = Pt(10)
     b7_run.font.color.rgb = CHARCOAL
