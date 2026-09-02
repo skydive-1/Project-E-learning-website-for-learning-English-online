@@ -23,7 +23,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Tải V2 Vector Snapshot
-const v2Data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../rag_v2_vector_store.json'), 'utf-8'));
+const v2Data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../rag-training/results/snapshots/rag_v2_vector_store.json'), 'utf-8'));
 const v2Records = v2Data.records;
 
 function cosineSimilarity(vecA, vecB) {
@@ -407,7 +407,7 @@ async function runValidationSuite() {
     validation_5_authorization: authTestResults
   };
 
-  const finalArtifactPath = path.resolve(__dirname, '../../phase3_final_validation_results.json');
+  const finalArtifactPath = path.resolve(__dirname, '../../rag-training/results/benchmarks/phase3_final_validation_results.json');
   fs.writeFileSync(finalArtifactPath, JSON.stringify(finalSummary, null, 2), 'utf-8');
   console.log(`\n💾 Đã lưu toàn bộ kết quả Phase 3 Final Validation vào: ${finalArtifactPath}`);
   console.log("\n==========================================================================");

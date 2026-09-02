@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const repoRoot = path.resolve(__dirname, '../../..');
+const backendRoot = path.join(repoRoot, 'backend');
 
 function walk(dir) {
   let results = [];
@@ -11,7 +13,7 @@ function walk(dir) {
       results = results.concat(walk(fullPath));
     } else {
       results.push({
-        path: path.relative(path.join(__dirname, '..'), fullPath),
+        path: path.relative(repoRoot, fullPath),
         size: stat.size
       });
     }
@@ -21,7 +23,7 @@ function walk(dir) {
 
 console.log('=== BACKEND MODULES ===');
 try {
-  const backendFiles = walk(path.join(__dirname, 'src', 'modules'));
+  const backendFiles = walk(path.join(backendRoot, 'src', 'modules'));
   backendFiles.forEach(f => console.log(`- ${f.path} (${f.size} bytes)`));
 } catch (e) {
   console.error(e.message);
@@ -29,7 +31,7 @@ try {
 
 console.log('\n=== FRONTEND MODULES ===');
 try {
-  const frontendFiles = walk(path.join(__dirname, '..', 'frontend', 'src', 'modules'));
+  const frontendFiles = walk(path.join(repoRoot, 'frontend', 'src', 'modules'));
   frontendFiles.forEach(f => console.log(`- ${f.path} (${f.size} bytes)`));
 } catch (e) {
   console.error(e.message);

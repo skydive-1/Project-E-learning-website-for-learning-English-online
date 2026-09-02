@@ -463,7 +463,7 @@ async function runBenchmark() {
   console.log(JSON.stringify(summary, null, 2));
 
   // Lưu file kết quả baseline
-  const outputPath = path.resolve(__dirname, '../../rag_baseline_results.json');
+  const outputPath = path.resolve(__dirname, '../../rag-training/results/benchmarks/rag_baseline_results.json');
   fs.writeFileSync(outputPath, JSON.stringify({ summary, details: results }, null, 2), 'utf-8');
   console.log(`\n💾 Đã lưu toàn bộ kết quả benchmark vào: ${outputPath}`);
 

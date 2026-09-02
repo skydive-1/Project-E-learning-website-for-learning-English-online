@@ -22,7 +22,7 @@ const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const v2Data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../rag_v2_vector_store.json'), 'utf-8'));
+const v2Data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../rag-training/results/snapshots/rag_v2_vector_store.json'), 'utf-8'));
 const v2Records = v2Data.records;
 
 function cosineSimilarity(vecA, vecB) {
@@ -642,7 +642,7 @@ async function runBenchmark() {
     test_details: results
   };
 
-  const outPath = path.resolve(__dirname, '../../phase5_conversational_rewriting_results.json');
+  const outPath = path.resolve(__dirname, '../../rag-training/results/benchmarks/phase5_conversational_rewriting_results.json');
   fs.writeFileSync(outPath, JSON.stringify(summary, null, 2), 'utf-8');
   console.log(`💾 Đã lưu kết quả chi tiết Phase 5 vào: ${outPath}`);
 

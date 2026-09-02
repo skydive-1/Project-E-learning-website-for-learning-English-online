@@ -4,8 +4,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const db = require('./src/config/database');
-const subtitlesService = require('./src/modules/lessons/services/subtitles.service');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const db = require('../../src/config/database');
+const subtitlesService = require('../../src/modules/lessons/services/subtitles.service');
 
 const verbatimPronounsCues = [
   {
@@ -105,7 +106,7 @@ async function updateVerbatimSubtitles() {
   }
 
   // Xuất file .vtt, .srt, .json
-  const subDir = path.join(__dirname, 'uploads/courses/videos/subtitles');
+  const subDir = path.resolve(__dirname, '../../uploads/courses/videos/subtitles');
   if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
 
   const baseName = 'HuyenBe_Grammar14_Les3_Sec1-1783478966130-703284249';

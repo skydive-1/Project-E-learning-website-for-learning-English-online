@@ -12,7 +12,7 @@
 
     "test:media": "node --test tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js",
     "test:auth": "node --test tests/auth_middleware.test.js",
-    "db:export-prod": "node export_prod_data.js"
+    "db:export-prod": "node tools/data/export-production-data.js"
   },
   "keywords": [],
   "author": "",

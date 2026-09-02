@@ -1,5 +1,6 @@
-require('./backend/node_modules/dotenv').config({path: './backend/.env'});
-const { pool } = require('./backend/src/config/database');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const { pool } = require('../../src/config/database');
 
 async function seed() {
   try {
