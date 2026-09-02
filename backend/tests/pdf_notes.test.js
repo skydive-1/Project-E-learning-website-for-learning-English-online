@@ -693,6 +693,8 @@ describe('=== TASK-PDF-SMART-NOTES-02 AUTOMATED TEST SUITE ===', () => {
       assert.strictEqual(res.status, 500);
       assert.strictEqual(data.success, false);
       assert.strictEqual(data.code, 'INTERNAL_ERROR');
+      assert.strictEqual(data.message, 'Lỗi nội bộ máy chủ.');
+      assert.doesNotMatch(data.message, /Connection pool|Mocked DB Failure/i);
     });
   });
 });

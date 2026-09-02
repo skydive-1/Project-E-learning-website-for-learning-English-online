@@ -62,7 +62,7 @@ export const fetchAndCacheQuizzes = async (courseId) => {
     return quizzes.map(mapQuizToFrontend);
   } catch (error) {
     console.error("⚠️ Lỗi tải và cache quizzes:", error.message);
-    return [];
+    throw error;
   }
 };
 
@@ -88,7 +88,7 @@ export const getFreeQuizzesList = async () => {
     return quizzes.map(mapQuizToFrontend);
   } catch (error) {
     console.error("⚠️ Lỗi tải danh sách trắc nghiệm tự do:", error.message);
-    return [];
+    throw error;
   }
 };
 
@@ -101,16 +101,9 @@ export const getFreeQuizById = async (quizId) => {
     if (response.data?.data) {
       return mapQuizToFrontend(response.data.data);
     }
-  } catch (err) {
-    try {
-      const response = await apiClient.get(`/quizzes/free`);
-      const quizzes = response.data?.data || [];
-      const target = quizzes.find(q => String(q.quiz_id) === String(quizId));
-      return target ? mapQuizToFrontend(target) : null;
-    } catch (error) {
-      console.error(`⚠️ Lỗi tải chi tiết trắc nghiệm ${quizId}:`, error.message);
-      return null;
-    }
+  } catch (error) {
+    console.error(`⚠️ Lỗi tải chi tiết trắc nghiệm ${quizId}:`, error.message);
+    throw error;
   }
 };
 
@@ -161,15 +154,54 @@ export const getQuizLeaderboard = async (quizId) => {
     return response.data?.data || [];
   } catch (error) {
     console.error(`⚠️ Lỗi tải Bảng xếp hạng cho Quiz ${quizId}:`, error.message);
-    return [];
+    throw error;
   }
 };
 
-// Duy trì các mock function cũ để tránh lỗi biên dịch của các file liên quan chưa cập nhật
-export const saveCourseQuizQuestions = () => true;
-export const saveFreeQuiz = () => true;
-export const deleteFreeQuiz = () => true;
-export const resetToDefaultQuizzes = () => true;
+const normalizeQuestionPayload = (question) => ({
+  questionText: question.questionText || question.question || question.question_text || '',
+  options: Array.isArray(question.options) ? question.options : [],
+  correctAnswer: question.correctAnswer ?? question.correct_answer ?? '',
+  explanation: question.explanation || '',
+  questionType: question.questionType || question.question_type || 'multiple_choice'
+});
+
+export const saveCourseQuizQuestions = async (lessonId, questions, options = {}) => {
+  const payload = {
+    title: options.title || `Trắc nghiệm bài học ${lessonId}`,
+    description: options.description || 'Bộ câu hỏi luyện tập gắn với bài học.',
+    difficulty: options.difficulty || 'Medium',
+    timeLimit: Number(options.timeLimit) || 10,
+    courseId: options.courseId ? Number(options.courseId) : null,
+    lessonId: Number(lessonId),
+    questions: (questions || []).map(normalizeQuestionPayload)
+  };
+  const response = await apiClient.post('/quizzes', payload);
+  courseQuizzesCache[String(lessonId)] = {
+    id: String(response.data?.data?.quizId || ''),
+    lessonId: Number(lessonId),
+    courseId: payload.courseId,
+    title: payload.title,
+    description: payload.description,
+    difficulty: payload.difficulty,
+    timeLimit: payload.timeLimit,
+    questions: (questions || []).map((question) => ({ ...question }))
+  };
+  return response.data;
+};
+
+export const saveFreeQuiz = async (quiz) => {
+  const response = await apiClient.post('/quizzes', {
+    title: quiz.title,
+    description: quiz.description || '',
+    difficulty: quiz.difficulty || 'Medium',
+    timeLimit: Number(quiz.timeLimit) || 10,
+    isPrivate: Boolean(quiz.isPrivate),
+    pinCode: quiz.pinCode || null,
+    questions: (quiz.questions || []).map(normalizeQuestionPayload)
+  });
+  return response.data;
+};
 
 /**
  * Gửi bài viết tự luận của học viên lên backend để AI chấm điểm
@@ -254,7 +286,7 @@ export const getAllQuizzesForManagement = async () => {
     return response.data?.data || [];
   } catch (error) {
     console.error("⚠️ Lỗi tải danh sách quản lý đề thi:", error.message);
-    return [];
+    throw error;
   }
 };
 

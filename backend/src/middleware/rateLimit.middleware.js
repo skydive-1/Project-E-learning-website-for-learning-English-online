@@ -11,11 +11,16 @@ const readPositiveInteger = (name, fallback) => {
 let runtimeRateLimitEnabled = null;
 
 const setRateLimitEnabled = (enabled) => {
+  if (process.env.NODE_ENV === 'production' && enabled === false) {
+    runtimeRateLimitEnabled = true;
+    return true;
+  }
   runtimeRateLimitEnabled = Boolean(enabled);
   return runtimeRateLimitEnabled;
 };
 
 const isRateLimitEnabled = () => {
+  if (process.env.NODE_ENV === 'production') return true;
   if (runtimeRateLimitEnabled !== null) {
     return runtimeRateLimitEnabled;
   }

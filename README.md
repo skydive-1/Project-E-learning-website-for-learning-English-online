@@ -33,7 +33,7 @@ Dự án được phân chia thành 3 phần chính nằm trong cùng một repo
 *   **Nhiệm vụ:**
     *   **Ingestion:** Đọc và tải tài liệu PDF/Text từ thư mục dữ liệu (`/data`).
     *   **Chunking:** Chia nhỏ văn bản sử dụng thuật toán thông minh (`TextChunker`).
-    *   **Embeddings:** Tạo vector nhúng qua mô hình `text-embedding-004` của Gemini.
+    *   **Embeddings:** Tạo vector nhúng 768 chiều qua mô hình `gemini-embedding-001` của Gemini.
     *   **Vector Database:** Tải và đồng bộ hóa vector dữ liệu lên Pinecone Index làm kho tri thức cho chatbot.
 
 ---

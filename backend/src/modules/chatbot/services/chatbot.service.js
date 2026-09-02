@@ -618,26 +618,10 @@ async function handleLessonQuickQuiz(userId, lessonId, onChunk = null) {
   const lessonContext = await getLessonFullContext(lessonId, accessInfo);
 
   if (!lessonContext || !lessonContext.hasContent) {
-    const fallbackQuestions = [
-      {
-        question: `Nội dung cốt lõi của bài học "${accessInfo.lesson?.lesson_title || 'này'}" là gì?`,
-        options: ["Ngữ pháp và luyện tập phản xạ", "Kỹ năng phát âm và từ vựng", "Luyện nghe hiểu qua ngữ cảnh", "Cả 3 phương án trên"],
-        correctAnswer: 3,
-        explanation: "Bài học cung cấp kiến thức toàn diện kết hợp nghe, từ vựng và bài tập thực hành."
-      }
-    ];
-    const fallbackPayload = {
-      success: true,
-      type: "LESSON_QUICK_QUIZ",
-      lessonId: Number(lessonId),
-      title: `Bài tập ôn tập: ${accessInfo.lesson?.lesson_title || 'Bài học'}`,
-      questions: fallbackQuestions,
-      quizData: fallbackQuestions
-    };
-    if (onChunk) {
-      onChunk({ type: 'quiz', quizData: fallbackQuestions, title: fallbackPayload.title });
-    }
-    return fallbackPayload;
+    const error = new Error('Bài học chưa có transcript hoặc tài liệu để tạo bài tập có căn cứ.');
+    error.status = 422;
+    error.code = 'LESSON_CONTENT_UNAVAILABLE';
+    throw error;
   }
 
   const quizPrompt = `Bạn là Chuyên gia Khảo thí Tiếng Anh của E-Learn Academy.
@@ -679,28 +663,31 @@ ${lessonContext.combinedContext}`;
     }
   } catch (err) {
     if (isGeminiQuotaExhausted(err)) throw err;
-    console.warn(`[QuickQuiz] Cảnh báo parse JSON từ Gemini, fallback sang cấu trúc chuẩn:`, err.message);
-    parsedQuestions = [
-      {
-        question: `Kiến thức trọng tâm trong bài "${lessonContext.lesson.lesson_title}" là gì?`,
-        options: [
-          "Quy tắc sử dụng và áp dụng trong ngữ cảnh",
-          "Phát âm và từ vựng mở rộng",
-          "Cấu trúc câu hoàn chỉnh",
-          "Tất cả các ý trên"
-        ],
-        correctAnswer: 3,
-        explanation: `Bài học "${lessonContext.lesson.lesson_title}" giúp người học nắm vững quy tắc cấu trúc và vận dụng vào thực tế.`
-      }
-    ];
+    const invalidResponseError = new Error(`Gemini trả về dữ liệu quiz không hợp lệ: ${err.message}`);
+    invalidResponseError.status = 502;
+    invalidResponseError.code = 'AI_INVALID_RESPONSE';
+    throw invalidResponseError;
   }
 
-  // Chuẩn hóa câu hỏi đảm bảo đúng schema
-  const normalizedQuestions = parsedQuestions.map((q, idx) => ({
-    question: q.question || `Câu hỏi ${idx + 1}`,
-    options: Array.isArray(q.options) && q.options.length === 4 ? q.options : ["Đáp án A", "Đáp án B", "Đáp án C", "Đáp án D"],
-    correctAnswer: (typeof q.correctAnswer === 'number' && q.correctAnswer >= 0 && q.correctAnswer <= 3) ? q.correctAnswer : 0,
-    explanation: q.explanation || "Giải thích đáp án chính xác theo nội dung bài học."
+  const hasInvalidQuestion = parsedQuestions.some(q => (
+    !q || typeof q.question !== 'string' || !q.question.trim()
+    || !Array.isArray(q.options) || q.options.length !== 4
+    || q.options.some(option => typeof option !== 'string' || !option.trim())
+    || !Number.isInteger(q.correctAnswer) || q.correctAnswer < 0 || q.correctAnswer > 3
+    || typeof q.explanation !== 'string' || !q.explanation.trim()
+  ));
+  if (hasInvalidQuestion) {
+    const error = new Error('Gemini trả về một hoặc nhiều câu hỏi không đúng schema.');
+    error.status = 502;
+    error.code = 'AI_INVALID_RESPONSE';
+    throw error;
+  }
+
+  const normalizedQuestions = parsedQuestions.map(q => ({
+    question: q.question.trim(),
+    options: q.options.map(option => option.trim()),
+    correctAnswer: q.correctAnswer,
+    explanation: q.explanation.trim()
   }));
 
   const quizPayload = {

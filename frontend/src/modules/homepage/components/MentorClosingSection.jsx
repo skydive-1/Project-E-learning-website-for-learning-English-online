@@ -34,8 +34,8 @@ const MentorClosingSection = () => {
       setSubmitted(true);
     } catch (err) {
       console.error('Lỗi đăng ký bản tin:', err);
-      // Fallback success for graceful UX
-      setSubmitted(true);
+      setSubmitted(false);
+      setErrorMsg(err.response?.data?.message || 'Không thể đăng ký lúc này. Vui lòng kiểm tra kết nối và thử lại.');
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +115,7 @@ const MentorClosingSection = () => {
               </button>
             </form>
           )}
-          {errorMsg && <p className="newsletter-error-text">{errorMsg}</p>}
+          {errorMsg && <p role="alert" className="newsletter-error-text">{errorMsg}</p>}
         </div>
       </div>
     </section>

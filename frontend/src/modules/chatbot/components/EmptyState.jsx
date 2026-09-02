@@ -1,13 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { FiCpu, FiBookOpen, FiHelpCircle, FiZap } from 'react-icons/fi';
+import React, { useCallback, useState, useEffect } from 'react';
+import { FiAlertCircle, FiCpu, FiBookOpen, FiHelpCircle, FiRefreshCw, FiZap } from 'react-icons/fi';
 import { getSuggestedQuestions } from '../services/chatbot.service';
-
-const CLIENT_LESSON_FALLBACKS = [
-  'Bài này có những ý chính nào?',
-  'Khái niệm nào cần ghi nhớ?',
-  'Từ nào xuất hiện trong bài?',
-  'Kiểm tra nhanh kiến thức bài này?'
-];
 
 const LEGACY_QUESTION_PATTERNS = [
   /Mục đích và nội dung chính/i,
@@ -48,40 +41,36 @@ const normalizeLessonQuestions = (questions) => {
  */
 const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
   const isGlobal = Number(lessonId) === 0;
-  const [suggestedQuestions, setSuggestedQuestions] = useState(() => (
-    isGlobal ? [] : CLIENT_LESSON_FALLBACKS
-  ));
+  const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+  const [questionsError, setQuestionsError] = useState('');
+
+  const loadSuggestedQuestions = useCallback(async () => {
+    if (isGlobal || Number(lessonId) <= 0) return;
+
+    setSuggestedQuestions([]);
+    setQuestionsError('');
+    setIsLoadingQuestions(true);
+    try {
+      const questions = await getSuggestedQuestions(lessonId);
+      const normalizedQuestions = normalizeLessonQuestions(questions);
+      if (normalizedQuestions.length !== 4) {
+        throw new Error('Máy chủ không trả về đủ bốn câu hỏi bám theo nội dung bài học.');
+      }
+      setSuggestedQuestions(normalizedQuestions);
+    } catch (error) {
+      console.error('[Suggested Questions] Không thể tải câu hỏi gợi ý:', error);
+      setQuestionsError('Không thể tải câu hỏi gợi ý từ nội dung bài học.');
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  }, [isGlobal, lessonId]);
 
   useEffect(() => {
-    let isMounted = true;
-
     if (!isGlobal && Number(lessonId) > 0) {
-      setSuggestedQuestions(CLIENT_LESSON_FALLBACKS);
-      setIsLoadingQuestions(true);
-      getSuggestedQuestions(lessonId)
-        .then((questions) => {
-          if (isMounted) {
-            const normalizedQuestions = normalizeLessonQuestions(questions);
-            setSuggestedQuestions(
-              normalizedQuestions.length === 4 ? normalizedQuestions : CLIENT_LESSON_FALLBACKS
-            );
-          }
-        })
-        .catch(() => {
-          if (isMounted) {
-            setSuggestedQuestions(CLIENT_LESSON_FALLBACKS);
-          }
-        })
-        .finally(() => {
-          if (isMounted) setIsLoadingQuestions(false);
-        });
+      loadSuggestedQuestions();
     }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [lessonId, isGlobal]);
+  }, [lessonId, isGlobal, loadSuggestedQuestions]);
 
   const globalPrompts = [
     {
@@ -124,6 +113,29 @@ const EmptyState = ({ lessonId = 0, onSelectPrompt }) => {
           aria-label="Câu hỏi gợi ý cho bài học"
           aria-busy={isLoadingQuestions}
         >
+          {isLoadingQuestions && (
+            <div role="status" className="min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-[12px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              Đang lấy câu hỏi từ nội dung bài học...
+            </div>
+          )}
+          {questionsError && !isLoadingQuestions && (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-100">
+              <div className="flex items-start gap-2.5">
+                <FiAlertCircle className="mt-0.5 shrink-0 text-base" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold leading-snug">{questionsError}</p>
+                  <button
+                    type="button"
+                    onClick={loadSuggestedQuestions}
+                    className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-[12px] font-semibold text-rose-800 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100 dark:hover:bg-rose-900/50"
+                  >
+                    <FiRefreshCw aria-hidden="true" />
+                    Thử tải lại
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {suggestedQuestions.map((questionText) => (
             <button
               key={questionText}

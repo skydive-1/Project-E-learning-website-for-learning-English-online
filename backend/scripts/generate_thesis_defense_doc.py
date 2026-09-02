@@ -249,7 +249,7 @@ def generate_thesis_defense_doc():
         "+-----------------------------------------------------------------------------------------+\n"
         "|                              DATA INGESTION PIPELINE (OFFLINE)                          |\n"
         "| Instructor Upload -> Video Audio Extraction -> Whisper Speech-to-Text (Smart VTT)      |\n"
-        "| -> Text Chunker (Size 900, Overlap 150) -> Google Text-Embedding-004 (768 Dim)        |\n"
+        "| -> Text Chunker (Size 900, Overlap 150) -> Google Gemini-Embedding-001 (768 Dim)      |\n"
         "| -> Pinecone Vector DB (Namespace: rag-v2, Schema: v2)                                   |\n"
         "+-----------------------------------------------------------------------------------------+\n"
         "                                           |\n"
@@ -276,7 +276,7 @@ def generate_thesis_defense_doc():
     add_h2("3.1. Mô-đun 1: Data Ingestion, Smart Chunking & Single-Lesson Reindexing")
     add_p("• Input Data: Video bài giảng (MP4), phụ đề song ngữ WebVTT (En/Vi), tài liệu đính kèm (PDF Text).")
     add_p("• Thuật toán Chunking: Cắt văn bản theo kích thước 900 ký tự với độ gối đầu (overlap) 150 ký tự để không làm đứt đoạn câu nói của giảng viên.")
-    add_p("• Vector Embedding: Sử dụng mô hình text-embedding-004 của Google (chiều vector: 768 dimensions), tối ưu chuẩn hóa vector L2.")
+    add_p("• Vector Embedding: Sử dụng mô hình gemini-embedding-001 của Google (chiều vector: 768 dimensions), tối ưu chuẩn hóa vector L2.")
     add_p("• Re-indexing Cô Lập (Isolation): Khi giảng viên cập nhật phụ đề 1 bài học, hệ thống chỉ xóa vector có deleteFilter = { lesson_id: X, source: 'auto-subtitle-transcript' }, tuyệt đối không xóa nhầm vector tài liệu PDF của bài học đó.")
 
     add_h2("3.2. Mô-đun 2: Intent Router & Scope Classification")

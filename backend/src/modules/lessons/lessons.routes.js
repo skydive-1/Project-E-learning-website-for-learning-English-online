@@ -39,7 +39,7 @@ router.delete('/:lessonId/materials/:materialId', authenticate, authorize([1, 2]
 
 // Phụ đề thông minh & Kịch bản tương tác (Smart AI Subtitles & Interactive Transcript)
 router.get('/:lessonId/subtitle-status', authenticate, subtitlesController.getSubtitleStatus);
-router.get('/:lessonId/subtitles', aiLimiter, subtitlesController.getSubtitles);
+router.get('/:lessonId/subtitles', authenticate, aiLimiter, subtitlesController.getSubtitles);
 router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), aiLimiter, subtitlesController.generateSubtitles);
 router.put('/:lessonId/subtitles', authenticate, authorize([1, 2]), subtitlesController.updateSubtitles);
 

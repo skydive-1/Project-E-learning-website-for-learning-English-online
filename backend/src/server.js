@@ -7,11 +7,11 @@
  */
 
 require('dotenv').config();
-const { assertProductionAiEnvironment } = require('./config/environment');
+const { assertProductionEnvironment } = require('./config/environment');
 
 // RAG Assistant và auto-subtitle đều phụ thuộc Gemini; RAG production còn cần Pinecone.
 // Dừng sớm thay vì khởi động một deployment production bị thiếu secrets rồi lỗi âm thầm.
-assertProductionAiEnvironment();
+assertProductionEnvironment();
 
 const express = require('express');
 const cors = require('cors');
@@ -73,8 +73,7 @@ app.use(cors({
       .split(',')
       .map(url => url.trim().replace(/\/+$/, ''));
 
-    // Cho phép nếu có trong danh sách FRONTEND_URL hoặc là bất kỳ domain Vercel nào (*.vercel.app)
-    if (allowedOrigins.includes(cleanOrigin) || cleanOrigin.endsWith('.vercel.app')) {
+    if (allowedOrigins.includes(cleanOrigin)) {
       return callback(null, true);
     }
 
@@ -85,6 +84,9 @@ app.use(cors({
 
 // Rate limit every endpoint before parsing request bodies or serving files.
 app.use(globalLimiter);
+
+// Log all requests, including static/media attempts, without logging query tickets.
+app.use(loggerMiddleware);
 
 // Giới hạn payload JSON và urlencoded ở mức 10mb (điều chỉnh cho metadata khóa học lớn)
 app.use(express.json({ limit: '10mb' }));
@@ -100,9 +102,6 @@ app.use('/uploads/courses/videos', (req, res) => {
 
 // Serve static files (uploads)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
-// Logging middleware
-app.use(loggerMiddleware);
 
 // Apply the API-wide policy before every /api endpoint, including /api/health.
 app.use('/api', apiLimiter);
@@ -150,7 +149,12 @@ const subtitlesService = require('./modules/lessons/services/subtitles.service')
 
 const server = app.listen(PORT, async () => {
   // Kiểm tra kết nối Database khi khởi chạy
-  await testConnection();
+  const databaseReady = await testConnection();
+  if (!databaseReady && process.env.NODE_ENV === 'production') {
+    console.error('FATAL: Không thể kết nối PostgreSQL; dừng backend production.');
+    server.close();
+    return;
+  }
   subtitlesService.resumePendingAutoGeneration()
     .then(count => {
       if (count > 0) console.log(`[Auto-Subtitle] Đã khôi phục ${count} job sau khi server khởi động`);
@@ -176,6 +180,11 @@ const server = app.listen(PORT, async () => {
     - Xem hướng dẫn cài đặt chi tiết tại tệp: HUONG_DAN_CAI_DAT_SHAKA_PACKAGER.md
     ⚠️ ═══════════════════════════════════════════════════════════════════════════ ⚠️
     `);
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DRM_PACKAGING === 'true') {
+      console.error('FATAL: ENABLE_DRM_PACKAGING=true nhưng Shaka Packager không khả dụng.');
+      server.close();
+      return;
+    }
   }
 
   console.log(`
