@@ -8,8 +8,19 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { getQuestionQuotaStatus } = require('./aiQuestionQuota.service');
+const {
+  isCourseCatalogQuestion,
+  selectGlobalChatProfile,
+  buildCourseCatalogReply
+} = require('./globalCourseResponse.service');
 
 const isGeminiQuotaExhausted = (error) => error?.code === 'GEMINI_QUOTA_EXHAUSTED';
+const GLOBAL_CHAT_FAST_MODEL = process.env.GEMINI_GLOBAL_CHAT_FAST_MODEL
+  || process.env.GEMINI_GLOBAL_CHAT_MODEL
+  || 'gemini-3.5-flash-lite';
+const GLOBAL_CHAT_COMPLEX_MODEL = process.env.GEMINI_GLOBAL_CHAT_COMPLEX_MODEL
+  || process.env.GEMINI_MODEL
+  || 'gemini-3.7-flash';
 
 /**
  * Trích xuất thời lượng audio an toàn qua FFmpeg metadata (không dùng shell: true)
@@ -819,6 +830,8 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
     let conversationHistory = [];
     let retrievalRes = null;
     let timestampInfo = null;
+    let globalCourses = [];
+    let globalCoursesLoadFailed = false;
 
     if (userId) {
       conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
@@ -831,16 +844,27 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
           FROM courses 
           ORDER BY course_id ASC
         `);
-        const coursesList = coursesResult.rows;
-        if (coursesList.length > 0) {
+        globalCourses = coursesResult.rows;
+        if (globalCourses.length > 0) {
           contextText = "Dưới đây là danh sách các khóa học thực tế đang hoạt động trên hệ thống E-Learn Academy:\n" +
-            coursesList.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - Mô tả: ${c.description || "Không có mô tả"}`).join("\n");
+            globalCourses.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - Mô tả: ${c.description || "Không có mô tả"}`).join("\n");
         } else {
           contextText = "Hiện tại chưa có khóa học nào được đăng tải trên hệ thống.";
         }
       } catch (dbErr) {
         console.error("Lỗi lấy danh sách khóa học cho chatbot:", dbErr);
+        globalCoursesLoadFailed = true;
         contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
+      }
+
+      if (isCourseCatalogQuestion(question)) {
+        return {
+          success: !globalCoursesLoadFailed,
+          reply: buildCourseCatalogReply(globalCourses, { loadFailed: globalCoursesLoadFailed }),
+          intent: 'GENERAL_ENGLISH_QA',
+          sources: [],
+          actions: []
+        };
       }
     } else {
       const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
@@ -943,7 +967,26 @@ ${historySnippet}
 CÂU HỎI CỦA HỌC VIÊN:
 "${question}"`;
 
-    const result = await geminiModel.generateContent(systemPrompt);
+    const globalGenerationProfile = isGlobalChat
+      ? selectGlobalChatProfile(question, {
+        fastModel: GLOBAL_CHAT_FAST_MODEL,
+        complexModel: GLOBAL_CHAT_COMPLEX_MODEL
+      })
+      : null;
+    const generationRequest = globalGenerationProfile
+      ? {
+        model: globalGenerationProfile.model,
+        contents: systemPrompt,
+        generationConfig: {
+          maxOutputTokens: globalGenerationProfile.maxOutputTokens,
+          thinkingConfig: {
+            thinkingLevel: globalGenerationProfile.thinkingLevel,
+            includeThoughts: false
+          }
+        }
+      }
+      : systemPrompt;
+    const result = await geminiModel.generateContent(generationRequest);
     const reply = result.response ? result.response.text() : (typeof result === 'string' ? result : "");
 
     return {
@@ -1007,6 +1050,8 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     let retrievalRes = null;
     let timestampInfo = null;
     let effectiveScope = 'current_lesson';
+    let globalCourses = [];
+    let globalCoursesLoadFailed = false;
 
     if (userId) {
       conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
@@ -1019,16 +1064,31 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
           FROM courses 
           ORDER BY course_id ASC
         `);
-        const coursesList = coursesResult.rows;
-        if (coursesList.length > 0) {
+        globalCourses = coursesResult.rows;
+        if (globalCourses.length > 0) {
           contextText = "Dưới đây là danh sách các khóa học thực tế đang hoạt động trên hệ thống E-Learn Academy:\n" +
-            coursesList.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - Mô tả: ${c.description || "Không có mô tả"}`).join("\n");
+            globalCourses.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - Mô tả: ${c.description || "Không có mô tả"}`).join("\n");
         } else {
           contextText = "Hiện tại chưa có khóa học nào được đăng tải trên hệ thống.";
         }
       } catch (dbErr) {
         console.error("Lỗi lấy danh sách khóa học cho chatbot:", dbErr);
+        globalCoursesLoadFailed = true;
         contextText = "Không thể tải danh sách khóa học thực tế từ hệ thống.";
+      }
+
+      if (isCourseCatalogQuestion(question)) {
+        const directReply = buildCourseCatalogReply(globalCourses, { loadFailed: globalCoursesLoadFailed });
+        if (onChunk) {
+          onChunk({ type: 'metadata', intent: 'GENERAL_ENGLISH_QA', scope: 'none', responseMode: 'database' });
+          onChunk({ type: 'token', text: directReply });
+        }
+        return {
+          fullText: directReply,
+          intent: 'GENERAL_ENGLISH_QA',
+          sources: [],
+          actions: []
+        };
       }
     } else {
       const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
@@ -1084,6 +1144,12 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       courseId: accessInfo.courseId
     });
     const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
+    const globalGenerationProfile = isGlobalChat
+      ? selectGlobalChatProfile(question, {
+        fastModel: GLOBAL_CHAT_FAST_MODEL,
+        complexModel: GLOBAL_CHAT_COMPLEX_MODEL
+      })
+      : null;
 
     // 1. Phát sự kiện Metadata (SSE)
     if (onChunk) {
@@ -1091,6 +1157,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
         type: 'metadata',
         intent: detectedIntent?.intent || (isGlobalChat ? 'GENERAL_ENGLISH_QA' : 'CURRENT_LESSON_QA'),
         scope: effectiveScope,
+        responseMode: globalGenerationProfile ? `ai_${globalGenerationProfile.tier}` : 'rag',
         rewrittenQuery: rewriteInfo?.rewritten ? retrievalQuery : undefined
       });
     }
@@ -1143,7 +1210,20 @@ ${contextText || "(Không có tài liệu bổ trợ cụ thể)"}
 CÂU HỎI CỦA HỌC VIÊN:
 "${question}"`;
 
-    const resultStream = await geminiModel.generateContentStream(systemPrompt);
+    const generationRequest = globalGenerationProfile
+      ? {
+        model: globalGenerationProfile.model,
+        contents: systemPrompt,
+        generationConfig: {
+          maxOutputTokens: globalGenerationProfile.maxOutputTokens,
+          thinkingConfig: {
+            thinkingLevel: globalGenerationProfile.thinkingLevel,
+            includeThoughts: false
+          }
+        }
+      }
+      : systemPrompt;
+    const resultStream = await geminiModel.generateContentStream(generationRequest);
     let fullText = "";
 
     for await (const chunk of resultStream.stream) {

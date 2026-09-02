@@ -11,11 +11,7 @@ const originalAskStream = chatbotService.askStream;
 
 const createRequest = () => {
   const req = new EventEmitter();
-  req.body = {
-    question: 'Học gì hôm nay?',
-    lessonId: 0,
-    scope: 'lesson'
-  };
+  req.body = { question: 'Học gì hôm nay?', lessonId: 0, scope: 'lesson' };
   req.user = { id: 7, roleId: 1 };
   req.aborted = false;
   return req;

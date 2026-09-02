@@ -47,6 +47,8 @@ function getAiContext() {
 
 // ─── Gemini API Pricing Constants ──────────────────────────────────────────
 // Source: Gemini Developer API pricing — https://ai.google.dev/gemini-api/docs/pricing
+// Date verified: 2026-09-02 (giá trước đó trong file này bị sai ~10 lần, đã
+// nhầm với giá cache-read $0.075/1M thay vì giá input chuẩn).
 // Date verified: 2026-09-02 (re-checked; giá trước đó trong file này bị sai ~10 lần,
 // đã nhầm với giá cache-read $0.075/1M thay vì giá input chuẩn).
 // Giá ưu đãi (introductory pricing) áp dụng tới hết 31/12/2026, sau đó Google tăng
@@ -57,6 +59,7 @@ function getAiContext() {
 const COST_PER_M_TOKENS = Object.freeze({
   'gemini-3.7-flash':      { input: 0.75, output: 3.75 },
   'gemini-3.6-flash':      { input: 0.75, output: 3.75 },
+  'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
   'gemini-embedding-001':  { input: 0.15, output: 0 },
 });
 const DEFAULT_COST_RATE = Object.freeze({ input: 0.75, output: 3.75 });
@@ -193,6 +196,9 @@ function normalizeRequest(request) {
     const srcConfig = request.generationConfig || request.config || {};
     if (srcConfig.responseMimeType) config.responseMimeType = srcConfig.responseMimeType;
     if (srcConfig.maxOutputTokens !== undefined) config.maxOutputTokens = srcConfig.maxOutputTokens;
+    if (srcConfig.thinkingConfig && typeof srcConfig.thinkingConfig === 'object') {
+      config.thinkingConfig = { ...srcConfig.thinkingConfig };
+    }
   }
 
   return { contents, config: Object.keys(config).length > 0 ? config : undefined, model, purpose, userId };
@@ -616,6 +622,7 @@ module.exports = {
   normalizeGeminiError,
   runWithAiContext,
   recordAiUsage,
+  normalizeRequest,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,
