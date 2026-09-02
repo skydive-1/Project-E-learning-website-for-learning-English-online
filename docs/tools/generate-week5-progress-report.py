@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import docx
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -274,9 +275,11 @@ def create_report():
     sig_p.paragraph_format.space_before = Pt(24)
 
     # Lưu file
-    filename = "BAO CAO TIEN DO HOAN THANH TUAN 5.docx"
-    doc.save(filename)
-    print("Report generated successfully as: " + filename)
+    repo_root = Path(__file__).resolve().parents[2]
+    output_path = repo_root / 'docs' / 'reports' / 'week5-progress-report.docx'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    print("Report generated successfully as: " + str(output_path))
 
 if __name__ == "__main__":
     create_report()

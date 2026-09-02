@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
+from pathlib import Path
 import docx
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
@@ -330,9 +331,11 @@ def main():
         "Ý NGHĨA CỦA TÀI LIỆU PHÂN TÍCH RAG"
     )
     
-    output_filename = "Bao_cao_co_che_hoat_dong_RAG.docx"
-    doc.save(output_filename)
-    print(f"✅ Báo cáo RAG đã được lưu thành công tại file: {output_filename}")
+    repo_root = Path(__file__).resolve().parents[2]
+    output_path = repo_root / 'docs' / 'reports' / 'rag-mechanism-guide.docx'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(output_path))
+    print(f"✅ Báo cáo RAG đã được lưu thành công tại file: {output_path}")
 
 if __name__ == "__main__":
     main()
