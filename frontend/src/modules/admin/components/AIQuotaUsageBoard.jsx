@@ -232,7 +232,9 @@ const AIQuotaUsageBoard = () => {
 
   // Tóm tắt số liệu
   const summary = dashboardData?.summary || {};
-  const totalUsed = Number(summary.total_used_tokens || 0);
+  const totalUsed = Number(summary.total_model_tokens_period ?? summary.total_used_tokens ?? 0);
+  const backfilledTokens = Number(summary.backfilled_tokens_period || 0);
+  const historicalTokensExcludedFromCost = Number(summary.historical_tokens_excluded_from_cost || 0);
 
   // Lọc lịch sử câu hỏi của user đang chọn
   const userAuditLogs = useMemo(() => {
@@ -255,7 +257,11 @@ const AIQuotaUsageBoard = () => {
             <span className="ai-kpi-denom">{t('token mô hình')}</span>
           </div>
           <p className="ai-kpi-desc">
-            {t('Token mô hình chỉ dùng để đo mức tiêu thụ, không phải hạn mức câu hỏi.')}
+            {backfilledTokens > 0
+              ? t('Bao gồm {{tokens}} token lịch sử tổng hợp từ Google AI Studio; không gán cho người dùng.', {
+                  tokens: numberFormatter.format(backfilledTokens)
+                })
+              : t('Token mô hình chỉ dùng để đo mức tiêu thụ, không phải hạn mức câu hỏi.')}
           </p>
         </div>
 
@@ -289,7 +295,11 @@ const AIQuotaUsageBoard = () => {
             <span className="ai-kpi-denom">USD</span>
           </div>
           <p className="ai-kpi-desc">
-            {t('Mô hình:')} <strong>Google Gemini 3.7 Flash</strong> ($0.075 / 1M)
+            {historicalTokensExcludedFromCost > 0
+              ? t('Chi phí không gồm {{tokens}} token backfill vì Google không cung cấp chi phí theo request.', {
+                  tokens: numberFormatter.format(historicalTokensExcludedFromCost)
+                })
+              : <>{t('Mô hình:')} <strong>Google Gemini 3.7 Flash</strong> ($0.075 / 1M)</>}
           </p>
         </div>
 
@@ -329,7 +339,7 @@ const AIQuotaUsageBoard = () => {
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" /> Gemini 3.7 Flash
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" /> Gemini Flash
                 <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" /> Embedding
                 <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" /> Speaking STT
               </div>

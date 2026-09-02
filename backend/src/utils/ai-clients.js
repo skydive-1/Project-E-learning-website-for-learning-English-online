@@ -145,6 +145,169 @@ const normalizeGeminiError = (error) => {
   return quotaError;
 };
 
+const sanitizeQuotaDetail = (value, depth = 0, seen = new WeakSet()) => {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'object') {
+    if (typeof value === 'string') return value.slice(0, 4000);
+    if (typeof value === 'bigint') return value.toString();
+    return value;
+  }
+  if (depth >= 7) return '[max-depth]';
+  if (seen.has(value)) return '[circular]';
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 30).map((item) => sanitizeQuotaDetail(item, depth + 1, seen));
+  }
+
+  const sanitized = {};
+  for (const [key, item] of Object.entries(value).slice(0, 60)) {
+    if (/api.?key|authorization|cookie|credential|secret/i.test(key)
+      || /^(contents?|prompt|request(body)?|input)$/i.test(key)) {
+      sanitized[key] = '[redacted]';
+    } else {
+      sanitized[key] = sanitizeQuotaDetail(item, depth + 1, seen);
+    }
+  }
+  return sanitized;
+};
+
+const flattenQuotaDetail = (value, path = '', output = []) => {
+  if (value === null || value === undefined) return output;
+  if (typeof value !== 'object') {
+    output.push({ path, value: String(value) });
+    return output;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => flattenQuotaDetail(item, `${path}[${index}]`, output));
+    return output;
+  }
+  Object.entries(value).forEach(([key, item]) => {
+    flattenQuotaDetail(item, path ? `${path}.${key}` : key, output);
+  });
+  return output;
+};
+
+/**
+ * Parser phòng thủ: không phụ thuộc một schema SDK cứng, chỉ nhận tín hiệu
+ * khi payload thật có đủ dimension/model rõ ràng.
+ */
+function parseGeminiQuotaViolation(error, fallbackModel = null) {
+  if (!isGeminiQuotaError(error)) return null;
+
+  const source = error?.response?.data
+    ?? error?.body
+    ?? error?.details
+    ?? error?.error
+    ?? { message: error?.message, status: error?.status, code: error?.code };
+  const rawDetail = sanitizeQuotaDetail(source);
+  const entries = flattenQuotaDetail(rawDetail);
+  const searchable = entries.map((entry) => `${entry.path}=${entry.value}`).join('\n');
+  const normalized = searchable.toLowerCase().replace(/[\s_.:/-]+/g, '');
+
+  let dimension = null;
+  if (/tpm|tokens?perminute/.test(normalized)) dimension = 'tpm';
+  else if (/rpd|requests?perday|dailyrequests?/.test(normalized)) dimension = 'rpd';
+  else if (/rpm|requests?perminute/.test(normalized)) dimension = 'rpm';
+  if (!dimension) return null;
+
+  const modelEntry = entries.find((entry) => /(^|\.)model(name)?$/i.test(entry.path));
+  const modelMatch = searchable.match(/gemini-[a-z0-9._-]+/i);
+  const model = String(modelEntry?.value || modelMatch?.[0] || fallbackModel || '').trim();
+  if (!model) return null;
+
+  const limitEntry = entries.find((entry) => (
+    /quota(value|limit)|limit(value)?|allowed(value)?|maximum/i.test(entry.path)
+    && /^\d+$/.test(entry.value)
+    && Number(entry.value) > 0
+  ));
+
+  return {
+    model,
+    dimension,
+    providerLimit: limitEntry ? Number(limitEntry.value) : null,
+    rawDetail
+  };
+}
+
+/**
+ * Fire-and-forget an toàn: lỗi parser/DB không bao giờ làm thay đổi luồng Gemini.
+ */
+async function recordGeminiQuotaSignal({ error, model }) {
+  try {
+    if (!isGeminiQuotaError(error)) return;
+
+    const parsed = parseGeminiQuotaViolation(error, model);
+    const rawForLog = sanitizeQuotaDetail(
+      error?.response?.data ?? error?.body ?? error?.details ?? error?.error ?? { message: error?.message }
+    );
+    console.warn('[Gemini Quota 429] Raw structured body (sanitized):', JSON.stringify(rawForLog));
+
+    if (!parsed) {
+      console.warn('[Gemini Quota 429] Không xác định được model/dimension; bỏ qua notice.');
+      return;
+    }
+
+    const settingsResult = await db.query(
+      `SELECT rpm_cap, tpm_cap, rpd_cap
+       FROM ai_model_rate_limit_settings
+       WHERE model = $1`,
+      [parsed.model]
+    );
+    if (settingsResult.rows.length === 0) return;
+
+    const usageResult = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '60 seconds')::int AS rpm,
+        COALESCE(SUM(total_tokens) FILTER (WHERE created_at >= NOW() - INTERVAL '60 seconds'), 0)::bigint AS tpm,
+        COUNT(*) FILTER (
+          WHERE date_trunc('day', created_at AT TIME ZONE 'America/Los_Angeles')
+            = date_trunc('day', NOW() AT TIME ZONE 'America/Los_Angeles')
+        )::int AS rpd
+      FROM ai_usage_events
+      WHERE model = $1
+    `, [parsed.model]);
+
+    const setting = settingsResult.rows[0];
+    const cap = Number(setting[`${parsed.dimension}_cap`]);
+    const observed = Number(usageResult.rows[0]?.[parsed.dimension] || 0);
+    const providerDiffers = Number.isFinite(parsed.providerLimit)
+      && parsed.providerLimit > 0
+      && parsed.providerLimit !== cap;
+    const observedDiffersClearly = cap > 0
+      && (observed < cap * 0.85 || observed > cap * 1.15);
+    if (!providerDiffers && !observedDiffersClearly) return;
+
+    await db.query(`
+      INSERT INTO ai_rate_limit_discrepancies
+        (model, dimension, configured_cap, observed_usage, provider_limit, raw_detail,
+         detected_at, last_seen_at, occurrence_count)
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW(), NOW(), 1)
+      ON CONFLICT (model, dimension) DO UPDATE SET
+        configured_cap = EXCLUDED.configured_cap,
+        observed_usage = EXCLUDED.observed_usage,
+        provider_limit = EXCLUDED.provider_limit,
+        raw_detail = EXCLUDED.raw_detail,
+        last_seen_at = NOW(),
+        occurrence_count = ai_rate_limit_discrepancies.occurrence_count + 1
+    `, [
+      parsed.model,
+      parsed.dimension,
+      cap,
+      observed,
+      parsed.providerLimit,
+      JSON.stringify(parsed.rawDetail)
+    ]);
+
+    console.warn(
+      `[Gemini Quota 429] Phát hiện cap có thể lệch: ${parsed.model}/${parsed.dimension}`,
+      { configuredCap: cap, observedUsage: observed, providerLimit: parsed.providerLimit }
+    );
+  } catch (signalError) {
+    console.warn('[Gemini Quota 429] Không thể phân tích/lưu tín hiệu (non-fatal):', signalError.message);
+  }
+}
+
 // Khởi tạo Google Gen AI client theo chế độ Gemini Developer API (100% Miễn phí qua Google AI Studio)
 let ai = null;
 
@@ -238,6 +401,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
       return response;
     } catch (err) {
       lastError = err;
+      recordGeminiQuotaSignal({ error: err, model });
       const errMsg = err.message || "";
       if (
         errMsg.includes("not found") ||
@@ -281,6 +445,7 @@ async function executeGenerateStream(client, contents, config, modelOverride = n
       return { responseStream, modelUsed: model };
     } catch (err) {
       lastError = err;
+      recordGeminiQuotaSignal({ error: err, model });
       const errMsg = err.message || "";
       if (
         errMsg.includes("not found") ||
@@ -400,6 +565,7 @@ const geminiModel = {
         totalTokens: response.totalTokens !== undefined ? response.totalTokens : 0
       };
     } catch (error) {
+      recordGeminiQuotaSignal({ error, model: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL });
       // Fallback an toàn ước lượng token (1 token ~ 4 ký tự)
       const strLength = typeof contents === "string" ? contents.length : JSON.stringify(contents).length;
       return { totalTokens: Math.max(1, Math.ceil(strLength / 4)) };
@@ -454,6 +620,7 @@ const embeddingModel = {
       };
     } catch (error) {
       console.error(`[Embedding Model Error] Lỗi khi tạo vector từ ${modelName}:`, error.message);
+      recordGeminiQuotaSignal({ error, model: modelName });
       throw normalizeGeminiError(error);
     }
   }
@@ -605,6 +772,7 @@ const geminiSpeakingModel = {
       };
     } catch (error) {
       console.error(`[Gemini Speaking Model Error] (${model}):`, error.message);
+      recordGeminiQuotaSignal({ error, model });
       // Không âm thầm fallback sang model khác để bảo đảm tính nhất quán của chuẩn chấm điểm
       throw normalizeGeminiError(error);
     }
@@ -620,6 +788,8 @@ module.exports = {
   COST_PER_M_TOKENS,
   isGeminiQuotaError,
   normalizeGeminiError,
+  parseGeminiQuotaViolation,
+  recordGeminiQuotaSignal,
   runWithAiContext,
   recordAiUsage,
   normalizeRequest,

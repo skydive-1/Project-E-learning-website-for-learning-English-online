@@ -25,7 +25,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import UserAnalyticsDashboard from '../components/UserAnalyticsDashboard';
-import AIQuotaUsageBoard from '../components/AIQuotaUsageBoard';
+import AIQuotaControlCenter from '../components/AIQuotaControlCenter';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -1248,7 +1248,7 @@ const AdminDashboard = () => {
             {activeTab === 'analytics' && <UserAnalyticsDashboard />}
 
             {/* TAB 5: AI QUOTA & TOKEN USAGE BOARD */}
-            {activeTab === 'ai-quota' && <AIQuotaUsageBoard />}
+            {activeTab === 'ai-quota' && <AIQuotaControlCenter canManageCaps={isAdmin || isSuperAdmin} />}
 
 
           </div>

@@ -114,4 +114,27 @@ describe('AI quota management translations', () => {
     expect(screen.getByRole('button', { name: 'Thử lại' })).toBeInTheDocument();
     expect(screen.queryByText('Request failed with status code 404')).not.toBeInTheDocument();
   });
+
+  it('labels provider backfill separately from per-request cost and learner attribution', async () => {
+    window.localStorage.setItem('language', 'ENG');
+    getAiQuotaAnalytics.mockResolvedValue({
+      ...dashboardFixture,
+      summary: {
+        ...dashboardFixture.summary,
+        total_model_tokens_period: 916284,
+        backfilled_tokens_period: 916284,
+        historical_tokens_excluded_from_cost: 916284,
+      },
+    });
+
+    renderBoard();
+
+    expect(await screen.findByText('916,284')).toBeInTheDocument();
+    expect(screen.getByText(
+      'Includes 916,284 aggregated historical tokens from Google AI Studio; they are not assigned to individual users.',
+    )).toBeInTheDocument();
+    expect(screen.getByText(
+      'Cost excludes 916,284 backfilled tokens because Google does not provide per-request cost data.',
+    )).toBeInTheDocument();
+  });
 });
