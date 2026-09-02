@@ -521,7 +521,9 @@ const getAiQuotaDashboard = async (days = 30) => {
       (SELECT COUNT(*)::int FROM user_token_limits WHERE used_tokens >= (max_tokens * 0.8) AND used_tokens < max_tokens AND max_tokens > 0) AS critical_users_count,
       (SELECT COUNT(*)::int FROM user_token_limits WHERE used_tokens > 0) AS total_users_with_usage,
       (SELECT COALESCE(SUM(
-        CASE WHEN window_started_at > NOW() - INTERVAL '24 hours' THEN used_questions ELSE 0 END
+        CASE WHEN date_trunc('day', window_started_at AT TIME ZONE 'Asia/Ho_Chi_Minh')
+                  = date_trunc('day', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')
+             THEN used_questions ELSE 0 END
       ), 0)::int FROM ai_question_quotas) AS total_questions_rolling_24h,
       COALESCE(active_ai.active_ai_users, 0) AS active_ai_users_period,
       COALESCE(chat_stats.total_ai_messages, 0) AS total_ai_messages_period,

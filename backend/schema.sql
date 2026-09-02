@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS user_token_limits (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 12b. Quota câu hỏi AI theo cửa sổ rolling 24 giờ
+-- 12b. Quota câu hỏi AI — reset cố định lúc 00:00 giờ Việt Nam (UTC+7) mỗi ngày
 CREATE TABLE IF NOT EXISTS ai_question_quotas (
   user_id INT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
   used_questions INT NOT NULL DEFAULT 0 CHECK (used_questions >= 0),

@@ -130,7 +130,7 @@ describe('Chatbot Stream Client-Side Character Buffer Queue & Throttle', () => {
       status: 429,
       json: vi.fn().mockResolvedValue({
         code: 'AI_QUESTION_LIMIT_REACHED',
-        message: 'Bạn đã dùng hết 10 câu hỏi AI trong 24 giờ.',
+        message: 'Bạn đã dùng hết 10 câu hỏi AI trong ngày.',
         quota: { limit: 10, used: 10, remaining: 0 }
       })
     });

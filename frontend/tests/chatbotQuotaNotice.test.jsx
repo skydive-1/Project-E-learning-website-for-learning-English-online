@@ -10,7 +10,7 @@ describe('Chatbot quota notice', () => {
         messages={[{
           id: 'quota-message',
           sender: 'ai',
-          text: 'Bạn đã dùng hết 10 câu hỏi AI trong 24 giờ.',
+          text: 'Bạn đã dùng hết 10 câu hỏi AI trong ngày.',
           isError: true,
           errorCode: 'AI_QUESTION_LIMIT_REACHED'
         }]}

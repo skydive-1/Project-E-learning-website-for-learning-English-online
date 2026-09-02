@@ -710,7 +710,7 @@ const AdminDashboard = () => {
                                   <button 
                                     className="btn-action btn-reset"
                                     onClick={() => handleResetUserToken(user.user_id, user.username)}
-                                    title={t('Đặt lại lượt hỏi trong 24 giờ về 0')}
+                                    title={t('Đặt lại lượt hỏi hôm nay về 0')}
                                   >
                                     <FiRefreshCw />
                                   </button>

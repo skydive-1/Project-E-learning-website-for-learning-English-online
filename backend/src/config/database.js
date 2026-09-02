@@ -257,7 +257,7 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tạo bảng user_token_limits:', migErr.message);
     }
 
-    // 3.1b. Bảng quota câu hỏi AI theo cửa sổ rolling 24 giờ
+    // 3.1b. Bảng quota câu hỏi AI — reset cố định lúc 00:00 VN time mỗi ngày
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS ai_question_quotas (
