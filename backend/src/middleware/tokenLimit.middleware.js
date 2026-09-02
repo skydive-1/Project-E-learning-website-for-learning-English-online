@@ -2,6 +2,9 @@ const {
   releaseQuestion,
   reserveQuestion
 } = require('../modules/chatbot/services/aiQuestionQuota.service');
+const {
+  runWithAiContext
+} = require('../utils/ai-clients');
 
 /**
  * Giới hạn số câu hỏi AI — reset cố định lúc 00:00 giờ Việt Nam mỗi ngày:
@@ -46,7 +49,9 @@ const checkQuestionLimit = async (req, res, next) => {
       });
     }
 
-    next();
+    // Wrap downstream handlers in AI context so all Gemini calls
+    // automatically record usage tagged with this user and purpose.
+    runWithAiContext({ userId, purpose: 'chat' }, () => next());
   } catch (error) {
     console.error('[AI Question Quota Middleware Error]:', error);
     next(error);

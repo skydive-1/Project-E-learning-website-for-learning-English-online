@@ -274,6 +274,31 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tạo bảng ai_question_quotas:', migErr.message);
     }
 
+    // 3.1c. Bảng ghi nhận token thực tế từ Gemini API (ai_usage_events)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS ai_usage_events (
+          id SERIAL PRIMARY KEY,
+          user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
+          purpose TEXT NOT NULL,
+          model TEXT NOT NULL,
+          input_tokens INT NOT NULL DEFAULT 0,
+          output_tokens INT NOT NULL DEFAULT 0,
+          total_tokens INT NOT NULL DEFAULT 0,
+          estimated_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_user_date
+          ON ai_usage_events(user_id, created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_purpose_date
+          ON ai_usage_events(purpose, created_at);
+      `);
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tạo bảng ai_usage_events:', migErr.message);
+    }
+
     // 3.2. Bảng `lesson_comments` & `comment_upvotes`
     try {
       await client.query(`

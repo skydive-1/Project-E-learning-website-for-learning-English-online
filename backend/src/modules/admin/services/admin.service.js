@@ -532,7 +532,7 @@ const getAiQuotaDashboard = async (days = 30) => {
     FROM bounds, active_ai, chat_stats
   `;
 
-  // 2. Xu hướng tiêu thụ Token theo ngày
+  // 2. Xu hướng tiêu thụ Token theo ngày (dữ liệu thực từ ai_usage_events)
   const trendsQuery = `
     WITH bounds AS (
       SELECT CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day' AS period_start
@@ -550,17 +550,29 @@ const getAiQuotaDashboard = async (days = 30) => {
       FROM ai_chat, bounds
       WHERE created_at >= period_start
       GROUP BY created_at::date
+    ),
+    daily_usage AS (
+      SELECT
+        created_at::date AS day,
+        COALESCE(SUM(total_tokens), 0)::int AS estimated_tokens,
+        COALESCE(SUM(total_tokens) FILTER (WHERE purpose NOT IN ('embedding', 'speaking_stt')), 0)::int AS gemini_flash_tokens,
+        COALESCE(SUM(total_tokens) FILTER (WHERE purpose = 'embedding'), 0)::int AS gemini_embedding_tokens,
+        COALESCE(SUM(total_tokens) FILTER (WHERE purpose = 'speaking_stt'), 0)::int AS speaking_stt_tokens
+      FROM ai_usage_events, bounds
+      WHERE created_at >= period_start
+      GROUP BY created_at::date
     )
     SELECT 
       c.day,
       COALESCE(dc.active_ai_users, 0)::int AS active_ai_users,
       COALESCE(dc.user_queries, 0)::int AS ai_queries,
-      ROUND(COALESCE(dc.user_queries, 0) * 195)::int AS estimated_tokens,
-      ROUND(COALESCE(dc.user_queries, 0) * 145)::int AS gemini_flash_tokens,
-      ROUND(COALESCE(dc.user_queries, 0) * 35)::int AS gemini_embedding_tokens,
-      ROUND(COALESCE(dc.user_queries, 0) * 15)::int AS speaking_stt_tokens
+      COALESCE(du.estimated_tokens, 0)::int AS estimated_tokens,
+      COALESCE(du.gemini_flash_tokens, 0)::int AS gemini_flash_tokens,
+      COALESCE(du.gemini_embedding_tokens, 0)::int AS gemini_embedding_tokens,
+      COALESCE(du.speaking_stt_tokens, 0)::int AS speaking_stt_tokens
     FROM calendar c
     LEFT JOIN daily_chats dc ON dc.day = c.day
+    LEFT JOIN daily_usage du ON du.day = c.day
     ORDER BY c.day ASC
   `;
 
@@ -640,7 +652,78 @@ const getAiQuotaDashboard = async (days = 30) => {
 
   const summary = summaryRes.rows[0] || {};
   const totalUsed = Number(summary.total_used_tokens || 0);
-  const estimatedCostUsd = ((totalUsed / 1000000) * 0.075).toFixed(4);
+
+  // Real cost and per-purpose breakdown from ai_usage_events
+  let estimatedCostUsd = 0;
+  let modelBreakdown = [];
+  try {
+    const breakdownRes = await pool.query(`
+      WITH bounds AS (
+        SELECT CURRENT_DATE - ($1::int - 1) * INTERVAL '1 day' AS period_start
+      )
+      SELECT
+        purpose,
+        COALESCE(SUM(total_tokens), 0)::bigint AS tokens,
+        COALESCE(SUM(estimated_cost_usd), 0)::numeric AS cost
+      FROM ai_usage_events, bounds
+      WHERE created_at >= period_start
+      GROUP BY purpose
+    `, [safeDays]);
+
+    const totalRealCost = breakdownRes.rows.reduce((s, r) => s + Number(r.cost || 0), 0);
+    estimatedCostUsd = Number(totalRealCost.toFixed(4));
+
+    const totalRealTokens = breakdownRes.rows.reduce((s, r) => s + Number(r.tokens || 0), 0);
+
+    // Map purposes to display categories
+    const PURPOSE_DISPLAY = {
+      chat:       { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6', group: 'flash' },
+      intent:     { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6', group: 'flash' },
+      query_rewrite: { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6', group: 'flash' },
+      quiz_gen:   { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6', group: 'flash' },
+      subtitle:   { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6', group: 'flash' },
+      suggested_questions: { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6', group: 'flash' },
+      embedding:  { name: 'Gemini Embedding-001 (768D)', color: '#10B981', group: 'embedding' },
+      speaking_stt: { name: 'Speaking / Voice Multimodal', color: '#F59E0B', group: 'speaking' },
+    };
+
+    // Aggregate by display group
+    const grouped = {};
+    for (const row of breakdownRes.rows) {
+      const display = PURPOSE_DISPLAY[row.purpose] || PURPOSE_DISPLAY.chat;
+      if (!grouped[display.group]) {
+        grouped[display.group] = { name: display.name, tokens: 0, color: display.color };
+      }
+      grouped[display.group].tokens += Number(row.tokens || 0);
+    }
+
+    modelBreakdown = Object.values(grouped).map(g => ({
+      name: g.name,
+      share: totalRealTokens > 0 ? Math.round((g.tokens / totalRealTokens) * 100) : 0,
+      tokens: g.tokens,
+      color: g.color
+    }));
+
+    // Ensure at least the 3 expected categories exist (frontend expects them)
+    const expectedGroups = [
+      { name: 'Gemini 3.7 Flash Reasoning', color: '#3B82F6' },
+      { name: 'Gemini Embedding-001 (768D)', color: '#10B981' },
+      { name: 'Speaking / Voice Multimodal', color: '#F59E0B' }
+    ];
+    for (const eg of expectedGroups) {
+      if (!modelBreakdown.find(m => m.name === eg.name)) {
+        modelBreakdown.push({ name: eg.name, share: 0, tokens: 0, color: eg.color });
+      }
+    }
+  } catch (breakdownErr) {
+    console.warn('[AI Dashboard] Failed to query ai_usage_events breakdown, falling back:', breakdownErr.message);
+    estimatedCostUsd = Number(((totalUsed / 1000000) * 0.075).toFixed(4));
+    modelBreakdown = [
+      { name: 'Gemini 3.7 Flash Reasoning', share: 74, tokens: Math.round(totalUsed * 0.74), color: '#3B82F6' },
+      { name: 'Gemini Embedding-001 (768D)', share: 18, tokens: Math.round(totalUsed * 0.18), color: '#10B981' },
+      { name: 'Speaking / Voice Multimodal', share: 8, tokens: Math.round(totalUsed * 0.08), color: '#F59E0B' }
+    ];
+  }
 
   const users = usersRes.rows.map((user) => {
     const questionQuota = getQuestionQuotaSnapshot({
@@ -676,12 +759,6 @@ const getAiQuotaDashboard = async (days = 30) => {
     };
   });
 
-  const modelBreakdown = [
-    { name: 'Gemini 3.7 Flash Reasoning', share: 74, tokens: Math.round(totalUsed * 0.74), color: '#3B82F6' },
-    { name: 'Gemini Embedding-001 (768D)', share: 18, tokens: Math.round(totalUsed * 0.18), color: '#10B981' },
-    { name: 'Speaking / Voice Multimodal', share: 8, tokens: Math.round(totalUsed * 0.08), color: '#F59E0B' }
-  ];
-
   const topConsumers = users.slice(0, 5);
 
   return {
@@ -689,7 +766,7 @@ const getAiQuotaDashboard = async (days = 30) => {
     generatedAt: new Date().toISOString(),
     summary: {
       ...summary,
-      estimatedCostUsd: Number(estimatedCostUsd)
+      estimatedCostUsd
     },
     modelBreakdown,
     trends: trendsRes.rows,

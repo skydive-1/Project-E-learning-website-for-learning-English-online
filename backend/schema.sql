@@ -191,6 +191,25 @@ CREATE TABLE IF NOT EXISTS ai_question_quotas (
 CREATE INDEX IF NOT EXISTS idx_ai_question_quotas_window
   ON ai_question_quotas(window_started_at);
 
+-- 12c. Bảng ghi nhận token thực tế từ Gemini API
+CREATE TABLE IF NOT EXISTS ai_usage_events (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
+  purpose TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_tokens INT NOT NULL DEFAULT 0,
+  output_tokens INT NOT NULL DEFAULT 0,
+  total_tokens INT NOT NULL DEFAULT 0,
+  estimated_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_events_user_date
+  ON ai_usage_events(user_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_events_purpose_date
+  ON ai_usage_events(purpose, created_at);
+
 -- 13. Tạo bảng Lesson Comments (Bình luận bài học)
 CREATE TABLE IF NOT EXISTS lesson_comments (
   comment_id SERIAL PRIMARY KEY,
