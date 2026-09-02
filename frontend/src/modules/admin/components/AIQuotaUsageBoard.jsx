@@ -157,8 +157,8 @@ const AIQuotaUsageBoard = () => {
       'Email',
       t('Vai trò'),
       t('Token mô hình đã dùng'),
-      t('Lượt hỏi trong 24 giờ'),
-      t('Hạn mức câu hỏi trong 24 giờ'),
+      t('Lượt hỏi hôm nay'),
+      t('Hạn mức câu hỏi trong ngày'),
       t('Số câu hỏi còn lại'),
       t('Thời điểm đặt lại'),
       t('Trạng thái'),
@@ -498,7 +498,7 @@ const AIQuotaUsageBoard = () => {
                 <th>{t('Email / Tên đăng nhập')}</th>
                 <th>{t('Vai trò')}</th>
                 <th>{t('Token mô hình đã dùng')}</th>
-                <th>{t('Câu hỏi / hạn mức (24 giờ)')}</th>
+                <th>{t('Câu hỏi / hạn mức (hôm nay)')}</th>
                 <th>{t('Còn lại / đặt lại')}</th>
                 <th style={{ textAlign: 'center' }}>{t('Hành động')}</th>
               </tr>
@@ -597,7 +597,7 @@ const AIQuotaUsageBoard = () => {
                                 ? t('Đặt lại lúc {{time}}', {
                                   time: dateTimeFormatter.format(new Date(user.question_reset_at))
                                 })
-                                : t('Chu kỳ bắt đầu từ câu hỏi đầu tiên.')}
+                                : t('Hạn mức tự đặt lại lúc 00:00 mỗi ngày.')}
                             </div>
                           </div>
                         )}
@@ -610,7 +610,7 @@ const AIQuotaUsageBoard = () => {
                           <button
                             type="button"
                             className="btn-action"
-                            title={t('Đặt lại lượt hỏi trong 24 giờ về 0')}
+                            title={t('Đặt lại lượt hỏi hôm nay về 0')}
                             onClick={() => handleResetToken(user)}
                           >
                             <FiRefreshCw className="text-xs text-emerald-400" />
