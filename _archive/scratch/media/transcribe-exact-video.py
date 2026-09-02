@@ -11,15 +11,19 @@ if hasattr(sys.stderr, 'reconfigure'):
 import subprocess
 import json
 import time
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv('.env')
+
+repo_root = Path(__file__).resolve().parents[3]
+backend_root = repo_root / 'backend'
+load_dotenv(backend_root / '.env')
 
 import google.generativeai as genai
 genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
-ffmpeg_exe = os.path.abspath('node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe')
-video_path = 'uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783478966130-703284249.mp4'
-wav_path = 'uploads/real_audio_first_90s.wav'
+ffmpeg_exe = str(backend_root / 'node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe')
+video_path = str(backend_root / 'uploads/courses/videos/HuyenBe_Grammar14_Les3_Sec1-1783478966130-703284249.mp4')
+wav_path = str(backend_root / 'uploads/real_audio_first_90s.wav')
 
 print("1. Đang trích xuất audio 90s từ video thật...", flush=True)
 cmd = [ffmpeg_exe, '-y', '-i', video_path, '-vn', '-ac', '1', '-ar', '16000', '-t', '120', wav_path]
@@ -70,7 +74,7 @@ if resp and resp.text:
     print("\n=== KẾT QUẢ BÓC BĂNG NGUYÊN VĂN ÂM THANH THẬT ===", flush=True)
     print(clean_json, flush=True)
 
-    with open('uploads/exact_subtitles_huyenbe.json', 'w', encoding='utf-8') as f:
+    with open(backend_root / 'uploads/exact_subtitles_huyenbe.json', 'w', encoding='utf-8') as f:
         f.write(clean_json)
 else:
     print("Không nhận được phản hồi từ Gemini.")
