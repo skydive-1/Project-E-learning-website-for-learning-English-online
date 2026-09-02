@@ -137,7 +137,7 @@ async function runMigration() {
   console.log("==========================================================================\n");
 
   // 4. Lưu bản snapshot vector metadata v2 vào file JSON để làm Vector Repository phục vụ evaluation & backup
-  const v2SnapshotPath = path.resolve(__dirname, '../../rag_v2_vector_store.json');
+  const v2SnapshotPath = path.resolve(__dirname, '../../rag-training/results/snapshots/rag_v2_vector_store.json');
   const fs = require('fs');
   fs.writeFileSync(v2SnapshotPath, JSON.stringify({
     schema_version: 'v2',

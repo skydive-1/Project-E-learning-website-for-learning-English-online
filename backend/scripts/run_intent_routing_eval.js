@@ -158,7 +158,7 @@ async function runIntentEvaluation() {
     test_details: results
   };
 
-  const outPath = path.resolve(__dirname, '../../phase4_intent_routing_results.json');
+  const outPath = path.resolve(__dirname, '../../rag-training/results/benchmarks/phase4_intent_routing_results.json');
   fs.writeFileSync(outPath, JSON.stringify(summary, null, 2), 'utf-8');
   console.log(`💾 Đã lưu kết quả chi tiết Intent Routing vào: ${outPath}`);
 

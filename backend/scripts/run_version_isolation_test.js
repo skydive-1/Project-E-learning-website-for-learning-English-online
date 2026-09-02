@@ -19,7 +19,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Tải V2 Snapshot để làm tập đối chiếu
-const v2Data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../rag_v2_vector_store.json'), 'utf-8'));
+const v2Data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../rag-training/results/snapshots/rag_v2_vector_store.json'), 'utf-8'));
 const v2Records = v2Data.records;
 
 // Giả lập tập V1 cũ từ V2 records bằng cách bỏ metadata v2 và gán ID kiểu v1
