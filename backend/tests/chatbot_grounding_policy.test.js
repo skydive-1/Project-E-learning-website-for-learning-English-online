@@ -58,8 +58,8 @@ test('sync and streaming request paths apply the grounding gate before Gemini ge
   const gatePattern = 'if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources))';
   const firstGate = source.indexOf(gatePattern);
   const secondGate = source.indexOf(gatePattern, firstGate + gatePattern.length);
-  const syncGeneration = source.indexOf('geminiModel.generateContent(systemPrompt)');
-  const streamGeneration = source.indexOf('geminiModel.generateContentStream(systemPrompt)');
+  const syncGeneration = source.indexOf('geminiModel.generateContent(generationRequest)');
+  const streamGeneration = source.indexOf('geminiModel.generateContentStream(generationRequest)');
 
   assert.ok(firstGate >= 0 && firstGate < syncGeneration);
   assert.ok(secondGate > firstGate && secondGate < streamGeneration);

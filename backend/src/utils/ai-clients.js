@@ -190,6 +190,9 @@ function normalizeRequest(request) {
     const srcConfig = request.generationConfig || request.config || {};
     if (srcConfig.responseMimeType) config.responseMimeType = srcConfig.responseMimeType;
     if (srcConfig.maxOutputTokens !== undefined) config.maxOutputTokens = srcConfig.maxOutputTokens;
+    if (srcConfig.thinkingConfig && typeof srcConfig.thinkingConfig === 'object') {
+      config.thinkingConfig = { ...srcConfig.thinkingConfig };
+    }
   }
 
   return { contents, config: Object.keys(config).length > 0 ? config : undefined, model, purpose, userId };
@@ -613,6 +616,7 @@ module.exports = {
   normalizeGeminiError,
   runWithAiContext,
   recordAiUsage,
+  normalizeRequest,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,

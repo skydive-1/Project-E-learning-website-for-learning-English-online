@@ -5,6 +5,8 @@
 const chatbotService = require('../services/chatbot.service');
 const { releaseQuestionLimit } = require('../../../middleware/tokenLimit.middleware');
 
+const CHATBOT_STREAM_HEARTBEAT_MS = 15_000;
+
 exports.ask = async (req, res, next) => {
   try {
     const { question, lessonId, scope, currentTime, quickAction } = req.body;
@@ -24,38 +26,113 @@ exports.ask = async (req, res, next) => {
 };
 
 exports.askStream = async (req, res, next) => {
+  let heartbeatId = null;
+  let streamClosed = false;
+
+  const stopHeartbeat = () => {
+    if (heartbeatId !== null) {
+      clearInterval(heartbeatId);
+      heartbeatId = null;
+    }
+  };
+
+  const markStreamClosed = () => {
+    streamClosed = true;
+    stopHeartbeat();
+  };
+
+  const canWrite = () => (
+    !streamClosed &&
+    !req.aborted &&
+    !res.destroyed &&
+    !res.writableEnded
+  );
+
+  const writeRaw = (payload) => {
+    if (!canWrite()) return false;
+
+    try {
+      res.write(payload);
+      return true;
+    } catch (error) {
+      markStreamClosed();
+      console.error('[Chatbot SSE Write Error]:', error);
+      return false;
+    }
+  };
+
+  const writeEvent = (eventData) => {
+    const payload = typeof eventData === 'string'
+      ? { type: 'token', text: eventData }
+      : eventData;
+    return writeRaw(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+
+  const endStream = () => {
+    if (!canWrite()) return false;
+
+    try {
+      res.end();
+      streamClosed = true;
+      return true;
+    } catch (error) {
+      markStreamClosed();
+      console.error('[Chatbot SSE End Error]:', error);
+      return false;
+    }
+  };
+
+  if (typeof req.once === 'function') req.once('aborted', markStreamClosed);
+  if (typeof res.once === 'function') res.once('close', markStreamClosed);
+
   try {
     const { question, lessonId, scope, currentTime, quickAction } = req.body;
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
     if (typeof res.flushHeaders === 'function') {
       res.flushHeaders();
     }
 
+    if (!writeRaw(': connected\n\n')) {
+      await releaseQuestionLimit(req);
+      return;
+    }
+
+    heartbeatId = setInterval(() => {
+      if (!writeRaw(': heartbeat\n\n')) stopHeartbeat();
+    }, CHATBOT_STREAM_HEARTBEAT_MS);
+    if (typeof heartbeatId.unref === 'function') heartbeatId.unref();
+
     await chatbotService.askStream(question, lessonId, req.user?.id, (eventData) => {
-      if (typeof eventData === 'string') {
-        res.write(`data: ${JSON.stringify({ type: 'token', text: eventData })}\n\n`);
-      } else {
-        res.write(`data: ${JSON.stringify(eventData)}\n\n`);
-      }
+      writeEvent(eventData);
     }, scope || 'lesson', currentTime, quickAction);
 
-    res.write(`data: [DONE]\n\n`);
-    res.end();
+    if (writeRaw('data: [DONE]\n\n')) endStream();
   } catch (error) {
     await releaseQuestionLimit(req);
+    console.error('[Chatbot SSE Request Error]:', {
+      code: error.code || 'AI_STREAM_ERROR',
+      message: error.message,
+      userId: req.user?.id || req.user?.userId || null,
+      lessonId: req.body?.lessonId ?? null,
+      responseWritable: canWrite()
+    });
+
     if (!res.headersSent) {
       next(error);
-    } else {
-      res.write(`data: ${JSON.stringify({
+    } else if (writeEvent({
         type: 'error',
         code: error.code || 'AI_STREAM_ERROR',
         error: error.message || 'Stream error'
-      })}\n\n`);
-      res.end();
+      })) {
+      endStream();
     }
+  } finally {
+    stopHeartbeat();
+    if (typeof req.removeListener === 'function') req.removeListener('aborted', markStreamClosed);
+    if (typeof res.removeListener === 'function') res.removeListener('close', markStreamClosed);
   }
 };
 
