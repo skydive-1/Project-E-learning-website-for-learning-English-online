@@ -2,8 +2,10 @@
  * Update Accurate Subtitles for all Video Lessons based on real video content
  */
 
-const db = require('./src/config/database');
-const subtitlesService = require('./src/modules/lessons/services/subtitles.service');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const db = require('../../src/config/database');
+const subtitlesService = require('../../src/modules/lessons/services/subtitles.service');
 
 // Phụ đề chuẩn xác khớp 100% theo từng video bài giảng
 const accurateVideoSubtitles = {
