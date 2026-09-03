@@ -4,7 +4,6 @@
 
 const { pool } = require('../../../config/database');
 const { supabaseAdmin } = require('../../../config/supabase');
-const { GEMINI_GENERATIVE_MODEL } = require('../../../config/ai-model');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
 
@@ -912,9 +911,7 @@ const getAiRateLimitCaps = async () => {
     ORDER BY s.model ASC
   `);
 
-  return result.rows
-    .filter((row) => row.model === GEMINI_GENERATIVE_MODEL)
-    .map(normalizeRateLimitSetting);
+  return result.rows.map(normalizeRateLimitSetting);
 };
 
 /**
@@ -989,9 +986,7 @@ const getRateLimitStatus = async () => {
     })
   ]);
 
-  const models = result.rows
-    .filter((row) => row.model === GEMINI_GENERATIVE_MODEL)
-    .map((row) => {
+  const models = result.rows.map((row) => {
     const usage = {
       rpm: Number(row.rpm_current || 0),
       tpm: Number(row.tpm_current || 0),
@@ -1019,7 +1014,7 @@ const getRateLimitStatus = async () => {
         : Number(row.updated_by),
       updatedByName: row.updated_by_name || null
     };
-    });
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1029,9 +1024,7 @@ const getRateLimitStatus = async () => {
       rpdTimezone: 'America/Los_Angeles'
     },
     models,
-    notices: noticesResult.rows
-      .filter((row) => row.model === GEMINI_GENERATIVE_MODEL)
-      .map((row) => ({
+    notices: noticesResult.rows.map((row) => ({
       model: row.model,
       dimension: row.dimension,
       configuredCap: Number(row.configured_cap),
@@ -1039,7 +1032,7 @@ const getRateLimitStatus = async () => {
       providerLimit: row.provider_limit === null ? null : Number(row.provider_limit),
       detectedAt: row.last_seen_at,
       occurrenceCount: Number(row.occurrence_count || 1)
-      }))
+    }))
   };
 };
 
@@ -1048,8 +1041,8 @@ const getRateLimitStatus = async () => {
  */
 const updateAiRateLimitCaps = async ({ model, rpmCap, tpmCap, rpdCap, updatedBy }) => {
   const normalizedModel = String(model || '').trim();
-  if (normalizedModel !== GEMINI_GENERATIVE_MODEL) {
-    const error = new Error(`Hệ thống chỉ cho phép cấu hình ${GEMINI_GENERATIVE_MODEL}`);
+  if (!normalizedModel || normalizedModel.length > 160) {
+    const error = new Error('Tên model không hợp lệ');
     error.status = 400;
     error.code = 'INVALID_RATE_LIMIT_MODEL';
     throw error;

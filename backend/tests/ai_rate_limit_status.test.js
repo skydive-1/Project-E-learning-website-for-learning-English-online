@@ -54,7 +54,8 @@ describe('Admin Gemini rate-limit status', () => {
       assert.deepEqual(status.models[0].usage, { rpm: 7, tpm: 125000, rpd: 225 });
       assert.deepEqual(status.models[0].percentUsed, { rpm: 70, tpm: 50, rpd: 90 });
       assert.equal(status.models[0].configured, true);
-      assert.equal(status.models.length, 1);
+      assert.deepEqual(status.models[1].percentUsed, { rpm: null, tpm: null, rpd: null });
+      assert.equal(status.models[1].configured, false);
     } finally {
       db.pool.query = originalQuery;
     }
@@ -98,12 +99,6 @@ describe('Admin Gemini rate-limit status', () => {
         (error) => error.status === 400 && error.code === 'INVALID_RATE_LIMIT_CAP'
       );
 
-      await assert.rejects(
-        () => adminService.updateAiRateLimitCaps({
-          model: 'another-gemini-model', rpmCap: 10, tpmCap: 100, rpdCap: 100, updatedBy: 9
-        }),
-        (error) => error.status === 400 && error.code === 'INVALID_RATE_LIMIT_MODEL'
-      );
     } finally {
       db.pool.query = originalQuery;
     }

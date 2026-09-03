@@ -231,8 +231,20 @@ def parse_json_object(raw_text: str) -> dict[str, Any]:
 
 
 def configured_models() -> list[str]:
-    # Pipeline chỉ retry cùng một model; tuyệt đối không chuyển sang model khác.
-    return [DEFAULT_MODEL]
+    preferred = (
+        os.getenv("GEMINI_SUBTITLE_MODEL")
+        or os.getenv("GEMINI_MODEL")
+        or DEFAULT_MODEL
+    )
+    fallbacks = [
+        item.strip()
+        for item in os.getenv(
+            "GEMINI_FALLBACK_MODELS",
+            "gemini-3.6-flash,gemini-3.5-flash-lite",
+        ).split(",")
+        if item.strip()
+    ]
+    return list(dict.fromkeys([preferred, *fallbacks]))
 
 
 def is_rate_limit_error(error: Exception) -> bool:

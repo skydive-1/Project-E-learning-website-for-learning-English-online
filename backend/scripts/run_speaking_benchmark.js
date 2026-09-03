@@ -18,6 +18,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const chatbotService = require('../src/modules/chatbot/services/chatbot.service');
 const { getSpeakingModelName } = require('../src/utils/ai-clients');
+const { GEMINI_MODELS } = require('../src/config/ai-model');
 
 function getRuntimeCommitSha() {
   try {
@@ -124,8 +125,11 @@ async function runHotfixR2Benchmark() {
     taskOwner: "NGUYỄN DŨNG QUỐC ANH",
     support: "AI Agent",
     modelConfiguration: {
-      model: configuredModel,
-      policy: "single locked generative model"
+      primary: GEMINI_MODELS.primary,
+      fast: GEMINI_MODELS.fast,
+      subtitle: GEMINI_MODELS.subtitle,
+      speaking: configuredModel,
+      fallbacks: GEMINI_MODELS.fallbacks
     },
     automatedTests: {
       backend: {

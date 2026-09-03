@@ -1,6 +1,6 @@
 'use strict';
 
-const { GEMINI_GENERATIVE_MODEL } = require('../../../config/ai-model');
+const { GEMINI_MODELS } = require('../../../config/ai-model');
 
 const COURSE_TERM_PATTERN = /kh[oó]a học|khoá học|\bcourses?\b/i;
 const CATALOG_INTENT_PATTERN = /tóm tắt|tổng quan|danh sách|hiện có|đang có|có những|giới thiệu|đề xuất|available|offered|offer|list|overview|summari[sz]e|what courses/i;
@@ -17,11 +17,17 @@ const isComplexGlobalQuestion = (question) => {
   return normalizedQuestion.length >= 280 || COMPLEX_GLOBAL_PATTERN.test(normalizedQuestion);
 };
 
-const selectGlobalChatProfile = (question) => {
+const selectGlobalChatProfile = (
+  question,
+  {
+    fastModel = GEMINI_MODELS.fast,
+    complexModel = GEMINI_MODELS.primary
+  } = {}
+) => {
   if (isComplexGlobalQuestion(question)) {
     return {
       tier: 'deep',
-      model: GEMINI_GENERATIVE_MODEL,
+      model: complexModel,
       maxOutputTokens: 2048,
       thinkingLevel: 'LOW'
     };
@@ -29,7 +35,7 @@ const selectGlobalChatProfile = (question) => {
 
   return {
     tier: 'fast',
-    model: GEMINI_GENERATIVE_MODEL,
+    model: fastModel,
     maxOutputTokens: 768,
     thinkingLevel: 'MINIMAL'
   };

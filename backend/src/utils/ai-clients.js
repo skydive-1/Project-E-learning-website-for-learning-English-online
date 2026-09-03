@@ -17,12 +17,15 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const db = require('../config/database');
-const { GEMINI_GENERATIVE_MODEL } = require('../config/ai-model');
+const {
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODELS
+} = require('../config/ai-model');
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const pineconeApiKey = process.env.PINECONE_API_KEY;
 const pineconeIndexName = process.env.PINECONE_INDEX_NAME || process.env.PINECONE_INDEX || "elearning-rag";
-const DEFAULT_GEMINI_MODEL = GEMINI_GENERATIVE_MODEL;
+const DEFAULT_GEMINI_SPEAKING_MODEL = DEFAULT_GEMINI_MODEL;
 
 // ─── AsyncLocalStorage for userId / purpose context ────────────────────────
 const aiContextStore = new AsyncLocalStorage();
@@ -57,6 +60,8 @@ function getAiContext() {
 //       capacity planning and thesis defense, not because it is being billed.
 const COST_PER_M_TOKENS = Object.freeze({
   'gemini-3.7-flash':      { input: 0.75, output: 3.75 },
+  'gemini-3.6-flash':      { input: 0.75, output: 3.75 },
+  'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
   'gemini-embedding-001':  { input: 0.15, output: 0 },
 });
 const DEFAULT_COST_RATE = Object.freeze({ input: 0.75, output: 3.75 });
@@ -108,12 +113,29 @@ async function recordAiUsage({ userId = null, purpose, model, usageMetadata }) {
 
 // ─── Gemini Client Initialization ──────────────────────────────────────────
 
+function getGeminiFallbackModels(preferredModel) {
+  return Array.from(new Set([
+    preferredModel,
+    GEMINI_MODELS.primary,
+    ...GEMINI_MODELS.fallbacks
+  ].filter(Boolean)));
+}
+
 const isGeminiQuotaError = (error) => {
   const message = String(error?.message || '');
   return error?.status === 429
     || error?.code === 429
     || error?.code === 'RESOURCE_EXHAUSTED'
     || /\b429\b|resource[_ ]exhausted|quota exceeded|rate limit exceeded/i.test(message);
+};
+
+const isRetryableGeminiError = (error) => {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+  const code = String(error?.code || error?.cause?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return [404, 408, 429, 500, 502, 503, 504].includes(status)
+    || ['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_CONNECT_TIMEOUT', 'DEADLINE_EXCEEDED', 'RESOURCE_EXHAUSTED', 'UNAVAILABLE'].includes(code)
+    || /not found|no longer available|timed?\s*out|deadline exceeded|socket hang up|network error|temporarily unavailable|resource[_ ]exhausted|quota exceeded/i.test(message);
 };
 
 const normalizeGeminiError = (error) => {
@@ -322,13 +344,14 @@ function getAiClient() {
 function normalizeRequest(request) {
   let contents;
   let config = {};
-  const model = DEFAULT_GEMINI_MODEL;
+  let model;
   let purpose;
   let userId;
 
   if (typeof request === "string") {
     contents = request;
   } else if (typeof request === "object" && request !== null) {
+    model = request.model;
     purpose = request.purpose;
     userId = request.userId;
     if (request.contents) {
@@ -351,54 +374,82 @@ function normalizeRequest(request) {
 }
 
 /**
- * Helper gọi generateContent bằng model Gemini Flash duy nhất của hệ thống.
+ * Helper gọi generateContent với retry và fallback giữa các model Flash.
  * Sau khi gọi thành công, tự động ghi nhận usageMetadata vào ai_usage_events.
  */
-async function executeGenerate(client, contents, config, _modelOverride = null, customCtx = {}) {
-  const model = DEFAULT_GEMINI_MODEL;
-  try {
-    const response = await client.models.generateContent({
-      model,
-      contents,
-      config
-    });
+async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
+  const preferredModel = modelOverride || GEMINI_MODELS.primary;
+  const fallbackModels = getGeminiFallbackModels(preferredModel);
+  const triedModels = new Set();
+  let lastError = null;
 
-    // Record real usage from Gemini response
-    const ctx = getAiContext();
-    const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
-    const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
-    recordAiUsage({
-      userId: finalUserId,
-      purpose: finalPurpose,
-      model,
-      usageMetadata: response.usageMetadata
-    });
+  for (const model of fallbackModels) {
+    if (triedModels.has(model)) continue;
+    triedModels.add(model);
+    try {
+      const response = await client.models.generateContent({
+        model,
+        contents,
+        config
+      });
 
-    return response;
-  } catch (err) {
-    recordGeminiQuotaSignal({ error: err, model });
-    throw normalizeGeminiError(err);
+      // Record real usage from Gemini response
+      const ctx = getAiContext();
+      const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
+      const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
+      recordAiUsage({
+        userId: finalUserId,
+        purpose: finalPurpose,
+        model,
+        usageMetadata: response.usageMetadata
+      });
+
+      return response;
+    } catch (err) {
+      lastError = err;
+      recordGeminiQuotaSignal({ error: err, model });
+      if (isRetryableGeminiError(err)) {
+        console.warn(`[Gemini Fallback] ${model} thất bại, đang thử model kế tiếp.`);
+        continue;
+      }
+      throw err;
+    }
   }
+  throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash khả dụng.'));
 }
 
 /**
- * Helper gọi generateContentStream bằng model Gemini Flash duy nhất.
+ * Helper gọi generateContentStream với fallback tự động.
  * Returns { responseStream, modelUsed } so the wrapper can record usage
  * after the stream is fully consumed.
  */
-async function executeGenerateStream(client, contents, config, _modelOverride = null) {
-  const model = DEFAULT_GEMINI_MODEL;
-  try {
-    const responseStream = await client.models.generateContentStream({
-      model,
-      contents,
-      config
-    });
-    return { responseStream, modelUsed: model };
-  } catch (err) {
-    recordGeminiQuotaSignal({ error: err, model });
-    throw normalizeGeminiError(err);
+async function executeGenerateStream(client, contents, config, modelOverride = null) {
+  const preferredModel = modelOverride || GEMINI_MODELS.primary;
+  const fallbackModels = getGeminiFallbackModels(preferredModel);
+  const triedModels = new Set();
+  let lastError = null;
+
+  for (const model of fallbackModels) {
+    if (triedModels.has(model)) continue;
+    triedModels.add(model);
+    try {
+      const responseStream = await client.models.generateContentStream({
+        model,
+        contents,
+        config
+      });
+      return { responseStream, modelUsed: model };
+    } catch (err) {
+      lastError = err;
+      recordGeminiQuotaSignal({ error: err, model });
+      if (isRetryableGeminiError(err)) {
+        console.warn(`[Gemini Stream Fallback] ${model} thất bại, đang thử model kế tiếp.`);
+        continue;
+      }
+      throw err;
+    }
   }
+  throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash Stream khả dụng.'));
 }
 
 /**
@@ -490,7 +541,7 @@ const geminiModel = {
 
     try {
       const client = getAiClient();
-      const modelName = DEFAULT_GEMINI_MODEL;
+      const modelName = GEMINI_MODELS.primary;
       const response = await client.models.countTokens({
         model: modelName,
         contents
@@ -500,7 +551,7 @@ const geminiModel = {
         totalTokens: response.totalTokens !== undefined ? response.totalTokens : 0
       };
     } catch (error) {
-      recordGeminiQuotaSignal({ error, model: DEFAULT_GEMINI_MODEL });
+      recordGeminiQuotaSignal({ error, model: GEMINI_MODELS.primary });
       // Fallback an toàn ước lượng token (1 token ~ 4 ký tự)
       const strLength = typeof contents === "string" ? contents.length : JSON.stringify(contents).length;
       return { totalTokens: Math.max(1, Math.ceil(strLength / 4)) };
@@ -667,7 +718,7 @@ Hãy trả lời một cách tự nhiên, dễ hiểu, định dạng markdown �
 };
 
 function getSpeakingModelName() {
-  return DEFAULT_GEMINI_MODEL;
+  return GEMINI_MODELS.speaking;
 }
 
 // Log an toàn khi khởi động (không lộ key)
@@ -719,14 +770,17 @@ module.exports = {
   getAiClient,
   getSpeakingModelName,
   DEFAULT_GEMINI_MODEL,
+  DEFAULT_GEMINI_SPEAKING_MODEL,
   COST_PER_M_TOKENS,
   isGeminiQuotaError,
+  isRetryableGeminiError,
   normalizeGeminiError,
   parseGeminiQuotaViolation,
   recordGeminiQuotaSignal,
   runWithAiContext,
   recordAiUsage,
   normalizeRequest,
+  getGeminiFallbackModels,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,

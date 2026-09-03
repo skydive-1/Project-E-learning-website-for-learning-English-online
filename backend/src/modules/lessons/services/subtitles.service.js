@@ -11,7 +11,8 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const db = require('../../../config/database');
-const { geminiModel, DEFAULT_GEMINI_MODEL } = require('../../../utils/ai-clients');
+const { geminiModel } = require('../../../utils/ai-clients');
+const { GEMINI_MODELS } = require('../../../config/ai-model');
 const lessonsService = require('./lessons.service');
 
 /**
@@ -477,7 +478,7 @@ Quy tắc:
 - QUAN TRọNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 `;
 
-    const subtitleModel = DEFAULT_GEMINI_MODEL;
+    const subtitleModel = GEMINI_MODELS.subtitle;
     console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên ${subtitleModel}...`);
     const response = await geminiModel.generateContent({
       model: subtitleModel,

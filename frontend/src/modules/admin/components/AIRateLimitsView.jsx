@@ -20,9 +20,11 @@ import {
 } from '../services/adminAnalytics.service';
 
 // Chỉ là gợi ý ban đầu cho form trống; không được dùng để tính % trước khi admin lưu.
-const ACTIVE_GEMINI_MODEL = 'gemini-3.7-flash';
 const SUGGESTED_CAPS = Object.freeze({
-  [ACTIVE_GEMINI_MODEL]: { rpmCap: 10, tpmCap: 250000, rpdCap: 250 }
+  'gemini-3.7-flash': { rpmCap: 10, tpmCap: 250000, rpdCap: 250 },
+  'gemini-3.6-flash': { rpmCap: 10, tpmCap: 250000, rpdCap: 250 },
+  'gemini-3.5-flash-lite': { rpmCap: 15, tpmCap: 250000, rpdCap: 1000 },
+  'gemini-embedding-001': { rpmCap: 100, tpmCap: 30000, rpdCap: 1000 }
 });
 
 const DIMENSIONS = [
@@ -77,12 +79,8 @@ const AIRateLimitsView = ({ canManageCaps }) => {
         getGeminiRateLimitStatus(),
         getGeminiRateLimitCaps()
       ]);
-      setStatus({
-        ...nextStatus,
-        models: (nextStatus?.models || []).filter((item) => item.model === ACTIVE_GEMINI_MODEL),
-        notices: (nextStatus?.notices || []).filter((item) => item.model === ACTIVE_GEMINI_MODEL)
-      });
-      setSavedCaps((nextCaps || []).filter((item) => item.model === ACTIVE_GEMINI_MODEL));
+      setStatus(nextStatus);
+      setSavedCaps(nextCaps);
     } catch (requestError) {
       console.error('Không thể tải Gemini Rate Limits:', requestError);
       setError(t('Không thể tải Rate Limits. Kiểm tra backend và thử lại.'));
@@ -99,8 +97,13 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   }, [fetchData]);
 
   const editableModels = useMemo(() => {
-    return [ACTIVE_GEMINI_MODEL];
-  }, []);
+    const modelNames = new Set([
+      ...Object.keys(SUGGESTED_CAPS),
+      ...(status?.models || []).map((item) => item.model),
+      ...savedCaps.map((item) => item.model)
+    ]);
+    return Array.from(modelNames).sort((a, b) => a.localeCompare(b));
+  }, [savedCaps, status?.models]);
 
   useEffect(() => {
     setDrafts((current) => {
@@ -175,7 +178,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       <header className="ai-rate-header">
         <div>
           <h2>{t('Nhịp sử dụng Gemini')}</h2>
-          <p>{t('Theo dõi ba cửa sổ quota thật của Gemini 3.7 Flash. Cap chỉ có hiệu lực sau khi admin xác nhận và lưu.')}</p>
+          <p>{t('Theo dõi ba cửa sổ quota thật theo từng model. Cap chỉ có hiệu lực sau khi admin xác nhận và lưu.')}</p>
         </div>
         <button
           type="button"
@@ -284,8 +287,8 @@ const AIRateLimitsView = ({ canManageCaps }) => {
         <section className="ai-rate-settings" aria-labelledby="ai-rate-settings-title">
           <div className="ai-rate-settings__heading">
             <div>
-              <h2 id="ai-rate-settings-title"><FiSettings aria-hidden="true" /> {t('Cấu hình cap Gemini 3.7 Flash')}</h2>
-              <p>{t('Nhập đúng hạn mức của Gemini 3.7 Flash trong project Google AI Studio đang dùng.')}</p>
+              <h2 id="ai-rate-settings-title"><FiSettings aria-hidden="true" /> {t('Cấu hình cap theo model')}</h2>
+              <p>{t('Nhập đúng giá trị của project đang dùng. Mỗi model và tier có thể có hạn mức khác nhau.')}</p>
             </div>
             <a href="https://aistudio.google.com/usage" target="_blank" rel="noreferrer">
               Google AI Studio <FiExternalLink aria-hidden="true" />
