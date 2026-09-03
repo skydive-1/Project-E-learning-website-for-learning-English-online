@@ -36,12 +36,12 @@ test('returns explicit empty and database-failure states', () => {
   assert.match(buildCourseCatalogReply([], { loadFailed: true }), /chưa thể tải danh sách khóa học/i);
 });
 
-test('routes simple global questions to Flash-Lite and deep requests to Gemini 3.7 Flash', () => {
+test('routes both simple and deep global questions to Gemini 3.7 Flash', () => {
   assert.equal(isComplexGlobalQuestion('What is the difference between say and tell?'), false);
   assert.equal(isComplexGlobalQuestion('Essay nghĩa là gì?'), false);
   assert.deepEqual(selectGlobalChatProfile('What is the difference between say and tell?'), {
     tier: 'fast',
-    model: 'gemini-3.5-flash-lite',
+    model: 'gemini-3.7-flash',
     maxOutputTokens: 768,
     thinkingLevel: 'MINIMAL'
   });
@@ -55,9 +55,9 @@ test('routes simple global questions to Flash-Lite and deep requests to Gemini 3
   });
 });
 
-test('AI request normalization preserves fast-model and minimal-thinking latency controls', () => {
+test('AI request normalization enforces the single model and preserves latency controls', () => {
   const normalized = normalizeRequest({
-    model: 'gemini-3.5-flash-lite',
+    model: 'ignored-model-override',
     contents: 'Short global chat prompt',
     generationConfig: {
       maxOutputTokens: 768,
@@ -65,7 +65,7 @@ test('AI request normalization preserves fast-model and minimal-thinking latency
     }
   });
 
-  assert.equal(normalized.model, 'gemini-3.5-flash-lite');
+  assert.equal(normalized.model, 'gemini-3.7-flash');
   assert.equal(normalized.config.maxOutputTokens, 768);
   assert.deepEqual(normalized.config.thinkingConfig, {
     thinkingLevel: 'MINIMAL',

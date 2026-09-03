@@ -100,14 +100,14 @@ describe('Gemini Rate Limits admin view', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Rate Limits Google/i }));
     await screen.findAllByText('gemini-3.7-flash');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Lưu cap' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu cap' }));
 
     await waitFor(() => {
       expect(updateGeminiRateLimitCaps).toHaveBeenCalledWith(expect.objectContaining({
-        model: 'gemini-3.5-flash-lite',
-        rpmCap: 15,
+        model: 'gemini-3.7-flash',
+        rpmCap: 10,
         tpmCap: 250000,
-        rpdCap: 1000
+        rpdCap: 250
       }));
     });
   });

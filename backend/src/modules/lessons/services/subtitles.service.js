@@ -11,10 +11,8 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const db = require('../../../config/database');
-const { geminiModel } = require('../../../utils/ai-clients');
+const { geminiModel, DEFAULT_GEMINI_MODEL } = require('../../../utils/ai-clients');
 const lessonsService = require('./lessons.service');
-
-const DEFAULT_GEMINI_SUBTITLE_MODEL = 'gemini-3.6-flash';
 
 /**
  * Format số giây thành chuỗi thời gian WebVTT: 00:01:23.456
@@ -479,7 +477,7 @@ Quy tắc:
 - QUAN TRọNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 `;
 
-    const subtitleModel = process.env.GEMINI_SUBTITLE_MODEL || DEFAULT_GEMINI_SUBTITLE_MODEL;
+    const subtitleModel = DEFAULT_GEMINI_MODEL;
     console.log(`[Gemini Multimodal Audio] Đang gửi ${Math.round(audioBuffer.length / 1024)} KB audio lên ${subtitleModel}...`);
     const response = await geminiModel.generateContent({
       model: subtitleModel,

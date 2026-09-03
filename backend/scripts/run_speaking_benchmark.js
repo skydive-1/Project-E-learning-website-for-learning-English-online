@@ -124,10 +124,8 @@ async function runHotfixR2Benchmark() {
     taskOwner: "NGUYỄN DŨNG QUỐC ANH",
     support: "AI Agent",
     modelConfiguration: {
-      configured_model: configuredModel,
-      default_speaking_model: "gemini-3.7-flash",
-      default_general_model: "gemini-3.7-flash",
-      resolution_precedence: "GEMINI_SPEAKING_MODEL -> GEMINI_MODEL -> DEFAULT_GEMINI_SPEAKING_MODEL"
+      model: configuredModel,
+      policy: "single locked generative model"
     },
     automatedTests: {
       backend: {
