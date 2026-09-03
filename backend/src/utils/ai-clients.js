@@ -17,13 +17,15 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const db = require('../config/database');
+const {
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODELS
+} = require('../config/ai-model');
 
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const pineconeApiKey = process.env.PINECONE_API_KEY;
 const pineconeIndexName = process.env.PINECONE_INDEX_NAME || process.env.PINECONE_INDEX || "elearning-rag";
-const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
 const DEFAULT_GEMINI_SPEAKING_MODEL = DEFAULT_GEMINI_MODEL;
-const DEFAULT_GEMINI_FALLBACK_MODELS = ["gemini-3.6-flash"];
 
 // ─── AsyncLocalStorage for userId / purpose context ────────────────────────
 const aiContextStore = new AsyncLocalStorage();
@@ -112,16 +114,11 @@ async function recordAiUsage({ userId = null, purpose, model, usageMetadata }) {
 // ─── Gemini Client Initialization ──────────────────────────────────────────
 
 function getGeminiFallbackModels(preferredModel) {
-  const configuredFallbacks = String(process.env.GEMINI_FALLBACK_MODELS || '')
-    .split(',')
-    .map(model => model.trim())
-    .filter(Boolean);
-  return [
+  return Array.from(new Set([
     preferredModel,
-    DEFAULT_GEMINI_MODEL,
-    ...configuredFallbacks,
-    ...DEFAULT_GEMINI_FALLBACK_MODELS
-  ];
+    GEMINI_MODELS.primary,
+    ...GEMINI_MODELS.fallbacks
+  ].filter(Boolean)));
 }
 
 const isGeminiQuotaError = (error) => {
@@ -130,6 +127,15 @@ const isGeminiQuotaError = (error) => {
     || error?.code === 429
     || error?.code === 'RESOURCE_EXHAUSTED'
     || /\b429\b|resource[_ ]exhausted|quota exceeded|rate limit exceeded/i.test(message);
+};
+
+const isRetryableGeminiError = (error) => {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+  const code = String(error?.code || error?.cause?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return [404, 408, 429, 500, 502, 503, 504].includes(status)
+    || ['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_CONNECT_TIMEOUT', 'DEADLINE_EXCEEDED', 'RESOURCE_EXHAUSTED', 'UNAVAILABLE'].includes(code)
+    || /not found|no longer available|timed?\s*out|deadline exceeded|socket hang up|network error|temporarily unavailable|resource[_ ]exhausted|quota exceeded/i.test(message);
 };
 
 const normalizeGeminiError = (error) => {
@@ -368,11 +374,11 @@ function normalizeRequest(request) {
 }
 
 /**
- * Helper gọi generateContent có fallback tự động giữa các model Flash.
+ * Helper gọi generateContent với retry và fallback giữa các model Flash.
  * Sau khi gọi thành công, tự động ghi nhận usageMetadata vào ai_usage_events.
  */
 async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
-  const preferredModel = modelOverride || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const preferredModel = modelOverride || GEMINI_MODELS.primary;
   const fallbackModels = getGeminiFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
@@ -402,33 +408,23 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
     } catch (err) {
       lastError = err;
       recordGeminiQuotaSignal({ error: err, model });
-      const errMsg = err.message || "";
-      if (
-        errMsg.includes("not found") ||
-        errMsg.includes("no longer available") ||
-        errMsg.includes("503") ||
-        errMsg.includes("429") ||
-        errMsg.includes("RESOURCE_EXHAUSTED") ||
-        errMsg.includes("Quota exceeded") ||
-        err.status === 404 ||
-        err.status === 503 ||
-        err.status === 429
-      ) {
+      if (isRetryableGeminiError(err)) {
+        console.warn(`[Gemini Fallback] ${model} thất bại, đang thử model kế tiếp.`);
         continue;
       }
       throw err;
     }
   }
-  throw normalizeGeminiError(lastError || new Error("Không thể kết nối đến mô hình Gemini Flash khả dụng."));
+  throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash khả dụng.'));
 }
 
 /**
- * Helper gọi generateContentStream có fallback tự động.
+ * Helper gọi generateContentStream với fallback tự động.
  * Returns { responseStream, modelUsed } so the wrapper can record usage
  * after the stream is fully consumed.
  */
 async function executeGenerateStream(client, contents, config, modelOverride = null) {
-  const preferredModel = modelOverride || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const preferredModel = modelOverride || GEMINI_MODELS.primary;
   const fallbackModels = getGeminiFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
@@ -446,24 +442,14 @@ async function executeGenerateStream(client, contents, config, modelOverride = n
     } catch (err) {
       lastError = err;
       recordGeminiQuotaSignal({ error: err, model });
-      const errMsg = err.message || "";
-      if (
-        errMsg.includes("not found") ||
-        errMsg.includes("no longer available") ||
-        errMsg.includes("503") ||
-        errMsg.includes("429") ||
-        errMsg.includes("RESOURCE_EXHAUSTED") ||
-        errMsg.includes("Quota exceeded") ||
-        err.status === 404 ||
-        err.status === 503 ||
-        err.status === 429
-      ) {
+      if (isRetryableGeminiError(err)) {
+        console.warn(`[Gemini Stream Fallback] ${model} thất bại, đang thử model kế tiếp.`);
         continue;
       }
       throw err;
     }
   }
-  throw normalizeGeminiError(lastError || new Error("Không thể kết nối đến mô hình Gemini Flash Stream khả dụng."));
+  throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash Stream khả dụng.'));
 }
 
 /**
@@ -555,7 +541,7 @@ const geminiModel = {
 
     try {
       const client = getAiClient();
-      const modelName = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+      const modelName = GEMINI_MODELS.primary;
       const response = await client.models.countTokens({
         model: modelName,
         contents
@@ -565,7 +551,7 @@ const geminiModel = {
         totalTokens: response.totalTokens !== undefined ? response.totalTokens : 0
       };
     } catch (error) {
-      recordGeminiQuotaSignal({ error, model: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL });
+      recordGeminiQuotaSignal({ error, model: GEMINI_MODELS.primary });
       // Fallback an toàn ước lượng token (1 token ~ 4 ký tự)
       const strLength = typeof contents === "string" ? contents.length : JSON.stringify(contents).length;
       return { totalTokens: Math.max(1, Math.ceil(strLength / 4)) };
@@ -732,7 +718,7 @@ Hãy trả lời một cách tự nhiên, dễ hiểu, định dạng markdown �
 };
 
 function getSpeakingModelName() {
-  return process.env.GEMINI_SPEAKING_MODEL || process.env.GEMINI_MODEL || DEFAULT_GEMINI_SPEAKING_MODEL;
+  return GEMINI_MODELS.speaking;
 }
 
 // Log an toàn khi khởi động (không lộ key)
@@ -787,12 +773,14 @@ module.exports = {
   DEFAULT_GEMINI_SPEAKING_MODEL,
   COST_PER_M_TOKENS,
   isGeminiQuotaError,
+  isRetryableGeminiError,
   normalizeGeminiError,
   parseGeminiQuotaViolation,
   recordGeminiQuotaSignal,
   runWithAiContext,
   recordAiUsage,
   normalizeRequest,
+  getGeminiFallbackModels,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,

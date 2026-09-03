@@ -98,6 +98,7 @@ describe('Admin Gemini rate-limit status', () => {
         }),
         (error) => error.status === 400 && error.code === 'INVALID_RATE_LIMIT_CAP'
       );
+
     } finally {
       db.pool.query = originalQuery;
     }

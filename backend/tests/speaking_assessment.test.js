@@ -16,7 +16,7 @@ const express = require('express');
 
 const speakingScorer = require('../src/utils/speakingScorer');
 const speakingValidator = require('../src/utils/speakingValidator');
-const { getSpeakingModelName, DEFAULT_GEMINI_SPEAKING_MODEL, geminiSpeakingModel } = require('../src/utils/ai-clients');
+const { getSpeakingModelName, geminiSpeakingModel } = require('../src/utils/ai-clients');
 const chatbotRoutes = require('../src/modules/chatbot/chatbot.routes');
 const errorHandler = require('../src/middleware/error.middleware');
 
@@ -73,44 +73,8 @@ describe('=== TASK-AI-SPEAKING-01-HOTFIX-R2 AUTOMATED TEST SUITE ===', () => {
   // 1. MODEL RESOLUTION & CONFIGURATION TESTS
   // =========================================================================
   describe('1. Model Resolution & Centralized Configuration', () => {
-    it('1.1 should resolve to GEMINI_SPEAKING_MODEL when defined', () => {
-      const savedSpeaking = process.env.GEMINI_SPEAKING_MODEL;
-      const savedGeneral = process.env.GEMINI_MODEL;
-      try {
-        process.env.GEMINI_SPEAKING_MODEL = 'gemini-3.7-flash-custom';
-        process.env.GEMINI_MODEL = 'gemini-3.7-flash-general';
-        assert.strictEqual(getSpeakingModelName(), 'gemini-3.7-flash-custom');
-      } finally {
-        process.env.GEMINI_SPEAKING_MODEL = savedSpeaking;
-        process.env.GEMINI_MODEL = savedGeneral;
-      }
-    });
-
-    it('1.2 should fallback to GEMINI_MODEL when GEMINI_SPEAKING_MODEL is not set', () => {
-      const savedSpeaking = process.env.GEMINI_SPEAKING_MODEL;
-      const savedGeneral = process.env.GEMINI_MODEL;
-      try {
-        delete process.env.GEMINI_SPEAKING_MODEL;
-        process.env.GEMINI_MODEL = 'gemini-3.7-flash-general';
-        assert.strictEqual(getSpeakingModelName(), 'gemini-3.7-flash-general');
-      } finally {
-        process.env.GEMINI_SPEAKING_MODEL = savedSpeaking;
-        process.env.GEMINI_MODEL = savedGeneral;
-      }
-    });
-
-    it('1.3 should fallback to gemini-3.7-flash when neither env variable is set', () => {
-      const savedSpeaking = process.env.GEMINI_SPEAKING_MODEL;
-      const savedGeneral = process.env.GEMINI_MODEL;
-      try {
-        delete process.env.GEMINI_SPEAKING_MODEL;
-        delete process.env.GEMINI_MODEL;
-        assert.strictEqual(getSpeakingModelName(), DEFAULT_GEMINI_SPEAKING_MODEL);
-        assert.strictEqual(DEFAULT_GEMINI_SPEAKING_MODEL, 'gemini-3.7-flash');
-      } finally {
-        process.env.GEMINI_SPEAKING_MODEL = savedSpeaking;
-        process.env.GEMINI_MODEL = savedGeneral;
-      }
+    it('1.1 should always use the single Gemini 3.7 Flash model', () => {
+      assert.strictEqual(getSpeakingModelName(), 'gemini-3.7-flash');
     });
   });
 

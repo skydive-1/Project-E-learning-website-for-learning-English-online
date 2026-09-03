@@ -22,6 +22,7 @@ import {
 // Chỉ là gợi ý ban đầu cho form trống; không được dùng để tính % trước khi admin lưu.
 const SUGGESTED_CAPS = Object.freeze({
   'gemini-3.7-flash': { rpmCap: 10, tpmCap: 250000, rpdCap: 250 },
+  'gemini-3.6-flash': { rpmCap: 10, tpmCap: 250000, rpdCap: 250 },
   'gemini-3.5-flash-lite': { rpmCap: 15, tpmCap: 250000, rpdCap: 1000 },
   'gemini-embedding-001': { rpmCap: 100, tpmCap: 30000, rpdCap: 1000 }
 });

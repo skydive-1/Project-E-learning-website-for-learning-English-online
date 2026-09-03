@@ -15,13 +15,6 @@ const {
 } = require('./globalCourseResponse.service');
 
 const isGeminiQuotaExhausted = (error) => error?.code === 'GEMINI_QUOTA_EXHAUSTED';
-const GLOBAL_CHAT_FAST_MODEL = process.env.GEMINI_GLOBAL_CHAT_FAST_MODEL
-  || process.env.GEMINI_GLOBAL_CHAT_MODEL
-  || 'gemini-3.5-flash-lite';
-const GLOBAL_CHAT_COMPLEX_MODEL = process.env.GEMINI_GLOBAL_CHAT_COMPLEX_MODEL
-  || process.env.GEMINI_MODEL
-  || 'gemini-3.7-flash';
-
 /**
  * Trích xuất thời lượng audio an toàn qua FFmpeg metadata (không dùng shell: true)
  */
@@ -968,10 +961,7 @@ CÂU HỎI CỦA HỌC VIÊN:
 "${question}"`;
 
     const globalGenerationProfile = isGlobalChat
-      ? selectGlobalChatProfile(question, {
-        fastModel: GLOBAL_CHAT_FAST_MODEL,
-        complexModel: GLOBAL_CHAT_COMPLEX_MODEL
-      })
+      ? selectGlobalChatProfile(question)
       : null;
     const generationRequest = globalGenerationProfile
       ? {
@@ -1145,10 +1135,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     });
     const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
     const globalGenerationProfile = isGlobalChat
-      ? selectGlobalChatProfile(question, {
-        fastModel: GLOBAL_CHAT_FAST_MODEL,
-        complexModel: GLOBAL_CHAT_COMPLEX_MODEL
-      })
+      ? selectGlobalChatProfile(question)
       : null;
 
     // 1. Phát sự kiện Metadata (SSE)

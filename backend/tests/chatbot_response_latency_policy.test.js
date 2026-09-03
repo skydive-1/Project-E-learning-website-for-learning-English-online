@@ -11,7 +11,11 @@ const {
   selectGlobalChatProfile,
   buildCourseCatalogReply
 } = require('../src/modules/chatbot/services/globalCourseResponse.service');
-const { normalizeRequest } = require('../src/utils/ai-clients');
+const {
+  normalizeRequest,
+  getGeminiFallbackModels,
+  isRetryableGeminiError
+} = require('../src/utils/ai-clients');
 
 test('detects Vietnamese and English course catalog questions without hijacking general English QA', () => {
   assert.equal(isCourseCatalogQuestion('Cho tôi tóm tắt về các khóa học tiếng Anh hiện có trên website.'), true);
@@ -55,7 +59,7 @@ test('routes simple global questions to Flash-Lite and deep requests to Gemini 3
   });
 });
 
-test('AI request normalization preserves fast-model and minimal-thinking latency controls', () => {
+test('AI request normalization preserves the selected model and latency controls', () => {
   const normalized = normalizeRequest({
     model: 'gemini-3.5-flash-lite',
     contents: 'Short global chat prompt',
@@ -71,6 +75,21 @@ test('AI request normalization preserves fast-model and minimal-thinking latency
     thinkingLevel: 'MINIMAL',
     includeThoughts: false
   });
+});
+
+test('Gemini fallback order covers 3.7, 3.6 and 3.5 Flash Lite without duplicates', () => {
+  assert.deepEqual(getGeminiFallbackModels('gemini-3.7-flash'), [
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite'
+  ]);
+});
+
+test('Gemini fallback treats timeouts and transient provider failures as retryable', () => {
+  assert.equal(isRetryableGeminiError({ code: 'ETIMEDOUT' }), true);
+  assert.equal(isRetryableGeminiError({ status: 503 }), true);
+  assert.equal(isRetryableGeminiError({ status: 429 }), true);
+  assert.equal(isRetryableGeminiError({ status: 400, message: 'Invalid request' }), false);
 });
 
 test('sync and streaming catalog routes bypass Gemini generation', () => {

@@ -1,5 +1,7 @@
 'use strict';
 
+const { GEMINI_MODELS } = require('../../../config/ai-model');
+
 const COURSE_TERM_PATTERN = /kh[oó]a học|khoá học|\bcourses?\b/i;
 const CATALOG_INTENT_PATTERN = /tóm tắt|tổng quan|danh sách|hiện có|đang có|có những|giới thiệu|đề xuất|available|offered|offer|list|overview|summari[sz]e|what courses/i;
 const COMPLEX_GLOBAL_PATTERN = /phân tích (?:sâu|chi tiết)|giải thích (?:chuyên sâu|chi tiết)|so sánh (?:chuyên sâu|chi tiết)|lập (?:một )?lộ trình|kế hoạch học tập|chấm (?:và )?sửa|sửa (?:bài|đoạn văn|bài luận)|viết (?:một )?bài luận|ielts writing|academic writing|advanced grammar|analy[sz]e in depth|explain in detail|detailed comparison|study plan|learning roadmap|review and correct|grade (?:my|this)|write (?:an? )?essay/i;
@@ -18,8 +20,8 @@ const isComplexGlobalQuestion = (question) => {
 const selectGlobalChatProfile = (
   question,
   {
-    fastModel = 'gemini-3.5-flash-lite',
-    complexModel = 'gemini-3.7-flash'
+    fastModel = GEMINI_MODELS.fast,
+    complexModel = GEMINI_MODELS.primary
   } = {}
 ) => {
   if (isComplexGlobalQuestion(question)) {

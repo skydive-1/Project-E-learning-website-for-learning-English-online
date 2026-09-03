@@ -238,7 +238,10 @@ def configured_models() -> list[str]:
     )
     fallbacks = [
         item.strip()
-        for item in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-3.6-flash").split(",")
+        for item in os.getenv(
+            "GEMINI_FALLBACK_MODELS",
+            "gemini-3.6-flash,gemini-3.5-flash-lite",
+        ).split(",")
         if item.strip()
     ]
     return list(dict.fromkeys([preferred, *fallbacks]))
