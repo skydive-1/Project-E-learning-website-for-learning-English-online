@@ -555,6 +555,10 @@ const testConnection = async () => {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_media_id UUID REFERENCES media_assets(media_id) ON DELETE SET NULL;
         ALTER TABLE pending_media_uploads ALTER COLUMN storage_provider SET DEFAULT 'r2';
         ALTER TABLE failed_storage_deletions ALTER COLUMN storage_provider SET DEFAULT 'r2';
+        -- PostgreSQL không cho ALTER TYPE một cột đang được trigger UPDATE OF tham chiếu.
+        -- Gỡ trigger trước khi chuẩn hóa kiểu cột; chúng được tạo lại ở cuối block này.
+        DROP TRIGGER IF EXISTS trg_lessons_sync_media_asset ON lessons;
+        DROP TRIGGER IF EXISTS trg_lesson_materials_sync_media_asset ON lesson_materials;
         ALTER TABLE lessons ALTER COLUMN storage_bucket TYPE VARCHAR(255);
         ALTER TABLE lesson_materials ALTER COLUMN storage_bucket TYPE VARCHAR(255);
         ALTER TABLE pending_media_uploads ALTER COLUMN storage_bucket TYPE VARCHAR(255);
@@ -609,10 +613,8 @@ const testConnection = async () => {
           NEW.media_asset_id := v_media_id; RETURN NEW;
         END;
         $$;
-        DROP TRIGGER IF EXISTS trg_lessons_sync_media_asset ON lessons;
         CREATE TRIGGER trg_lessons_sync_media_asset BEFORE INSERT OR UPDATE OF content_url, storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
           ON lessons FOR EACH ROW EXECUTE FUNCTION sync_media_asset_reference();
-        DROP TRIGGER IF EXISTS trg_lesson_materials_sync_media_asset ON lesson_materials;
         CREATE TRIGGER trg_lesson_materials_sync_media_asset BEFORE INSERT OR UPDATE OF file_url, storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
           ON lesson_materials FOR EACH ROW EXECUTE FUNCTION sync_media_asset_reference();
       `);

@@ -98,6 +98,11 @@ CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_media_id ON pending_media_u
 
 ALTER TABLE pending_media_uploads ALTER COLUMN storage_provider SET DEFAULT 'r2';
 ALTER TABLE failed_storage_deletions ALTER COLUMN storage_provider SET DEFAULT 'r2';
+
+-- Các trigger UPDATE OF tham chiếu storage_bucket nên phải được gỡ trước ALTER TYPE.
+-- Migration có thể chạy lại an toàn; trigger được tạo lại sau khi function sẵn sàng.
+DROP TRIGGER IF EXISTS trg_lessons_sync_media_asset ON lessons;
+DROP TRIGGER IF EXISTS trg_lesson_materials_sync_media_asset ON lesson_materials;
 ALTER TABLE lessons ALTER COLUMN storage_bucket TYPE VARCHAR(255);
 ALTER TABLE lesson_materials ALTER COLUMN storage_bucket TYPE VARCHAR(255);
 ALTER TABLE pending_media_uploads ALTER COLUMN storage_bucket TYPE VARCHAR(255);
@@ -196,12 +201,10 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_lessons_sync_media_asset ON lessons;
 CREATE TRIGGER trg_lessons_sync_media_asset
 BEFORE INSERT OR UPDATE OF content_url, storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
 ON lessons FOR EACH ROW EXECUTE FUNCTION sync_media_asset_reference();
 
-DROP TRIGGER IF EXISTS trg_lesson_materials_sync_media_asset ON lesson_materials;
 CREATE TRIGGER trg_lesson_materials_sync_media_asset
 BEFORE INSERT OR UPDATE OF file_url, storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
 ON lesson_materials FOR EACH ROW EXECUTE FUNCTION sync_media_asset_reference();
