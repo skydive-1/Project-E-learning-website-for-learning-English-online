@@ -56,6 +56,8 @@ class SubtitlesService {
     this.activeAutoGenerationJobs = new Set();
     this.autoGenerationQueue = new Map();
     this.autoQueueRunning = false;
+    this.generationQueueTail = Promise.resolve();
+    this.activeGenerationPromises = new Map();
   }
 
   /**
@@ -318,7 +320,7 @@ class SubtitlesService {
 
     const minSilence = options.minSilence || 400;
     const silenceThresh = options.silenceThresh || -40;
-    const workers = options.workers || 2;
+    const workers = options.workers || Number(process.env.SUBTITLE_VAD_WORKERS) || 1;
 
     const videoName = path.basename(videoPath, path.extname(videoPath));
     const outputJsonPath = path.join(
@@ -595,7 +597,26 @@ Quy tắc:
    *   - Supabase storage key: courses/xxx/uuid/video.mp4 — tải tạm về qua Signed URL
    *   - Signed HTTPS URL: https://...supabase.co/... — tải tạm trực tiếp
    */
-  async generateSubtitlesWithGemini(lessonId, options = {}) {
+  generateSubtitlesWithGemini(lessonId, options = {}) {
+    const jobKey = String(parseInt(lessonId, 10));
+    const activeJob = this.activeGenerationPromises.get(jobKey);
+    if (activeJob) return activeJob;
+
+    const queuedJob = this.generationQueueTail.then(() => (
+      this._generateSubtitlesWithGemini(lessonId, options)
+    ));
+
+    // Giữ chuỗi hàng đợi luôn resolve để một job lỗi không chặn các job sau.
+    this.generationQueueTail = queuedJob.catch(() => undefined);
+    this.activeGenerationPromises.set(jobKey, queuedJob);
+    queuedJob.then(
+      () => this.activeGenerationPromises.delete(jobKey),
+      () => this.activeGenerationPromises.delete(jobKey)
+    );
+    return queuedJob;
+  }
+
+  async _generateSubtitlesWithGemini(lessonId, options = {}) {
     const expectedSourceUrl = options.expectedSourceUrl || null;
     let rawContentUrl = '';
     let videoFilePath = null;
@@ -699,7 +720,9 @@ Quy tắc:
       const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'true').toLowerCase() === 'true';
       if (vadEnabled) {
         console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
-        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
+        const vadCues = await this.runSilenceVadPipeline(videoFilePath, {
+          workers: Number(process.env.SUBTITLE_VAD_WORKERS) || 1
+        });
         if (vadCues.length === 0) {
           const noSpeechError = new Error('VAD pipeline không phát hiện đoạn giọng nói nào trong video.');
           noSpeechError.status = 422;

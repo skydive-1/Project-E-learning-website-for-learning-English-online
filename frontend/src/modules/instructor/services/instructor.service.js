@@ -13,9 +13,22 @@ export const getInstructorAnalytics = async (range = 30) => {
 };
 
 export const instructorService = {
-  uploadMedia: async (file) => {
+  uploadMedia: async (file, {
+    courseName,
+    courseId,
+    sectionName,
+    sectionOrder,
+    lessonName,
+    lessonOrder
+  } = {}) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (courseName) formData.append('courseName', courseName);
+    if (courseId) formData.append('courseId', String(courseId));
+    if (sectionName) formData.append('sectionName', sectionName);
+    if (sectionOrder) formData.append('sectionOrder', String(sectionOrder));
+    if (lessonName) formData.append('lessonName', lessonName);
+    if (lessonOrder) formData.append('lessonOrder', String(lessonOrder));
     
     const response = await apiClient.post('/courses/upload', formData, {
       timeout: 300000,

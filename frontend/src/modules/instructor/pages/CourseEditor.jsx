@@ -371,6 +371,12 @@ const CourseEditor = () => {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('courseName', courseName.trim() || 'Khoa hoc chua dat ten');
+    if (courseId) formData.append('courseId', String(courseId));
+    formData.append('sectionName', sections[sIdx].title || `Chuong ${sIdx + 1}`);
+    formData.append('sectionOrder', String(sIdx + 1));
+    formData.append('lessonName', sections[sIdx].lessons[lIdx].title || `Bai ${lIdx + 1}`);
+    formData.append('lessonOrder', String(lIdx + 1));
 
     try {
       const response = await apiClient.post('/courses/upload', formData, {

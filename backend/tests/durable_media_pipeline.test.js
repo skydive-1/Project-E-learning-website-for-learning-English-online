@@ -213,7 +213,12 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
           mimetype: 'video/mp4',
           size: validMp4.length
         },
-        user: { id: 2, roleId: 2 }
+        user: { id: 2, roleId: 2 },
+        body: {
+          courseName: 'English Foundations', courseId: '12',
+          sectionName: 'Getting Started', sectionOrder: '1',
+          lessonName: 'Introduction', lessonOrder: '1'
+        }
       };
 
       let responseCode = null;
@@ -231,7 +236,9 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.strictEqual(responseBody.storageProvider, 'r2');
       assert.strictEqual(responseBody.mediaStatus, 'PENDING');
       assert.ok(responseBody.pendingUploadId);
-      assert.ok(responseBody.storageKey.startsWith('courses/2/'));
+      assert.ok(responseBody.storageKey.startsWith(
+        'courses/english-foundations-12/sections/01-getting-started/lessons/01-introduction/videos/'
+      ));
       assert.ok(responseBody.storageKey.endsWith('.mp4'));
     });
 
@@ -363,6 +370,13 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
 
       // Mock query gây lỗi DB cố ý
       db.query = async (text, params) => {
+        if (typeof text === 'string' && text.includes('SELECT c.course_id, c.course_name')) {
+          return { rows: [{
+            course_id: 12, course_name: 'English Foundations',
+            section_name: 'Getting Started', section_order: 1,
+            lesson_name: 'Introduction', lesson_order: 1
+          }] };
+        }
         if (typeof text === 'string' && text.includes('INSERT INTO lesson_materials')) {
           throw new Error('Simulated Database Crash on Insert');
         }
@@ -424,7 +438,12 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
           mimetype: 'video/mp4',
           size: validMp4.length
         },
-        user: { id: 2, roleId: 2 }
+        user: { id: 2, roleId: 2 },
+        body: {
+          courseName: 'English Foundations', courseId: '12',
+          sectionName: 'Getting Started', sectionOrder: '1',
+          lessonName: 'Grammar', lessonOrder: '2'
+        }
       };
 
       let uploadResData = null;
@@ -571,7 +590,12 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
           mimetype: 'application/pdf',
           size: validPdf.length
         },
-        user: { id: 2, roleId: 2 }
+        user: { id: 2, roleId: 2 },
+        body: {
+          courseName: 'English Foundations', courseId: '12',
+          sectionName: 'Getting Started', sectionOrder: '1',
+          lessonName: 'Grammar', lessonOrder: '2'
+        }
       };
 
       let resData = null;
@@ -586,7 +610,9 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.strictEqual(resData.storageBucket, 'documents');
       assert.strictEqual(resData.storageProvider, 'r2');
       assert.strictEqual(resData.mimeType, 'application/pdf');
-      assert.ok(resData.storageKey.startsWith('courses/2/'));
+      assert.ok(resData.storageKey.startsWith(
+        'courses/english-foundations-12/sections/01-getting-started/lessons/02-grammar/documents/'
+      ));
       assert.ok(resData.storageKey.endsWith('.pdf'));
     });
 
@@ -676,6 +702,13 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
 
       let insertedRow = null;
       db.query = async (text, params) => {
+        if (typeof text === 'string' && text.includes('SELECT c.course_id, c.course_name')) {
+          return { rows: [{
+            course_id: 12, course_name: 'English Foundations',
+            section_name: 'Getting Started', section_order: 1,
+            lesson_name: 'Introduction', lesson_order: 1
+          }] };
+        }
         if (typeof text === 'string' && text.includes('INSERT INTO lesson_materials')) {
           insertedRow = {
             material_id: 101,
@@ -708,7 +741,9 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.strictEqual(material.storage_provider, 'r2');
       assert.strictEqual(material.storage_bucket, 'documents');
       assert.strictEqual(material.media_status, 'READY');
-      assert.ok(material.storage_key.startsWith('courses/materials/1/'));
+      assert.ok(material.storage_key.startsWith(
+        'courses/english-foundations-12/sections/01-getting-started/lessons/01-introduction/documents/'
+      ));
     });
 
     // Test 5: Signed URL chỉ cấp cho user có quyền
@@ -862,6 +897,13 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       });
 
       db.query = async (text, params) => {
+        if (typeof text === 'string' && text.includes('SELECT c.course_id, c.course_name')) {
+          return { rows: [{
+            course_id: 12, course_name: 'English Foundations',
+            section_name: 'Getting Started', section_order: 1,
+            lesson_name: 'Introduction', lesson_order: 1
+          }] };
+        }
         if (typeof text === 'string' && text.includes('INSERT INTO lesson_materials')) {
           return {
             rows: [{

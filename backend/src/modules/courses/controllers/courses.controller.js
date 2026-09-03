@@ -7,6 +7,7 @@ const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const { sanitizeLessonMediaForClient } = require('../../../utils/videoSecurity.util');
 const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
+const { buildCourseAssetPrefix } = require('../../../utils/mediaObjectKey.util');
 
 async function registerUploadedObject(req, uploadResult, storageBucket, mimeType) {
   const pendingUploadId = crypto.randomUUID();
@@ -90,6 +91,15 @@ exports.uploadFile = async (req, res, next) => {
 
     const instructorId = req.user?.id || req.user?.userId || 'common';
     const assetId = crypto.randomUUID();
+    const courseIdentity = {
+      courseName: req.body?.courseName,
+      courseId: req.body?.courseId,
+      fallbackId: `draft-${instructorId}`,
+      sectionName: req.body?.sectionName,
+      sectionOrder: req.body?.sectionOrder,
+      lessonName: req.body?.lessonName,
+      lessonOrder: req.body?.lessonOrder
+    };
     const rawBaseName = path.basename(req.file.originalname, ext);
     const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
 
@@ -103,7 +113,11 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
-      const assetPrefix = `courses/${instructorId}/${assetId}`;
+      const assetPrefix = buildCourseAssetPrefix({
+        ...courseIdentity,
+        mediaKind: 'video',
+        assetId
+      });
       const drmEnabled = process.env.ENABLE_DRM_PACKAGING === 'true';
       const objectKey = `${assetPrefix}/${safeBaseName}.mp4`;
       const uploadResult = await supabaseStorage.uploadVideoToSupabase(
@@ -247,7 +261,12 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
-      const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.pdf`;
+      const assetPrefix = buildCourseAssetPrefix({
+        ...courseIdentity,
+        mediaKind: 'pdf',
+        assetId
+      });
+      const objectKey = `${assetPrefix}/${safeBaseName}.pdf`;
       const uploadResult = await supabaseStorage.uploadDocumentToSupabase(req.file.path, objectKey, 'application/pdf');
 
       if (!uploadResult.success) {
@@ -286,7 +305,12 @@ exports.uploadFile = async (req, res, next) => {
     // 3. AUDIO VÀ HÌNH ẢNH LỚN
     if (isAudio || isImage) {
       const mediaKind = isAudio ? 'audio' : 'image';
-      const objectKey = `courses/${instructorId}/${assetId}/${mediaKind}/${safeBaseName}${ext}`;
+      const assetPrefix = buildCourseAssetPrefix({
+        ...courseIdentity,
+        mediaKind,
+        assetId
+      });
+      const objectKey = `${assetPrefix}/${safeBaseName}${ext}`;
       const uploadResult = await supabaseStorage.uploadPrivateObject(
         req.file.path,
         objectKey,

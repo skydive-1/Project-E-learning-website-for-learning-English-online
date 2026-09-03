@@ -314,7 +314,34 @@ class LessonsService {
       const rawBaseName = path.basename(file.originalname, ext);
       const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
       const assetId = crypto.randomUUID();
-      const objectKey = `courses/materials/${cleanLessonId}/${assetId}/${safeBaseName}.pdf`;
+      const courseIdentityResult = await db.query(
+        `SELECT c.course_id, c.course_name,
+                s.title AS section_name, s.order_index AS section_order,
+                l.title AS lesson_name, l.order_index AS lesson_order
+         FROM lessons l
+         JOIN sections s ON s.section_id = l.section_id
+         JOIN courses c ON c.course_id = s.course_id
+         WHERE l.lesson_id = $1`,
+        [cleanLessonId]
+      );
+      const courseIdentity = courseIdentityResult.rows[0];
+      if (!courseIdentity) {
+        const error = new Error('Không tìm thấy khóa học chứa bài học này.');
+        error.status = 404;
+        throw error;
+      }
+      const { buildCourseAssetPrefix } = require('../../../utils/mediaObjectKey.util');
+      const assetPrefix = buildCourseAssetPrefix({
+        courseName: courseIdentity.course_name,
+        courseId: courseIdentity.course_id,
+        sectionName: courseIdentity.section_name,
+        sectionOrder: courseIdentity.section_order,
+        lessonName: courseIdentity.lesson_name,
+        lessonOrder: courseIdentity.lesson_order,
+        mediaKind: 'pdf',
+        assetId
+      });
+      const objectKey = `${assetPrefix}/${safeBaseName}.pdf`;
 
       const uploadResult = await uploadDocumentToSupabase(fileInput, objectKey, 'application/pdf');
       if (!uploadResult.success) {
