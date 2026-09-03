@@ -41,7 +41,7 @@ export const applySuccessfulUploadToLesson = (lesson, upload, file = {}) => {
     contentUrl: fileUrl,
     storageKey: upload.storageKey,
     storageBucket: upload.storageBucket || (detectedType === 'pdf' ? 'documents' : 'videos'),
-    storageProvider: upload.storageProvider || 'supabase',
+    storageProvider: upload.storageProvider || 'r2',
     mimeType,
     sizeBytes: upload.sizeBytes || file.size,
     checksumSha256: upload.checksumSha256,
@@ -196,7 +196,7 @@ const CourseEditor = () => {
                     contentUrl: l.content_url,
                     storageKey: l.storage_key || l.storageKey || (!isExternal ? l.content_url : null),
                     storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : 'videos'),
-                    storageProvider: l.storage_provider || l.storageProvider || (isExternal ? 'external' : 'supabase'),
+                    storageProvider: l.storage_provider || l.storageProvider || (isExternal ? 'external' : 'r2'),
                     mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : 'video/mp4'),
                     sizeBytes: l.size_bytes || l.sizeBytes || 0,
                     checksumSha256: l.checksum_sha256 || l.checksumSha256 || null,
@@ -320,8 +320,8 @@ const CourseEditor = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const MAX_VIDEO_SIZE_MB = 50;
-    const MAX_PDF_SIZE_MB = 20;
+    const MAX_VIDEO_SIZE_MB = 500;
+    const MAX_PDF_SIZE_MB = 500;
     const ext = file.name.split('.').pop().toLowerCase();
     const isVideoFile = file.type.startsWith('video/') || ['mp4', 'mov', 'mkv', 'avi'].includes(ext);
     const isPdfFile = file.type === 'application/pdf' || ext === 'pdf';
@@ -371,6 +371,12 @@ const CourseEditor = () => {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('courseName', courseName.trim() || 'Khoa hoc chua dat ten');
+    if (courseId) formData.append('courseId', String(courseId));
+    formData.append('sectionName', sections[sIdx].title || `Chuong ${sIdx + 1}`);
+    formData.append('sectionOrder', String(sIdx + 1));
+    formData.append('lessonName', sections[sIdx].lessons[lIdx].title || `Bai ${lIdx + 1}`);
+    formData.append('lessonOrder', String(lIdx + 1));
 
     try {
       const response = await apiClient.post('/courses/upload', formData, {
@@ -688,7 +694,7 @@ const CourseEditor = () => {
           title: les.title,
           contentType: les.type,
           contentUrl: les.contentUrl,
-          storageProvider: les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'supabase') : null),
+          storageProvider: les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'r2') : null),
           storageBucket: les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null),
           storageKey: les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null),
           mimeType: les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null)),
@@ -987,8 +993,8 @@ const CourseEditor = () => {
                                 onClick={() => triggerFileSelect(sIdx, lIdx)}
                                 disabled={lesson.uploading}
                                 title={lesson.type === 'video'
-                                  ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 50 MB'
-                                  : 'Chỉ nhận PDF — Tối đa 20 MB'
+                                  ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
+                                  : 'Chỉ nhận PDF — Tối đa 500 MB'
                                 }
                               >
                                 {lesson.uploading ? (
@@ -1030,7 +1036,7 @@ const CourseEditor = () => {
                                 }} />
                               </div>
                               <span style={{ fontSize: '11px', color: 'var(--text-light, #64748b)', marginTop: '2px', display: 'block' }}>
-                                Đang tải lên Supabase Storage... {lesson.uploadProgress || 0}%
+                                Đang tải lên Cloudflare R2... {lesson.uploadProgress || 0}%
                               </span>
                             </div>
                           )}
@@ -1161,7 +1167,7 @@ const CourseEditor = () => {
                                     <span className="media-filesize">({lesson.fileSizeFormatted})</span>
                                   )}
                                   <span className="storage-badge">
-                                    Supabase Storage
+                                    Cloudflare R2
                                   </span>
                                   {lesson.contentUrl.startsWith('http') && (
                                     <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="view-link">

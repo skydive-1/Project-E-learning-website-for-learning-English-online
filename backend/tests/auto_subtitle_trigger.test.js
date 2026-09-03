@@ -9,6 +9,7 @@ const coursesService = require('../src/modules/courses/services/courses.service'
 const originalDbQuery = db.query;
 const originalGetSubtitles = subtitlesService.getSubtitlesByLessonId;
 const originalGenerateSubtitles = subtitlesService.generateSubtitlesWithGemini;
+const originalInternalGenerateSubtitles = subtitlesService._generateSubtitlesWithGemini;
 const originalSchedule = subtitlesService.scheduleAutoGeneration;
 const originalQueue = subtitlesService.queueAutoGeneration;
 const originalSyncLessonQuiz = coursesService._syncLessonQuiz;
@@ -17,6 +18,7 @@ afterEach(() => {
   db.query = originalDbQuery;
   subtitlesService.getSubtitlesByLessonId = originalGetSubtitles;
   subtitlesService.generateSubtitlesWithGemini = originalGenerateSubtitles;
+  subtitlesService._generateSubtitlesWithGemini = originalInternalGenerateSubtitles;
   subtitlesService.scheduleAutoGeneration = originalSchedule;
   subtitlesService.queueAutoGeneration = originalQueue;
   coursesService._syncLessonQuiz = originalSyncLessonQuiz;
@@ -107,5 +109,49 @@ describe('Automatic subtitle trigger', () => {
     await coursesService._queueAutoSubtitles([7, 7, 8]);
 
     assert.deepEqual(queued.sort((a, b) => a - b), [7, 8]);
+  });
+
+  test('all subtitle entry points share one sequential generation queue', async () => {
+    let activeJobs = 0;
+    let maximumActiveJobs = 0;
+    const executionOrder = [];
+
+    subtitlesService._generateSubtitlesWithGemini = async lessonId => {
+      activeJobs += 1;
+      maximumActiveJobs = Math.max(maximumActiveJobs, activeJobs);
+      executionOrder.push(`start-${lessonId}`);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      executionOrder.push(`end-${lessonId}`);
+      activeJobs -= 1;
+      return { lesson_id: lessonId };
+    };
+
+    const first = subtitlesService.generateSubtitlesWithGemini(501);
+    const second = subtitlesService.generateSubtitlesWithGemini(502);
+    await Promise.all([first, second]);
+
+    assert.equal(maximumActiveJobs, 1);
+    assert.deepEqual(executionOrder, [
+      'start-501',
+      'end-501',
+      'start-502',
+      'end-502'
+    ]);
+  });
+
+  test('duplicate requests for one lesson reuse the active job', async () => {
+    let executions = 0;
+    subtitlesService._generateSubtitlesWithGemini = async lessonId => {
+      executions += 1;
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return { lesson_id: lessonId };
+    };
+
+    const first = subtitlesService.generateSubtitlesWithGemini(601);
+    const duplicate = subtitlesService.generateSubtitlesWithGemini(601);
+
+    assert.strictEqual(first, duplicate);
+    await Promise.all([first, duplicate]);
+    assert.equal(executions, 1);
   });
 });

@@ -1,6 +1,15 @@
 # PINECONE_API_KEY
 PINECONE_API_KEY=your-pinecone-api-key-here
 
+# Cloudflare R2 (private media bucket)
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key-id
+R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
+R2_BUCKET=elearning-media
+R2_MULTIPART_PART_SIZE_BYTES=67108864
+R2_MULTIPART_QUEUE_SIZE=3
+MEDIA_UPLOAD_MAX_BYTES=524288000
+
 # Rate Limiting Settings
 RATE_LIMIT_ENABLED=false //thêm vào để ẩn rate limit
 # TRUST_PROXY=false khi backend nhận kết nối trực tiếp. Đặt bằng số hop proxy

@@ -7,7 +7,30 @@
 const db = require('../config/database');
 const supabaseStorage = require('./supabaseStorage');
 
+function inferMediaKind(mimeType = '', storageKey = '') {
+  if (mimeType.startsWith('video/') || /\.(mp4|m4s|mpd)$/i.test(storageKey)) return 'video';
+  if (mimeType === 'application/pdf' || /\.pdf$/i.test(storageKey)) return 'pdf';
+  if (mimeType.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac)$/i.test(storageKey)) return 'audio';
+  if (mimeType.startsWith('image/') || /\.(jpe?g|png|gif|webp|avif)$/i.test(storageKey)) return 'image';
+  if (/\.(vtt|srt)$/i.test(storageKey)) return 'subtitle';
+  return 'other';
+}
+
 class OrphanCleanupService {
+  async markAssetDeleted(storageKey, storageBucket, storageProvider = 'r2', runner = db) {
+    try {
+      await runner.query(
+        `UPDATE media_assets
+         SET status = 'DELETED', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+         WHERE object_key = $1 AND storage_bucket = $2 AND storage_provider = $3 AND deleted_at IS NULL`,
+        [storageKey, storageBucket, storageProvider]
+      );
+    } catch (error) {
+      // Object đã bị xóa; lỗi metadata được ghi log nhưng không tạo retry xóa object lần hai.
+      console.warn(`[OrphanCleanup] Không cập nhật được media_assets cho ${storageKey}:`, error.message);
+    }
+  }
+
   /**
    * Đăng ký tệp vừa tải lên vào bảng pending_media_uploads (Hợp đồng upload tạm thời)
    */
@@ -16,20 +39,31 @@ class OrphanCleanupService {
     instructorId,
     storageKey,
     storageBucket,
+    storageProvider = 'r2',
     mimeType,
     sizeBytes = 0,
-    checksumSha256
+    checksumSha256,
+    originalName = null
   }) {
     if (!uploadId || !storageKey || !storageBucket || !checksumSha256) {
       throw new Error('Thiếu thông tin bắt buộc để đăng ký pending upload');
     }
 
     const query = `
+      WITH new_asset AS (
+        INSERT INTO media_assets (
+          media_kind, storage_provider, storage_bucket, object_key, original_filename,
+          mime_type, size_bytes, checksum_sha256, status, created_by
+        )
+        VALUES ($9, $8, $3, $4, $10, $5, $6, $7, 'UPLOADING', $2)
+        RETURNING media_id
+      )
       INSERT INTO pending_media_uploads (
         upload_id, instructor_id, storage_provider, storage_bucket,
-        storage_key, mime_type, size_bytes, checksum_sha256, status
+        storage_key, mime_type, size_bytes, checksum_sha256, status, media_id
       )
-      VALUES ($1, $2, 'supabase', $3, $4, $5, $6, $7, 'PENDING')
+      SELECT $1, $2, $8, $3, $4, $5, $6, $7, 'PENDING', media_id
+      FROM new_asset
       RETURNING *
     `;
 
@@ -40,7 +74,10 @@ class OrphanCleanupService {
       storageKey,
       mimeType,
       sizeBytes,
-      checksumSha256
+      checksumSha256,
+      storageProvider,
+      inferMediaKind(mimeType, storageKey),
+      originalName
     ]);
 
     return res.rows[0];
@@ -97,7 +134,7 @@ class OrphanCleanupService {
     if (pending.storage_key !== storageKey) {
       throw new Error(`Storage key không khớp với phiên upload (${pending.storage_key} vs ${storageKey})`);
     }
-    if (pending.storage_provider !== 'supabase') {
+    if (!['r2', 'supabase'].includes(pending.storage_provider)) {
       throw new Error('Storage provider không khớp với pending upload');
     }
     if (pending.storage_bucket !== storageBucket) {
@@ -113,10 +150,14 @@ class OrphanCleanupService {
       throw new Error('Mã băm SHA-256 không khớp với tệp đã upload.');
     }
 
-    // 4. Kiểm tra sự tồn tại thực tế trên Supabase Storage
-    const exists = await supabaseStorage.checkObjectExists(pending.storage_key, pending.storage_bucket);
+    // 4. Kiểm tra sự tồn tại thực tế trên object storage
+    const exists = await supabaseStorage.checkObjectExists(
+      pending.storage_key,
+      pending.storage_bucket,
+      pending.storage_provider
+    );
     if (!exists) {
-      throw new Error(`Tài nguyên ${pending.storage_key} không tồn tại thực tế trên Supabase Storage.`);
+      throw new Error(`Tài nguyên ${pending.storage_key} không tồn tại thực tế trên object storage.`);
     }
 
     // Đánh dấu CLAIMING trong transaction
@@ -135,10 +176,17 @@ class OrphanCleanupService {
     if (!Array.isArray(uploadIds) || uploadIds.length === 0) return;
     const runner = client || db;
 
-    await runner.query(
-      `UPDATE pending_media_uploads SET status = 'COMMITTED' WHERE upload_id = ANY($1::uuid[])`,
-      [uploadIds]
-    );
+    await runner.query(`
+      WITH committed AS (
+        UPDATE pending_media_uploads
+        SET status = 'COMMITTED'
+        WHERE upload_id = ANY($1::uuid[])
+        RETURNING media_id
+      )
+      UPDATE media_assets
+      SET status = 'READY', updated_at = CURRENT_TIMESTAMP
+      WHERE media_id IN (SELECT media_id FROM committed WHERE media_id IS NOT NULL)
+    `, [uploadIds]);
   }
 
   /**
@@ -170,7 +218,7 @@ class OrphanCleanupService {
     return res.rows.map(r => ({
         key: r.storage_key,
         bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
-        provider: r.storage_provider || 'supabase'
+        provider: r.storage_provider || 'r2'
       }));
   }
 
@@ -199,7 +247,7 @@ class OrphanCleanupService {
     return res.rows.map(r => ({
         key: r.storage_key,
         bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
-        provider: r.storage_provider || 'supabase'
+        provider: r.storage_provider || 'r2'
       }));
   }
 
@@ -227,7 +275,7 @@ class OrphanCleanupService {
     return res.rows.map(r => ({
         key: r.storage_key,
         bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
-        provider: r.storage_provider || 'supabase'
+        provider: r.storage_provider || 'r2'
       }));
   }
 
@@ -261,25 +309,25 @@ class OrphanCleanupService {
   /**
    * Ghi nhận xóa storage thất bại vào hàng đợi retry failed_storage_deletions
    */
-  async recordFailedDeletion(storageKey, storageBucket, errorMsg, pendingUploadId = null) {
+  async recordFailedDeletion(storageKey, storageBucket, errorMsg, pendingUploadId = null, storageProvider = 'r2') {
     try {
       await db.query(`
         INSERT INTO failed_storage_deletions (
           storage_provider, storage_bucket, storage_key, retry_count, last_error, status, next_retry_at, pending_upload_id
         )
-        VALUES ('supabase', $1, $2, 1, $3, 'PENDING_RETRY', CURRENT_TIMESTAMP + INTERVAL '5 minutes', $4)
+        VALUES ($5, $1, $2, 1, $3, 'PENDING_RETRY', CURRENT_TIMESTAMP + INTERVAL '5 minutes', $4)
         ON CONFLICT (storage_provider, storage_bucket, storage_key) DO UPDATE
         SET status = 'PENDING_RETRY', retry_count = 1, last_error = EXCLUDED.last_error,
             next_retry_at = EXCLUDED.next_retry_at, resolved_at = NULL,
             pending_upload_id = COALESCE(EXCLUDED.pending_upload_id, failed_storage_deletions.pending_upload_id)
-      `, [storageBucket || 'videos', storageKey, errorMsg || 'Unknown deletion error', pendingUploadId]);
+      `, [storageBucket || 'videos', storageKey, errorMsg || 'Unknown deletion error', pendingUploadId, storageProvider]);
     } catch (e) {
       console.error(`🚨 [OrphanCleanup] Không thể lưu failed_storage_deletions cho ${storageKey}:`, e.message);
     }
   }
 
   /**
-   * Thực hiện dọn dẹp danh sách storage keys khỏi Supabase Storage nếu không còn ai tham chiếu
+   * Thực hiện dọn dẹp danh sách storage keys khỏi object storage nếu không còn ai tham chiếu
    */
   async cleanupUnreferencedAssets(assetsList = []) {
     let cleanedCount = 0;
@@ -291,28 +339,29 @@ class OrphanCleanupService {
 
     const uniqueKeys = new Map();
     for (const item of assetsList) {
-      if (item && item.key && (item.provider === 'supabase' || !item.provider)) {
+      if (item && item.key && (item.provider === 'r2' || item.provider === 'supabase' || !item.provider)) {
         // Bỏ qua external URL hoặc local legacy path
         if (item.key.startsWith('http://') || item.key.startsWith('https://') || item.key.startsWith('/uploads/')) {
           continue;
         }
         const bucket = item.bucket || (item.key.endsWith('.pdf') ? 'documents' : 'videos');
-        uniqueKeys.set(item.key, bucket);
+        uniqueKeys.set(`${item.provider || 'r2'}::${item.key}`, { key: item.key, bucket, provider: item.provider || 'r2' });
       }
     }
 
-    for (const [key, bucket] of uniqueKeys.entries()) {
+    for (const { key, bucket, provider } of uniqueKeys.values()) {
       try {
         const isReferenced = await this.isKeyReferenced(key);
         if (!isReferenced) {
-          const success = await supabaseStorage.deleteStorageObject(key, bucket);
+          const success = await supabaseStorage.deleteStorageObject(key, bucket, provider);
           if (success) {
             cleanedCount++;
+            await this.markAssetDeleted(key, bucket, provider);
             console.log(`🧹 [OrphanCleanup] Đã dọn dẹp thành công file mồ côi: ${bucket}/${key}`);
           } else {
             const err = `deleteStorageObject returned false for ${bucket}/${key}`;
             errors.push(err);
-            await this.recordFailedDeletion(key, bucket, err);
+            await this.recordFailedDeletion(key, bucket, err, null, provider);
           }
         } else {
           console.debug(`ℹ️ [OrphanCleanup] Bỏ qua file còn tham chiếu: ${bucket}/${key}`);
@@ -320,7 +369,7 @@ class OrphanCleanupService {
       } catch (e) {
         errors.push(`Lỗi dọn dẹp ${bucket}/${key}: ${e.message}`);
         console.warn(`⚠️ [OrphanCleanup] Lỗi dọn dẹp ${bucket}/${key}:`, e.message);
-        await this.recordFailedDeletion(key, bucket, e.message);
+        await this.recordFailedDeletion(key, bucket, e.message, null, provider);
       }
     }
 
@@ -344,16 +393,18 @@ class OrphanCleanupService {
           const isReferenced = await this.isKeyReferenced(item.key);
           if (!isReferenced) {
             const bucket = item.bucket || (item.key.endsWith('.pdf') ? 'documents' : 'videos');
-            const success = await supabaseStorage.deleteStorageObject(item.key, bucket);
+            const provider = item.provider || 'r2';
+            const success = await supabaseStorage.deleteStorageObject(item.key, bucket, provider);
             if (success) {
+              await this.markAssetDeleted(item.key, bucket, provider);
               console.log(`🔄 [OrphanCleanup] Đã rollback file upload mồ côi sau DB Rollback: ${bucket}/${item.key}`);
             } else {
-              await this.recordFailedDeletion(item.key, bucket, 'Rollback delete returned false');
+              await this.recordFailedDeletion(item.key, bucket, 'Rollback delete returned false', null, provider);
             }
           }
         } catch (e) {
           console.warn(`⚠️ [OrphanCleanup] Không thể rollback file ${item.key}:`, e.message);
-          await this.recordFailedDeletion(item.key, item.bucket, e.message);
+          await this.recordFailedDeletion(item.key, item.bucket, e.message, null, item.provider || 'r2');
         }
       }
     }
@@ -370,7 +421,7 @@ class OrphanCleanupService {
       await client.query('BEGIN');
 
       const selectQuery = `
-        SELECT upload_id, storage_key, storage_bucket 
+        SELECT upload_id, storage_key, storage_bucket, storage_provider
         FROM pending_media_uploads 
         WHERE (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
            OR (status = 'CLEANING'
@@ -411,16 +462,17 @@ class OrphanCleanupService {
             await db.query(`UPDATE pending_media_uploads SET status = 'COMMITTED' WHERE upload_id = $1`, [item.upload_id]);
             continue;
           }
-          const deleted = await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket);
+          const deleted = await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket, item.storage_provider);
           if (!deleted) throw new Error('deleteStorageObject returned false');
           await db.query(
             `UPDATE pending_media_uploads SET status = 'EXPIRED' WHERE upload_id = $1`,
             [item.upload_id]
           );
+          await this.markAssetDeleted(item.storage_key, item.storage_bucket, item.storage_provider);
           cleaned++;
         } catch (delErr) {
           console.warn(`⚠️ [TTL Cleanup] Lỗi xóa file hết hạn ${item.storage_key}:`, delErr.message);
-          await this.recordFailedDeletion(item.storage_key, item.storage_bucket, delErr.message, item.upload_id);
+          await this.recordFailedDeletion(item.storage_key, item.storage_bucket, delErr.message, item.upload_id, item.storage_provider);
         }
       }
     } catch (e) {
@@ -443,7 +495,7 @@ class OrphanCleanupService {
       await client.query('BEGIN');
 
       const query = `
-        SELECT deletion_id, storage_key, storage_bucket, retry_count, pending_upload_id
+        SELECT deletion_id, storage_key, storage_bucket, storage_provider, retry_count, pending_upload_id
         FROM failed_storage_deletions
         WHERE status = 'PENDING_RETRY' AND next_retry_at <= CURRENT_TIMESTAMP
         ORDER BY deletion_id ASC
@@ -482,7 +534,7 @@ class OrphanCleanupService {
         }
 
         try {
-          const success = await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket);
+          const success = await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket, item.storage_provider);
           if (success) {
             await client.query(
               `UPDATE failed_storage_deletions SET status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP WHERE deletion_id = $1`,
@@ -491,6 +543,7 @@ class OrphanCleanupService {
             if (item.pending_upload_id) {
               await client.query(`UPDATE pending_media_uploads SET status = 'EXPIRED', cleaning_started_at = NULL WHERE upload_id = $1`, [item.pending_upload_id]);
             }
+            await this.markAssetDeleted(item.storage_key, item.storage_bucket, item.storage_provider, client);
             processed++;
           } else {
             throw new Error('deleteStorageObject returned false');

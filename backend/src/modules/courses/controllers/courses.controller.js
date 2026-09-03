@@ -7,6 +7,7 @@ const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const { sanitizeLessonMediaForClient } = require('../../../utils/videoSecurity.util');
 const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
+const { buildCourseAssetPrefix } = require('../../../utils/mediaObjectKey.util');
 
 async function registerUploadedObject(req, uploadResult, storageBucket, mimeType) {
   const pendingUploadId = crypto.randomUUID();
@@ -15,10 +16,12 @@ async function registerUploadedObject(req, uploadResult, storageBucket, mimeType
       uploadId: pendingUploadId,
       instructorId: req.user?.id || req.user?.userId,
       storageKey: uploadResult.storageKey,
-      storageBucket,
-      mimeType,
+      storageBucket: uploadResult.storageBucket || storageBucket,
+      storageProvider: uploadResult.storageProvider || 'r2',
+      mimeType: uploadResult.mimeType || mimeType,
       sizeBytes: uploadResult.sizeBytes,
-      checksumSha256: uploadResult.checksumSha256
+      checksumSha256: uploadResult.checksumSha256,
+      originalName: req.file?.originalname
     });
     return pendingUploadId;
   } catch (error) {
@@ -83,9 +86,20 @@ exports.uploadFile = async (req, res, next) => {
     const ext = path.extname(req.file.originalname).toLowerCase();
     const isVideo = req.file.mimetype.startsWith('video/') || ['.mp4', '.mov', '.mkv', '.avi'].includes(ext);
     const isPdf = req.file.mimetype === 'application/pdf' || ext === '.pdf';
+    const isImage = req.file.mimetype.startsWith('image/');
+    const isAudio = req.file.mimetype.startsWith('audio/');
 
     const instructorId = req.user?.id || req.user?.userId || 'common';
     const assetId = crypto.randomUUID();
+    const courseIdentity = {
+      courseName: req.body?.courseName,
+      courseId: req.body?.courseId,
+      fallbackId: `draft-${instructorId}`,
+      sectionName: req.body?.sectionName,
+      sectionOrder: req.body?.sectionOrder,
+      lessonName: req.body?.lessonName,
+      lessonOrder: req.body?.lessonOrder
+    };
     const rawBaseName = path.basename(req.file.originalname, ext);
     const safeBaseName = rawBaseName.replace(/[^a-zA-Z0-9_-]/g, '_');
 
@@ -99,7 +113,11 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
-      const assetPrefix = `courses/${instructorId}/${assetId}`;
+      const assetPrefix = buildCourseAssetPrefix({
+        ...courseIdentity,
+        mediaKind: 'video',
+        assetId
+      });
       const drmEnabled = process.env.ENABLE_DRM_PACKAGING === 'true';
       const objectKey = `${assetPrefix}/${safeBaseName}.mp4`;
       const uploadResult = await supabaseStorage.uploadVideoToSupabase(
@@ -198,8 +216,8 @@ exports.uploadFile = async (req, res, next) => {
           pendingUploadId,
           fileUrl: manifestUpload.storageKey,
           storageKey: manifestUpload.storageKey,
-          storageProvider: 'supabase',
-          storageBucket: 'videos',
+          storageProvider: 'r2',
+          storageBucket: manifestUpload.storageBucket,
           mimeType: 'application/dash+xml',
           sizeBytes: manifestUpload.sizeBytes,
           checksumSha256: manifestUpload.checksumSha256,
@@ -216,12 +234,12 @@ exports.uploadFile = async (req, res, next) => {
 
       return res.status(200).json({
         success: true,
-        message: 'Tải video lên Supabase Storage thành công',
+        message: 'Tải video lên Cloudflare R2 thành công',
         pendingUploadId,
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
-        storageProvider: 'supabase',
-        storageBucket: 'videos',
+        storageProvider: 'r2',
+        storageBucket: uploadResult.storageBucket,
         mimeType: 'video/mp4',
         sizeBytes: uploadResult.sizeBytes,
         checksumSha256: uploadResult.checksumSha256,
@@ -243,7 +261,12 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
-      const objectKey = `courses/${instructorId}/${assetId}/${safeBaseName}.pdf`;
+      const assetPrefix = buildCourseAssetPrefix({
+        ...courseIdentity,
+        mediaKind: 'pdf',
+        assetId
+      });
+      const objectKey = `${assetPrefix}/${safeBaseName}.pdf`;
       const uploadResult = await supabaseStorage.uploadDocumentToSupabase(req.file.path, objectKey, 'application/pdf');
 
       if (!uploadResult.success) {
@@ -262,12 +285,12 @@ exports.uploadFile = async (req, res, next) => {
 
       return res.status(200).json({
         success: true,
-        message: 'Tải tài liệu PDF lên Supabase Storage thành công',
+        message: 'Tải tài liệu PDF lên Cloudflare R2 thành công',
         pendingUploadId,
         fileUrl: uploadResult.storageKey,
         storageKey: uploadResult.storageKey,
-        storageProvider: 'supabase',
-        storageBucket: 'documents',
+        storageProvider: 'r2',
+        storageBucket: uploadResult.storageBucket,
         mimeType: 'application/pdf',
         sizeBytes: uploadResult.sizeBytes,
         checksumSha256: uploadResult.checksumSha256,
@@ -279,11 +302,59 @@ exports.uploadFile = async (req, res, next) => {
       });
     }
 
-    // 3. TỪ CHỐI ĐỊNH DẠNG KHÔNG HỢP LỆ
+    // 3. AUDIO VÀ HÌNH ẢNH LỚN
+    if (isAudio || isImage) {
+      const mediaKind = isAudio ? 'audio' : 'image';
+      const assetPrefix = buildCourseAssetPrefix({
+        ...courseIdentity,
+        mediaKind,
+        assetId
+      });
+      const objectKey = `${assetPrefix}/${safeBaseName}${ext}`;
+      const uploadResult = await supabaseStorage.uploadPrivateObject(
+        req.file.path,
+        objectKey,
+        mediaKind,
+        req.file.mimetype
+      );
+      if (!uploadResult.success) {
+        return res.status(uploadResult.code === 'FILE_TOO_LARGE' ? 400 : 500).json({
+          success: false,
+          code: uploadResult.code || 'UPLOAD_FAILED',
+          message: uploadResult.error || `Tải ${mediaKind} lên Cloudflare R2 thất bại`
+        });
+      }
+
+      const pendingUploadId = await registerUploadedObject(
+        req,
+        uploadResult,
+        uploadResult.storageBucket,
+        req.file.mimetype
+      );
+      return res.status(200).json({
+        success: true,
+        message: `Tải ${mediaKind} lên Cloudflare R2 thành công`,
+        pendingUploadId,
+        fileUrl: uploadResult.storageKey,
+        storageKey: uploadResult.storageKey,
+        storageProvider: 'r2',
+        storageBucket: uploadResult.storageBucket,
+        mimeType: uploadResult.mimeType,
+        sizeBytes: uploadResult.sizeBytes,
+        checksumSha256: uploadResult.checksumSha256,
+        mediaStatus: 'PENDING',
+        playbackType: mediaKind,
+        originalName: req.file.originalname,
+        mimetype: uploadResult.mimeType,
+        isDrmProtected: false
+      });
+    }
+
+    // 4. TỪ CHỐI ĐỊNH DẠNG KHÔNG HỢP LỆ
     return res.status(400).json({
       success: false,
       code: 'UNSUPPORTED_FILE_TYPE',
-      message: 'Hệ thống chỉ hỗ trợ tải lên bài giảng dạng Video (MP4 H.264/AAC) hoặc Tài liệu (PDF).'
+      message: 'Hệ thống chỉ hỗ trợ video MP4, PDF, audio và hình ảnh.'
     });
   } catch (error) {
     next(error);

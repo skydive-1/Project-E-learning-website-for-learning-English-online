@@ -56,6 +56,8 @@ class SubtitlesService {
     this.activeAutoGenerationJobs = new Set();
     this.autoGenerationQueue = new Map();
     this.autoQueueRunning = false;
+    this.generationQueueTail = Promise.resolve();
+    this.activeGenerationPromises = new Map();
   }
 
   /**
@@ -318,7 +320,7 @@ class SubtitlesService {
 
     const minSilence = options.minSilence || 400;
     const silenceThresh = options.silenceThresh || -40;
-    const workers = options.workers || 2;
+    const workers = options.workers || Number(process.env.SUBTITLE_VAD_WORKERS) || 1;
 
     const videoName = path.basename(videoPath, path.extname(videoPath));
     const outputJsonPath = path.join(
@@ -595,7 +597,26 @@ Quy tắc:
    *   - Supabase storage key: courses/xxx/uuid/video.mp4 — tải tạm về qua Signed URL
    *   - Signed HTTPS URL: https://...supabase.co/... — tải tạm trực tiếp
    */
-  async generateSubtitlesWithGemini(lessonId, options = {}) {
+  generateSubtitlesWithGemini(lessonId, options = {}) {
+    const jobKey = String(parseInt(lessonId, 10));
+    const activeJob = this.activeGenerationPromises.get(jobKey);
+    if (activeJob) return activeJob;
+
+    const queuedJob = this.generationQueueTail.then(() => (
+      this._generateSubtitlesWithGemini(lessonId, options)
+    ));
+
+    // Giữ chuỗi hàng đợi luôn resolve để một job lỗi không chặn các job sau.
+    this.generationQueueTail = queuedJob.catch(() => undefined);
+    this.activeGenerationPromises.set(jobKey, queuedJob);
+    queuedJob.then(
+      () => this.activeGenerationPromises.delete(jobKey),
+      () => this.activeGenerationPromises.delete(jobKey)
+    );
+    return queuedJob;
+  }
+
+  async _generateSubtitlesWithGemini(lessonId, options = {}) {
     const expectedSourceUrl = options.expectedSourceUrl || null;
     let rawContentUrl = '';
     let videoFilePath = null;
@@ -605,7 +626,8 @@ Quy tắc:
       // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
       // server-side; URL/khoá nguồn này không được trả về player phía client.
       const rawResult = await db.query(
-        'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
+        `SELECT lesson_id, content_type, content_url, storage_key, storage_bucket, storage_provider
+         FROM lessons WHERE lesson_id = $1`,
         [parseInt(lessonId, 10)]
       );
       if (rawResult.rows.length === 0) {
@@ -617,7 +639,7 @@ Quy tắc:
         throw new Error(`Bài học ${lessonId} không phải là video (content_type = ${rawLesson.content_type})`);
       }
 
-      rawContentUrl = rawLesson.content_url || '';
+      rawContentUrl = rawLesson.storage_key || rawLesson.content_url || '';
       if (!rawContentUrl) {
         throw new Error(`Bài học ${lessonId} chưa có nguồn video`);
       }
@@ -656,17 +678,22 @@ Quy tắc:
           console.warn(`[Subtitles] Bài học ${lessonId}: /uploads/ path không còn trên disk (đã bị xóa sau deploy). Bỏ qua.`);
         }
       } else if (rawContentUrl && !rawContentUrl.startsWith('http://') && !rawContentUrl.startsWith('https://')) {
-        // Supabase storage key dạng: courses/123/uuid/video.mp4
-        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện Supabase storage key. Đang tạo Signed URL để tải tạm...`);
+        // Private object storage key dạng: courses/123/uuid/video.mp4
+        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện private storage key. Đang tạo Signed URL để tải tạm...`);
         const { generateSignedUrl } = require('../../../utils/supabaseStorage');
         const sourceStorageKey = rawContentUrl.endsWith('.mpd')
           ? path.posix.join(path.posix.dirname(rawContentUrl), 'source.mp4')
           : rawContentUrl;
-        const signedUrl = await generateSignedUrl(sourceStorageKey, 'videos', 3600);
+        const signedUrl = await generateSignedUrl(
+          sourceStorageKey,
+          rawLesson.storage_bucket || 'videos',
+          3600,
+          rawLesson.storage_provider || 'r2'
+        );
         if (!signedUrl) {
-          throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối Supabase.`);
+          throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối object storage.`);
         }
-        console.log(`[Subtitles] Bài học ${lessonId}: Đang tải video tạm về từ Supabase (có thể mất vài giây với video lớn)...`);
+        console.log(`[Subtitles] Bài học ${lessonId}: Đang tải video tạm về từ object storage (có thể mất vài giây với video lớn)...`);
         tempVideoPath = await this.downloadVideoToTemp(signedUrl, lessonId);
         videoFilePath = tempVideoPath;
         console.log(`[Subtitles] Bài học ${lessonId}: ✅ Đã tải video tạm về ${tempVideoPath} (${Math.round(fs.statSync(tempVideoPath).size / (1024 * 1024))}MB). Bắt đầu pipeline FFmpeg...`);
@@ -693,7 +720,9 @@ Quy tắc:
       const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'true').toLowerCase() === 'true';
       if (vadEnabled) {
         console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
-        const vadCues = await this.runSilenceVadPipeline(videoFilePath, { workers: 2 });
+        const vadCues = await this.runSilenceVadPipeline(videoFilePath, {
+          workers: Number(process.env.SUBTITLE_VAD_WORKERS) || 1
+        });
         if (vadCues.length === 0) {
           const noSpeechError = new Error('VAD pipeline không phát hiện đoạn giọng nói nào trong video.');
           noSpeechError.status = 422;

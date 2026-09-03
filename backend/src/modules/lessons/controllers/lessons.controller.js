@@ -68,7 +68,8 @@ async function proxyPrivateStoragePdf(req, res, lesson, storageKey) {
   const upstream = await supabaseStorage.fetchPrivateObject(
     storageKey,
     lesson.storage_bucket || 'documents',
-    req.headers.range || null
+    req.headers.range || null,
+    lesson.storage_provider || 'r2'
   );
 
   if (!upstream || upstream.status === 404) {
@@ -129,7 +130,8 @@ async function proxyPrivateStorageVideo(req, res, lesson, storageKey) {
   const upstream = await supabaseStorage.fetchPrivateObject(
     storageKey,
     lesson.storage_bucket || 'videos',
-    range.header
+    range.header,
+    lesson.storage_provider || 'r2'
   );
 
   if (!upstream) {
@@ -183,7 +185,8 @@ async function proxyPrivateDashSegment(req, res, lesson, segmentKey, fallbackCon
   const upstream = await supabaseStorage.fetchPrivateObject(
     segmentKey,
     lesson.storage_bucket || 'videos',
-    range.header
+    range.header,
+    lesson.storage_provider || 'r2'
   );
   if (!upstream || upstream.status === 404) {
     return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
@@ -221,7 +224,7 @@ async function resolveReadyDashLesson(req, res) {
     return null;
   }
   const source = lesson.storage_key || lesson.content_url || '';
-  const isStorage = lesson.storage_provider === 'supabase' || (
+  const isStorage = ['r2', 'supabase'].includes(lesson.storage_provider) || (
     source && !source.startsWith('/uploads/') && !source.startsWith('uploads/') && !/^https?:\/\//i.test(source)
   );
   if (isStorage) {
@@ -248,7 +251,9 @@ exports.streamDashManifest = async (req, res, next) => {
     if (resolved.storageKey) {
       const upstream = await supabaseStorage.fetchPrivateObject(
         resolved.storageKey,
-        resolved.lesson.storage_bucket || 'videos'
+        resolved.lesson.storage_bucket || 'videos',
+        null,
+        resolved.lesson.storage_provider || 'r2'
       );
       if (!upstream?.ok) return res.status(404).json({ success: false, code: 'DASH_NOT_FOUND', message: 'DASH manifest không tồn tại' });
       manifest = await upstream.text();
@@ -537,9 +542,9 @@ exports.streamLessonVideo = async (req, res, next) => {
       });
     }
 
-    // Supabase private object được proxy qua backend; signed URL chỉ tồn tại
+    // R2 private object được proxy qua backend; signed URL chỉ tồn tại
     // server-side và không xuất hiện trong Location/header trả về client.
-    if (lesson.storage_provider === 'supabase' ||
+    if (['r2', 'supabase'].includes(lesson.storage_provider) ||
         (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/'))) {
       return proxyPrivateStorageVideo(req, res, lesson, storageKey);
     }
@@ -599,7 +604,7 @@ function resolveMaterialUrl(req, material) {
   const protocol = req.protocol;
   const baseUrl = process.env.BACKEND_URL || `${protocol}://${host}`;
 
-  // Đối với storage key bền vững trên Supabase hoặc local: Trả về endpoint preview được bảo vệ
+  // Đối với storage key bền vững trên R2 hoặc local: Trả về endpoint preview được bảo vệ
   if (material.material_id && material.lesson_id) {
     return `${baseUrl.replace(/\/$/, '')}/api/lessons/${material.lesson_id}/materials/${material.material_id}/preview`;
   }
@@ -614,7 +619,7 @@ function formatMaterialItem(req, m) {
     url: resolveMaterialUrl(req, m),
     storageKey: m.storage_key || m.file_url,
     storageBucket: m.storage_bucket || 'documents',
-    storageProvider: m.storage_provider || 'supabase',
+    storageProvider: m.storage_provider || 'r2',
     mediaStatus: m.media_status || 'READY',
     fileType: m.mime_type || m.file_type || 'application/pdf',
     sizeKb: m.file_size_kb || Math.round((m.size_bytes || 0) / 1024) || 0,
@@ -664,9 +669,9 @@ exports.previewMaterial = async (req, res, next) => {
       return res.redirect(storageKey);
     }
 
-    // 4. Nếu là Supabase Storage Object
+    // 4. Nếu là R2 private object
     if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
-      const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600);
+      const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600, mat.storage_provider || 'r2');
       if (signedUrl) {
         return res.redirect(signedUrl);
       }
@@ -692,7 +697,7 @@ exports.previewMaterial = async (req, res, next) => {
 };
 
 /**
- * Stream PDF chính của bài học qua backend. Tệp Supabase được proxy server-side,
+ * Stream PDF chính của bài học qua backend. Tệp R2 được proxy server-side,
  * còn đường dẫn /uploads chỉ được giữ làm fallback cho dữ liệu legacy.
  */
 exports.streamLessonPdf = async (req, res, next) => {

@@ -8,7 +8,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Đường dẫn lưu file upload (CHỈ dùng cho file TẠM của luồng courses/upload)
-// File tạm này sẽ bị xóa NGAY SAU khi upload lên Supabase Storage qua finally block
+// File tạm này sẽ bị xóa NGAY SAU khi upload lên Cloudflare R2 qua finally block
 // trong coursesController.uploadFile — KHÔNG phải nơi lưu trữ lâu dài.
 const uploadDir = path.join(__dirname, '../../uploads');
 
@@ -18,7 +18,7 @@ if (!fs.existsSync(uploadDir)) {
 
 // Cấu hình disk storage — CHỈ dùng cho route POST /api/courses/upload
 // (uploadFile trong courses.controller.js). File được đọc từ req.file.path,
-// upload lên Supabase, rồi bị XÓA ngay bởi fs.unlinkSync trong finally block.
+// upload lên R2, rồi bị XÓA ngay bởi fs.unlinkSync trong finally block.
 // KHÔNG dùng diskStorage cho bất kỳ route nào khác để tránh ghi file lâu dài vào local.
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -61,15 +61,24 @@ const generalFileFilter = (req, file, cb) => {
     'image/jpeg',
     'image/png',
     'image/gif',
-    'image/webp'
+    'image/webp',
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/x-m4a',
+    'audio/aac',
+    'audio/webm'
   ];
-  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  const allowedExtensions = ['.pdf', '.mp4', '.mov', '.mkv', '.avi', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.webm'];
   const ext = path.extname(file.originalname).toLowerCase();
 
   if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Định dạng tệp không hợp lệ. Chỉ cho phép tệp PDF, Video hoặc Hình ảnh.'), false);
+    cb(new Error('Định dạng tệp không hợp lệ. Chỉ cho phép PDF, video, audio hoặc hình ảnh.'), false);
   }
 };
 
@@ -77,7 +86,7 @@ const upload = multer({
   storage: storage,
   fileFilter: generalFileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50 MB — Phù hợp Supabase Storage 1GB free plan (~20 video)
+    fileSize: Number(process.env.MEDIA_UPLOAD_MAX_BYTES || 500 * 1024 * 1024)
   }
 });
 
@@ -208,7 +217,7 @@ const verifyAudioMagicBytes = (req, res, next) => {
 // SỬ DỤNG memoryStorage — file PDF tài liệu đính kèm được giữ trong RAM buffer,
 // KHÔNG ghi ra local disk. lessonsService.uploadLessonMaterial đọc file.path từ
 // diskStorage cũ; sau khi chuyển sang memoryStorage thì service đọc file.buffer.
-// File được upload thẳng lên Supabase Storage bucket 'documents' và xóa khỏi RAM
+// File được upload thẳng lên Cloudflare R2 và xóa khỏi RAM
 // sau khi hàm trả về — đảm bảo KHÔNG có file PDF nào tồn tại lâu dài trên local.
 const materialPdfFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();

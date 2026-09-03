@@ -15,3 +15,5 @@ build/
 # Backups & Temp data
 backups/
 
+# Runtime upload staging. Durable course media belongs in Cloudflare R2.
+uploads/courses/
