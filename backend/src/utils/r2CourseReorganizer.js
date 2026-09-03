@@ -317,6 +317,271 @@ async function reorganizeCourseMedia(courseId, { deleteSource = true } = {}) {
   return { total: rows.length, moved, failed: failures.length, failures };
 }
 
+/**
+ * Nạp danh sách media trên Supabase (storage_provider = 'supabase') của một khóa học.
+ * Đây là dữ liệu legacy — upload trước khi hệ thống chuyển hoàn toàn sang R2.
+ */
+async function loadSupabaseMedia({ courseId } = {}) {
+  const params = [];
+  let courseFilter = '';
+  if (courseId) {
+    params.push(courseId);
+    courseFilter = `AND c.course_id = $${params.length}`;
+  }
+
+  const result = await db.query(`
+    SELECT 'lesson' AS ref_type, l.lesson_id AS ref_id, l.media_asset_id,
+           c.course_id, c.course_name,
+           s.title AS section_name, s.order_index AS section_order,
+           l.title AS lesson_name, l.order_index AS lesson_order,
+           l.mime_type, COALESCE(l.storage_key, l.content_url) AS source_key,
+           l.storage_bucket AS source_bucket,
+           l.storage_provider AS source_provider
+    FROM lessons l
+    JOIN sections s ON s.section_id = l.section_id
+    JOIN courses c ON c.course_id = s.course_id
+    WHERE l.storage_provider = 'supabase'
+      AND COALESCE(l.storage_key, l.content_url) IS NOT NULL
+      ${courseFilter}
+    UNION ALL
+    SELECT 'material', m.material_id, m.media_asset_id,
+           c.course_id, c.course_name,
+           s.title AS section_name, s.order_index AS section_order,
+           l.title AS lesson_name, l.order_index AS lesson_order,
+           COALESCE(m.mime_type, m.file_type), COALESCE(m.storage_key, m.file_url),
+           m.storage_bucket,
+           m.storage_provider
+    FROM lesson_materials m
+    JOIN lessons l ON l.lesson_id = m.lesson_id
+    JOIN sections s ON s.section_id = l.section_id
+    JOIN courses c ON c.course_id = s.course_id
+    WHERE m.storage_provider = 'supabase'
+      AND COALESCE(m.storage_key, m.file_url) IS NOT NULL
+      ${courseFilter}
+    ORDER BY course_id, ref_type, ref_id
+  `, params);
+  return result.rows;
+}
+
+/**
+ * Download một object từ Supabase về buffer trong bộ nhớ.
+ * Sử dụng signed URL để truy cập private bucket.
+ */
+async function downloadFromSupabase(storageKey, storageBucket) {
+  const { supabaseAdmin } = require('../config/supabase');
+  const client = supabaseAdmin;
+
+  // Thử download trực tiếp qua storage API
+  const { data, error } = await client.storage.from(storageBucket).download(storageKey);
+  if (error) {
+    throw new Error(`Không thể download từ Supabase (${storageBucket}/${storageKey}): ${error.message}`);
+  }
+  // data là Blob
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+/**
+ * Cập nhật DB sau khi migrate từ Supabase → R2.
+ * Cập nhật storage_provider, storage_bucket, storage_key, content_url.
+ */
+async function persistSupabaseMigration(row, newKey, newBucket) {
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (row.ref_type === 'lesson') {
+      await client.query(
+        `UPDATE lessons
+         SET storage_provider = 'r2',
+             storage_bucket   = $1,
+             storage_key      = $2,
+             content_url      = $2,
+             updated_at       = CURRENT_TIMESTAMP
+         WHERE lesson_id = $3
+           AND storage_provider = 'supabase'
+           AND COALESCE(storage_key, content_url) = $4`,
+        [newBucket, newKey, row.ref_id, row.source_key]
+      );
+    } else {
+      await client.query(
+        `UPDATE lesson_materials
+         SET storage_provider = 'r2',
+             storage_bucket   = $1,
+             storage_key      = $2,
+             file_url         = $2,
+             updated_at       = CURRENT_TIMESTAMP
+         WHERE material_id = $3
+           AND storage_provider = 'supabase'
+           AND COALESCE(storage_key, file_url) = $4`,
+        [newBucket, newKey, row.ref_id, row.source_key]
+      );
+    }
+    // Cập nhật pending_media_uploads nếu còn tham chiếu cũ
+    await client.query(
+      `UPDATE pending_media_uploads
+       SET storage_provider = 'r2', storage_bucket = $1, storage_key = $2
+       WHERE storage_provider = 'supabase' AND storage_key = $3 AND status = 'COMMITTED'`,
+      [newBucket, newKey, row.source_key]
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Xóa object cũ trên Supabase (best-effort).
+ */
+async function deleteFromSupabase(storageKey, storageBucket) {
+  try {
+    const { supabaseAdmin } = require('../config/supabase');
+    const { error } = await supabaseAdmin.storage.from(storageBucket).remove([storageKey]);
+    if (error) {
+      console.warn(`[R2-Migrate] Không xóa được Supabase object ${storageBucket}/${storageKey}: ${error.message}`);
+    }
+  } catch (err) {
+    console.warn(`[R2-Migrate] Lỗi xóa Supabase object ${storageBucket}/${storageKey}: ${err.message}`);
+  }
+}
+
+/**
+ * Migrate toàn bộ media Supabase của MỘT khóa học sang Cloudflare R2.
+ *
+ * Luồng xử lý từng file:
+ *   1. Download buffer từ Supabase
+ *   2. Upload lên R2 vào đúng thư mục chuẩn (courses/<slug>-<id>/sections/.../lessons/...)
+ *   3. Cập nhật DB (storage_provider, storage_key, storage_bucket)
+ *   4. Xóa file cũ trên Supabase (best-effort)
+ *
+ * Không throw ra ngoài với lỗi từng item — trả về báo cáo để caller tự quyết định.
+ */
+async function migrateSupabaseMediaToR2(courseId, { deleteSource = true } = {}) {
+  if (!courseId) return { total: 0, migrated: 0, failed: 0, failures: [] };
+
+  const rows = await loadSupabaseMedia({ courseId });
+  if (rows.length === 0) return { total: 0, migrated: 0, failed: 0, failures: [] };
+
+  const bucket = r2.resolveBucket();
+  let migrated = 0;
+  const failures = [];
+
+  for (const row of rows) {
+    try {
+      // Xây dựng R2 key chuẩn
+      const ext = path.posix.extname(row.source_key) || '';
+      const safeBaseName = path.posix.basename(row.source_key, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const assetId = row.media_asset_id || `${row.ref_type}-${row.ref_id}`;
+      const targetPrefix = buildCourseAssetPrefix({
+        courseName: row.course_name,
+        courseId: row.course_id,
+        sectionName: row.section_name,
+        sectionOrder: row.section_order,
+        lessonName: row.lesson_name,
+        lessonOrder: row.lesson_order,
+        mediaKind: mediaKindFor(row),
+        assetId: String(assetId).replace(/[^a-zA-Z0-9_-]/g, '')
+      });
+      const newKey = `${targetPrefix}/${safeBaseName}${ext}`;
+
+      // Kiểm tra xem đã có ở R2 chưa (idempotent)
+      const existing = await headObject(newKey);
+      let fileBuffer;
+
+      if (!existing) {
+        // Download từ Supabase
+        fileBuffer = await downloadFromSupabase(row.source_key, row.source_bucket);
+
+        // Upload lên R2
+        const { Upload } = require('@aws-sdk/lib-storage');
+        const crypto = require('crypto');
+        const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+        const uploader = new Upload({
+          client: r2.getClient(),
+          params: {
+            Bucket: bucket,
+            Key: newKey,
+            Body: fileBuffer,
+            ContentLength: fileBuffer.length,
+            ContentType: row.mime_type || 'application/octet-stream',
+            CacheControl: 'private, no-store',
+            Metadata: { sha256, migrated_from: 'supabase' }
+          },
+          queueSize: 1,
+          partSize: 64 * 1024 * 1024,
+          leavePartsOnError: false
+        });
+        await uploader.done();
+      }
+
+      // Cập nhật DB
+      await persistSupabaseMigration(row, newKey, bucket);
+
+      // Xóa Supabase (best-effort)
+      if (deleteSource) {
+        await deleteFromSupabase(row.source_key, row.source_bucket);
+      }
+
+      migrated += 1;
+      console.log(`[R2-Migrate] ✅ ${row.ref_type}#${row.ref_id}: ${row.source_key} → ${newKey}`);
+    } catch (err) {
+      failures.push({
+        ref: `${row.ref_type}#${row.ref_id}`,
+        sourceKey: row.source_key,
+        message: err.message
+      });
+      console.warn(`[R2-Migrate] ❌ ${row.ref_type}#${row.ref_id} (${row.source_key}): ${err.message}`);
+    }
+  }
+
+  return { total: rows.length, migrated, failed: failures.length, failures };
+}
+
+/**
+ * Orchestrator: Chạy toàn bộ quá trình chuẩn hóa media của một khóa học:
+ *   1. migrateSupabaseMediaToR2 — migrate file legacy Supabase → R2
+ *   2. reorganizeCourseMedia    — dời file đã trên R2 về đúng thư mục
+ *
+ * Gọi hàm này ngay sau khi khóa học được PUBLISH (sau COMMIT).
+ * Trả về báo cáo tổng hợp.
+ */
+async function migrateCourseAllMedia(courseId, options = {}) {
+  if (!courseId) return null;
+
+  const supabaseReport = await migrateSupabaseMediaToR2(courseId, options);
+  const r2Report = await reorganizeCourseMedia(courseId, options);
+
+  const report = {
+    courseId,
+    supabase: supabaseReport,
+    r2Reorganize: r2Report,
+    totalMigrated: supabaseReport.migrated + r2Report.moved,
+    totalFailed: supabaseReport.failed + r2Report.failed,
+    failures: [
+      ...supabaseReport.failures.map(f => ({ ...f, phase: 'supabase→r2' })),
+      ...r2Report.failures.map(f => ({ ...f, phase: 'r2-reorganize' }))
+    ]
+  };
+
+  if (report.totalFailed > 0) {
+    console.warn(
+      `[Course Media Standardize] Khóa học #${courseId}: ` +
+      `${report.totalMigrated} thành công, ${report.totalFailed} lỗi:\n` +
+      report.failures.map(f => `  [${f.phase}] ${f.ref} (${f.sourceKey}): ${f.message}`).join('\n')
+    );
+  } else if (report.totalMigrated > 0) {
+    console.log(
+      `[Course Media Standardize] Khóa học #${courseId}: ` +
+      `Đã chuẩn hóa ${report.totalMigrated} media về Cloudflare R2 thành công.`
+    );
+  }
+
+  return report;
+}
+
 module.exports = {
   mediaKindFor,
   assetIdFor,
@@ -335,5 +600,8 @@ module.exports = {
   deleteObjects,
   markOldAssetsDeleted,
   loadReferencedMedia,
-  reorganizeCourseMedia
+  loadSupabaseMedia,
+  reorganizeCourseMedia,
+  migrateSupabaseMediaToR2,
+  migrateCourseAllMedia
 };

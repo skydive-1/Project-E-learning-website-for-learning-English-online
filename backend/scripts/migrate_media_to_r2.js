@@ -11,6 +11,7 @@ const db = require('../src/config/database');
 const supabase = require('../src/config/supabase');
 const r2 = require('../src/utils/r2Storage');
 const { resolveSafePath, UPLOADS_ROOT } = require('../src/utils/safePath.util');
+const { buildCourseAssetPrefix } = require('../src/utils/mediaObjectKey.util');
 
 const execute = process.argv.includes('--execute');
 const deleteSource = process.argv.includes('--delete-source');
@@ -27,9 +28,17 @@ function kindFor(row) {
 }
 
 function targetKeyFor(row, sourceKey = row.source_key) {
-  const clean = String(sourceKey).replace(/^\/?uploads\//, '').replace(/^\/+/, '');
-  const source = row.storage_provider === 'supabase' ? `supabase/${row.storage_bucket || 'unknown'}` : 'local';
-  return `migrated/${source}/${clean}`;
+  const prefix = buildCourseAssetPrefix({
+    courseName: row.course_name,
+    courseId: row.course_id,
+    sectionName: row.section_name,
+    sectionOrder: row.section_order,
+    lessonName: row.lesson_name,
+    lessonOrder: row.lesson_order,
+    mediaKind: kindFor(row),
+    assetId: row.media_asset_id || `${row.ref_type}-${row.ref_id}`
+  });
+  return path.posix.join(prefix, path.posix.basename(String(sourceKey)));
 }
 
 async function downloadSupabaseObject(bucket, key) {
@@ -144,21 +153,27 @@ async function removeLegacySource(row, sourceKeys = [row.source_key]) {
 async function main() {
   r2.getConfig();
   const result = await db.query(`
-    SELECT 'lesson' AS ref_type, l.lesson_id AS ref_id, l.storage_provider,
+    SELECT 'lesson' AS ref_type, l.lesson_id AS ref_id, l.media_asset_id, l.storage_provider,
            l.storage_bucket, COALESCE(l.storage_key, l.content_url) AS source_key,
            l.title AS original_filename, COALESCE(l.mime_type,
              CASE WHEN l.content_type = 'pdf' THEN 'application/pdf' ELSE 'video/mp4' END) AS mime_type,
-           c.instructor_id AS created_by
+           c.instructor_id AS created_by, c.course_id, c.course_name,
+           s.title AS section_name, s.order_index AS section_order,
+           l.title AS lesson_name, l.order_index AS lesson_order
     FROM lessons l
     JOIN sections s ON s.section_id = l.section_id
     JOIN courses c ON c.course_id = s.course_id
     WHERE (l.storage_provider IN ('supabase', 'local', 'legacy_local') OR l.content_url LIKE '/uploads/%')
       AND COALESCE(l.storage_key, l.content_url) IS NOT NULL
     UNION ALL
-    SELECT 'material', m.material_id, m.storage_provider, m.storage_bucket,
+    SELECT 'material', m.material_id, m.media_asset_id, m.storage_provider, m.storage_bucket,
            COALESCE(m.storage_key, m.file_url), m.file_name,
-           COALESCE(m.mime_type, m.file_type, 'application/pdf'), m.uploaded_by
+           COALESCE(m.mime_type, m.file_type, 'application/pdf'), m.uploaded_by,
+           c.course_id, c.course_name, s.title, s.order_index, l.title, l.order_index
     FROM lesson_materials m
+    JOIN lessons l ON l.lesson_id = m.lesson_id
+    JOIN sections s ON s.section_id = l.section_id
+    JOIN courses c ON c.course_id = s.course_id
     WHERE (m.storage_provider IN ('supabase', 'local', 'legacy_local') OR m.file_url LIKE '/uploads/%')
       AND COALESCE(m.storage_key, m.file_url) IS NOT NULL
     ORDER BY ref_type, ref_id

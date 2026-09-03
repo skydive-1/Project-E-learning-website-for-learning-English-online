@@ -32,6 +32,36 @@ class CoursesService {
     }
   }
 
+  /**
+   * Chuẩn hóa toàn bộ media của khóa học về Cloudflare R2 khi PUBLISH.
+   *
+   * Chạy ASYNC (best-effort) ngay sau khi transaction COMMIT thành công:
+   *   1. Migrate file legacy Supabase → R2 (nếu có)
+   *   2. Tổ chức lại thư mục R2 đúng cấu trúc chuẩn
+   *
+   * Không throw — chỉ log warning nếu có lỗi, không được phép làm hỏng
+   * luồng publish chính.
+   */
+  async _migrateCourseMediaOnPublish(courseId) {
+    if (!courseId) return;
+    try {
+      const { migrateCourseAllMedia } = require('../../../utils/r2CourseReorganizer');
+      const report = await migrateCourseAllMedia(courseId);
+      if (report && report.totalFailed > 0) {
+        console.warn(
+          `[Publish] Chuẩn hóa media khóa học #${courseId}: ` +
+          `${report.totalMigrated} thành công, ${report.totalFailed} lỗi.`
+        );
+      } else if (report && report.totalMigrated > 0) {
+        console.log(
+          `[Publish] Khóa học #${courseId}: đã chuẩn hóa ${report.totalMigrated} media lên Cloudflare R2.`
+        );
+      }
+    } catch (error) {
+      console.warn(`[Publish] Không thể chuẩn hóa media cho khóa học #${courseId}: ${error.message}`);
+    }
+  }
+
   async _queueAutoSubtitles(lessonIds = []) {
     const uniqueLessonIds = [...new Set(lessonIds.map(Number).filter(Number.isInteger))];
     if (uniqueLessonIds.length === 0) return;
@@ -369,7 +399,8 @@ class CoursesService {
       if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
 
-      await this._reorganizeCourseMediaFolders(courseId);
+      // Chuẩn hóa media: migrate Supabase → R2 + tổ chức lại thư mục (best-effort, async)
+      this._migrateCourseMediaOnPublish(courseId).catch(() => {});
       await this._queueAutoSubtitles(subtitleLessonIds);
 
       newCourse.status = newCourse.status === 'published' ? 1 : 0;
@@ -843,6 +874,14 @@ class CoursesService {
       await client.query('COMMIT');
 
       await this._queueAutoSubtitles(subtitleLessonIds);
+
+      // Khi PUBLISH: tự động chuẩn hóa toàn bộ media về Cloudflare R2 (async, best-effort)
+      if (resultingStatus === 'published') {
+        this._migrateCourseMediaOnPublish(courseId).catch(() => {});
+      } else {
+        // Nếu chỉ cập nhật (không publish), vẫn tổ chức lại thư mục R2 nếu có media mới
+        this._reorganizeCourseMediaFolders(courseId).catch(() => {});
+      }
 
       // Dọn dẹp các storage object mồ côi ngoài luồng sau khi DB Commit thành công
       if (assetsToCleanup.length > 0) {
