@@ -5,6 +5,33 @@ const supabaseStorage = require('../../../utils/supabaseStorage');
 const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
 
 class CoursesService {
+  /**
+   * Media video/pdf/audio/ảnh có thể đã được upload lên R2 TRƯỚC KHI khóa học có
+   * course_id thật (lúc đang tạo khóa học mới, frontend chưa biết ID), nên object
+   * key lúc đó dùng thư mục tạm "courses/<ten>-draft-<instructorId>/...". Hàm này
+   * chạy NGAY SAU KHI transaction tạo khóa học COMMIT, dời các object đó về đúng
+   * thư mục chính thức "courses/<ten>-<courseId>/...". Đây là best-effort: nếu R2
+   * lỗi (vd. thiếu quyền, mạng), khóa học vẫn coi là tạo thành công — chỉ log cảnh
+   * báo — vì việc tổ chức lại thư mục không phải điều kiện bắt buộc để dùng khóa học.
+   */
+  async _reorganizeCourseMediaFolders(courseId) {
+    if (!courseId) return;
+    try {
+      const { reorganizeCourseMedia } = require('../../../utils/r2CourseReorganizer');
+      const report = await reorganizeCourseMedia(courseId);
+      if (report.failed > 0) {
+        console.warn(
+          `[R2 auto-organize] Khóa học #${courseId}: ${report.moved}/${report.total} thành công, ` +
+          `${report.failed} lỗi: ${report.failures.map(f => `${f.ref} (${f.message})`).join('; ')}`
+        );
+      } else if (report.moved > 0) {
+        console.log(`[R2 auto-organize] Khóa học #${courseId}: đã dời ${report.moved} media về đúng thư mục.`);
+      }
+    } catch (error) {
+      console.warn(`[R2 auto-organize] Không thể tổ chức lại thư mục cho khóa học #${courseId}: ${error.message}`);
+    }
+  }
+
   async _queueAutoSubtitles(lessonIds = []) {
     const uniqueLessonIds = [...new Set(lessonIds.map(Number).filter(Number.isInteger))];
     if (uniqueLessonIds.length === 0) return;
@@ -342,6 +369,7 @@ class CoursesService {
       if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
 
+      await this._reorganizeCourseMediaFolders(courseId);
       await this._queueAutoSubtitles(subtitleLessonIds);
 
       newCourse.status = newCourse.status === 'published' ? 1 : 0;

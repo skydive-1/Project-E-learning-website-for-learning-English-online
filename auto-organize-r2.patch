@@ -1,0 +1,857 @@
+diff --git a/backend/package.json b/backend/package.json
+index 2d2c477..2383e64 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -6,7 +6,7 @@
+   "scripts": {
+     "start": "node src/server.js",
+     "dev": "nodemon src/server.js",
+-    "test": "node --test tests/auth_middleware.test.js tests/gamification_auth.test.js tests/super_admin.test.js tests/admin_role_auth.test.js tests/chatbot_history_auth.test.js tests/password_reset.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/auto_subtitle_trigger.test.js tests/production_ai_environment.test.js tests/rate_limit.test.js tests/ai_question_quota.test.js tests/ai_usage_events.test.js tests/ai_rate_limit_status.test.js tests/quizzes_question_type.test.js tests/suggested_questions.test.js tests/progress_completion_threshold.test.js tests/chatbot_grounding_policy.test.js tests/chatbot_stream_transport.test.js tests/chatbot_response_latency_policy.test.js",
++    "test": "node --test tests/auth_middleware.test.js tests/gamification_auth.test.js tests/super_admin.test.js tests/admin_role_auth.test.js tests/chatbot_history_auth.test.js tests/password_reset.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/auto_subtitle_trigger.test.js tests/production_ai_environment.test.js tests/r2_course_reorganizer.test.js tests/rate_limit.test.js tests/ai_question_quota.test.js tests/ai_usage_events.test.js tests/ai_rate_limit_status.test.js tests/quizzes_question_type.test.js tests/suggested_questions.test.js tests/progress_completion_threshold.test.js tests/chatbot_grounding_policy.test.js tests/chatbot_stream_transport.test.js tests/chatbot_response_latency_policy.test.js",
+     "test:media": "node --test tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/media_object_key.test.js",
+     "test:auth": "node --test tests/auth_middleware.test.js",
+     "test:subtitles-python": "python -m unittest scripts/test_auto_subtitle_pipeline.py",
+diff --git a/backend/scripts/reorganize_r2_by_course.js b/backend/scripts/reorganize_r2_by_course.js
+index 67a6bdd..49e420d 100644
+--- a/backend/scripts/reorganize_r2_by_course.js
++++ b/backend/scripts/reorganize_r2_by_course.js
+@@ -4,15 +4,22 @@
+ require('dotenv').config();
+ 
+ const path = require('path');
+-const {
+-  CopyObjectCommand,
+-  DeleteObjectsCommand,
+-  HeadObjectCommand,
+-  ListObjectsV2Command
+-} = require('@aws-sdk/client-s3');
+ const db = require('../src/config/database');
+ const r2 = require('../src/utils/r2Storage');
+-const { buildCourseAssetPrefix } = require('../src/utils/mediaObjectKey.util');
++const {
++  isAlreadyCourseScoped,
++  targetKeyFor,
++  listAllObjects,
++  sourceObjectsFor,
++  headObject,
++  sameObject,
++  copyAndVerify,
++  persistReference,
++  countLiveReferences,
++  deleteObjects,
++  markOldAssetsDeleted,
++  loadReferencedMedia
++} = require('../src/utils/r2CourseReorganizer');
+ 
+ const execute = process.argv.includes('--execute');
+ const deleteSource = process.argv.includes('--delete-source');
+@@ -20,240 +27,6 @@ const cleanLegacy = process.argv.includes('--clean-redundant-legacy')
+   || process.argv.includes('--clean-redundant-archives');
+ const verify = process.argv.includes('--verify');
+ 
+-function mediaKindFor(row) {
+-  const mime = String(row.mime_type || '').toLowerCase();
+-  const sourceKey = String(row.source_key || '').toLowerCase();
+-  if (mime.startsWith('video/') || sourceKey.endsWith('.mpd')) return 'video';
+-  if (mime === 'application/pdf' || sourceKey.endsWith('.pdf')) return 'pdf';
+-  if (mime.startsWith('audio/')) return 'audio';
+-  if (mime.startsWith('image/')) return 'image';
+-  return 'other';
+-}
+-
+-function assetIdFor(row) {
+-  return row.media_asset_id || `${row.ref_type}-${row.ref_id}`;
+-}
+-
+-function targetPrefixFor(row) {
+-  return buildCourseAssetPrefix({
+-    courseName: row.course_name,
+-    courseId: row.course_id,
+-    sectionName: row.section_name,
+-    sectionOrder: row.section_order,
+-    lessonName: row.lesson_name,
+-    lessonOrder: row.lesson_order,
+-    mediaKind: mediaKindFor(row),
+-    assetId: assetIdFor(row)
+-  });
+-}
+-
+-function canonicalCourseMediaPrefix(row) {
+-  const generated = buildCourseAssetPrefix({
+-    courseName: row.course_name,
+-    courseId: row.course_id,
+-    sectionName: row.section_name,
+-    sectionOrder: row.section_order,
+-    lessonName: row.lesson_name,
+-    lessonOrder: row.lesson_order,
+-    mediaKind: mediaKindFor(row),
+-    assetId: 'asset'
+-  });
+-  return `${path.posix.dirname(generated)}/`;
+-}
+-
+-function isAlreadyCourseScoped(row) {
+-  return String(row.source_key || '').startsWith(canonicalCourseMediaPrefix(row));
+-}
+-
+-function targetKeyFor(row, sourceObjectKey = row.source_key) {
+-  return path.posix.join(targetPrefixFor(row), path.posix.basename(sourceObjectKey));
+-}
+-
+-function isDashManifest(row) {
+-  return String(row.source_key || '').toLowerCase().endsWith('.mpd');
+-}
+-
+-async function listAllObjects(prefix) {
+-  const bucket = r2.resolveBucket();
+-  const client = r2.getClient();
+-  const objects = [];
+-  let continuationToken;
+-  do {
+-    const result = await client.send(new ListObjectsV2Command({
+-      Bucket: bucket,
+-      Prefix: prefix,
+-      ContinuationToken: continuationToken
+-    }));
+-    objects.push(...(result.Contents || []).filter(item => item.Key));
+-    continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+-  } while (continuationToken);
+-  return objects;
+-}
+-
+-async function sourceObjectsFor(row) {
+-  if (!isDashManifest(row)) return [{ Key: row.source_key }];
+-  const sourcePrefix = `${path.posix.dirname(row.source_key)}/`;
+-  const objects = await listAllObjects(sourcePrefix);
+-  if (!objects.some(item => item.Key === row.source_key)) {
+-    throw new Error(`Không tìm thấy manifest nguồn ${row.source_key}`);
+-  }
+-  return objects;
+-}
+-
+-function encodedCopySource(bucket, key) {
+-  return `${encodeURIComponent(bucket)}/${String(key).split('/').map(encodeURIComponent).join('/')}`;
+-}
+-
+-async function headObject(key) {
+-  try {
+-    return await r2.getClient().send(new HeadObjectCommand({
+-      Bucket: r2.resolveBucket(),
+-      Key: key
+-    }));
+-  } catch (error) {
+-    if (error?.$metadata?.httpStatusCode === 404 || error?.name === 'NotFound') return null;
+-    throw error;
+-  }
+-}
+-
+-function sameObject(source, destination) {
+-  if (!source || !destination) return false;
+-  const sourceSha = source.Metadata?.sha256;
+-  const destinationSha = destination.Metadata?.sha256;
+-  return Number(source.ContentLength) === Number(destination.ContentLength)
+-    && (!sourceSha || !destinationSha || sourceSha === destinationSha);
+-}
+-
+-async function copyAndVerify(sourceKey, destinationKey) {
+-  const bucket = r2.resolveBucket();
+-  const sourceHead = await headObject(sourceKey);
+-  if (!sourceHead) throw new Error(`Object nguồn không tồn tại: ${sourceKey}`);
+-
+-  const existingDestination = await headObject(destinationKey);
+-  if (!sameObject(sourceHead, existingDestination)) {
+-    await r2.getClient().send(new CopyObjectCommand({
+-      Bucket: bucket,
+-      Key: destinationKey,
+-      CopySource: encodedCopySource(bucket, sourceKey),
+-      MetadataDirective: 'COPY'
+-    }));
+-  }
+-
+-  const destinationHead = await headObject(destinationKey);
+-  if (!sameObject(sourceHead, destinationHead)) {
+-    throw new Error(`Xác minh bản sao R2 thất bại: ${destinationKey}`);
+-  }
+-}
+-
+-async function persistReference(row, destinationKey) {
+-  const client = await db.pool.connect();
+-  try {
+-    await client.query('BEGIN');
+-    if (row.ref_type === 'lesson') {
+-      await client.query(
+-        `UPDATE lessons
+-         SET storage_key = $1, content_url = $1, updated_at = CURRENT_TIMESTAMP
+-         WHERE lesson_id = $2 AND storage_provider = 'r2'
+-           AND COALESCE(storage_key, content_url) = $3`,
+-        [destinationKey, row.ref_id, row.source_key]
+-      );
+-    } else {
+-      await client.query(
+-        `UPDATE lesson_materials
+-         SET storage_key = $1, file_url = $1, updated_at = CURRENT_TIMESTAMP
+-         WHERE material_id = $2 AND storage_provider = 'r2'
+-           AND COALESCE(storage_key, file_url) = $3`,
+-        [destinationKey, row.ref_id, row.source_key]
+-      );
+-    }
+-    await client.query(
+-      `UPDATE pending_media_uploads
+-       SET storage_key = $1
+-       WHERE storage_provider = 'r2' AND storage_key = $2 AND status = 'COMMITTED'`,
+-      [destinationKey, row.source_key]
+-    );
+-    await client.query('COMMIT');
+-  } catch (error) {
+-    await client.query('ROLLBACK');
+-    throw error;
+-  } finally {
+-    client.release();
+-  }
+-}
+-
+-async function countLiveReferences(storageKey) {
+-  const result = await db.query(
+-    `SELECT
+-       (SELECT COUNT(*) FROM lessons
+-        WHERE storage_provider = 'r2' AND COALESCE(storage_key, content_url) = $1)
+-       +
+-       (SELECT COUNT(*) FROM lesson_materials
+-        WHERE storage_provider = 'r2' AND COALESCE(storage_key, file_url) = $1)
+-       +
+-       (SELECT COUNT(*) FROM pending_media_uploads
+-        WHERE storage_provider = 'r2' AND storage_key = $1
+-          AND status IN ('PENDING', 'CLAIMING', 'CLEANING')) AS total`,
+-    [storageKey]
+-  );
+-  return Number(result.rows[0]?.total || 0);
+-}
+-
+-async function deleteObjects(keys) {
+-  const uniqueKeys = [...new Set(keys)].filter(Boolean);
+-  for (let offset = 0; offset < uniqueKeys.length; offset += 1000) {
+-    const batch = uniqueKeys.slice(offset, offset + 1000);
+-    const response = await r2.getClient().send(new DeleteObjectsCommand({
+-      Bucket: r2.resolveBucket(),
+-      Delete: { Objects: batch.map(Key => ({ Key })), Quiet: true }
+-    }));
+-    if (response.Errors?.length) {
+-      throw new Error(response.Errors.map(item => `${item.Key}: ${item.Message}`).join('; '));
+-    }
+-    for (const key of batch) r2.invalidateSignedUrlCache(key);
+-  }
+-}
+-
+-async function markOldAssetsDeleted(keys) {
+-  await db.query(
+-    `UPDATE media_assets
+-     SET status = 'DELETED', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+-     WHERE storage_provider = 'r2' AND storage_bucket = $1
+-       AND object_key = ANY($2::text[]) AND deleted_at IS NULL`,
+-    [r2.resolveBucket(), keys]
+-  );
+-}
+-
+-async function loadReferencedMedia() {
+-  const result = await db.query(`
+-    SELECT 'lesson' AS ref_type, l.lesson_id AS ref_id, l.media_asset_id,
+-           c.course_id, c.course_name,
+-           s.title AS section_name, s.order_index AS section_order,
+-           l.title AS lesson_name, l.order_index AS lesson_order,
+-           l.title AS original_filename,
+-           l.mime_type, COALESCE(l.storage_key, l.content_url) AS source_key
+-    FROM lessons l
+-    JOIN sections s ON s.section_id = l.section_id
+-    JOIN courses c ON c.course_id = s.course_id
+-    WHERE l.storage_provider = 'r2'
+-      AND COALESCE(l.storage_key, l.content_url) IS NOT NULL
+-    UNION ALL
+-    SELECT 'material', m.material_id, m.media_asset_id,
+-           c.course_id, c.course_name,
+-           s.title AS section_name, s.order_index AS section_order,
+-           l.title AS lesson_name, l.order_index AS lesson_order,
+-           m.file_name,
+-           COALESCE(m.mime_type, m.file_type), COALESCE(m.storage_key, m.file_url)
+-    FROM lesson_materials m
+-    JOIN lessons l ON l.lesson_id = m.lesson_id
+-    JOIN sections s ON s.section_id = l.section_id
+-    JOIN courses c ON c.course_id = s.course_id
+-    WHERE m.storage_provider = 'r2'
+-      AND COALESCE(m.storage_key, m.file_url) IS NOT NULL
+-    ORDER BY course_id, ref_type, ref_id
+-  `);
+-  return result.rows;
+-}
+-
+ async function matchingLegacyObjectKeys(item) {
+   if (!String(item.object_key).toLowerCase().endsWith('.mpd')) {
+     const legacyHead = await headObject(item.object_key);
+diff --git a/backend/src/modules/courses/services/courses.service.js b/backend/src/modules/courses/services/courses.service.js
+index 1506b4d..caa0026 100644
+--- a/backend/src/modules/courses/services/courses.service.js
++++ b/backend/src/modules/courses/services/courses.service.js
+@@ -5,6 +5,33 @@ const supabaseStorage = require('../../../utils/supabaseStorage');
+ const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
+ 
+ class CoursesService {
++  /**
++   * Media video/pdf/audio/ảnh có thể đã được upload lên R2 TRƯỚC KHI khóa học có
++   * course_id thật (lúc đang tạo khóa học mới, frontend chưa biết ID), nên object
++   * key lúc đó dùng thư mục tạm "courses/<ten>-draft-<instructorId>/...". Hàm này
++   * chạy NGAY SAU KHI transaction tạo khóa học COMMIT, dời các object đó về đúng
++   * thư mục chính thức "courses/<ten>-<courseId>/...". Đây là best-effort: nếu R2
++   * lỗi (vd. thiếu quyền, mạng), khóa học vẫn coi là tạo thành công — chỉ log cảnh
++   * báo — vì việc tổ chức lại thư mục không phải điều kiện bắt buộc để dùng khóa học.
++   */
++  async _reorganizeCourseMediaFolders(courseId) {
++    if (!courseId) return;
++    try {
++      const { reorganizeCourseMedia } = require('../../../utils/r2CourseReorganizer');
++      const report = await reorganizeCourseMedia(courseId);
++      if (report.failed > 0) {
++        console.warn(
++          `[R2 auto-organize] Khóa học #${courseId}: ${report.moved}/${report.total} thành công, ` +
++          `${report.failed} lỗi: ${report.failures.map(f => `${f.ref} (${f.message})`).join('; ')}`
++        );
++      } else if (report.moved > 0) {
++        console.log(`[R2 auto-organize] Khóa học #${courseId}: đã dời ${report.moved} media về đúng thư mục.`);
++      }
++    } catch (error) {
++      console.warn(`[R2 auto-organize] Không thể tổ chức lại thư mục cho khóa học #${courseId}: ${error.message}`);
++    }
++  }
++
+   async _queueAutoSubtitles(lessonIds = []) {
+     const uniqueLessonIds = [...new Set(lessonIds.map(Number).filter(Number.isInteger))];
+     if (uniqueLessonIds.length === 0) return;
+@@ -342,6 +369,7 @@ class CoursesService {
+       if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
+       await client.query('COMMIT');
+ 
++      await this._reorganizeCourseMediaFolders(courseId);
+       await this._queueAutoSubtitles(subtitleLessonIds);
+ 
+       newCourse.status = newCourse.status === 'published' ? 1 : 0;
+diff --git a/backend/src/utils/r2CourseReorganizer.js b/backend/src/utils/r2CourseReorganizer.js
+new file mode 100644
+index 0000000..0eb985b
+--- /dev/null
++++ b/backend/src/utils/r2CourseReorganizer.js
+@@ -0,0 +1,339 @@
++'use strict';
++
++/**
++ * Logic dùng chung để đưa các object media (video/pdf/audio/ảnh) trên Cloudflare R2
++ * về đúng cấu trúc thư mục "courses/<ten-khoa-hoc>-<courseId>/sections/.../lessons/...".
++ *
++ * Module này được dùng ở 2 nơi:
++ *   1. scripts/reorganize_r2_by_course.js — công cụ CLI chạy tay để dọn toàn bộ DB
++ *      (dry-run mặc định, cần --execute để ghi thật).
++ *   2. courses.service.js — gọi reorganizeCourseMedia(courseId) NGAY SAU KHI một
++ *      khóa học mới được tạo, để tự động dời media từ thư mục tạm
++ *      "courses/<ten>-draft-<instructorId>/..." (do lúc upload chưa có course_id thật)
++ *      sang thư mục chính thức "courses/<ten>-<courseId>/...".
++ *
++ * Mọi thao tác đều: copy trước → HEAD verify khớp (size + checksum nếu có) → cập nhật
++ * DB (transaction) → chỉ xóa object nguồn khi không còn tham chiếu sống nào trỏ tới nó.
++ * Không có bước nào xóa trước khi copy đã được xác minh thành công.
++ */
++
++const path = require('path');
++const {
++  CopyObjectCommand,
++  DeleteObjectsCommand,
++  HeadObjectCommand,
++  ListObjectsV2Command
++} = require('@aws-sdk/client-s3');
++const db = require('../config/database');
++const r2 = require('./r2Storage');
++const { buildCourseAssetPrefix } = require('./mediaObjectKey.util');
++
++function mediaKindFor(row) {
++  const mime = String(row.mime_type || '').toLowerCase();
++  const sourceKey = String(row.source_key || '').toLowerCase();
++  if (mime.startsWith('video/') || sourceKey.endsWith('.mpd')) return 'video';
++  if (mime === 'application/pdf' || sourceKey.endsWith('.pdf')) return 'pdf';
++  if (mime.startsWith('audio/')) return 'audio';
++  if (mime.startsWith('image/')) return 'image';
++  return 'other';
++}
++
++function assetIdFor(row) {
++  return row.media_asset_id || `${row.ref_type}-${row.ref_id}`;
++}
++
++function targetPrefixFor(row) {
++  return buildCourseAssetPrefix({
++    courseName: row.course_name,
++    courseId: row.course_id,
++    sectionName: row.section_name,
++    sectionOrder: row.section_order,
++    lessonName: row.lesson_name,
++    lessonOrder: row.lesson_order,
++    mediaKind: mediaKindFor(row),
++    assetId: assetIdFor(row)
++  });
++}
++
++function canonicalCourseMediaPrefix(row) {
++  const generated = buildCourseAssetPrefix({
++    courseName: row.course_name,
++    courseId: row.course_id,
++    sectionName: row.section_name,
++    sectionOrder: row.section_order,
++    lessonName: row.lesson_name,
++    lessonOrder: row.lesson_order,
++    mediaKind: mediaKindFor(row),
++    assetId: 'asset'
++  });
++  return `${path.posix.dirname(generated)}/`;
++}
++
++function isAlreadyCourseScoped(row) {
++  return String(row.source_key || '').startsWith(canonicalCourseMediaPrefix(row));
++}
++
++function targetKeyFor(row, sourceObjectKey = row.source_key) {
++  return path.posix.join(targetPrefixFor(row), path.posix.basename(sourceObjectKey));
++}
++
++function isDashManifest(row) {
++  return String(row.source_key || '').toLowerCase().endsWith('.mpd');
++}
++
++async function listAllObjects(prefix) {
++  const bucket = r2.resolveBucket();
++  const client = r2.getClient();
++  const objects = [];
++  let continuationToken;
++  do {
++    const result = await client.send(new ListObjectsV2Command({
++      Bucket: bucket,
++      Prefix: prefix,
++      ContinuationToken: continuationToken
++    }));
++    objects.push(...(result.Contents || []).filter(item => item.Key));
++    continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
++  } while (continuationToken);
++  return objects;
++}
++
++async function sourceObjectsFor(row) {
++  if (!isDashManifest(row)) return [{ Key: row.source_key }];
++  const sourcePrefix = `${path.posix.dirname(row.source_key)}/`;
++  const objects = await listAllObjects(sourcePrefix);
++  if (!objects.some(item => item.Key === row.source_key)) {
++    throw new Error(`Không tìm thấy manifest nguồn ${row.source_key}`);
++  }
++  return objects;
++}
++
++function encodedCopySource(bucket, key) {
++  return `${encodeURIComponent(bucket)}/${String(key).split('/').map(encodeURIComponent).join('/')}`;
++}
++
++async function headObject(key) {
++  try {
++    return await r2.getClient().send(new HeadObjectCommand({
++      Bucket: r2.resolveBucket(),
++      Key: key
++    }));
++  } catch (error) {
++    if (error?.$metadata?.httpStatusCode === 404 || error?.name === 'NotFound') return null;
++    throw error;
++  }
++}
++
++function sameObject(source, destination) {
++  if (!source || !destination) return false;
++  const sourceSha = source.Metadata?.sha256;
++  const destinationSha = destination.Metadata?.sha256;
++  return Number(source.ContentLength) === Number(destination.ContentLength)
++    && (!sourceSha || !destinationSha || sourceSha === destinationSha);
++}
++
++async function copyAndVerify(sourceKey, destinationKey) {
++  const bucket = r2.resolveBucket();
++  const sourceHead = await headObject(sourceKey);
++  if (!sourceHead) throw new Error(`Object nguồn không tồn tại: ${sourceKey}`);
++
++  const existingDestination = await headObject(destinationKey);
++  if (!sameObject(sourceHead, existingDestination)) {
++    await r2.getClient().send(new CopyObjectCommand({
++      Bucket: bucket,
++      Key: destinationKey,
++      CopySource: encodedCopySource(bucket, sourceKey),
++      MetadataDirective: 'COPY'
++    }));
++  }
++
++  const destinationHead = await headObject(destinationKey);
++  if (!sameObject(sourceHead, destinationHead)) {
++    throw new Error(`Xác minh bản sao R2 thất bại: ${destinationKey}`);
++  }
++}
++
++async function persistReference(row, destinationKey) {
++  const client = await db.pool.connect();
++  try {
++    await client.query('BEGIN');
++    if (row.ref_type === 'lesson') {
++      await client.query(
++        `UPDATE lessons
++         SET storage_key = $1, content_url = $1, updated_at = CURRENT_TIMESTAMP
++         WHERE lesson_id = $2 AND storage_provider = 'r2'
++           AND COALESCE(storage_key, content_url) = $3`,
++        [destinationKey, row.ref_id, row.source_key]
++      );
++    } else {
++      await client.query(
++        `UPDATE lesson_materials
++         SET storage_key = $1, file_url = $1, updated_at = CURRENT_TIMESTAMP
++         WHERE material_id = $2 AND storage_provider = 'r2'
++           AND COALESCE(storage_key, file_url) = $3`,
++        [destinationKey, row.ref_id, row.source_key]
++      );
++    }
++    await client.query(
++      `UPDATE pending_media_uploads
++       SET storage_key = $1
++       WHERE storage_provider = 'r2' AND storage_key = $2 AND status = 'COMMITTED'`,
++      [destinationKey, row.source_key]
++    );
++    await client.query('COMMIT');
++  } catch (error) {
++    await client.query('ROLLBACK');
++    throw error;
++  } finally {
++    client.release();
++  }
++}
++
++async function countLiveReferences(storageKey) {
++  const result = await db.query(
++    `SELECT
++       (SELECT COUNT(*) FROM lessons
++        WHERE storage_provider = 'r2' AND COALESCE(storage_key, content_url) = $1)
++       +
++       (SELECT COUNT(*) FROM lesson_materials
++        WHERE storage_provider = 'r2' AND COALESCE(storage_key, file_url) = $1)
++       +
++       (SELECT COUNT(*) FROM pending_media_uploads
++        WHERE storage_provider = 'r2' AND storage_key = $1
++          AND status IN ('PENDING', 'CLAIMING', 'CLEANING')) AS total`,
++    [storageKey]
++  );
++  return Number(result.rows[0]?.total || 0);
++}
++
++async function deleteObjects(keys) {
++  const uniqueKeys = [...new Set(keys)].filter(Boolean);
++  for (let offset = 0; offset < uniqueKeys.length; offset += 1000) {
++    const batch = uniqueKeys.slice(offset, offset + 1000);
++    const response = await r2.getClient().send(new DeleteObjectsCommand({
++      Bucket: r2.resolveBucket(),
++      Delete: { Objects: batch.map(Key => ({ Key })), Quiet: true }
++    }));
++    if (response.Errors?.length) {
++      throw new Error(response.Errors.map(item => `${item.Key}: ${item.Message}`).join('; '));
++    }
++    for (const key of batch) r2.invalidateSignedUrlCache(key);
++  }
++}
++
++async function markOldAssetsDeleted(keys) {
++  await db.query(
++    `UPDATE media_assets
++     SET status = 'DELETED', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
++     WHERE storage_provider = 'r2' AND storage_bucket = $1
++       AND object_key = ANY($2::text[]) AND deleted_at IS NULL`,
++    [r2.resolveBucket(), keys]
++  );
++}
++
++/**
++ * Nạp danh sách media đang được lesson / lesson_materials tham chiếu trên R2.
++ * Truyền courseId để chỉ nạp media của MỘT khóa học (dùng cho hook tự động sau khi
++ * tạo khóa học); không truyền gì để nạp toàn bộ DB (dùng cho script CLI).
++ */
++async function loadReferencedMedia({ courseId } = {}) {
++  const params = [];
++  let courseFilter = '';
++  if (courseId) {
++    params.push(courseId);
++    courseFilter = `AND c.course_id = $${params.length}`;
++  }
++
++  const result = await db.query(`
++    SELECT 'lesson' AS ref_type, l.lesson_id AS ref_id, l.media_asset_id,
++           c.course_id, c.course_name,
++           s.title AS section_name, s.order_index AS section_order,
++           l.title AS lesson_name, l.order_index AS lesson_order,
++           l.title AS original_filename,
++           l.mime_type, COALESCE(l.storage_key, l.content_url) AS source_key
++    FROM lessons l
++    JOIN sections s ON s.section_id = l.section_id
++    JOIN courses c ON c.course_id = s.course_id
++    WHERE l.storage_provider = 'r2'
++      AND COALESCE(l.storage_key, l.content_url) IS NOT NULL
++      ${courseFilter}
++    UNION ALL
++    SELECT 'material', m.material_id, m.media_asset_id,
++           c.course_id, c.course_name,
++           s.title AS section_name, s.order_index AS section_order,
++           l.title AS lesson_name, l.order_index AS lesson_order,
++           m.file_name,
++           COALESCE(m.mime_type, m.file_type), COALESCE(m.storage_key, m.file_url)
++    FROM lesson_materials m
++    JOIN lessons l ON l.lesson_id = m.lesson_id
++    JOIN sections s ON s.section_id = l.section_id
++    JOIN courses c ON c.course_id = s.course_id
++    WHERE m.storage_provider = 'r2'
++      AND COALESCE(m.storage_key, m.file_url) IS NOT NULL
++      ${courseFilter}
++    ORDER BY course_id, ref_type, ref_id
++  `, params);
++  return result.rows;
++}
++
++/**
++ * Tự động dời media của MỘT khóa học về đúng thư mục chính thức (dùng course_id thật).
++ * Gọi hàm này ngay sau khi transaction tạo khóa học COMMIT thành công.
++ *
++ * Không throw ra ngoài với lỗi từng item — trả về báo cáo để caller tự quyết định
++ * log/cảnh báo, vì việc tổ chức lại thư mục là "best effort", không được phép làm
++ * hỏng luồng tạo khóa học chính.
++ */
++async function reorganizeCourseMedia(courseId, { deleteSource = true } = {}) {
++  if (!courseId) return { total: 0, moved: 0, failed: 0, failures: [] };
++
++  const rows = await loadReferencedMedia({ courseId });
++  const plans = rows
++    .map(row => ({ ...row, target_key: targetKeyFor(row) }))
++    .filter(row => !isAlreadyCourseScoped(row));
++
++  let moved = 0;
++  const failures = [];
++
++  for (const row of plans) {
++    try {
++      const sourceObjects = await sourceObjectsFor(row);
++      for (const sourceObject of sourceObjects) {
++        await copyAndVerify(sourceObject.Key, targetKeyFor(row, sourceObject.Key));
++      }
++
++      await persistReference(row, row.target_key);
++
++      if (deleteSource && await countLiveReferences(row.source_key) === 0) {
++        await deleteObjects(sourceObjects.map(item => item.Key));
++        await markOldAssetsDeleted(sourceObjects.map(item => item.Key));
++      }
++      moved += 1;
++    } catch (error) {
++      failures.push({ ref: `${row.ref_type}#${row.ref_id}`, sourceKey: row.source_key, message: error.message });
++    }
++  }
++
++  return { total: rows.length, moved, failed: failures.length, failures };
++}
++
++module.exports = {
++  mediaKindFor,
++  assetIdFor,
++  targetPrefixFor,
++  canonicalCourseMediaPrefix,
++  isAlreadyCourseScoped,
++  targetKeyFor,
++  isDashManifest,
++  listAllObjects,
++  sourceObjectsFor,
++  headObject,
++  sameObject,
++  copyAndVerify,
++  persistReference,
++  countLiveReferences,
++  deleteObjects,
++  markOldAssetsDeleted,
++  loadReferencedMedia,
++  reorganizeCourseMedia
++};
+diff --git a/backend/tests/r2_course_reorganizer.test.js b/backend/tests/r2_course_reorganizer.test.js
+new file mode 100644
+index 0000000..304b04b
+--- /dev/null
++++ b/backend/tests/r2_course_reorganizer.test.js
+@@ -0,0 +1,172 @@
++const { describe, test, afterEach } = require('node:test');
++const assert = require('node:assert');
++
++const db = require('../src/config/database');
++const r2 = require('../src/utils/r2Storage');
++const { reorganizeCourseMedia } = require('../src/utils/r2CourseReorganizer');
++
++describe('📁 R2 auto-organize sau khi tạo khóa học mới', () => {
++  const originalDbQuery = db.query;
++  const originalPoolConnect = db.pool.connect;
++  const originalGetClient = r2.getClient;
++  const originalResolveBucket = r2.resolveBucket;
++  const originalInvalidate = r2.invalidateSignedUrlCache;
++
++  afterEach(() => {
++    db.query = originalDbQuery;
++    db.pool.connect = originalPoolConnect;
++    r2.getClient = originalGetClient;
++    r2.resolveBucket = originalResolveBucket;
++    r2.invalidateSignedUrlCache = originalInvalidate;
++  });
++
++  test('dời video khỏi thư mục draft-<instructorId> về courses/<ten>-<courseId>/... và xóa object cũ', async () => {
++    const draftKey = 'courses/ielts-speaking-nang-cao-draft-17/videos/asset-lesson-501/bai-1.mp4';
++    const expectedTargetKey =
++      'courses/ielts-speaking-nang-cao-99/sections/01-chuong-1/lessons/01-bai-1/videos/asset-lesson-501/bai-1.mp4';
++
++    const calls = { copy: [], deletes: [], updatedLessonQueries: [] };
++
++    // --- Mock db.query: chỉ cần trả đúng cho 3 câu SELECT/UPDATE mà reorganizeCourseMedia gọi
++    db.query = async (text) => {
++      if (text.includes('FROM lessons l') && text.includes('UNION ALL')) {
++        // loadReferencedMedia({ courseId: 99 })
++        return {
++          rows: [{
++            ref_type: 'lesson',
++            ref_id: 501,
++            media_asset_id: 'asset-lesson-501',
++            course_id: 99,
++            course_name: 'IELTS Speaking Nâng Cao',
++            section_name: 'Chương 1',
++            section_order: 1,
++            lesson_name: 'Bài 1',
++            lesson_order: 1,
++            original_filename: 'Bài 1',
++            mime_type: 'video/mp4',
++            source_key: draftKey
++          }]
++        };
++      }
++      if (text.includes('FROM lessons') && text.includes('SELECT COUNT')) {
++        // countLiveReferences sau khi đã persist reference mới -> object cũ không còn ai tham chiếu
++        return { rows: [{ total: 0 }] };
++      }
++      if (text.includes('UPDATE media_assets')) {
++        return { rows: [] };
++      }
++      throw new Error(`db.query không mong đợi: ${text.slice(0, 80)}`);
++    };
++
++    // --- Mock transaction client cho persistReference
++    const fakeTxClient = {
++      query: async (text, params) => {
++        calls.updatedLessonQueries.push({ text, params });
++        return { rows: [] };
++      },
++      release: () => {}
++    };
++    db.pool.connect = async () => fakeTxClient;
++
++    // --- Mock R2 S3 client: HeadObject nguồn tồn tại, đích chưa tồn tại -> copy -> sau copy đích "tồn tại" khớp nguồn
++    let destinationCopied = false;
++    const fakeS3Client = {
++      send: async (command) => {
++        const name = command.constructor.name;
++        if (name === 'HeadObjectCommand') {
++          if (command.input.Key === draftKey) {
++            return { ContentLength: 12345, Metadata: { sha256: 'abc123' } };
++          }
++          if (command.input.Key === expectedTargetKey) {
++            if (!destinationCopied) {
++              const err = new Error('Not Found');
++              err.name = 'NotFound';
++              err.$metadata = { httpStatusCode: 404 };
++              throw err;
++            }
++            return { ContentLength: 12345, Metadata: { sha256: 'abc123' } };
++          }
++          const err = new Error('Not Found');
++          err.$metadata = { httpStatusCode: 404 };
++          throw err;
++        }
++        if (name === 'CopyObjectCommand') {
++          calls.copy.push({ from: command.input.CopySource, to: command.input.Key });
++          destinationCopied = true;
++          return {};
++        }
++        if (name === 'DeleteObjectsCommand') {
++          calls.deletes.push(command.input.Delete.Objects.map(o => o.Key));
++          return {};
++        }
++        throw new Error(`Lệnh S3 không mong đợi trong test: ${name}`);
++      }
++    };
++    r2.getClient = () => fakeS3Client;
++    r2.resolveBucket = () => 'elearning-media';
++    r2.invalidateSignedUrlCache = () => {};
++
++    const report = await reorganizeCourseMedia(99);
++
++    assert.strictEqual(report.total, 1);
++    assert.strictEqual(report.failed, 0, `Không mong đợi lỗi: ${JSON.stringify(report.failures)}`);
++    assert.strictEqual(report.moved, 1);
++
++    // 1. Đã copy đúng sang path chính thức dùng course_id thật, không còn "draft-17"
++    assert.strictEqual(calls.copy.length, 1);
++    assert.strictEqual(calls.copy[0].to, expectedTargetKey);
++    assert.ok(!calls.copy[0].to.includes('draft'), 'Path đích không được chứa "draft"');
++
++    // 2. Đã cập nhật lessons.storage_key/content_url sang key mới trong transaction
++    const lessonUpdate = calls.updatedLessonQueries.find(q => q.text.includes('UPDATE lessons'));
++    assert.ok(lessonUpdate, 'Phải có UPDATE lessons trong transaction persistReference');
++    assert.strictEqual(lessonUpdate.params[0], expectedTargetKey);
++    assert.strictEqual(lessonUpdate.params[1], 501);
++
++    // 3. Vì không còn tham chiếu sống nào tới key cũ -> object cũ bị xóa khỏi R2
++    assert.strictEqual(calls.deletes.length, 1);
++    assert.deepStrictEqual(calls.deletes[0], [draftKey]);
++  });
++
++  test('bỏ qua object đã nằm đúng thư mục khóa học (idempotent)', async () => {
++    const alreadyCanonicalKey =
++      'courses/ielts-speaking-nang-cao-99/sections/01-chuong-1/lessons/01-bai-1/videos/asset-lesson-501/bai-1.mp4';
++
++    db.query = async (text) => {
++      if (text.includes('FROM lessons l') && text.includes('UNION ALL')) {
++        return {
++          rows: [{
++            ref_type: 'lesson',
++            ref_id: 501,
++            media_asset_id: 'asset-lesson-501',
++            course_id: 99,
++            course_name: 'IELTS Speaking Nâng Cao',
++            section_name: 'Chương 1',
++            section_order: 1,
++            lesson_name: 'Bài 1',
++            lesson_order: 1,
++            original_filename: 'Bài 1',
++            mime_type: 'video/mp4',
++            source_key: alreadyCanonicalKey
++          }]
++        };
++      }
++      throw new Error(`db.query không mong đợi (test idempotent): ${text.slice(0, 80)}`);
++    };
++
++    let copyCalled = false;
++    r2.getClient = () => ({ send: async () => { copyCalled = true; return {}; } });
++    r2.resolveBucket = () => 'elearning-media';
++
++    const report = await reorganizeCourseMedia(99);
++
++    assert.strictEqual(report.total, 1);
++    assert.strictEqual(report.moved, 0, 'Không được dời object đã ở đúng thư mục');
++    assert.strictEqual(copyCalled, false, 'Không được gọi R2 khi object đã canonical');
++  });
++
++  test('courseId rỗng -> không làm gì, không throw', async () => {
++    const report = await reorganizeCourseMedia(null);
++    assert.deepStrictEqual(report, { total: 0, moved: 0, failed: 0, failures: [] });
++  });
++});
