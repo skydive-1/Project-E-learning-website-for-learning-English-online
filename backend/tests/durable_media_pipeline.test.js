@@ -25,6 +25,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
   // Lưu trữ các mock gốc
   let origUploadVideo;
   let origUploadDoc;
+  let origUploadPrivate;
   let origCheckObject;
   let origGenerateSignedUrl;
   let origFetchPrivateObject;
@@ -81,6 +82,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
 
     origUploadVideo = supabaseStorage.uploadVideoToSupabase;
     origUploadDoc = supabaseStorage.uploadDocumentToSupabase;
+    origUploadPrivate = supabaseStorage.uploadPrivateObject;
     origCheckObject = supabaseStorage.checkObjectExists;
     origGenerateSignedUrl = supabaseStorage.generateSignedUrl;
     origFetchPrivateObject = supabaseStorage.fetchPrivateObject;
@@ -100,6 +102,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
   beforeEach(() => {
     supabaseStorage.uploadVideoToSupabase = origUploadVideo;
     supabaseStorage.uploadDocumentToSupabase = origUploadDoc;
+    supabaseStorage.uploadPrivateObject = origUploadPrivate;
     supabaseStorage.checkObjectExists = origCheckObject;
     supabaseStorage.generateSignedUrl = origGenerateSignedUrl;
     supabaseStorage.fetchPrivateObject = origFetchPrivateObject;
@@ -122,6 +125,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
     else process.env.JWT_SECRET = ORIGINAL_JWT_SECRET;
     supabaseStorage.uploadVideoToSupabase = origUploadVideo;
     supabaseStorage.uploadDocumentToSupabase = origUploadDoc;
+    supabaseStorage.uploadPrivateObject = origUploadPrivate;
     supabaseStorage.checkObjectExists = origCheckObject;
     supabaseStorage.generateSignedUrl = origGenerateSignedUrl;
     supabaseStorage.fetchPrivateObject = origFetchPrivateObject;
@@ -144,6 +148,43 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
   // PHẦN A: VIDEO PIPELINE & CODEC VALIDATION TESTS (9 TEST CASES)
   // =========================================================================
   describe('🎥 PHẦN A: Video Pipeline & Codec Validation', () => {
+
+    it('0. Audio và ảnh lớn dùng chung private R2 upload contract', async () => {
+      supabaseStorage.uploadPrivateObject = async (filePath, objectKey, legacyBucket, contentType) => ({
+        success: true,
+        storageProvider: 'r2',
+        storageBucket: 'elearning-media',
+        storageKey: objectKey,
+        mimeType: contentType,
+        sizeBytes: fs.statSync(filePath).size,
+        checksumSha256: 'a'.repeat(64)
+      });
+
+      for (const fixture of [
+        { name: 'lesson-audio.mp3', type: 'audio/mpeg', playbackType: 'audio' },
+        { name: 'large-cover.webp', type: 'image/webp', playbackType: 'image' }
+      ]) {
+        const tempPath = path.join(testOutputDir, fixture.name);
+        fs.writeFileSync(tempPath, Buffer.alloc(32, 1));
+        let statusCode;
+        let body;
+        const res = {
+          status(code) { statusCode = code; return this; },
+          json(payload) { body = payload; return this; }
+        };
+        await coursesController.uploadFile({
+          file: { path: tempPath, originalname: fixture.name, mimetype: fixture.type, size: 32 },
+          user: { id: 2, roleId: 2 }
+        }, res, error => { throw error; });
+
+        assert.strictEqual(statusCode, 200);
+        assert.strictEqual(body.storageProvider, 'r2');
+        assert.strictEqual(body.storageBucket, 'elearning-media');
+        assert.strictEqual(body.playbackType, fixture.playbackType);
+        assert.ok(body.pendingUploadId);
+        assert.strictEqual(fs.existsSync(tempPath), false, 'Multer temp file phải được xóa');
+      }
+    });
 
     // Test 1: MP4 H.264/AAC hợp lệ upload thành công
     it('1. MP4 H.264/AAC hợp lệ upload thành công vào bucket videos', async () => {
@@ -187,7 +228,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
       assert.strictEqual(responseCode, 200);
       assert.strictEqual(responseBody.success, true);
       assert.strictEqual(responseBody.storageBucket, 'videos');
-      assert.strictEqual(responseBody.storageProvider, 'supabase');
+      assert.strictEqual(responseBody.storageProvider, 'r2');
       assert.strictEqual(responseBody.mediaStatus, 'PENDING');
       assert.ok(responseBody.pendingUploadId);
       assert.ok(responseBody.storageKey.startsWith('courses/2/'));
@@ -543,7 +584,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
 
       assert.strictEqual(resData.success, true);
       assert.strictEqual(resData.storageBucket, 'documents');
-      assert.strictEqual(resData.storageProvider, 'supabase');
+      assert.strictEqual(resData.storageProvider, 'r2');
       assert.strictEqual(resData.mimeType, 'application/pdf');
       assert.ok(resData.storageKey.startsWith('courses/2/'));
       assert.ok(resData.storageKey.endsWith('.pdf'));
@@ -664,7 +705,7 @@ describe('🎬 TASK-DURABLE-LESSON-MEDIA-PIPELINE-01: Full Integration Test Suit
         size: 800
       }, 2, 2);
 
-      assert.strictEqual(material.storage_provider, 'supabase');
+      assert.strictEqual(material.storage_provider, 'r2');
       assert.strictEqual(material.storage_bucket, 'documents');
       assert.strictEqual(material.media_status, 'READY');
       assert.ok(material.storage_key.startsWith('courses/materials/1/'));

@@ -85,7 +85,9 @@ class CoursesService {
     }
 
     const isPdf = contentType === 'pdf' || contentUrl.endsWith('.pdf') || (les.storageKey && les.storageKey.endsWith('.pdf'));
-    const isExternal = (contentUrl.startsWith('http://') || contentUrl.startsWith('https://')) && !contentUrl.includes('supabase.co');
+    const isExternal = (contentUrl.startsWith('http://') || contentUrl.startsWith('https://'))
+      && !contentUrl.includes('supabase.co')
+      && !contentUrl.includes('r2.cloudflarestorage.com');
 
     if (isExternal) {
       return {
@@ -104,7 +106,7 @@ class CoursesService {
 
     const storageKey = les.storageKey || les.storage_key || (contentUrl && !contentUrl.startsWith('/uploads/') && !contentUrl.startsWith('uploads/') ? contentUrl.replace(/^\/+/, '') : null);
     const storageBucket = les.storageBucket || les.storage_bucket || (isPdf ? 'documents' : 'videos');
-    const storageProvider = les.storageProvider || les.storage_provider || (storageKey ? 'supabase' : (contentUrl.startsWith('/uploads/') ? 'local' : 'external'));
+    const storageProvider = les.storageProvider || les.storage_provider || (storageKey ? 'r2' : (contentUrl.startsWith('/uploads/') ? 'local' : 'external'));
     const mimeType = les.mimeType || les.mime_type || (isPdf ? 'application/pdf' : 'video/mp4');
     const sizeBytes = Number(les.sizeBytes || les.size_bytes) || 0;
     const checksumSha256 = les.checksumSha256 || les.checksum_sha256 || null;
@@ -222,14 +224,14 @@ class CoursesService {
     for (const lesson of result.rows) {
       if (['quiz', 'text', 'speaking'].includes(String(lesson.content_type).toLowerCase())) continue;
       const validExternal = lesson.storage_provider === 'external' && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
-      const validInternal = lesson.storage_provider === 'supabase' && lesson.storage_bucket && lesson.storage_key &&
+      const validInternal = ['r2', 'supabase'].includes(lesson.storage_provider) && lesson.storage_bucket && lesson.storage_key &&
         lesson.mime_type && lesson.media_status === 'READY';
       if (!validExternal && !validInternal) {
         const err = new Error(`Bài học "${lesson.title || lesson.lesson_id}" có media chưa được xác thực.`);
         err.status = 400; err.code = 'UNVERIFIED_MEDIA_ASSETS'; throw err;
       }
       if (validInternal) {
-        const exists = await supabaseStorage.checkObjectExists(lesson.storage_key, lesson.storage_bucket);
+        const exists = await supabaseStorage.checkObjectExists(lesson.storage_key, lesson.storage_bucket, lesson.storage_provider);
         if (!exists) {
           const err = new Error(`Media của bài học "${lesson.title || lesson.lesson_id}" không còn tồn tại trên storage.`);
           err.status = 400; err.code = 'MEDIA_OBJECT_MISSING'; throw err;
@@ -251,7 +253,7 @@ class CoursesService {
           if (meta.isNonMedia) continue;
 
           // Nếu là media nội bộ (video/pdf), bắt buộc phải có storageKey và trạng thái READY
-          if (meta.storageProvider === 'supabase') {
+          if (['r2', 'supabase'].includes(meta.storageProvider)) {
             if (!meta.storageKey || meta.mediaStatus !== 'READY') {
               const err = new Error(`Bài học "${les.title || 'Chưa đặt tên'}" chưa hoàn tất tải lên hoặc chưa được xác thực (trạng thái: ${meta.mediaStatus || 'CHƯA_SẴN_SÀNG'}). Không thể xuất bản.`);
               err.status = 400;
@@ -399,8 +401,8 @@ class CoursesService {
         sizeBytes: Number(pending.size_bytes), checksumSha256: pending.checksum_sha256, mediaStatus: 'READY' };
       claimedUploadIds.push(pendingUploadId);
       trackedKeys.push({ key: meta.storageKey, bucket: meta.storageBucket });
-    } else if (meta.storageKey && meta.storageProvider === 'supabase') {
-      const err = new Error('Media Supabase mới bắt buộc phải có pendingUploadId hợp lệ.');
+    } else if (meta.storageKey && ['r2', 'supabase'].includes(meta.storageProvider)) {
+      const err = new Error('Media private mới bắt buộc phải có pendingUploadId hợp lệ.');
       err.status = 400; err.code = 'PENDING_UPLOAD_REQUIRED'; throw err;
     }
 
@@ -691,9 +693,9 @@ class CoursesService {
                   sizeBytes: Number(pending.size_bytes), checksumSha256: pending.checksum_sha256, mediaStatus: 'READY' };
                 claimedUploadIds.push(pendingUploadId);
                 newlyUploadedKeys.push({ key: meta.storageKey, bucket: meta.storageBucket });
-              } else if (meta.storageKey && meta.storageProvider === 'supabase') {
+              } else if (meta.storageKey && ['r2', 'supabase'].includes(meta.storageProvider)) {
                 if (!oldLessonForClaim || oldLessonForClaim.storage_key !== meta.storageKey) {
-                  const err = new Error('Thay đổi media Supabase bắt buộc phải có pendingUploadId hợp lệ.');
+                  const err = new Error('Thay đổi media private bắt buộc phải có pendingUploadId hợp lệ.');
                   err.status = 400; err.code = 'PENDING_UPLOAD_REQUIRED'; throw err;
                 }
                 meta = { ...meta, contentUrl: oldLessonForClaim.storage_key,

@@ -14,6 +14,10 @@ const validProductionEnvironment = {
   PINECONE_API_KEY: 'pinecone-key',
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+  R2_ACCOUNT_ID: 'cloudflare-account-id',
+  R2_ACCESS_KEY_ID: 'r2-access-key',
+  R2_SECRET_ACCESS_KEY: 'r2-secret-key',
+  R2_BUCKET: 'elearning-media',
   SMTP_HOST: 'smtp.example.test',
   SMTP_USER: 'mailer@example.test',
   SMTP_PASS: 'smtp-secret',
@@ -32,7 +36,8 @@ describe('Production environment validation', () => {
     for (const requiredName of [
       'JWT_SECRET', 'FRONTEND_URL', 'GEMINI_API_KEY', 'PINECONE_API_KEY',
       'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SMTP_HOST', 'SMTP_USER',
-      'SMTP_PASS', 'ENABLE_DRM_PACKAGING', 'ENABLE_SUBTITLE_VAD',
+      'SMTP_PASS', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+      'R2_BUCKET', 'ENABLE_DRM_PACKAGING', 'ENABLE_SUBTITLE_VAD',
       'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'
     ]) {
       assert.ok(missing.includes(requiredName), `${requiredName} must be reported missing`);

@@ -124,7 +124,7 @@ describe('🎓 3. Courses Service Metadata & Publish Validation', () => {
       mediaStatus: 'READY'
     });
     assert.strictEqual(videoMeta.isNonMedia, false);
-    assert.strictEqual(videoMeta.storageProvider, 'supabase');
+    assert.strictEqual(videoMeta.storageProvider, 'r2');
     assert.strictEqual(videoMeta.storageKey, 'courses/10/vid.mp4');
     assert.strictEqual(videoMeta.mediaStatus, 'READY');
   });

@@ -605,7 +605,8 @@ Quy tắc:
       // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
       // server-side; URL/khoá nguồn này không được trả về player phía client.
       const rawResult = await db.query(
-        'SELECT lesson_id, content_type, content_url FROM lessons WHERE lesson_id = $1',
+        `SELECT lesson_id, content_type, content_url, storage_key, storage_bucket, storage_provider
+         FROM lessons WHERE lesson_id = $1`,
         [parseInt(lessonId, 10)]
       );
       if (rawResult.rows.length === 0) {
@@ -617,7 +618,7 @@ Quy tắc:
         throw new Error(`Bài học ${lessonId} không phải là video (content_type = ${rawLesson.content_type})`);
       }
 
-      rawContentUrl = rawLesson.content_url || '';
+      rawContentUrl = rawLesson.storage_key || rawLesson.content_url || '';
       if (!rawContentUrl) {
         throw new Error(`Bài học ${lessonId} chưa có nguồn video`);
       }
@@ -656,17 +657,22 @@ Quy tắc:
           console.warn(`[Subtitles] Bài học ${lessonId}: /uploads/ path không còn trên disk (đã bị xóa sau deploy). Bỏ qua.`);
         }
       } else if (rawContentUrl && !rawContentUrl.startsWith('http://') && !rawContentUrl.startsWith('https://')) {
-        // Supabase storage key dạng: courses/123/uuid/video.mp4
-        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện Supabase storage key. Đang tạo Signed URL để tải tạm...`);
+        // Private object storage key dạng: courses/123/uuid/video.mp4
+        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện private storage key. Đang tạo Signed URL để tải tạm...`);
         const { generateSignedUrl } = require('../../../utils/supabaseStorage');
         const sourceStorageKey = rawContentUrl.endsWith('.mpd')
           ? path.posix.join(path.posix.dirname(rawContentUrl), 'source.mp4')
           : rawContentUrl;
-        const signedUrl = await generateSignedUrl(sourceStorageKey, 'videos', 3600);
+        const signedUrl = await generateSignedUrl(
+          sourceStorageKey,
+          rawLesson.storage_bucket || 'videos',
+          3600,
+          rawLesson.storage_provider || 'r2'
+        );
         if (!signedUrl) {
-          throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối Supabase.`);
+          throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối object storage.`);
         }
-        console.log(`[Subtitles] Bài học ${lessonId}: Đang tải video tạm về từ Supabase (có thể mất vài giây với video lớn)...`);
+        console.log(`[Subtitles] Bài học ${lessonId}: Đang tải video tạm về từ object storage (có thể mất vài giây với video lớn)...`);
         tempVideoPath = await this.downloadVideoToTemp(signedUrl, lessonId);
         videoFilePath = tempVideoPath;
         console.log(`[Subtitles] Bài học ${lessonId}: ✅ Đã tải video tạm về ${tempVideoPath} (${Math.round(fs.statSync(tempVideoPath).size / (1024 * 1024))}MB). Bắt đầu pipeline FFmpeg...`);

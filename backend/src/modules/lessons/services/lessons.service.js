@@ -198,12 +198,12 @@ class LessonsService {
       const newContentUrl = contentUrl !== undefined ? contentUrl : content_url;
       if (newContentUrl && updatedLesson?.lesson_id) {
         const { triggerLessonRagIngestion } = require('./lessonRagIngestion.service');
-        const isSupabaseKey = typeof newContentUrl === 'string'
+        const isPrivateStorageKey = typeof newContentUrl === 'string'
           && !newContentUrl.startsWith('/uploads/')
           && !newContentUrl.startsWith('http');
         triggerLessonRagIngestion(
           updatedLesson.lesson_id,
-          isSupabaseKey ? newContentUrl : null,
+          isPrivateStorageKey ? newContentUrl : null,
           'video-assigned'
         ).catch(() => {});
       }
@@ -307,7 +307,7 @@ class LessonsService {
         throw error;
       }
 
-      // 2. Upload lên Supabase Storage bucket 'documents' (uploadDocumentToSupabase hỗ trợ Buffer)
+      // 2. Upload lên Cloudflare R2 (tên hàm cũ được giữ để tương thích import)
       const { uploadDocumentToSupabase, deleteStorageObject } = require('../../../utils/supabaseStorage');
       const crypto = require('crypto');
       const ext = path.extname(file.originalname).toLowerCase();
@@ -318,7 +318,7 @@ class LessonsService {
 
       const uploadResult = await uploadDocumentToSupabase(fileInput, objectKey, 'application/pdf');
       if (!uploadResult.success) {
-        const error = new Error(`Tải tài liệu PDF lên Supabase Storage thất bại: ${uploadResult.error || 'Lỗi không xác định'}`);
+        const error = new Error(`Tải tài liệu PDF lên Cloudflare R2 thất bại: ${uploadResult.error || 'Lỗi không xác định'}`);
         error.status = 500;
         error.code = uploadResult.code || 'STORAGE_UPLOAD_ERROR';
         throw error;
@@ -346,8 +346,8 @@ class LessonsService {
           'application/pdf',
           sizeKb,
           userId,
-          'supabase',
-          'documents',
+          uploadResult.storageProvider || 'r2',
+          uploadResult.storageBucket,
           uploadResult.storageKey,
           'application/pdf',
           uploadResult.sizeBytes,
@@ -357,7 +357,7 @@ class LessonsService {
 
         material = result.rows[0];
       } catch (dbErr) {
-        // Rollback orphan object trên Supabase Storage nếu DB insert thất bại
+        // Rollback orphan object trên R2 nếu DB insert thất bại
         if (uploadedStorageKey) {
           deleteStorageObject(uploadedStorageKey, 'documents').catch(delErr => {
             console.warn('⚠️ Lỗi xóa orphan document object sau DB failure:', delErr.message);
@@ -422,7 +422,7 @@ class LessonsService {
 
       // 1. Lấy thông tin file trước khi xóa
       const checkQuery = `
-        SELECT material_id, file_url, storage_key, storage_bucket 
+        SELECT material_id, file_url, storage_key, storage_bucket, storage_provider
         FROM lesson_materials 
         WHERE material_id = $1 AND lesson_id = $2
       `;
@@ -441,13 +441,17 @@ class LessonsService {
       // 2. Xóa trong CSDL
       await db.query(`DELETE FROM lesson_materials WHERE material_id = $1`, [cleanMaterialId]);
 
-      // 3. Xóa trên Supabase Storage nếu là storage object và không còn tham chiếu nào khác
+      // 3. Xóa trên R2 nếu là storage object và không còn tham chiếu nào khác
       if (storageKey) {
         try {
           const orphanCleanupService = require('../../../utils/orphanCleanup.service');
-          await orphanCleanupService.cleanupUnreferencedAssets([{ key: storageKey, bucket: storageBucket }]);
+          await orphanCleanupService.cleanupUnreferencedAssets([{
+            key: storageKey,
+            bucket: storageBucket,
+            provider: mat.storage_provider || 'r2'
+          }]);
         } catch (e) {
-          console.warn(`[Storage Delete] Cảnh báo lỗi xóa object ${storageKey} trên Supabase:`, e.message);
+          console.warn(`[Storage Delete] Cảnh báo lỗi xóa object ${storageKey} trên R2:`, e.message);
         }
       }
 
