@@ -1,0 +1,99 @@
+Tài liệu đánh giá và hướng dẫn bảo vệ đồ án E-learning
+
+Tiêu đề: Báo cáo đánh giá sẵn sàng triển khai & Kịch bản bảo vệ đồ án
+
+Tác giả: Hệ thống tự động (soạn dựa trên mã nguồn trong repository)
+Repo: skydive-1/Project-E-learning-website-for-learning-English-online
+Ngày tạo: 2026-09-04
+
+1. Tóm tắt nhanh
+
+Dự án đã đạt trình độ "near‑production": nhiều chức năng lõi (xác thực, quản lý khóa học/bài học, hệ thống quiz, DRM wiring, RAG wiring) đã được triển khai và có bằng chứng test/documentation. Tuy nhiên, hệ thống CHƯA hoàn toàn sẵn sàng để khai thác production: một số luồng quan trọng (RAG E2E với Gemini+Pinecone, phát video DRM thực tế trong trình duyệt, gửi email SMTP thật, di trú schema, rate‑limit chia sẻ cho scale, logging có transport) còn chưa được E2E xác minh hoặc đang có drift.
+
+Kết luận: bạn có thể tự tin bảo vệ đồ án (có bằng chứng test, tài liệu, mã nguồn rõ ràng), nhưng cần chuẩn bị demo, chứng minh 1–2 luồng E2E (RAG query + video playback or quiz) và nêu rõ các rủi ro + lộ trình khắc phục nếu định tuyên bố "production‑ready".
+
+2. Bằng chứng chính (tóm tắt từ repo)
+- README.md, DESIGN.md, PRODUCTION_READINESS_AUDIT.md mô tả tính năng, kiến trúc, checklist deploy.
+- Backend: Express modular (backend/src/server.js), middleware (auth, rate limit, logging), các module: auth, courses, lessons, chatbot, quizzes, drm, gamification, ...
+- Tests: audit và README nêu "165 passing tests" trên backend; backend/tests tồn tại.
+- Frontend: React + Vite, các module UI (auth, courses, lessons, chatbot widget, Shaka player) có trong frontend/src.
+- RAG: rag-training/ (Python ingestion/embeddings/vectordb), backend chatbot service (backend/src/modules/chatbot/services/chatbot.service.js) với intent routing, retrieval, grounding policy, SSE streaming.
+- Deployment: docker-compose.yml, vercel.json, .env.example với biến cho Gemini/Pinecone/SMTP/DRM.
+
+3. Đánh giá chức năng theo vai trò
+- Học viên (Student): đăng ký/đăng nhập, duyệt khóa, enroll, xem lesson, làm quiz, hỏi AI — đường dây API & UI có sẵn; lưu ý: một vài UI (profile) còn hiển thị dữ liệu mẫu; cần test smoke.
+- Giảng viên (Instructor): tạo khóa/lesson, upload media, quản lý quiz — API và UI có; auto‑subtitle pipeline hiện có (FFmpeg + VAD + Gemini) nhưng chưa được E2E xác minh trên audio thật.
+- Admin: quản lý user, analytics — có dashboard; lưu ý: logging hiện chỉ in ra console, cần transport tập trung.
+
+4. RAG AI Assistant — trạng thái & đánh giá
+- Tính năng có trong code:
+  - Intent detection, retrieval (Pinecone), grounding policy, source verification, SSE streaming và chat history.
+  - Fallbacks: Postgres lexical fallback nếu Pinecone offline; Pinecone auth warning chuyển sang Postgres.
+- Những gì đã xác minh:
+  - Grounding policy và một số test policy đã pass theo audit.
+  - Prompt engineering và gating (từ chối trả lời khi thiếu nguồn) có trong code.
+- Những gì chưa E2E xác minh:
+  - Chưa có test gửi request trực tiếp tới Gemini+Pinecone trong môi trường có API keys thật và dữ liệu đã nạp.
+  - Chưa có phép đo latency/faithfulness/hallucination thực tế.
+
+Kết luận RAG: wiring đầy đủ và có safeguards; cần chạy E2E với API keys staging và nạp vectordb để khẳng định hoạt động thực tế.
+
+5. Các rủi ro & điểm cần khắc phục trước production
+- Schema/DB: schema.sql lệch so với schema runtime → cần migration versioned.
+- Rate limiting: hiện dùng in‑memory store → khi scale cần chuyển sang Redis/Upstash.
+- Logging: console-only → cần Pino/Winston + centralized transport (CloudWatch/Datadog/Sentry).
+- E2E chưa đầy đủ: RAG live, DRM playback trên trình duyệt, SMTP, auto‑subtitle với audio thật.
+- Frontend bundle size lớn: cần lazy loading & chunking (tách Shaka, PDF, dashboard).
+
+6. Hành động ưu tiên (ngắn hạn để bảo vệ & demo)
+1) Chuẩn bị staging env với các secrets: GEMINI_API_KEY, PINECONE_API_KEY, SMTP thử nghiệm.
+2) Nạp dữ liệu RAG cho 1‑2 bài học bằng rag-training/main.py và xác minh Pinecone có matches.
+3) Chạy một truy vấn RAG E2E: gửi /api/chatbot/ask → nhận streaming reply + sources.
+4) Chạy demo video: nếu ENABLE_DRM_PACKAGING=true thì cần Shaka Packager binary; nếu không có, tắt DRM hoặc demo non‑DRM video.
+5) Chạy smoke test SMTP (ví dụ gửi email reset password to staging inbox).
+6) Chuẩn bị screenshot/clip của các test & kết quả (console logs, curl responses, video playback).
+
+7. Kịch bản demo (gợi ý để trình diễn trước hội đồng)
+- Bước 1: Khởi services (docker‑compose up --build) hoặc chạy backend & frontend local.
+- Bước 2: Trên trình duyệt: đăng nhập (Student) → enroll course → mở lesson.
+- Bước 3: Play video (show headers/ticket nếu DRM bật) hoặc demo non‑DRM.
+- Bước 4: Mở Chatbot → hỏi câu liên quan lesson → show streaming answer + sources (nếu RAG vectors đã nạp).
+- Bước 5: Làm Quick Quiz (tạo bằng AI) → hoàn thành attempt → show progress unlock.
+- Bước 6: Đăng nhập Admin → show analytics và user list.
+
+Lệnh & env vars cần thiết cho demo (ví dụ)
+- Thiết lập env (tập lệnh .env):
+  - BACKEND: JWT_SECRET, DATABASE_URL, GEMINI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX, SMTP_USER/SMTP_PASSWORD, FRONTEND_URL, ENABLE_DRM_PACKAGING (true/false)
+  - FRONTEND: VITE_API_URL=http://localhost:5000/api
+- Chạy bằng Docker Compose (recommended):
+  docker-compose up --build
+- Hoặc chạy manual:
+  cd backend && npm install && npm run dev
+  cd frontend && npm install && npm run dev
+- Nạp RAG vectors (ví dụ):
+  cd rag-training
+  python -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  python main.py --lesson-id 20 --data-folder ./data
+
+8. Các câu hỏi thường gặp hội đồng có thể hỏi — và cách trả lời gợi ý
+- "RAG có đảm bảo không bị hallucinate?" → Trả lời: có grounding policy trước khi gọi LLM; nếu nguồn không đủ, bot trả lời an toàn. Tuy nhiên cần E2E measurement và thresholds cấu hình (RAG_CONFIDENCE_THRESHOLD).
+- "Làm sao khi Pinecone/Pegasys bị lỗi?" → Hệ thống có fallback sang PostgreSQL lexical search; có cảnh báo và chuyển chế độ resilient.
+- "DRM có chặn hoàn toàn quay màn hình?" → Không thể chặn hoàn toàn trên client; DRM + watermark là phương pháp răn đe và truy vết; nếu cần bảo vệ mạnh hơn phải dùng Widevine/FairPlay/PlayReady.
+- "Bạn đã chuẩn bị devops/monitoring chưa?" → Có health checks và startup validators; cần thêm readiness/liveness checks đầy đủ và logger transport để centralize logs.
+
+9. Appendix — checklist triển khai trước production
+[ ] Cấp API keys (Gemini, Pinecone, SMTP)
+[ ] Chạy migration phiên bản hoá schema
+[ ] npm run build (frontend) → no errors, bundle budget
+[ ] npm --prefix backend test → all pass (hoặc ít nhất các test quan trọng)
+[ ] docker-compose up → all services healthy
+[ ] Smoke test: login, enroll, play video, chat, send email
+[ ] Triển khai monitoring & tracing (Pino/Winston + APM) và health endpoint mở rộng
+
+---
+
+Nếu bạn muốn tôi commit tài liệu này vào repository, file sẽ được lưu tại: docs/Tài_liệu_Đánh_giá_và_Bảo_vệ_Đồ_án.docx
+
+Nội dung ở trên là phiên bản đầy đủ bằng tiếng Việt, có thể chỉnh sửa nếu bạn muốn bổ sung tiêu đề, tên tác giả, hoặc các phần chi tiết hơn (ví dụ: log outputs, ảnh chụp màn hình).
