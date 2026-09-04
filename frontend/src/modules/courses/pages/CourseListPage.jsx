@@ -39,6 +39,20 @@ export const fetchCoursesFromApi = async () => {
   }
 };
 
+export const fetchCourses = async () => {
+  const courses = await fetchCoursesFromApi();
+  return courses.map(c => ({
+    ...c,
+    id: `db-${c.course_id}`,
+    instructor: c.instructor_name || 'Giảng viên thật',
+    rating: null,
+    reviews: null,
+    students: null,
+    duration: null,
+    price: c.price && Number(c.price) > 0 ? `${Number(c.price).toLocaleString('vi-VN')} ₫` : 'Miễn phí'
+  }));
+};
+
 const CourseListPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -169,8 +183,57 @@ const CourseListPage = () => {
     enabled: activeHubTab === 'course'
   });
 
+  // Query Subjects from Backend
+  const { data: dbSubjects = [] } = useQuery({
+    queryKey: ['subjects'],
+    queryFn: async () => {
+      try {
+        const response = await apiClient.get('/courses/subjects');
+        return Array.isArray(response.data?.subjects) ? response.data.subjects : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: activeHubTab === 'course'
+  });
+
+  // Subject Resolver for URL params (?subject=1, ?subject=ielts, etc.)
+  const resolveSubjectId = useCallback((param) => {
+    if (!param || param === 'all') return 'all';
+    const clean = param.toString().toLowerCase().trim();
+    if (['1', '2', '3', '4', '5'].includes(clean)) return clean;
+    if (clean.includes('ielts')) return '1';
+    if (clean.includes('toeic')) return '2';
+    if (clean.includes('business') || clean.includes('thương mại')) return '3';
+    if (clean.includes('general') || clean.includes('giao tiếp') || clean.includes('phản xạ')) return '4';
+    const found = dbSubjects.find(s => 
+      String(s.subject_id) === clean || 
+      (s.subject_name && s.subject_name.toLowerCase() === clean)
+    );
+    return found ? String(found.subject_id) : clean;
+  }, [dbSubjects]);
+
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+
   // Course Catalog Filter & Search States
-  const [courseSearch, setCourseSearch] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState(() => {
+    const rawParam = searchParams.get('subject') || searchParams.get('subject_id') || searchParams.get('category');
+    return resolveSubjectId(rawParam);
+  });
+
+  const [courseSearch, setCourseSearch] = useState(() => searchParams.get('search') || '');
+
+  // Sync with URL query parameter changes
+  useEffect(() => {
+    const rawParam = searchParams.get('subject') || searchParams.get('subject_id') || searchParams.get('category');
+    if (rawParam) {
+      setSelectedSubject(resolveSubjectId(rawParam));
+    }
+    const searchVal = searchParams.get('search');
+    if (searchVal !== null && searchVal !== undefined) {
+      setCourseSearch(searchVal);
+    }
+  }, [location.search, resolveSubjectId, searchParams]);
 
   // Kể cả khi đang đứng tại /courses, bấm lại Learn vẫn phải quay về đúng
   // catalog Course như màn hình đích, thay vì giữ sub-tab trước đó.
@@ -178,17 +241,46 @@ const CourseListPage = () => {
     if (location.state?.activeHubTab === 'course') {
       setActiveHubTab('course');
       setCourseSearch('');
+      setSelectedSubject('all');
     }
   }, [location.key, location.state]);
 
+  const handleSelectSubject = (subId) => {
+    setSelectedSubject(subId);
+    const params = new URLSearchParams(location.search);
+    if (subId === 'all') {
+      params.delete('subject');
+      params.delete('subject_id');
+      params.delete('category');
+    } else {
+      params.set('subject', subId);
+    }
+    const queryString = params.toString();
+    navigate({ search: queryString ? `?${queryString}` : '' }, { replace: true });
+  };
+
   const filteredDbCourses = useMemo(() => {
     return dbCourses.filter(c => {
+      // 1. Text search filter
       const matchSearch = !courseSearch || 
         (c.course_name && c.course_name.toLowerCase().includes(courseSearch.toLowerCase())) ||
         (c.subject_name && c.subject_name.toLowerCase().includes(courseSearch.toLowerCase()));
-      return matchSearch;
+
+      // 2. Subject filter
+      let matchSubject = true;
+      if (selectedSubject && selectedSubject !== 'all') {
+        matchSubject = String(c.subject_id) === String(selectedSubject) ||
+          (c.subject_name && (
+            (selectedSubject === '1' && c.subject_name.toLowerCase().includes('ielts')) ||
+            (selectedSubject === '2' && c.subject_name.toLowerCase().includes('toeic')) ||
+            (selectedSubject === '3' && (c.subject_name.toLowerCase().includes('business') || c.subject_name.toLowerCase().includes('thương mại'))) ||
+            (selectedSubject === '4' && (c.subject_name.toLowerCase().includes('general') || c.subject_name.toLowerCase().includes('giao tiếp')))
+          ));
+      }
+
+      return matchSearch && matchSubject;
     });
-  }, [dbCourses, courseSearch]);
+  }, [dbCourses, courseSearch, selectedSubject]);
 
   return (
     <div className="learning-hub-page">
@@ -377,6 +469,29 @@ const CourseListPage = () => {
                   </div>
                 </div>
 
+                {/* Category Filter Tags */}
+                {dbSubjects.length > 0 && (
+                  <div className="catalog-filter-tags">
+                    <button
+                      type="button"
+                      className={selectedSubject === 'all' ? 'active' : ''}
+                      onClick={() => handleSelectSubject('all')}
+                    >
+                      {t('Tất cả')}
+                    </button>
+                    {dbSubjects.map((sub) => (
+                      <button
+                        key={sub.subject_id}
+                        type="button"
+                        className={selectedSubject === String(sub.subject_id) ? 'active' : ''}
+                        onClick={() => handleSelectSubject(String(sub.subject_id))}
+                      >
+                        {t(sub.subject_name)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {isCoursesError ? (
                   <div role="alert" className="py-10 text-center text-slate-700 dark:text-slate-200">
                     <p className="font-semibold">Không thể tải danh sách khóa học, vui lòng thử lại sau.</p>
@@ -394,7 +509,28 @@ const CourseListPage = () => {
                   <p className="text-slate-500 py-8 text-center">Đang tải danh sách khóa học...</p>
                 ) : filteredDbCourses.length === 0 ? (
                   <div role="status" className="py-12 text-center text-slate-400">
-                    <p>{courseSearch ? 'Không tìm thấy khóa học nào phù hợp với từ khóa.' : 'Chưa có khóa học nào.'}</p>
+                    {selectedSubject !== 'all' ? (
+                      <>
+                        <p className="text-base font-semibold text-slate-700 dark:text-slate-300">
+                          {t('Hiện chưa có khóa học phù hợp')}
+                        </p>
+                        <span className="sr-only">Hiện cho có khóa học phù hợp</span>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                          {t('Khóa học cho danh mục này đang được phát triển và sẽ sớm ra mắt.')}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSubject('all')}
+                          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm"
+                        >
+                          {t('Xem tất cả khóa học')}
+                        </button>
+                      </>
+                    ) : courseSearch ? (
+                      <p>{t('Không tìm thấy khóa học nào phù hợp với từ khóa.')}</p>
+                    ) : (
+                      <p>{t('Chưa có khóa học nào.')}</p>
+                    )}
                   </div>
                 ) : (
                   <div className="course-cards-grid">
