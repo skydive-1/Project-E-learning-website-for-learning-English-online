@@ -15,7 +15,7 @@ const coursesService = require('../courses/services/courses.service');
  * Endpoint xử lý yêu cầu cấp DRM License chuẩn W3C EME ClearKey JWK (RFC 7517)
  * Path: POST /api/drm/license & OPTIONS /api/drm/license
  */
-const getClearKeyLicense = async (req, res) => {
+const getClearKeyLicense = async (req, res, next) => {
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
@@ -108,10 +108,7 @@ const getClearKeyLicense = async (req, res) => {
     return res.status(200).json(jwkResponse);
   } catch (error) {
     console.error('❌ [DRM Controller Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Không thể cấp DRM License do lỗi hệ thống server.'
-    });
+    return next(error);
   }
 };
 
@@ -119,7 +116,7 @@ const getClearKeyLicense = async (req, res) => {
  * API lấy thông tin cấu hình DRM Key cho từng bài học (phục vụ Frontend / Packager)
  * Path: GET /api/drm/info/:lessonId
  */
-const getLessonDrmInfo = async (req, res) => {
+const getLessonDrmInfo = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
     if (!lessonId) {
@@ -163,10 +160,7 @@ const getLessonDrmInfo = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ [DRM Info Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Lỗi lấy thông tin DRM'
-    });
+    return next(error);
   }
 };
 
