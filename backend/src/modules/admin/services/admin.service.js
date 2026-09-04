@@ -1093,6 +1093,86 @@ const updateUserQuotaLimit = async (userId, maxTokens) => {
   return result.rows[0];
 };
 
+/**
+ * Admin: Migrate toàn bộ media của một khóa học sang Cloudflare R2.
+ * Dùng cho các khóa học cũ đã published trước khi hệ thống có auto-migration.
+ *
+ * Options:
+ *   - deleteSource (bool, default true): Xoá file cũ trên Supabase sau khi migrate thành công
+ *   - dryRun (bool, default false): Chạy thử, in kế hoạch nhưng không thực sự move/xoá file
+ */
+const migrateCourseMedia = async (courseId, { deleteSource = true, dryRun = false } = {}) => {
+  const parsedCourseId = parseInt(courseId, 10);
+  if (!parsedCourseId || isNaN(parsedCourseId)) {
+    const err = new Error('course_id không hợp lệ');
+    err.status = 400;
+    throw err;
+  }
+
+  // Kiểm tra khóa học tồn tại
+  const courseCheck = await pool.query(
+    'SELECT course_id, course_name, status FROM courses WHERE course_id = $1',
+    [parsedCourseId]
+  );
+  if (courseCheck.rows.length === 0) {
+    const err = new Error(`Không tìm thấy khóa học #${parsedCourseId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const course = courseCheck.rows[0];
+
+  if (dryRun) {
+    // Dry-run: Chỉ thống kê, không thực sự migrate
+    const { loadSupabaseMedia, loadReferencedMedia } = require('../../../utils/r2CourseReorganizer');
+    const supabaseRows = await loadSupabaseMedia({ courseId: parsedCourseId });
+    const r2Rows = await loadReferencedMedia({ courseId: parsedCourseId });
+    const { isAlreadyCourseScoped, targetKeyFor } = require('../../../utils/r2CourseReorganizer');
+    const r2NeedsReorg = r2Rows.filter(row => !isAlreadyCourseScoped(row));
+
+    return {
+      courseId: parsedCourseId,
+      courseName: course.course_name,
+      status: course.status,
+      dryRun: true,
+      supabase: {
+        total: supabaseRows.length,
+        items: supabaseRows.map(r => ({
+          ref: `${r.ref_type}#${r.ref_id}`,
+          lesson: r.lesson_name,
+          sourceKey: r.source_key,
+          targetKey: (() => {
+            try { return targetKeyFor(r); } catch { return '(error building key)'; }
+          })()
+        }))
+      },
+      r2Reorganize: {
+        total: r2NeedsReorg.length,
+        items: r2NeedsReorg.map(r => ({
+          ref: `${r.ref_type}#${r.ref_id}`,
+          lesson: r.lesson_name,
+          sourceKey: r.source_key,
+          targetKey: (() => {
+            try { return targetKeyFor(r); } catch { return '(error building key)'; }
+          })()
+        }))
+      }
+    };
+  }
+
+  // Thực sự migrate
+  const { migrateCourseAllMedia } = require('../../../utils/r2CourseReorganizer');
+  const report = await migrateCourseAllMedia(parsedCourseId, { deleteSource });
+
+  return {
+    courseId: parsedCourseId,
+    courseName: course.course_name,
+    status: course.status,
+    dryRun: false,
+    ...report
+  };
+};
+
 module.exports = {
   getAllUsers,
   updateUserRole,
@@ -1104,5 +1184,6 @@ module.exports = {
   getAiRateLimitCaps,
   getRateLimitStatus,
   updateAiRateLimitCaps,
-  updateUserQuotaLimit
+  updateUserQuotaLimit,
+  migrateCourseMedia
 };

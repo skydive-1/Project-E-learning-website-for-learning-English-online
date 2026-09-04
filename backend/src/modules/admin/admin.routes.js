@@ -50,6 +50,10 @@ router.get('/rate-limit', adminController.getRateLimitStatus);
 // POST /api/admin/rate-limit/toggle - Bật/Tắt hệ thống Rate Limiting động
 router.post('/rate-limit/toggle', adminController.toggleRateLimit);
 
+// POST /api/admin/courses/:courseId/migrate-media - Migrate media khóa học cũ lên Cloudflare R2
+// Query: ?dryRun=true (chỉ xem kế hoạch) | ?deleteSource=false (giữ lại file Supabase)
+router.post('/courses/:courseId/migrate-media', adminController.migrateCourseMedia);
+
 /**
  * @swagger
  * tags:

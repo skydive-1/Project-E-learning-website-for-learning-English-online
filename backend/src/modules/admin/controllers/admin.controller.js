@@ -434,4 +434,31 @@ exports.toggleRateLimit = async (req, res, next) => {
     next(error);
   }
 };
+/**
+ * POST /api/admin/courses/:courseId/migrate-media
+ * Migrate thủ công toàn bộ media của một khóa học lên Cloudflare R2.
+ * Hỗ trợ dry-run để xem kế hoạch trước khi thực thi.
+ *
+ * Query params:
+ *   - dryRun=true  : Chỉ xem kế hoạch, không thực sự migrate
+ *   - deleteSource=false : Giữ lại file cũ trên Supabase sau migrate
+ */
+exports.migrateCourseMedia = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const dryRun = req.query.dryRun === 'true';
+    const deleteSource = req.query.deleteSource !== 'false';
 
+    const report = await adminService.migrateCourseMedia(courseId, { dryRun, deleteSource });
+
+    res.status(200).json({
+      success: true,
+      message: dryRun
+        ? `[Dry-run] Kế hoạch migrate media khóa học #${courseId}`
+        : `Migrate media khóa học #${courseId} hoàn tất`,
+      report
+    });
+  } catch (error) {
+    next(error);
+  }
+};
