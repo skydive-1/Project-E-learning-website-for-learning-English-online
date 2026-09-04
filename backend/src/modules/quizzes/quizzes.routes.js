@@ -41,6 +41,20 @@ router.post('/', authenticate, authorize([1, 2]), quizLimiter, quizzesController
 // Route: POST /api/quizzes/generate-ai - Sinh câu hỏi bằng AI (Dành cho Admin & Giảng viên)
 router.post('/generate-ai', authenticate, authorize([1, 2]), quizLimiter, aiLimiter, quizzesController.generateQuizAi);
 
+// Route: POST /api/quizzes/generate-ai-from-pdf - Thu nạp 1 hoặc nhiều đề thi PDF và sinh câu hỏi bằng AI theo Level
+router.post(
+  '/generate-ai-from-pdf',
+  authenticate,
+  authorize([1, 2]),
+  upload.materialPdf.fields([
+    { name: 'pdfs', maxCount: 10 },
+    { name: 'pdf', maxCount: 10 }
+  ]),
+  quizLimiter,
+  aiLimiter,
+  quizzesController.generateQuizAiFromPdf
+);
+
 /**
  * @swagger
  * /api/quizzes/submit:

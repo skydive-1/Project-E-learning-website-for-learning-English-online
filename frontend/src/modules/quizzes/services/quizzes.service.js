@@ -256,8 +256,7 @@ export const submitAudioAnswer = async (quizId, questionId, audioFile, expectedS
     throw error;
   }
 };
-
-export const createQuiz = async (quizData) => {
+export const createQuiz = async (quizData) => {
   try {
     const response = await apiClient.post('/quizzes', quizData);
     return response.data;
@@ -273,6 +272,24 @@ export const generateQuizAi = async (payload) => {
     return response.data;
   } catch (error) {
     console.error("⚠️ Lỗi sinh câu hỏi bằng AI:", error.message);
+    throw error;
+  }
+};
+
+/**
+ * Tải file PDF đề thi lên để AI đọc hiểu và sinh bài Quiz phù hợp với level
+ */
+export const generateQuizAiFromPdf = async (formData) => {
+  try {
+    const response = await apiClient.post('/quizzes/generate-ai-from-pdf', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      timeout: 120000
+    });
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi sinh câu hỏi AI từ PDF:", error.message);
     throw error;
   }
 };
@@ -302,4 +319,3 @@ export const deleteQuizById = async (quizId) => {
     throw error;
   }
 };
-
