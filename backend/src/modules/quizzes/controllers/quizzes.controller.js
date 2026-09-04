@@ -28,7 +28,8 @@ exports.getQuizzes = async (req, res, next) => {
 
     const data = await quizzesService.getQuizzesByCourseId(courseId);
     
-    // Trả về dữ liệu câu hỏi đầy đủ bao gồm đáp án và giải thích cho Frontend hiển thị kết quả
+    // Route công khai (không yêu cầu đăng nhập) — PHẢI ẩn đáp án đúng / gợi ý điền khuyết
+    // để tránh lộ đề cho học sinh trước khi làm bài. Dùng cho trang học & danh sách bài học.
     const sanitizedData = data.map(quiz => ({
       quiz_id: quiz.quiz_id,
       course_id: quiz.course_id,
@@ -43,6 +44,53 @@ exports.getQuizzes = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: sanitizedData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getQuizzesForManagement = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+
+    if (!courseId) {
+      const err = new Error("Thiếu courseId");
+      err.status = 400;
+      throw err;
+    }
+
+    const data = await quizzesService.getQuizzesByCourseId(courseId);
+
+    // Route riêng cho Giảng viên/Admin (yêu cầu authenticate + authorize ở route),
+    // trả về dữ liệu câu hỏi đầy đủ bao gồm đáp án và giải thích để phục vụ chỉnh sửa khóa học.
+    const fullData = data.map(quiz => ({
+      quiz_id: quiz.quiz_id,
+      course_id: quiz.course_id,
+      lesson_id: quiz.lesson_id,
+      title: quiz.title,
+      description: quiz.description,
+      difficulty: quiz.difficulty,
+      time_limit: quiz.time_limit,
+      questions: quiz.questions.map(q => {
+        let parsedOptions = q.options;
+        if (typeof parsedOptions === 'string') {
+          try { parsedOptions = JSON.parse(parsedOptions); } catch (_) {}
+        }
+        return {
+          question_id: q.question_id,
+          question_text: q.question_text,
+          options: parsedOptions,
+          correct_answer: q.correct_answer,
+          explanation: q.explanation,
+          question_type: q.question_type
+        };
+      })
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: fullData
     });
   } catch (error) {
     next(error);

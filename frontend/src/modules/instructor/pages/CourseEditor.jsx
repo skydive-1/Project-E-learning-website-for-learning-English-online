@@ -15,16 +15,26 @@ import {
   createQuiz, 
   generateQuizAi, 
   generateQuizAiFromPdf,
-  fetchAndCacheQuizzes,
+  fetchQuizzesForCourseManagement,
   deleteQuizById
 } from '../../quizzes/services/quizzes.service';
 import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { useToast } from '../../../context/ToastContext';
+import { extractYouTubeVideoId, isYouTubeUrl } from '../../lessons/services/lessons.service';
 import '../styles/instructor.scss';
+
+const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
+  <svg className={className} style={{ width: 14, height: 14, fill: '#ef4444', ...style }} viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+  </svg>
+);
 
 const isAllowedExternalMediaUrl = (url = '') => /^https?:\/\//i.test(url) && !/\.supabase\.co(?:\/|$)/i.test(url);
 
 export const isMediaReadyForPublish = (lesson) => {
+  if (lesson.type === 'youtube') {
+    return isYouTubeUrl(lesson.youtubeUrl || lesson.contentUrl);
+  }
   if (isAllowedExternalMediaUrl(lesson.contentUrl)) return true;
   const hasClaimablePending = lesson.mediaStatus === 'PENDING' && lesson.uploadVerified === true &&
     lesson.pendingUploadId && lesson.storageKey && lesson.storageBucket && lesson.mimeType &&
@@ -161,7 +171,7 @@ const CourseEditor = () => {
           setLoading(true);
           const [courseRes, quizzesData] = await Promise.all([
             apiClient.get(`/courses/${courseId}`),
-            fetchAndCacheQuizzes(courseId)
+            fetchQuizzesForCourseManagement(courseId)
           ]);
 
           if (courseRes.data && courseRes.data.success) {
@@ -185,7 +195,8 @@ const CourseEditor = () => {
                 id: sec.section_id,
                 title: sec.title,
                 lessons: (sec.lessons || []).map(l => {
-                  const isExternal = isAllowedExternalMediaUrl(l.content_url);
+                  const isYouTube = l.content_type === 'youtube' || isYouTubeUrl(l.content_url);
+                  const isExternal = isAllowedExternalMediaUrl(l.content_url) || isYouTube;
                   const status = l.media_status || l.mediaStatus || (isExternal ? 'READY' : 'PENDING_AUDIT');
                   const isVerified = status === 'READY' || isExternal;
                   const attachedQuiz = quizByLessonId[String(l.lesson_id)];
@@ -193,15 +204,16 @@ const CourseEditor = () => {
                   return {
                     id: l.lesson_id,
                     title: l.title,
-                    type: l.content_type,
+                    type: isYouTube ? 'youtube' : l.content_type,
                     contentUrl: l.content_url,
+                    youtubeUrl: isYouTube ? l.content_url : '',
                     storageKey: l.storage_key || l.storageKey || (!isExternal ? l.content_url : null),
-                    storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : 'videos'),
-                    storageProvider: l.storage_provider || l.storageProvider || (isExternal ? 'external' : 'r2'),
-                    mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : 'video/mp4'),
+                    storageBucket: l.storage_bucket || l.storageBucket || (l.content_type === 'pdf' ? 'documents' : (isYouTube ? 'youtube' : 'videos')),
+                    storageProvider: l.storage_provider || l.storageProvider || (isYouTube ? 'youtube' : (isExternal ? 'external' : 'r2')),
+                    mimeType: l.mime_type || l.mimeType || (l.content_type === 'pdf' ? 'application/pdf' : (isYouTube ? 'video/youtube' : 'video/mp4')),
                     sizeBytes: l.size_bytes || l.sizeBytes || 0,
                     checksumSha256: l.checksum_sha256 || l.checksumSha256 || null,
-                    mediaStatus: status,
+                    mediaStatus: isYouTube ? 'READY' : status,
                     pendingUploadId: null,
                     uploading: false,
                     uploadVerified: isVerified,
@@ -285,6 +297,7 @@ const CourseEditor = () => {
       title: 'Bài học mới',
       type: 'video',
       contentUrl: '',
+      youtubeUrl: '',
       uploading: false,
       speakingSentences: '',
       speakingQuestions: '',
@@ -306,6 +319,24 @@ const CourseEditor = () => {
   const handleLessonChange = (sIdx, lIdx, key, value) => {
     const newSections = [...sections];
     newSections[sIdx].lessons[lIdx][key] = value;
+
+    if (key === 'type' && value === 'youtube') {
+      newSections[sIdx].lessons[lIdx].storageProvider = 'youtube';
+      newSections[sIdx].lessons[lIdx].storageBucket = 'youtube';
+      newSections[sIdx].lessons[lIdx].uploadVerified = true;
+      newSections[sIdx].lessons[lIdx].mediaStatus = 'READY';
+      if (newSections[sIdx].lessons[lIdx].youtubeUrl) {
+        newSections[sIdx].lessons[lIdx].contentUrl = newSections[sIdx].lessons[lIdx].youtubeUrl;
+      }
+    } else if (key === 'youtubeUrl') {
+      newSections[sIdx].lessons[lIdx].contentUrl = value;
+      newSections[sIdx].lessons[lIdx].storageKey = value;
+      newSections[sIdx].lessons[lIdx].storageProvider = 'youtube';
+      newSections[sIdx].lessons[lIdx].storageBucket = 'youtube';
+      newSections[sIdx].lessons[lIdx].uploadVerified = isYouTubeUrl(value);
+      newSections[sIdx].lessons[lIdx].mediaStatus = isYouTubeUrl(value) ? 'READY' : 'PENDING';
+    }
+
     setSections(newSections);
   };
 
@@ -692,6 +723,12 @@ const CourseEditor = () => {
             setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng. Vui lòng tải lại tệp.`);
             return;
           }
+        } else if (lesson.type === 'youtube') {
+          const ytUrl = lesson.youtubeUrl || lesson.contentUrl;
+          if (!ytUrl || !isYouTubeUrl(ytUrl)) {
+            setErrorMsg(`Vui lòng nhập đường link YouTube hợp lệ cho bài học "${lesson.title}".`);
+            return;
+          }
         }
       }
     }
@@ -732,14 +769,14 @@ const CourseEditor = () => {
           id: les.id,
           title: les.title,
           contentType: les.type,
-          contentUrl: les.contentUrl,
-          storageProvider: les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'r2') : null),
-          storageBucket: les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null),
-          storageKey: les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null),
-          mimeType: les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null)),
+          contentUrl: les.type === 'youtube' ? (les.youtubeUrl || les.contentUrl) : les.contentUrl,
+          storageProvider: les.type === 'youtube' ? 'youtube' : (les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'r2') : null)),
+          storageBucket: les.type === 'youtube' ? 'youtube' : (les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null)),
+          storageKey: les.type === 'youtube' ? (les.youtubeUrl || les.contentUrl) : (les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null)),
+          mimeType: les.type === 'youtube' ? 'video/youtube' : (les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null))),
           sizeBytes: les.sizeBytes || 0,
           checksumSha256: les.checksumSha256 || null,
-          mediaStatus: les.mediaStatus || (les.contentUrl ? 'PENDING_AUDIT' : null),
+          mediaStatus: les.type === 'youtube' ? 'READY' : (les.mediaStatus || (les.contentUrl ? 'PENDING_AUDIT' : null)),
           pendingUploadId: les.pendingUploadId || null,
           orderIndex: lIdx + 1,
           speakingSentences: les.speakingSentences || '',
@@ -771,7 +808,9 @@ const CourseEditor = () => {
       }
     } catch (err) {
       console.error('Lỗi lưu khóa học:', err);
-      setErrorMsg(err.response?.data?.message || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.');
+      const message = err.response?.data?.message || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.';
+      setErrorMsg(message);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
       setPolicyModalOpen(false);
@@ -1004,6 +1043,7 @@ const CourseEditor = () => {
                                 className="lesson-type-select"
                               >
                                 <option value="video">Video</option>
+                                <option value="youtube">YouTube Video</option>
                                 <option value="pdf">PDF Document</option>
                               </select>
                             </div>
@@ -1019,35 +1059,84 @@ const CourseEditor = () => {
                             </div>
 
                             <div className="card-top-actions">
-                              <input 
-                                type="file" 
-                                ref={el => fileInputRef.current[refKey] = el}
-                                style={{ display: 'none' }}
-                                onChange={(e) => handleFileChange(sIdx, lIdx, e)}
-                                accept={lesson.type === 'video' ? 'video/mp4' : 'application/pdf'}
-                              />
-                              <button 
-                                type="button"
-                                className={`btn-upload-media ${lesson.contentUrl ? 'uploaded' : ''}`}
-                                onClick={() => triggerFileSelect(sIdx, lIdx)}
-                                disabled={lesson.uploading}
-                                title={lesson.type === 'video'
-                                  ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
-                                  : 'Chỉ nhận PDF — Tối đa 500 MB'
-                                }
-                              >
-                                {lesson.uploading ? (
-                                  <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
-                                ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
-                                  <><FiUpload /> <span>Cần tải lại</span></>
-                                ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
-                                  <><FiUpload /> <span>Chờ kiểm định</span></>
-                                ) : lesson.contentUrl ? (
-                                  <><FiCheckCircle /> <span>Đã tải lên</span></>
-                                ) : (
-                                  <><FiUpload /> <span>Tải lên {lesson.type === 'video' ? 'Video' : 'PDF'}</span></>
-                                )}
-                              </button>
+                              {lesson.type === 'youtube' ? (
+                                <div className="youtube-url-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: 'rgba(15, 23, 42, 0.6)',
+                                    border: `1px solid ${isYouTubeUrl(lesson.youtubeUrl || lesson.contentUrl) ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                                    borderRadius: '8px',
+                                    padding: '5px 10px',
+                                    minWidth: '280px'
+                                  }}>
+                                    <YouTubeIcon className="media-icon" style={{ width: 14, height: 14, flexShrink: 0 }} />
+                                    <input
+                                      type="url"
+                                      value={lesson.youtubeUrl ?? (isYouTubeUrl(lesson.contentUrl) ? lesson.contentUrl : '')}
+                                      onChange={(e) => handleLessonChange(sIdx, lIdx, 'youtubeUrl', e.target.value)}
+                                      placeholder="https://www.youtube.com/watch?v=..."
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        outline: 'none',
+                                        color: '#f8fafc',
+                                        fontSize: '12px',
+                                        width: '100%'
+                                      }}
+                                    />
+                                  </div>
+                                  {extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl) ? (
+                                    <a
+                                      href={`https://www.youtube.com/watch?v=${extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="btn-upload-media uploaded"
+                                      style={{ textDecoration: 'none', padding: '6px 12px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                                      title="Xem trước video trên YouTube"
+                                    >
+                                      <FiCheckCircle /> <span>Xem thử ↗</span>
+                                    </a>
+                                  ) : (
+                                    <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                      {lesson.youtubeUrl ? 'Link chưa chuẩn' : 'Chưa nhập link'}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <>
+                                  <input 
+                                    type="file" 
+                                    ref={el => fileInputRef.current[refKey] = el}
+                                    style={{ display: 'none' }}
+                                    onChange={(e) => handleFileChange(sIdx, lIdx, e)}
+                                    accept={lesson.type === 'video' ? 'video/mp4' : 'application/pdf'}
+                                  />
+                                  <button 
+                                    type="button"
+                                    className={`btn-upload-media ${lesson.contentUrl ? 'uploaded' : ''}`}
+                                    onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                    disabled={lesson.uploading}
+                                    title={lesson.type === 'video'
+                                      ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
+                                      : 'Chỉ nhận PDF — Tối đa 500 MB'
+                                    }
+                                  >
+                                    {lesson.uploading ? (
+                                      <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
+                                    ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
+                                      <><FiUpload /> <span>Cần tải lại</span></>
+                                    ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
+                                      <><FiUpload /> <span>Chờ kiểm định</span></>
+                                    ) : lesson.contentUrl ? (
+                                      <><FiCheckCircle /> <span>Đã tải lên</span></>
+                                    ) : (
+                                      <><FiUpload /> <span>Tải lên {lesson.type === 'video' ? 'Video' : 'PDF'}</span></>
+                                    )}
+                                  </button>
+                                </>
+                              )}
 
                               <button 
                                 type="button"
@@ -1195,7 +1284,31 @@ const CourseEditor = () => {
                             </div>
 
                             {/* Right side of toolbar: File details info pill */}
-                            {lesson.contentUrl && !lesson.uploading && (
+                            {lesson.type === 'youtube' ? (
+                              <div className="toolbar-right">
+                                <div className="media-info-pill" style={{ borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.08)' }}>
+                                  <YouTubeIcon className="media-icon" style={{ width: 14, height: 14, color: '#ef4444' }} />
+                                  <span className="media-filename" title={lesson.youtubeUrl || lesson.contentUrl}>
+                                    {extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl)
+                                      ? `YouTube ID: ${extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl)}`
+                                      : 'Chưa có link YouTube'}
+                                  </span>
+                                  <span className="storage-badge" style={{ background: '#ef4444', color: '#ffffff' }}>
+                                    YouTube Embed
+                                  </span>
+                                  {extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl) && (
+                                    <a 
+                                      href={`https://www.youtube.com/watch?v=${extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl)}`} 
+                                      target="_blank" 
+                                      rel="noreferrer" 
+                                      className="view-link"
+                                    >
+                                      Mở link ↗
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ) : lesson.contentUrl && !lesson.uploading && (
                               <div className="toolbar-right">
                                 <div className="media-info-pill">
                                   {lesson.type === 'video' ? <FiVideo className="media-icon" /> : <FiFileText className="media-icon" />}

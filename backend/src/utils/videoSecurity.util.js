@@ -190,8 +190,16 @@ function setProtectedVideoHeaders(res) {
   res.setHeader('Content-Disposition', 'inline; filename="lesson-video.mp4"');
 }
 
+function isYouTubeUrl(url = '') {
+  return /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i.test(String(url || ''));
+}
+
 function sanitizeLessonMediaForClient(lesson) {
-  if (!lesson || String(lesson.content_type).toLowerCase() !== 'video') return lesson;
+  if (!lesson) return lesson;
+  const isYoutube = String(lesson.content_type || '').toLowerCase() === 'youtube' || isYouTubeUrl(lesson.content_url);
+  if (isYoutube) return lesson;
+
+  if (String(lesson.content_type).toLowerCase() !== 'video') return lesson;
   const copy = { ...lesson };
   if (/^https?:\/\//i.test(String(copy.content_url || ''))) {
     copy.content_url = 'protected-video-source';

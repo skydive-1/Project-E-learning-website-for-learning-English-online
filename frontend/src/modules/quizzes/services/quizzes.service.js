@@ -66,6 +66,22 @@ export const fetchAndCacheQuizzes = async (courseId) => {
   }
 };
 
+/**
+ * Tải danh sách quiz kèm đáp án đầy đủ (dành cho Giảng viên/Admin chỉnh sửa khóa học).
+ * Gọi route /manage/course/:courseId (yêu cầu đăng nhập + quyền), KHÔNG lưu vào
+ * courseQuizzesCache dùng chung với phía học sinh để tránh lộ đáp án ra ngoài phạm vi cần thiết.
+ */
+export const fetchQuizzesForCourseManagement = async (courseId) => {
+  try {
+    const response = await apiClient.get(`/quizzes/manage/course/${courseId}`);
+    const quizzes = response.data?.data || [];
+    return quizzes.map(mapQuizToFrontend);
+  } catch (error) {
+    console.error("⚠️ Lỗi tải quizzes (quản lý) kèm đáp án:", error.message);
+    throw error;
+  }
+};
+
 export const getCourseQuizQuestions = (lessonId) => {
   const quiz = courseQuizzesCache[String(lessonId)];
   return quiz ? quiz.questions : [];
@@ -256,7 +272,8 @@ export const submitAudioAnswer = async (quizId, questionId, audioFile, expectedS
     throw error;
   }
 };
-export const createQuiz = async (quizData) => {
+
+export const createQuiz = async (quizData) => {
   try {
     const response = await apiClient.post('/quizzes', quizData);
     return response.data;

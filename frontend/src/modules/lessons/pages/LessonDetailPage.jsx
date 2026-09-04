@@ -15,6 +15,7 @@ import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import LessonVideoPlayer from '../components/LessonVideoPlayer';
+import LessonYouTubePlayer from '../components/LessonYouTubePlayer';
 const PdfStudyViewer = React.lazy(() => import('../components/PdfStudyViewer'));
 const PdfNotesPanel = React.lazy(() => import('../components/PdfNotesPanel'));
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
@@ -210,6 +211,15 @@ const LessonDetailPage = () => {
   const isCapturingKeysRef = useRef(new Set());
 
   const triggerZeroLatencyBlackout = (reason) => {
+    // Không áp dụng che đen với bài học YouTube mở hoặc tài liệu PDF
+    if (
+      currentLesson?.type === 'youtube' ||
+      currentLesson?.type === 'pdf' ||
+      (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0)
+    ) {
+      return;
+    }
+
     // 1. Thao tác DOM đồng bộ vi-giây (0ms Synchronous DOM Blackout)
     const shield = document.getElementById('netflix-drm-blackout-shield');
     if (shield) shield.style.display = 'block';
@@ -891,7 +901,13 @@ const LessonDetailPage = () => {
       renewalTimerRef.current = null;
     }
 
-    if (!rawVideoUrl || currentLesson?.type === 'pdf' || currentLesson?.type === 'quiz' || currentLesson?.type === 'speaking') {
+    const isYouTubeLesson = currentLesson?.type === 'youtube' ||
+      (typeof currentLesson?.playbackType === 'string' && currentLesson.playbackType === 'youtube') ||
+      (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0) ||
+      (typeof currentLesson?.contentUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.contentUrl)) ||
+      (typeof rawVideoUrl === 'string' && /youtube\.com|youtu\.be/.test(rawVideoUrl));
+
+    if (!rawVideoUrl || currentLesson?.type === 'pdf' || currentLesson?.type === 'quiz' || currentLesson?.type === 'speaking' || isYouTubeLesson) {
       setTicketPlaybackUrl(null);
       setVideoLoading(false);
       if (shakaPlayerRef.current) {
@@ -1491,6 +1507,17 @@ const LessonDetailPage = () => {
                               onSelectNote={handleNavigateToPdfNote}
                             />
                           </React.Suspense>
+                        ) : (currentLesson?.type === 'youtube' || (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0) || (typeof currentLesson?.contentUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.contentUrl)) || (typeof currentLesson?.videoUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.videoUrl))) ? (
+                          <LessonYouTubePlayer
+                            key={currentLesson?.id || 'yt-player'}
+                            lesson={currentLesson}
+                            title={currentLesson?.title}
+                            onEnded={() => {
+                              if (!currentLesson?.completed) {
+                                handleToggleComplete(null, currentLesson?.id);
+                              }
+                            }}
+                          />
                         ) : currentLesson?.videoUrl ? (
                           <>
                             {videoError ? (
@@ -1854,11 +1881,20 @@ const LessonDetailPage = () => {
                                               <FiMic className="text-smart-indigo" />
                                             ) : lesson.type === 'pdf' ? (
                                               <FiFileText className="text-amber-500" />
+                                            ) : lesson.type === 'youtube' ? (
+                                              <svg className="size-3 text-red-500 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                                              </svg>
                                             ) : (
                                               <FiPlay className="text-emerald-500" />
                                             )}
                                             <span>{lesson.duration}</span>
                                           </span>
+                                          {lesson.type === 'youtube' && (
+                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 font-medium">
+                                              YouTube
+                                            </span>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
