@@ -218,8 +218,13 @@ class CoursesService {
     const timeLimit = parseInt(lessonData.quizTimeLimit, 10) || 15;
     let quizId;
 
+    let existingQuestionsRes = null;
     if (existingQuizRes.rows.length > 0) {
       quizId = existingQuizRes.rows[0].quiz_id;
+      existingQuestionsRes = await client.query(
+        'SELECT question_id, question_text, options, correct_answer, question_type FROM questions WHERE quiz_id = $1',
+        [quizId]
+      );
       await client.query(
         `UPDATE quizzes
          SET title = $1, description = $2, difficulty = $3, time_limit = $4,
@@ -253,6 +258,43 @@ class CoursesService {
       }
 
       if (questionType === 'open_cloze') {
+        // Fallback: Nếu options (gaps) bị thiếu answer nhưng trong DB đã có câu hỏi này, khôi phục lại answer từ DB
+        if (existingQuestionsRes && existingQuestionsRes.rows.length > 0) {
+          const matchedDbQ = existingQuestionsRes.rows.find(q =>
+            (question.question_id && Number(q.question_id) === Number(question.question_id)) ||
+            (q.question_text && q.question_text.trim() === questionText)
+          );
+          if (matchedDbQ) {
+            let dbOptions = matchedDbQ.options;
+            if (typeof dbOptions === 'string') {
+              try { dbOptions = JSON.parse(dbOptions); } catch (_) { dbOptions = []; }
+            }
+            if (Array.isArray(dbOptions)) {
+              const dbGapsMap = new Map();
+              dbOptions.forEach(g => {
+                if (g && (g.id !== undefined || g.gapId !== undefined)) {
+                  dbGapsMap.set(String(g.id ?? g.gapId), g);
+                }
+              });
+              options = options.map((gap, idx) => {
+                const gapKey = String(gap?.id ?? gap?.gapId ?? idx + 1);
+                const dbGap = dbGapsMap.get(gapKey) || dbOptions[idx];
+                const curAnswer = (gap && gap.answer !== undefined) ? String(gap.answer).trim() : '';
+                if (!curAnswer && dbGap && dbGap.answer) {
+                  return {
+                    ...gap,
+                    answer: dbGap.answer,
+                    acceptedAnswers: (gap?.acceptedAnswers && gap.acceptedAnswers.length > 0)
+                      ? gap.acceptedAnswers
+                      : (dbGap.acceptedAnswers || dbGap.accepted_answers || [])
+                  };
+                }
+                return gap;
+              });
+            }
+          }
+        }
+
         const validated = validateOpenClozeQuestion({ questionText, gaps: options });
         options = validated.gaps;
         correctAnswer = '';

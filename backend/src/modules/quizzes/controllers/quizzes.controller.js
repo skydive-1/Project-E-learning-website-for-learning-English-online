@@ -28,7 +28,7 @@ exports.getQuizzes = async (req, res, next) => {
 
     const data = await quizzesService.getQuizzesByCourseId(courseId);
     
-    // Trả về dữ liệu câu hỏi đầy đủ bao gồm đáp án và giải thích cho Frontend hiển thị kết quả
+    // Trả về dữ liệu câu hỏi đầy đủ bao gồm đáp án và giải thích cho Frontend quản lý / chỉnh sửa khóa học
     const sanitizedData = data.map(quiz => ({
       quiz_id: quiz.quiz_id,
       course_id: quiz.course_id,
@@ -37,7 +37,20 @@ exports.getQuizzes = async (req, res, next) => {
       description: quiz.description,
       difficulty: quiz.difficulty,
       time_limit: quiz.time_limit,
-      questions: quiz.questions.map(sanitizeQuestionForPlayer)
+      questions: quiz.questions.map(q => {
+        let parsedOptions = q.options;
+        if (typeof parsedOptions === 'string') {
+          try { parsedOptions = JSON.parse(parsedOptions); } catch (_) {}
+        }
+        return {
+          question_id: q.question_id,
+          question_text: q.question_text,
+          options: parsedOptions,
+          correct_answer: q.correct_answer,
+          explanation: q.explanation,
+          question_type: q.question_type
+        };
+      })
     }));
 
     res.status(200).json({

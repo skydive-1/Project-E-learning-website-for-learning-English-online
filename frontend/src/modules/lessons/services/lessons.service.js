@@ -23,6 +23,15 @@ export const getVideoTicket = async (lessonId) => {
   return response.data;
 };
 
+export const extractYouTubeVideoId = (url = '') => {
+  if (!url) return null;
+  const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
+  const match = String(url).match(regExp);
+  return match && match[1].length === 11 ? match[1] : null;
+};
+
+export const isYouTubeUrl = (url = '') => Boolean(extractYouTubeVideoId(url));
+
 
 // Hàm giải mã JWT token để lấy userId
 export const getUserIdFromToken = () => {
@@ -90,9 +99,12 @@ export const getCourseDetails = async (courseId = 1) => {
           const content = typeof l.content === 'string' ? l.content : '';
           const duration = typeof l.duration === 'string' ? l.duration : '';
 
+          const isYouTube = l.content_type === 'youtube' || isYouTubeUrl(l.content_url);
           let resolvedUrl = '';
           if (l.content_url) {
-            if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
+            if (isYouTube) {
+              resolvedUrl = l.content_url;
+            } else if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
               // Không giữ URL video ngoài trong state/client DOM. Backend sẽ cấp
               // ticket và từ chối nguồn không thể bảo vệ.
               resolvedUrl = l.content_type === 'video' ? 'protected-video-source' : l.content_url;
@@ -113,11 +125,13 @@ export const getCourseDetails = async (courseId = 1) => {
           const lessonObj = {
             id: String(l.lesson_id),
             title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
-            duration: isSpeakingType ? 'Luyện phát âm AI' : duration,
-            type: l.content_type || 'video',
-            playbackType: l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4'),
-            isDrmProtected: l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd')),
-            videoUrl: l.content_type === 'video' ? resolvedUrl : null,
+            duration: isSpeakingType ? 'Luyện phát âm AI' : (isYouTube && !duration ? 'YouTube' : duration),
+            type: isYouTube ? 'youtube' : (l.content_type || 'video'),
+            playbackType: isYouTube ? 'youtube' : (l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4')),
+            isDrmProtected: isYouTube ? false : (l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd'))),
+            videoUrl: isYouTube ? null : (l.content_type === 'video' ? resolvedUrl : null),
+            youtubeUrl: isYouTube ? (l.content_url || resolvedUrl) : null,
+            contentUrl: l.content_url,
             pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
             description: description,
             content: content,
@@ -273,9 +287,12 @@ export const getLessonById = async (lessonId) => {
     const content = typeof l.content === 'string' ? l.content : '';
     const duration = typeof l.duration === 'string' ? l.duration : '';
 
+    const isYouTube = l.content_type === 'youtube' || isYouTubeUrl(l.content_url);
     let resolvedUrl = '';
     if (l.content_url) {
-      if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
+      if (isYouTube) {
+        resolvedUrl = l.content_url;
+      } else if (l.content_url.startsWith('http://') || l.content_url.startsWith('https://')) {
         resolvedUrl = l.content_type === 'video' ? 'protected-video-source' : l.content_url;
       } else {
         if (l.content_type === 'video') {
@@ -352,11 +369,13 @@ export const getLessonById = async (lessonId) => {
       id: String(l.lesson_id),
       courseId: l.course_id,
       title: isSpeakingType && !l.title.startsWith('Speaking:') ? `Speaking: ${l.title}` : l.title,
-      duration: isSpeakingType ? 'Luyện phát âm AI' : duration,
-      type: l.content_type || 'video',
-      playbackType: l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4'),
-      videoUrl: l.content_type === 'video' ? resolvedUrl : null,
-      isDrmProtected: l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd')),
+      duration: isSpeakingType ? 'Luyện phát âm AI' : (isYouTube && !duration ? 'YouTube' : duration),
+      type: isYouTube ? 'youtube' : (l.content_type || 'video'),
+      playbackType: isYouTube ? 'youtube' : (l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4')),
+      videoUrl: isYouTube ? null : (l.content_type === 'video' ? resolvedUrl : null),
+      youtubeUrl: isYouTube ? (l.content_url || resolvedUrl) : null,
+      contentUrl: l.content_url,
+      isDrmProtected: isYouTube ? false : (l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd'))),
       pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
       description: description,
       content: content,
