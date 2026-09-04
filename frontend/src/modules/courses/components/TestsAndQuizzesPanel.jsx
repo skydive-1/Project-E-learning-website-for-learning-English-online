@@ -9,6 +9,7 @@ import {
   getFreeQuizzesList, 
   createQuiz, 
   generateQuizAi, 
+  generateQuizAiFromPdf,
   getQuizByPin,
   getAllQuizzesForManagement,
   deleteQuizById
@@ -212,6 +213,45 @@ const TestsAndQuizzesPanel = () => {
     } catch (err) {
       console.error('Lỗi sinh câu hỏi AI:', err);
       showToast(err.response?.data?.message || 'Lỗi khi gọi Trợ lý AI!', 'error');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const handleGenerateAiQuizFromPdf = async ({ files, file, targetLevel, count, questionTypes, additionalNotes }) => {
+    try {
+      setAiGenerating(true);
+      const fileList = Array.isArray(files) && files.length > 0 ? files : (file ? [file] : []);
+      const formData = new FormData();
+      fileList.forEach(f => {
+        formData.append('pdfs', f);
+      });
+      formData.append('targetLevel', targetLevel || 'auto');
+      formData.append('count', String(count || 5));
+      formData.append('questionTypes', JSON.stringify(questionTypes || ['multiple_choice']));
+      if (additionalNotes) formData.append('additionalNotes', additionalNotes);
+
+      const res = await generateQuizAiFromPdf(formData);
+      if (res && Array.isArray(res.questions) && res.questions.length > 0) {
+        const normalized = normalizeQuestionsList(res.questions);
+        setQuestionsList(normalized);
+        if (!quizTitle || quizTitle.startsWith('Quiz AI')) {
+          if (fileList.length === 1) {
+            const cleanName = fileList[0].name.replace(/\.[^/.]+$/, "");
+            setQuizTitle(`Quiz AI: ${cleanName}`);
+          } else {
+            setQuizTitle(`Quiz AI: Tổng hợp ${fileList.length} đề thi PDF`);
+          }
+        }
+        if (!quizDesc) setQuizDesc(`Đề thi tạo tự động bởi AI tổng hợp từ ${fileList.length} tài liệu PDF: ${fileList.map(f => f.name).join(', ')}.`);
+        setCreateMode('manual');
+        showToast(`AI đã phân tích ${fileList.length} file PDF và tạo thành công ${normalized.length} câu hỏi!`, 'success');
+      } else {
+        showToast('Không nhận được câu hỏi từ AI. Vui lòng thử lại với file PDF khác.', 'error');
+      }
+    } catch (err) {
+      console.error('Lỗi sinh câu hỏi từ nhiều PDF:', err);
+      showToast(err.response?.data?.message || 'Không thể tạo đề thi từ file PDF này.', 'error');
     } finally {
       setAiGenerating(false);
     }
@@ -476,7 +516,8 @@ const TestsAndQuizzesPanel = () => {
         onAiTypesChange={setAiTypes}
         aiGenerating={aiGenerating}
         onGenerateAi={handleGenerateAI}
-        canUseAi={userRole === 1}
+        onGenerateAiFromPdf={handleGenerateAiQuizFromPdf}
+        canUseAi={isInstructorOrAdmin}
       />
 
       {/* ========================================================= */}

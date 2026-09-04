@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   BookOpenCheckIcon,
   FilePenLineIcon,
@@ -12,7 +12,13 @@ import {
   ClockIcon,
   ShieldIcon,
   XIcon,
-  CheckIcon
+  CheckIcon,
+  UploadCloudIcon,
+  FileTextIcon,
+  AlertCircleIcon,
+  FileUpIcon,
+  LayersIcon,
+  GraduationCapIcon
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +27,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { syncClozeGaps } from '../../quizzes/utils/openCloze';
+import { syncClozeGaps, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
+import { generateQuizAiFromPdf } from '../../quizzes/services/quizzes.service';
 
 const difficultyItems = [
   { label: 'Dễ (Easy)', value: 'Easy' },
@@ -32,7 +39,39 @@ const difficultyItems = [
 const aiCountItems = [
   { label: '3 câu hỏi nhanh', value: '3' },
   { label: '5 câu hỏi tiêu chuẩn', value: '5' },
-  { label: '10 câu hỏi chuyên sâu', value: '10' }
+  { label: '10 câu hỏi chuyên sâu', value: '10' },
+  { label: '15 câu hỏi hoàn chỉnh', value: '15' }
+];
+
+const targetLevelOptions = [
+  {
+    value: 'auto',
+    label: 'Tự động (Theo đề gốc)',
+    badge: 'Đề xuất',
+    badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    desc: 'Kế thừa độ khó và kiến thức tự nhiên của đề thi PDF được tải lên.'
+  },
+  {
+    value: 'grade_6_7',
+    label: 'Lớp 6 - Lớp 7 (A1 - A2)',
+    badge: 'Cơ bản',
+    badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    desc: 'Từ vựng nền tảng, ngữ pháp sơ cấp: Hiện tại đơn, quá khứ đơn, danh từ số nhiều.'
+  },
+  {
+    value: 'grade_8_9',
+    label: 'Lớp 8 - Lớp 9 (B1)',
+    badge: 'Trung cấp',
+    badgeColor: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+    desc: 'Hiện tại hoàn thành, câu bị động, câu điều kiện loại 1 & 2, mệnh đề quan hệ.'
+  },
+  {
+    value: 'grade_10_12',
+    label: 'Lớp 10 - Lớp 12 (B2 - C1)',
+    badge: 'Nâng cao',
+    badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
+    desc: 'Đảo ngữ, câu giả định, idioms, collocations và từ vựng học thuật chuyên sâu.'
+  }
 ];
 
 // All 4 question types supported across the system
@@ -316,9 +355,169 @@ const CreateQuizDialog = ({
   onAiTypesChange,
   aiGenerating,
   onGenerateAi,
-  canUseAi = true
+  canUseAi = true,
+  onGenerateAiFromPdf
 }) => {
   const [selectedTypeToAdd, setSelectedTypeToAdd] = useState('multiple_choice');
+  const [aiSource, setAiSource] = useState('pdf'); // 'pdf' | 'topic'
+  const [pdfFiles, setPdfFiles] = useState([]); // Array of File objects
+  const [pdfTargetLevel, setPdfTargetLevel] = useState('auto');
+  const [pdfNotes, setPdfNotes] = useState('');
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const addPdfFiles = (newFiles) => {
+    setPdfError('');
+    if (!newFiles || newFiles.length === 0) return;
+
+    const validFiles = [];
+    const errors = [];
+
+    Array.from(newFiles).forEach(file => {
+      const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+      if (!isPdf) {
+        errors.push(`"${file.name}" không phải file PDF.`);
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        errors.push(`"${file.name}" vượt quá 20MB.`);
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (errors.length > 0) {
+      setPdfError(errors.join(' '));
+    }
+
+    if (validFiles.length > 0) {
+      setPdfFiles(prev => {
+        const existingKeys = new Set(prev.map(f => `${f.name}_${f.size}`));
+        const filteredNew = validFiles.filter(f => !existingKeys.has(`${f.name}_${f.size}`));
+        const combined = [...prev, ...filteredNew];
+        if (combined.length > 10) {
+          setPdfError('Tối đa 10 file PDF đề thi trong một lần tạo.');
+          return combined.slice(0, 10);
+        }
+        return combined;
+      });
+    }
+  };
+
+  const removePdfFile = (index) => {
+    setPdfFiles(prev => prev.filter((_, i) => i !== index));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const clearAllPdfFiles = () => {
+    setPdfFiles([]);
+    setPdfError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      addPdfFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleFileInputChange = (e) => {
+    if (e.target?.files && e.target.files.length > 0) {
+      addPdfFiles(e.target.files);
+    }
+  };
+
+  const handleGeneratePdfQuiz = async () => {
+    if (pdfFiles.length === 0) {
+      setPdfError('Vui lòng tải lên ít nhất 1 file đề thi PDF.');
+      return;
+    }
+    if (selectedCount === 0) {
+      setPdfError('Vui lòng chọn ít nhất 1 dạng câu hỏi.');
+      return;
+    }
+
+    try {
+      setPdfGenerating(true);
+      setPdfError('');
+
+      if (onGenerateAiFromPdf) {
+        await onGenerateAiFromPdf({
+          files: pdfFiles,
+          file: pdfFiles[0],
+          targetLevel: pdfTargetLevel,
+          count: aiCount,
+          questionTypes: aiTypes,
+          additionalNotes: pdfNotes
+        });
+        return;
+      }
+
+      const formData = new FormData();
+      pdfFiles.forEach(f => {
+        formData.append('pdfs', f);
+      });
+      formData.append('targetLevel', pdfTargetLevel);
+      formData.append('count', String(aiCount));
+      formData.append('questionTypes', JSON.stringify(aiTypes));
+      if (pdfNotes.trim()) {
+        formData.append('additionalNotes', pdfNotes.trim());
+      }
+
+      const res = await generateQuizAiFromPdf(formData);
+      if (res && Array.isArray(res.questions) && res.questions.length > 0) {
+        const normalized = normalizeQuestionsList(res.questions);
+        onQuestionsChange(normalized);
+        const levelObj = targetLevelOptions.find(l => l.value === pdfTargetLevel);
+        const levelLabel = levelObj ? levelObj.label : 'Mặc định';
+
+        if (!quizTitle || quizTitle.startsWith('Trắc nghiệm') || quizTitle.startsWith('Bài tập') || quizTitle.startsWith('Quiz AI')) {
+          if (pdfFiles.length === 1) {
+            const cleanName = pdfFiles[0].name.replace(/\.[^/.]+$/, "");
+            onQuizTitleChange(`Quiz AI: ${cleanName}`);
+          } else {
+            onQuizTitleChange(`Quiz AI: Tổng hợp ${pdfFiles.length} đề thi PDF (${levelLabel})`);
+          }
+        }
+        if (!quizDescription) {
+          onQuizDescriptionChange(`Đề thi tạo tự động bởi AI tổng hợp từ ${pdfFiles.length} tài liệu PDF: ${pdfFiles.map(f => f.name).join(', ')} phù hợp với Level: ${levelLabel}. Gồm ${normalized.length} câu hỏi đa dạng.`);
+        }
+        onCreateModeChange('manual');
+      } else {
+        setPdfError('Không nhận được câu hỏi từ AI. Vui lòng thử lại với các file PDF khác.');
+      }
+    } catch (err) {
+      console.error('Lỗi sinh câu hỏi AI từ nhiều PDF:', err);
+      setPdfError(err.response?.data?.message || 'Không thể tạo câu hỏi từ các file PDF này. Đảm bảo file có nội dung văn bản tiếng Anh.');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
 
   if (!open) return null;
 
@@ -623,152 +822,494 @@ const CreateQuizDialog = ({
             </form>
           ) : (
             /* ========================================================= */
-            /* AI GENERATOR TAB                                          */
+            /* AI GENERATOR TAB: PDF Ingestion & Topic Generator         */
             /* ========================================================= */
             <div className="flex flex-col gap-5 max-w-2xl mx-auto py-2">
-              <div className="flex items-center gap-3 p-3.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-purple-900 dark:text-purple-200">
-                <WandSparklesIcon className="size-6 text-purple-600 dark:text-purple-400 shrink-0" />
-                <div className="text-xs leading-relaxed">
-                  <strong>Trợ lý AI E-Learn</strong> sẽ tự động thiết kế câu hỏi, các phương án nhiễu, đáp án đúng và giải thích ngữ pháp chuẩn khung CEFR theo chủ đề và các dạng bạn đã chọn bên dưới.
-                </div>
-              </div>
-
-              {/* AI Topic */}
-              <div>
-                <label htmlFor="ai-topic-input" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                  Chủ đề bài tập muốn AI tạo <span className="text-red-500">*</span>
-                </label>
-                <Textarea
-                  id="ai-topic-input"
-                  rows={3}
-                  value={aiTopic}
-                  placeholder="Ví dụ: Phrasal verbs for daily communication, Simple Past vs Present Perfect, IELTS Speaking Part 1 about Hometown..."
-                  onChange={(e) => onAiTopicChange(e.target.value)}
-                  className="text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                />
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  <span className="text-[11px] text-slate-400 py-0.5">Gợi ý:</span>
-                  {[
-                    'IELTS Speaking Part 1',
-                    'Phrasal Verbs for Travel',
-                    'Present Perfect Tense',
-                    'Business Email Writing',
-                    'B2 English Open Cloze'
-                  ].map(tag => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => onAiTopicChange(tag)}
-                      className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/60 hover:text-purple-600 transition-colors cursor-pointer"
-                    >
-                      + {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Number of Questions */}
-              <div>
-                <label htmlFor="ai-count-select" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                  Số lượng câu hỏi
-                </label>
-                <select
-                  id="ai-count-select"
-                  value={String(aiCount)}
-                  onChange={(e) => onAiCountChange(Number(e.target.value))}
-                  className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-purple-500 outline-none"
+              
+              {/* Sub-tab Switcher */}
+              <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setAiSource('pdf')}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                    aiSource === 'pdf'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
                 >
-                  {aiCountItems.map(c => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
+                  <FileUpIcon className="size-4 text-indigo-500" />
+                  <span>Tải lên Đề thi PDF</span>
+                  <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] px-1.5 py-0 font-bold ml-1">
+                    Đề xuất
+                  </Badge>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAiSource('topic')}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                    aiSource === 'topic'
+                      ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-xs border border-slate-200/60 dark:border-slate-800'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <WandSparklesIcon className="size-4 text-purple-500" />
+                  <span>Nhập chủ đề văn bản</span>
+                </button>
               </div>
 
-              {/* All 4 Selectable AI Question Types */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                    CÁC DẠNG CÂU HỎI <span className="text-red-500">*</span>
-                  </label>
-                  {selectedCount === 0 ? (
-                    <span className="text-xs text-amber-500 dark:text-amber-400 font-medium">
-                      ⚠️ Chưa chọn dạng nào
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      Đã chọn {selectedCount}/4 dạng
-                    </span>
-                  )}
-                </div>
+              {/* ======================================================= */}
+              {/* SUB-VIEW 1: IMPORT DỮ LIỆU ĐỀ THI PDF                   */}
+              {/* ======================================================= */}
+              {aiSource === 'pdf' ? (
+                <div className="flex flex-col gap-5">
+                  {/* Hero Banner */}
+                  <div className="flex items-start gap-3.5 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-200/80 dark:border-indigo-900/60">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                      <GraduationCapIcon className="size-5" />
+                    </div>
+                    <div className="text-xs text-indigo-950 dark:text-indigo-200 leading-relaxed">
+                      <div className="font-bold text-sm text-indigo-950 dark:text-indigo-100 mb-0.5">
+                        Thu nạp kiến thức từ tài liệu Đề thi PDF
+                      </div>
+                      Tải lên file đề thi tiếng Anh định dạng PDF (đề thi thử, giữa kỳ, học kỳ...). Trợ lý AI sẽ đọc hiểu cấu trúc đề, phân tích từ vựng và ngữ pháp, sau đó sinh ngẫu nhiên một bài Quizzes mới được cá nhân hóa phù hợp với <strong>Level</strong> bạn chọn bên dưới.
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {questionTypes.map(t => {
-                    const Icon = t.icon;
-                    const isSelected = Array.isArray(aiTypes) && aiTypes.includes(t.value);
+                  {/* PDF Upload Dropzone & Multi-file List */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        TÀI LIỆU ĐỀ THI PDF <span className="text-red-500">*</span>
+                      </label>
+                      {pdfFiles.length > 0 && (
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            Đã nạp <strong className="text-indigo-600 dark:text-indigo-400 font-bold">{pdfFiles.length}</strong> đề thi
+                          </span>
+                          <button
+                            type="button"
+                            onClick={clearAllPdfFiles}
+                            className="text-xs text-red-500 hover:text-red-600 hover:underline cursor-pointer font-medium"
+                          >
+                            Xóa tất cả
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
-                    return (
-                      <button
-                        key={t.value}
-                        type="button"
-                        onClick={() => toggleAiType(t.value)}
-                        className={`group relative flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          isSelected 
-                            ? t.activeBorder + ' shadow-sm' 
-                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={handleFileInputChange}
+                    />
+
+                    {pdfFiles.length === 0 ? (
+                      <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                          dragActive 
+                            ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30' 
+                            : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-900/40'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${t.iconBg} ${t.iconColor}`}>
-                            <Icon className="size-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                              {t.label}
+                        <div className="flex size-14 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 mb-3 shadow-inner">
+                          <UploadCloudIcon className="size-7" />
+                        </div>
+                        <div className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
+                          Kéo thả một hoặc nhiều file PDF đề thi vào đây
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-2.5">
+                          Hỗ trợ chọn hoặc kéo thả nhiều đề thi tiếng Anh cùng lúc để AI tổng hợp (Tối đa 10 file, 20MB/file).
+                        </p>
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-3.5 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/40 hover:bg-indigo-100 transition-colors">
+                          <FileUpIcon className="size-3.5" /> Chọn nhiều file từ máy tính
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        {/* Selected Files List */}
+                        <div className="max-h-56 overflow-y-auto pr-1 flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 p-2.5">
+                          {pdfFiles.map((file, idx) => (
+                            <div
+                              key={`${file.name}-${idx}`}
+                              className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-indigo-100 dark:border-indigo-900/60 shadow-xs"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-red-100 dark:bg-red-950/60 text-red-600 font-bold text-xs border border-red-200 dark:border-red-900/40">
+                                  <FileTextIcon className="size-4.5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate" title={file.name}>
+                                    <span className="text-slate-400 mr-1.5">#{idx + 1}</span>
+                                    {file.name}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                                    <span>{formatFileSize(file.size)}</span>
+                                    <span>•</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                                      <CheckIcon className="size-3 stroke-[3]" /> Sẵn sàng thu nạp
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removePdfFile(idx)}
+                                className="size-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 shrink-0"
+                                title="Xóa đề thi này"
+                              >
+                                <Trash2Icon className="size-3.5" />
+                              </Button>
                             </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug truncate">
-                              {t.desc}
+                          ))}
+                        </div>
+
+                        {/* Add More Files Strip & Dropzone */}
+                        <div
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handleDrop}
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`border border-dashed rounded-xl p-2.5 flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all ${
+                            dragActive
+                              ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+                              : 'border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:bg-indigo-50/30'
+                          }`}
+                        >
+                          <PlusIcon className="size-3.5 text-indigo-500" />
+                          <span>Kéo thả thêm đề thi PDF hoặc click để chọn thêm file ({pdfFiles.length}/10)</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {pdfError && (
+                      <div className="flex items-center gap-2 mt-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs border border-red-200 dark:border-red-900/50">
+                        <AlertCircleIcon className="size-4 shrink-0 text-red-500" />
+                        <span>{pdfError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Level Selector */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        LEVEL MỤC TIÊU CỦA BÀI QUIZ <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">AI sẽ tinh chỉnh độ khó theo level này</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {targetLevelOptions.map(lvl => {
+                        const isSelected = pdfTargetLevel === lvl.value;
+                        return (
+                          <button
+                            key={lvl.value}
+                            type="button"
+                            onClick={() => setPdfTargetLevel(lvl.value)}
+                            className={`group flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500 shadow-xs'
+                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                {lvl.label}
+                              </span>
+                              <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 font-bold ${lvl.badgeColor}`}>
+                                {lvl.badge}
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                              {lvl.desc}
                             </p>
-                          </div>
-                        </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                        {/* Checkbox indicator */}
-                        <div className={`flex size-5 shrink-0 items-center justify-center rounded-md border transition-all ${
-                          isSelected 
-                            ? `${t.checkColor} border-transparent shadow-xs` 
-                            : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 group-hover:border-slate-400'
-                        }`}>
-                          {isSelected && <CheckIcon className="size-3.5 stroke-[3]" />}
-                        </div>
-                      </button>
-                    );
-                  })}
+                  {/* Number of Questions */}
+                  <div>
+                    <label htmlFor="pdf-count-select" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                      Số lượng câu hỏi cần sinh
+                    </label>
+                    <select
+                      id="pdf-count-select"
+                      value={String(aiCount)}
+                      onChange={(e) => onAiCountChange(Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-indigo-500 outline-none"
+                    >
+                      {aiCountItems.map(c => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Question Types Selector */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        CÁC DẠNG CÂU HỎI TRỘN VÀO BÀI THI <span className="text-red-500">*</span>
+                      </label>
+                      {selectedCount === 0 ? (
+                        <span className="text-xs text-amber-500 dark:text-amber-400 font-medium">
+                          ⚠️ Chưa chọn dạng nào
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                          Đã chọn {selectedCount}/4 dạng
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {questionTypes.map(t => {
+                        const Icon = t.icon;
+                        const isSelected = Array.isArray(aiTypes) && aiTypes.includes(t.value);
+
+                        return (
+                          <button
+                            key={t.value}
+                            type="button"
+                            onClick={() => toggleAiType(t.value)}
+                            className={`group relative flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected 
+                                ? t.activeBorder + ' shadow-sm' 
+                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${t.iconBg} ${t.iconColor}`}>
+                                <Icon className="size-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                  {t.label}
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug truncate">
+                                  {t.desc}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className={`flex size-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                              isSelected 
+                                ? `${t.checkColor} border-transparent shadow-xs` 
+                                : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 group-hover:border-slate-400'
+                            }`}>
+                              {isSelected && <CheckIcon className="size-3.5 stroke-[3]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Additional Notes (Optional) */}
+                  <div>
+                    <label htmlFor="pdf-notes-input" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                      Ghi chú thêm cho AI (Tùy chọn)
+                    </label>
+                    <Input
+                      id="pdf-notes-input"
+                      value={pdfNotes}
+                      placeholder="Ví dụ: Tập trung kiểm tra cấu trúc câu điều kiện, ưu tiên câu hỏi tương tự câu 5-15..."
+                      onChange={(e) => setPdfNotes(e.target.value)}
+                      className="text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                    />
+                  </div>
+
+                  {/* Action Button */}
+                  <Button
+                    type="button"
+                    disabled={pdfGenerating || aiGenerating || pdfFiles.length === 0 || selectedCount === 0}
+                    onClick={handleGeneratePdfQuiz}
+                    className="h-11 w-full bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 hover:from-indigo-700 hover:via-blue-700 hover:to-purple-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 mt-1 cursor-pointer disabled:opacity-50"
+                  >
+                    {pdfGenerating || aiGenerating ? (
+                      <>
+                        <Spinner className="size-4" />
+                        <span>AI đang tổng hợp {pdfFiles.length} đề thi PDF và sinh câu hỏi theo level...</span>
+                      </>
+                    ) : pdfFiles.length === 0 ? (
+                      <>
+                        <UploadCloudIcon className="size-4" />
+                        <span>Vui lòng tải lên ít nhất 1 file PDF đề thi ở trên</span>
+                      </>
+                    ) : selectedCount === 0 ? (
+                      <>
+                        <AlertCircleIcon className="size-4" />
+                        <span>Vui lòng chọn ít nhất 1 dạng câu hỏi</span>
+                      </>
+                    ) : (
+                      <>
+                        <WandSparklesIcon className="size-4" />
+                        <span>Bắt đầu AI tổng hợp {pdfFiles.length} PDF & Tạo Quizzes ({selectedCount} dạng)</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
-              </div>
+              ) : (
+                /* ======================================================= */
+                /* SUB-VIEW 2: TẠO CÂU HỎI THEO CHỦ ĐỀ VĂN BẢN (EXISTING)  */
+                /* ======================================================= */
+                <div className="flex flex-col gap-5">
+                  <div className="flex items-center gap-3 p-3.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-purple-900 dark:text-purple-200">
+                    <WandSparklesIcon className="size-6 text-purple-600 dark:text-purple-400 shrink-0" />
+                    <div className="text-xs leading-relaxed">
+                      <strong>Trợ lý AI E-Learn</strong> sẽ tự động thiết kế câu hỏi, các phương án nhiễu, đáp án đúng và giải thích ngữ pháp chuẩn khung CEFR theo chủ đề và các dạng bạn đã chọn bên dưới.
+                    </div>
+                  </div>
 
-              {/* Submit AI Generation */}
-              <Button
-                type="button"
-                disabled={aiGenerating || !aiTopic.trim() || selectedCount === 0}
-                onClick={onGenerateAi}
-                className="h-11 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
-              >
-                {aiGenerating ? (
-                  <>
-                    <Spinner className="size-4" />
-                    <span>Trợ lý AI đang soạn câu hỏi và đáp án...</span>
-                  </>
-                ) : selectedCount === 0 ? (
-                  <>
-                    <WandSparklesIcon className="size-4" />
-                    <span>Vui lòng chọn ít nhất 1 dạng câu hỏi ở trên</span>
-                  </>
-                ) : (
-                  <>
-                    <WandSparklesIcon className="size-4" />
-                    <span>Bắt đầu tạo câu hỏi bằng AI ({selectedCount} dạng đã chọn)</span>
-                  </>
-                )}
-              </Button>
+                  {/* AI Topic */}
+                  <div>
+                    <label htmlFor="ai-topic-input" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                      Chủ đề bài tập muốn AI tạo <span className="text-red-500">*</span>
+                    </label>
+                    <Textarea
+                      id="ai-topic-input"
+                      rows={3}
+                      value={aiTopic}
+                      placeholder="Ví dụ: Phrasal verbs for daily communication, Simple Past vs Present Perfect, IELTS Speaking Part 1 about Hometown..."
+                      onChange={(e) => onAiTopicChange(e.target.value)}
+                      className="text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                    />
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className="text-[11px] text-slate-400 py-0.5">Gợi ý:</span>
+                      {[
+                        'IELTS Speaking Part 1',
+                        'Phrasal Verbs for Travel',
+                        'Present Perfect Tense',
+                        'Business Email Writing',
+                        'B2 English Open Cloze'
+                      ].map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => onAiTopicChange(tag)}
+                          className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/60 hover:text-purple-600 transition-colors cursor-pointer"
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Number of Questions */}
+                  <div>
+                    <label htmlFor="ai-count-select" className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                      Số lượng câu hỏi
+                    </label>
+                    <select
+                      id="ai-count-select"
+                      value={String(aiCount)}
+                      onChange={(e) => onAiCountChange(Number(e.target.value))}
+                      className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-purple-500 outline-none"
+                    >
+                      {aiCountItems.map(c => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* All 4 Selectable AI Question Types */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        CÁC DẠNG CÂU HỎI <span className="text-red-500">*</span>
+                      </label>
+                      {selectedCount === 0 ? (
+                        <span className="text-xs text-amber-500 dark:text-amber-400 font-medium">
+                          ⚠️ Chưa chọn dạng nào
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                          Đã chọn {selectedCount}/4 dạng
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {questionTypes.map(t => {
+                        const Icon = t.icon;
+                        const isSelected = Array.isArray(aiTypes) && aiTypes.includes(t.value);
+
+                        return (
+                          <button
+                            key={t.value}
+                            type="button"
+                            onClick={() => toggleAiType(t.value)}
+                            className={`group relative flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              isSelected 
+                                ? t.activeBorder + ' shadow-sm' 
+                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${t.iconBg} ${t.iconColor}`}>
+                                <Icon className="size-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                                  {t.label}
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug truncate">
+                                  {t.desc}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className={`flex size-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                              isSelected 
+                                ? `${t.checkColor} border-transparent shadow-xs` 
+                                : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 group-hover:border-slate-400'
+                            }`}>
+                              {isSelected && <CheckIcon className="size-3.5 stroke-[3]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Submit AI Generation */}
+                  <Button
+                    type="button"
+                    disabled={aiGenerating || pdfGenerating || !aiTopic.trim() || selectedCount === 0}
+                    onClick={onGenerateAi}
+                    className="h-11 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {aiGenerating ? (
+                      <>
+                        <Spinner className="size-4" />
+                        <span>Trợ lý AI đang soạn câu hỏi và đáp án...</span>
+                      </>
+                    ) : selectedCount === 0 ? (
+                      <>
+                        <WandSparklesIcon className="size-4" />
+                        <span>Vui lòng chọn ít nhất 1 dạng câu hỏi ở trên</span>
+                      </>
+                    ) : (
+                      <>
+                        <WandSparklesIcon className="size-4" />
+                        <span>Bắt đầu tạo câu hỏi bằng AI ({selectedCount} dạng đã chọn)</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
