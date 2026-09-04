@@ -399,8 +399,14 @@ class CoursesService {
       if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
 
-      // Chuẩn hóa media: migrate Supabase → R2 + tổ chức lại thư mục (best-effort, async)
-      this._migrateCourseMediaOnPublish(courseId).catch(() => {});
+      // Chuẩn hóa media (best-effort, async): chỉ chạy migrate Supabase → R2 đầy đủ khi
+      // khóa học được PUBLISH ngay từ lúc tạo; nếu lưu draft thì chỉ tổ chức lại thư mục
+      // R2 (không có gì để migrate từ Supabase với khóa học vừa tạo), để nhất quán với updateCourse.
+      if (finalStatus === 'published') {
+        this._migrateCourseMediaOnPublish(courseId).catch(() => {});
+      } else {
+        this._reorganizeCourseMediaFolders(courseId).catch(() => {});
+      }
       await this._queueAutoSubtitles(subtitleLessonIds);
 
       newCourse.status = newCourse.status === 'published' ? 1 : 0;
