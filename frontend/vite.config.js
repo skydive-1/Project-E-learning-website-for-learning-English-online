@@ -143,7 +143,23 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'build'
+    outDir: 'build',
+    rollupOptions: {
+      output: {
+        // Tách các thư viện nặng, ít khi dùng cùng lúc, ra chunk riêng.
+        // Giúp: (1) trình duyệt cache độc lập từng thư viện giữa các lần
+        // deploy (chunk chính đổi nhưng shaka/recharts không đổi thì
+        // không cần tải lại); (2) tránh cảnh báo "chunk vượt 500kB" dồn
+        // hết vào 1 file; (3) các trang không dùng video/chart (vd trang
+        // login) tải nhanh hơn vì trình duyệt có thể ưu tiên fetch song
+        // song thay vì 1 file JS khổng lồ.
+        manualChunks: {
+          'vendor-shaka': ['shaka-player'],
+          'vendor-charts': ['recharts'],
+          'vendor-pdf': ['react-pdf']
+        }
+      }
+    }
   },
   test: {
     globals: true,
