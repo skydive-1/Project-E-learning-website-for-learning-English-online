@@ -14,7 +14,11 @@ router.get('/join-by-pin/:pinCode', quizzesController.getQuizByPin);
 // Route: GET /api/quizzes/:quizId/leaderboard
 router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
 
-// Route: GET /api/quizzes/:courseId
+// Route: GET /api/quizzes/manage/course/:courseId - Lấy đề thi kèm đáp án đầy đủ để chỉnh sửa
+// (Chỉ dành cho Giảng viên / Admin — đặt TRƯỚC route /:courseId công khai bên dưới)
+router.get('/manage/course/:courseId', authenticate, authorize([1, 2]), quizzesController.getQuizzesForManagement);
+
+// Route: GET /api/quizzes/:courseId (Công khai — KHÔNG trả đáp án đúng / gợi ý điền khuyết)
 router.get('/:courseId', quizzesController.getQuizzes);
 
 // Route: POST /api/quizzes/submit (Yêu cầu đăng nhập)

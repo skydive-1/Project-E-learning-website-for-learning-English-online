@@ -15,7 +15,7 @@ import {
   createQuiz, 
   generateQuizAi, 
   generateQuizAiFromPdf,
-  fetchAndCacheQuizzes,
+  fetchQuizzesForCourseManagement,
   deleteQuizById
 } from '../../quizzes/services/quizzes.service';
 import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
@@ -171,7 +171,7 @@ const CourseEditor = () => {
           setLoading(true);
           const [courseRes, quizzesData] = await Promise.all([
             apiClient.get(`/courses/${courseId}`),
-            fetchAndCacheQuizzes(courseId)
+            fetchQuizzesForCourseManagement(courseId)
           ]);
 
           if (courseRes.data && courseRes.data.success) {
