@@ -844,6 +844,64 @@ class AuthService {
       handleServiceError(error, 'Lỗi đặt lại mật khẩu mới trong AuthService');
     }
   }
+
+  /**
+   * Lấy thống kê học tập của user (dùng cho Profile Page)
+   * Author: NGUYỄN THANH LIÊM (Backend & Security Developer)
+   */
+  async getUserStats(userId) {
+    const client = await db.getClient();
+    try {
+      // 1. Số khóa học đã có tiến trình
+      const enrolledResult = await client.query(`
+        SELECT COUNT(DISTINCT c.course_id) AS enrolled_courses
+        FROM user_progress up
+        JOIN lessons l ON up.lesson_id = l.lesson_id
+        JOIN sections s ON l.section_id = s.section_id
+        JOIN courses c ON s.course_id = c.course_id
+        WHERE up.user_id = $1
+      `, [userId]);
+
+      // 2. Số bài học đã hoàn thành
+      const completedResult = await client.query(`
+        SELECT COUNT(*) AS completed_lessons
+        FROM user_progress
+        WHERE user_id = $1 AND is_completed = TRUE
+      `, [userId]);
+
+      // 3. Tổng số lượt chat AI
+      const chatResult = await client.query(`
+        SELECT COUNT(*) AS ai_chat_count
+        FROM ai_chat
+        WHERE student_id = $1
+      `, [userId]);
+
+      // 4. Tiến trình trung bình (% bài hoàn thành / tổng bài trong các khóa đã tham gia)
+      const totalLessonsResult = await client.query(`
+        SELECT COUNT(DISTINCT l.lesson_id) AS total_lessons
+        FROM lessons l
+        JOIN sections s ON l.section_id = s.section_id
+        WHERE s.course_id IN (
+          SELECT DISTINCT c2.course_id
+          FROM user_progress up2
+          JOIN lessons l2 ON up2.lesson_id = l2.lesson_id
+          JOIN sections s2 ON l2.section_id = s2.section_id
+          JOIN courses c2 ON s2.course_id = c2.course_id
+          WHERE up2.user_id = $1
+        )
+      `, [userId]);
+
+      const enrolledCourses = parseInt(enrolledResult.rows[0]?.enrolled_courses || 0, 10);
+      const completedLessons = parseInt(completedResult.rows[0]?.completed_lessons || 0, 10);
+      const aiChatCount = parseInt(chatResult.rows[0]?.ai_chat_count || 0, 10);
+      const totalLessons = parseInt(totalLessonsResult.rows[0]?.total_lessons || 0, 10);
+      const avgProgress = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+
+      return { enrolledCourses, completedLessons, aiChatCount, avgProgress };
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = new AuthService();

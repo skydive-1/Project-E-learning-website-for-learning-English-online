@@ -185,3 +185,20 @@ exports.resetPassword = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Lấy thống kê học tập của user hiện tại
+ * Author: NGUYỄN THANH LIÊM (Backend & Security Developer)
+ */
+exports.getUserStats = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const stats = await authService.getUserStats(userId);
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -117,4 +117,6 @@ router.post('/google/confirm-role', authLimiter, authController.googleConfirmRol
 router.post('/forgot-password', passwordResetLimiter, authController.forgotPassword);
 router.post('/reset-password', passwordResetLimiter, authController.resetPassword);
 
+router.get('/stats', authenticate, authController.getUserStats);
+
 module.exports = router;
