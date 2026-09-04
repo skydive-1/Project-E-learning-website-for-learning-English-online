@@ -10,6 +10,7 @@ import { useLanguage } from '../../context/LanguageContext';
 const AUDIENCE_CATEGORIES = [
   {
     id: 'ielts',
+    subjectId: 1,
     subjectMapping: 'IELTS Masterclass',
     chipLabel: 'IELTS ACADEMIC',
     chipColor: 'bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border-indigo-500/30',
@@ -21,6 +22,7 @@ const AUDIENCE_CATEGORIES = [
   },
   {
     id: 'toeic',
+    subjectId: 2,
     subjectMapping: 'TOEIC Prep',
     chipLabel: 'TOEIC DOANH NGHIỆP',
     chipColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
@@ -32,6 +34,7 @@ const AUDIENCE_CATEGORIES = [
   },
   {
     id: 'business',
+    subjectId: 3,
     subjectMapping: 'Business English',
     chipLabel: 'TIẾNG ANH ĐI LÀM',
     chipColor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
@@ -43,6 +46,7 @@ const AUDIENCE_CATEGORIES = [
   },
   {
     id: 'general',
+    subjectId: 4,
     subjectMapping: 'General English & Grammar',
     chipLabel: 'GIAO TIẾP & LẤY GỐC',
     chipColor: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30',
@@ -95,7 +99,16 @@ const TargetAudienceCard = () => {
             return (
               <div
                 key={item.id}
-                className="group relative rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 p-6 transition-all duration-300 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 hover:-translate-y-1"
+                onClick={() => navigate(`/courses?subject=${item.subjectId || item.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/courses?subject=${item.subjectId || item.id}`);
+                  }
+                }}
+                className="group relative rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 p-6 transition-all duration-300 hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 hover:-translate-y-1 cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <span className={`inline-block text-[10px] font-extrabold tracking-wider px-2.5 py-1 rounded-md border ${item.chipColor}`}>

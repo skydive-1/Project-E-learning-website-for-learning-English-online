@@ -1,5 +1,8 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import apiClient from '../../config/api.config';
+import { useToast } from '../../context/ToastContext';
 import { useLanguage } from '../../context/LanguageContext';
 import './DolHeroSection.css';
 
@@ -136,6 +139,81 @@ const DolHeroSection = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
+  const showToast = useToast();
+
+  const { data: dbCourses = [] } = useQuery({
+    queryKey: ['courses'],
+    queryFn: async () => {
+      try {
+        const response = await apiClient.get('/courses');
+        return Array.isArray(response.data?.courses) ? response.data.courses : [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 5 * 60 * 1000
+  });
+
+  const HERO_QUADRANTS = useMemo(() => [
+    {
+      id: 'ielts',
+      subjectId: 1,
+      subjectName: 'IELTS Masterclass',
+      pillClass: 'pill-red',
+      pillText: 'IELTS',
+      title: 'IELTS Masterclass',
+      desc: 'Học sinh THPT & sinh viên',
+      cellClass: 'hover:bg-slate-50/70 dark:hover:bg-slate-800/60'
+    },
+    {
+      id: 'toeic',
+      subjectId: 2,
+      subjectName: 'TOEIC Prep',
+      pillClass: 'pill-blue',
+      pillText: 'TOEIC',
+      title: 'TOEIC Chuẩn đầu ra',
+      desc: 'Sinh viên & người đi làm',
+      cellClass: 'hover:bg-slate-50/70 dark:hover:bg-slate-800/60'
+    },
+    {
+      id: 'business',
+      subjectId: 3,
+      subjectName: 'Business English',
+      pillClass: 'pill-orange',
+      pillText: 'BUSINESS',
+      title: 'Tiếng Anh Thương Mại',
+      desc: 'Nhân sự công sở & đàm phán',
+      cellClass: 'border-top-divider hover:bg-slate-50/70 dark:hover:bg-slate-800/60'
+    },
+    {
+      id: 'general',
+      subjectId: 4,
+      subjectName: 'General English Communication',
+      pillClass: 'pill-purple',
+      pillText: 'GIAO TIẾP',
+      title: 'Luyện nói & Phản xạ IPA',
+      desc: 'Người mất gốc & bắt đầu lại',
+      cellClass: 'border-top-divider hover:bg-slate-50/70 dark:hover:bg-slate-800/60'
+    }
+  ], []);
+
+  const handleQuadrantClick = (quadrant) => {
+    const hasCourse = dbCourses && dbCourses.length > 0
+      ? dbCourses.some(c => 
+          Number(c.subject_id) === Number(quadrant.subjectId) ||
+          (c.subject_name && c.subject_name.toLowerCase().includes(quadrant.subjectName.toLowerCase()))
+        )
+      : true;
+
+    if (!hasCourse && dbCourses && dbCourses.length > 0) {
+      if (typeof showToast === 'function') {
+        showToast('Hiện chưa có khóa học phù hợp', 'info');
+      }
+    }
+
+    navigate(`/courses?subject=${quadrant.subjectId}`);
+  };
+
   // 24 cards spaced evenly at 15-degree steps along CARD_RADIUS (1445px)
   const positionedCards = useMemo(() => {
     const total = BASE_PHOTO_CARDS.length;
@@ -247,45 +325,26 @@ const DolHeroSection = () => {
           <div className="dol-center-card">
             {/* Top 4 Quadrants Grid */}
             <div className="dol-quadrants-grid">
-              {/* Q1: IELTS */}
-              <div 
-                className="dol-quadrant-cell hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
-                onClick={() => navigate('/courses')}
-              >
-                <span className="dol-cell-pill pill-red">IELTS</span>
-                <h3 className="dol-cell-title">IELTS Masterclass</h3>
-                <p className="dol-cell-desc">Học sinh THPT & sinh viên</p>
-              </div>
-
-              {/* Q2: TOEIC */}
-              <div 
-                className="dol-quadrant-cell hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
-                onClick={() => navigate('/courses')}
-              >
-                <span className="dol-cell-pill pill-blue">TOEIC</span>
-                <h3 className="dol-cell-title">TOEIC Chuẩn đầu ra</h3>
-                <p className="dol-cell-desc">Sinh viên & người đi làm</p>
-              </div>
-
-              {/* Q3: BUSINESS */}
-              <div 
-                className="dol-quadrant-cell border-top-divider hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
-                onClick={() => navigate('/courses')}
-              >
-                <span className="dol-cell-pill pill-orange">BUSINESS</span>
-                <h3 className="dol-cell-title">Tiếng Anh Thương Mại</h3>
-                <p className="dol-cell-desc">Nhân sự công sở & đàm phán</p>
-              </div>
-
-              {/* Q4: GIAO TIẾP */}
-              <div 
-                className="dol-quadrant-cell border-top-divider hover:bg-slate-50/70 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
-                onClick={() => navigate('/courses')}
-              >
-                <span className="dol-cell-pill pill-purple">GIAO TIẾP</span>
-                <h3 className="dol-cell-title">Luyện nói & Phản xạ IPA</h3>
-                <p className="dol-cell-desc">Người mất gốc & bắt đầu lại</p>
-              </div>
+              {HERO_QUADRANTS.map((quadrant) => (
+                <div 
+                  key={quadrant.id}
+                  className={`dol-quadrant-cell ${quadrant.cellClass} transition-colors cursor-pointer`}
+                  onClick={() => handleQuadrantClick(quadrant)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleQuadrantClick(quadrant);
+                    }
+                  }}
+                  title={`Khóa học ${quadrant.title}`}
+                >
+                  <span className={`dol-cell-pill ${quadrant.pillClass}`}>{quadrant.pillText}</span>
+                  <h3 className="dol-cell-title">{quadrant.title}</h3>
+                  <p className="dol-cell-desc">{quadrant.desc}</p>
+                </div>
+              ))}
             </div>
 
             {/* Bottom Info Footer - Project Development Status */}
