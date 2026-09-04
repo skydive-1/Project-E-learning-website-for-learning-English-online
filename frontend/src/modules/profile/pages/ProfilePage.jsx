@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { updateProfileApi, changePasswordApi } from '../../auth/services/auth.service';
+import { updateProfileApi, changePasswordApi, getUserStatsApi } from '../../auth/services/auth.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useGamification } from '../../../context/GamificationContext';
 import '../styles/profile.scss';
@@ -49,6 +49,11 @@ const ProfilePage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  // User stats state (kết nối API thật)
+  const [userStats, setUserStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState(null);
+
   useEffect(() => {
     if (authUser) {
       setProfileData({
@@ -59,6 +64,18 @@ const ProfilePage = () => {
       setIsLoading(false);
     }
   }, [authUser]);
+
+  // Tải stats khi chuyển sang tab stats
+  useEffect(() => {
+    if (activeTab === 'stats' && !userStats && !statsLoading) {
+      setStatsLoading(true);
+      setStatsError(null);
+      getUserStatsApi()
+        .then(res => setUserStats(res.data))
+        .catch(() => setStatsError('Không tải được thống kê.'))
+        .finally(() => setStatsLoading(false));
+    }
+  }, [activeTab]);
 
   // Handle input changes
   const handleProfileChange = (e) => {
@@ -379,7 +396,9 @@ const ProfilePage = () => {
                         </div>
                         <div className="stat-details">
                           <span className="label">Khóa học đã đăng ký</span>
-                          <span className="value">2 Khóa học</span>
+                          <span className="value">
+                            {statsLoading ? '...' : statsError ? '--' : `${userStats?.enrolledCourses ?? 0} Khóa học`}
+                          </span>
                         </div>
                       </div>
 
@@ -389,7 +408,9 @@ const ProfilePage = () => {
                         </div>
                         <div className="stat-details">
                           <span className="label">Tiến trình trung bình</span>
-                          <span className="value">45%</span>
+                          <span className="value">
+                            {statsLoading ? '...' : statsError ? '--' : `${userStats?.avgProgress ?? 0}%`}
+                          </span>
                         </div>
                       </div>
 
@@ -399,7 +420,9 @@ const ProfilePage = () => {
                         </div>
                         <div className="stat-details">
                           <span className="label">Hội thoại RAG AI</span>
-                          <span className="value">18 Lượt hỏi</span>
+                          <span className="value">
+                            {statsLoading ? '...' : statsError ? '--' : `${userStats?.aiChatCount ?? 0} Lượt hỏi`}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -407,20 +430,36 @@ const ProfilePage = () => {
                     <div className="activity-summary">
                       <h3>Hoạt động gần đây</h3>
                       <div className="activity-timeline">
-                        <div className="timeline-item">
-                          <div className="timeline-dot"></div>
-                          <div className="timeline-info">
-                            <span className="time">Hôm qua</span>
-                            <p>Bạn đã thực hành luyện nói phản xạ với Trợ lý AI và đạt 8.5 điểm.</p>
+                        {statsLoading && (
+                          <div className="timeline-item">
+                            <div className="timeline-dot"></div>
+                            <div className="timeline-info">
+                              <span className="time">...</span>
+                              <p>Đang tải dữ liệu...</p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="timeline-item">
-                          <div className="timeline-dot"></div>
-                          <div className="timeline-info">
-                            <span className="time">3 ngày trước</span>
-                            <p>Đăng ký thành công khóa học "Tiếng Anh Giao Tiếp Online".</p>
+                        )}
+                        {!statsLoading && statsError && (
+                          <p style={{ color: '#f87171', fontSize: '14px' }}>{statsError}</p>
+                        )}
+                        {!statsLoading && !statsError && userStats && (
+                          <div className="timeline-item">
+                            <div className="timeline-dot"></div>
+                            <div className="timeline-info">
+                              <span className="time">Tổng cộng</span>
+                              <p>Bạn đã hoàn thành <strong>{userStats.completedLessons}</strong> bài học, tham gia <strong>{userStats.enrolledCourses}</strong> khóa học và hỏi AI <strong>{userStats.aiChatCount}</strong> lần.</p>
+                            </div>
                           </div>
-                        </div>
+                        )}
+                        {!statsLoading && !statsError && !userStats && (
+                          <div className="timeline-item">
+                            <div className="timeline-dot"></div>
+                            <div className="timeline-info">
+                              <span className="time">Chưa có hoạt động</span>
+                              <p>Bắt đầu học bài đầu tiên để tạo lịch sử hoạt động.</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 

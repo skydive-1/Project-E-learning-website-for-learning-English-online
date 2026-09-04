@@ -71,3 +71,12 @@ export const resetPasswordApi = async ({ accessToken, newPassword }) => {
   const response = await apiClient.post('/auth/reset-password', { accessToken, newPassword });
   return response.data;
 };
+
+/**
+ * Lấy thống kê học tập của user hiện tại (dùng cho Profile Page)
+ * Trả về: { enrolledCourses, completedLessons, aiChatCount, avgProgress }
+ */
+export const getUserStatsApi = async () => {
+  const response = await apiClient.get('/auth/stats');
+  return response.data;
+};

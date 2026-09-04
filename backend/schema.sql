@@ -1,4 +1,4 @@
--- =====================================================================
+﻿-- =====================================================================
 -- E-LEARN ACADEMY DATABASE SCHEMA & INITIAL SEED DATA
 -- Cấu trúc cơ sở dữ liệu hoàn chỉnh cho dự án E-Learn Academy
 -- Thực thi thủ công trên Supabase SQL Editor trước khi khởi chạy server
@@ -154,8 +154,11 @@ CREATE TABLE IF NOT EXISTS quizzes (
   title VARCHAR(255) NOT NULL,
   description TEXT,
   difficulty VARCHAR(50) DEFAULT 'Medium',
-  time_limit INT DEFAULT 10, -- Số phút làm bài
+  time_limit INT DEFAULT 10,
+  is_private BOOLEAN DEFAULT FALSE,     -- Quiz ?n/c�ng khai
+  pin_code VARCHAR(20) DEFAULT NULL,    -- M? PIN ?? v�o quiz private
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_quiz_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
   CONSTRAINT fk_quiz_lesson FOREIGN KEY (lesson_id) REFERENCES lessons(lesson_id) ON DELETE CASCADE
 );
