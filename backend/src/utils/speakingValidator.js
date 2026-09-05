@@ -151,7 +151,14 @@ function validateQAResponse(rawObj) {
     return {
       hasSpeech: false,
       transcription: typeof rawObj.transcription === 'string' ? rawObj.transcription.trim() : '',
-      scores: { relevance: 0, grammar: 0, vocabulary: 0, pronunciation: 0, fluency: 0 },
+      // Hỗ trợ cả key mới (IELTS) và key cũ khi no-speech
+      scores: {
+        fluencyCoherence: 0,
+        lexicalResource: 0,
+        grammaticalRange: 0,
+        pronunciationScore: 0,
+        relevanceGate: 0
+      },
       audioQuality: {
         hasSpeech: false,
         quality: 'no_speech',
@@ -174,11 +181,21 @@ function validateQAResponse(rawObj) {
   }
 
   const transcription = rawObj.transcription.trim();
-  const relevance = validateStrictScore(rawObj.relevanceScore, 'relevanceScore');
-  const grammar = validateStrictScore(rawObj.grammarScore, 'grammarScore');
-  const vocabulary = validateStrictScore(rawObj.vocabularyScore, 'vocabularyScore');
-  const pronunciation = validateStrictScore(rawObj.pronunciationScore, 'pronunciationScore');
-  const fluency = validateStrictScore(rawObj.fluencyScore, 'fluencyScore');
+
+  // Đọc key mới (IELTS) trước, fallback sang key cũ nếu không có
+  // Key mới (IELTS Band Descriptors): fluencyCoherence, lexicalResource, grammaticalRange
+  // Key cũ (backward-compat):          fluencyScore,     vocabularyScore,   grammarScore
+  const rawFluency      = rawObj.fluencyCoherence  !== undefined ? rawObj.fluencyCoherence  : rawObj.fluencyScore;
+  const rawLexical      = rawObj.lexicalResource   !== undefined ? rawObj.lexicalResource   : rawObj.vocabularyScore;
+  const rawGrammar      = rawObj.grammaticalRange  !== undefined ? rawObj.grammaticalRange  : rawObj.grammarScore;
+  const rawPronun       = rawObj.pronunciationScore;
+  const rawRelevance    = rawObj.relevanceScore;
+
+  const fluencyCoherence  = validateStrictScore(rawFluency,   'fluencyCoherence (FC)');
+  const lexicalResource   = validateStrictScore(rawLexical,   'lexicalResource (LR)');
+  const grammaticalRange  = validateStrictScore(rawGrammar,   'grammaticalRange (GRA)');
+  const pronunciation     = validateStrictScore(rawPronun,    'pronunciationScore (PR)');
+  const relevanceGate     = validateStrictScore(rawRelevance, 'relevanceScore (Gate)');
 
   const validQualities = ['good', 'poor', 'uncertain', 'no_speech'];
   const quality = typeof rawObj.quality === 'string' && validQualities.includes(rawObj.quality) ? rawObj.quality : 'uncertain';
@@ -186,7 +203,7 @@ function validateQAResponse(rawObj) {
   return {
     hasSpeech: true,
     transcription,
-    scores: { relevance, grammar, vocabulary, pronunciation, fluency },
+    scores: { fluencyCoherence, lexicalResource, grammaticalRange, pronunciation, relevanceGate },
     audioQuality: {
       hasSpeech: true,
       quality,

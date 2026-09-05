@@ -153,15 +153,17 @@ describe('=== TASK-AI-SPEAKING-01-HOTFIX-R2 AUTOMATED TEST SUITE ===', () => {
       const validQA = speakingValidator.validateQAResponse({
         hasSpeech: true,
         transcription: "I practice English everyday",
-        relevanceScore: 90,
-        grammarScore: 85,
-        vocabularyScore: 80,
-        pronunciationScore: 85,
-        fluencyScore: 85,
+        // Tên key mới theo IELTS Band Descriptors — ielts.org
+        fluencyCoherence: 85,    // IELTS: Fluency & Coherence
+        lexicalResource: 80,     // IELTS: Lexical Resource
+        grammaticalRange: 85,    // IELTS: Grammatical Range & Accuracy
+        pronunciationScore: 85,  // IELTS: Pronunciation
+        relevanceScore: 90,      // Gate field (TOEFL iBT-inspired, không tính điểm)
         quality: "good"
       });
       assert.strictEqual(validQA.hasSpeech, true);
-      assert.strictEqual(validQA.scores.relevance, 90);
+      // Assert key mới: scores.relevanceGate (không còn là scores.relevance)
+      assert.strictEqual(validQA.scores.relevanceGate, 90);
     });
   });
 
@@ -369,12 +371,14 @@ describe('=== TASK-AI-SPEAKING-01-HOTFIX-R2 AUTOMATED TEST SUITE ===', () => {
       assert.strictEqual(data.data.overallScore > 85, true);
     });
 
-    it('5.2 Q&A: should apply Score Cap when relevance < 20', async () => {
+    it('5.2 Q&A: should apply Relevance Gate (TOEFL iBT-inspired) when relevanceScore < 30 — overallScore must be 0', async () => {
+      // Relevance Gate: tham khảo TOEFL iBT Speaking Scoring Rubrics (ETS)
+      // Off-topic response (relevanceGate < 30) → điểm = 0, offTopic = true
       geminiSpeakingModel.evaluateSpeaking = async () => ({
         responseText: JSON.stringify({
           hasSpeech: true,
           transcription: "I like eating pizza and playing video games",
-          relevanceScore: 10, // Off-topic
+          relevanceScore: 10, // Lạc đề hoàn toàn — relevanceGate < 30
           grammarScore: 90,
           vocabularyScore: 85,
           pronunciationScore: 90,
@@ -401,8 +405,11 @@ describe('=== TASK-AI-SPEAKING-01-HOTFIX-R2 AUTOMATED TEST SUITE ===', () => {
       const data = await res.json();
       assert.strictEqual(res.status, 200);
       assert.strictEqual(data.data.mode, 'qa');
+      // Relevance Gate (TOEFL iBT): off-topic → overallScore = 0
+      assert.strictEqual(data.data.offTopic, true);
+      assert.strictEqual(data.data.overallScore, 0);
+      // Backward-compat field vẫn có
       assert.strictEqual(data.data.scoreCapApplied, true);
-      assert.strictEqual(data.data.overallScore <= 49, true);
     });
 
     it('5.3 Invalid AI Schema: should retry once and return HTTP 503 AI_RESPONSE_INVALID', async () => {

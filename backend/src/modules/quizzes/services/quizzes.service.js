@@ -238,17 +238,37 @@ class QuizzesService {
   }
 
   async evaluateWriting(writingText) {
+    /**
+     * Chấm điểm Writing theo IELTS Writing Band Descriptors
+     * Nguồn: IELTS Official Public Band Descriptors — ielts.org
+     * 4 tiêu chí bằng nhau (25% mỗi cái):
+     *   Task Achievement (TA)         — Trả lời đúng yêu cầu đề, lập luận đủ ý
+     *   Coherence & Cohesion (CC)     — Mạch lạc, liên kết câu/đoạn, dùng connectors
+     *   Lexical Resource (LR)         — Từ vựng đa dạng, chính xác, tránh lặp
+     *   Grammatical Range & Acc. (GRA)— Cấu trúc câu đa dạng, ít lỗi ngữ pháp
+     * overallScore = round((TA + CC + LR + GRA) / 4)
+     */
     try {
-      const prompt = `You are an expert English writing tutor evaluating a student's essay or open-ended written response.
-Analyze the student's written response carefully for grammar, vocabulary choice, sentence structure, coherence, and relevance.
+      const prompt = `You are a strict, professional English writing assessor following the IELTS Writing Band Descriptors (British Council / IDP / Cambridge — ielts.org).
+Evaluate the student's written response below.
 
-Format the response as a JSON object containing EXACTLY these keys:
-1. "score": (number) An overall score from 0 to 100 based on quality.
-2. "detailed_feedback": (string) Specific, constructive feedback in friendly Vietnamese explaining strengths and areas for improvement.
-3. "improved_sentence": (string) A corrected, natural, native-like English polished version of their response.
-4. "errors": (array of strings) List of specific grammar, spelling, or vocabulary mistakes detected in friendly Vietnamese.
+SCORING STANDARD — IELTS Writing Band Descriptors (ielts.org):
+Score each of the FOUR criteria independently on an integer from 0 to 100:
+  1. "taskAchievement"    — Task Achievement (TA): Does the response address the prompt fully? Are ideas developed with supporting details? Is the position clear?
+  2. "coherenceCohesion"  — Coherence & Cohesion (CC): Is the text logically organized? Are cohesive devices (first, however, therefore, etc.) used effectively without repetition?
+  3. "lexicalResource"    — Lexical Resource (LR): Is vocabulary range wide? Are less common words used accurately? Is there effective paraphrasing and avoidance of repetition?
+  4. "grammaticalRange"   — Grammatical Range & Accuracy (GRA): Is there a variety of sentence structures (complex, compound, conditional, passive)? Are grammatical errors rare?
 
-Ensure the response contains ONLY valid JSON without markdown formatting or backticks.`;
+DO NOT compute an overall score — the system will calculate: overallScore = round((TA + CC + LR + GRA) / 4)
+
+Also return:
+  5. "detailed_feedback": (string) Specific, actionable feedback in friendly Vietnamese for each criterion.
+  6. "improved_sentence": (string) A corrected, native-like English polished version of their response.
+  7. "errors": (array of strings) Specific grammar, vocabulary, or coherence mistakes in friendly Vietnamese.
+
+Format as strict JSON with EXACTLY these keys:
+"taskAchievement", "coherenceCohesion", "lexicalResource", "grammaticalRange", "detailed_feedback", "improved_sentence", "errors"
+No markdown, no backticks, no extra keys.`;
 
       const result = await geminiModel.generateContent({
         contents: [
@@ -260,9 +280,7 @@ Ensure the response contains ONLY valid JSON without markdown formatting or back
             ]
           }
         ],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
+        generationConfig: { responseMimeType: "application/json" }
       });
 
       let responseText = result.response.text();
@@ -272,21 +290,43 @@ Ensure the response contains ONLY valid JSON without markdown formatting or back
 
       const parsed = JSON.parse(responseText);
 
+      // Validate & clamp mỗi sub-score
+      const clamp = (v) => Math.max(0, Math.min(100, Number.isFinite(Number(v)) ? Math.round(Number(v)) : 0));
+      const ta  = clamp(parsed.taskAchievement);
+      const cc  = clamp(parsed.coherenceCohesion);
+      const lr  = clamp(parsed.lexicalResource);
+      const gra = clamp(parsed.grammaticalRange);
+
+      // IELTS formula: 4 tiêu chí × 25% — tính tại backend, không tin AI tự tính
+      const overallScore = Math.round((ta + cc + lr + gra) / 4);
+
       return {
-        score: parsed.score !== undefined ? Number(parsed.score) : 80,
-        detailed_feedback: parsed.detailed_feedback || "Bài viết của bạn diễn đạt khá tốt.",
-        improved_sentence: parsed.improved_sentence || "",
-        feedback: parsed.detailed_feedback || "Bài viết của bạn diễn đạt khá tốt.",
-        suggestedText: parsed.improved_sentence || "",
-        errors: parsed.errors && Array.isArray(parsed.errors) ? parsed.errors : []
+        // Trường chính
+        score: overallScore,
+        // IELTS sub-score breakdown
+        components: {
+          taskAchievement: ta,
+          coherenceCohesion: cc,
+          lexicalResource: lr,
+          grammaticalRange: gra
+        },
+        scoringStandard: 'IELTS Writing Band Descriptors (ielts.org)',
+        detailed_feedback: typeof parsed.detailed_feedback === 'string' ? parsed.detailed_feedback : "Bài viết của bạn đã được ghi nhận.",
+        improved_sentence: typeof parsed.improved_sentence === 'string' ? parsed.improved_sentence : writingText,
+        // Backward-compat aliases
+        feedback: typeof parsed.detailed_feedback === 'string' ? parsed.detailed_feedback : "Bài viết của bạn đã được ghi nhận.",
+        suggestedText: typeof parsed.improved_sentence === 'string' ? parsed.improved_sentence : writingText,
+        errors: Array.isArray(parsed.errors) ? parsed.errors : []
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.evaluateWriting:", error);
       return {
-        score: 75,
-        detailed_feedback: "Bài làm tự luận của bạn đã được ghi nhận. Hãy tiếp tục trau dồi từ vựng và cấu trúc ngữ pháp nâng cao nhé!",
+        score: 0,
+        components: { taskAchievement: 0, coherenceCohesion: 0, lexicalResource: 0, grammaticalRange: 0 },
+        scoringStandard: 'IELTS Writing Band Descriptors (ielts.org)',
+        detailed_feedback: "Không thể chấm điểm bài viết. Vui lòng thử lại.",
         improved_sentence: writingText,
-        feedback: "Bài làm tự luận của bạn đã được ghi nhận. Hãy tiếp tục trau dồi từ vựng và cấu trúc ngữ pháp nâng cao nhé!",
+        feedback: "Không thể chấm điểm bài viết. Vui lòng thử lại.",
         suggestedText: writingText,
         errors: []
       };
@@ -294,6 +334,15 @@ Ensure the response contains ONLY valid JSON without markdown formatting or back
   }
 
   async evaluateAudio(filePathOrBuffer, mimetype, expectedSentence) {
+    /**
+     * Chấm điểm Audio Quiz theo PTE Academic (Pearson — pearsonpte.com)
+     * Áp dụng cho dạng: Repeat Sentence / Re-tell / Read Aloud trong Quiz
+     * 3 tiêu chí bằng nhau (~1/3 mỗi cái):
+     *   Content Accuracy (CA) — Nội dung nói có đúng với câu mẫu không (WER-style)
+     *   Oral Fluency (OF)    — Tốc độ, nhịp điệu, không ngắt quãng bất thường
+     *   Pronunciation (PR)   — Phát âm chính xác âm vị, trọng âm từ/câu
+     * overallScore = round((CA + OF + PR) / 3)
+     */
     try {
       let audioBuffer;
       if (Buffer.isBuffer(filePathOrBuffer)) {
@@ -305,10 +354,12 @@ Ensure the response contains ONLY valid JSON without markdown formatting or back
         throw new Error("Dữ liệu âm thanh không hợp lệ.");
       }
 
-      // Tiền kiểm tra: Nếu buffer < 1500 bytes (file rỗng hoặc không có giọng nói) -> trả về 0 điểm ngay
+      // Tiền kiểm tra: buffer < 1500 bytes → không có giọng nói → 0 điểm ngay
       if (!audioBuffer || audioBuffer.length < 1500) {
         return {
           score: 0,
+          components: { contentAccuracy: 0, oralFluency: 0, pronunciation: 0 },
+          scoringStandard: 'PTE Academic (Pearson — pearsonpte.com)',
           pronunciation_accuracy: "0%",
           detailed_feedback: "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng kiểm tra micro, nói to và rõ ràng hơn.",
           improved_sentence: expectedSentence || '',
@@ -317,34 +368,32 @@ Ensure the response contains ONLY valid JSON without markdown formatting or back
           errors: ["Chưa phát hiện giọng nói qua micro."]
         };
       }
-      
+
       const audioBase64 = audioBuffer.toString("base64");
 
-      const prompt = `You are a professional, strict English language and pronunciation tutor.
-Listen to the user's spoken audio waveform carefully.
-Compare what they ACTUALLY said against the expected sentence: "${expectedSentence || ''}".
+      const prompt = `You are a strict, professional English pronunciation assessor following the PTE Academic (Pearson) scoring standard.
+Listen to the user's spoken audio carefully.
+Expected sentence the student should have said: "${expectedSentence || ''}".
 
-CRITICAL ANTI-CHEAT & SILENCE DETECTION RULES:
-1. If the audio is silent, contains NO human speech, contains only background noise/hiss, breathing, or empty silence:
-   - "score": 0
-   - "pronunciation_accuracy": "0%"
-   - "detailed_feedback": "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và phát âm rõ ràng hơn."
-   - "improved_sentence": "${expectedSentence || ''}"
-   DO NOT hallucinate words or award any points for silence!
+SCORING STANDARD — PTE Academic (Pearson) Audio Response:
+Score each of the THREE criteria independently on an integer from 0 to 100:
+  1. "contentAccuracy" — Content Accuracy (CA): How closely does what the student ACTUALLY said match the expected sentence? Use word-error-rate style comparison. Severe penalty if the student said something completely different or said nothing.
+  2. "oralFluency"     — Oral Fluency (OF): Natural pace and rhythm, absence of unnatural pauses, hesitations, or repetitions. Smooth connected speech.
+  3. "pronunciation"   — Pronunciation (PR): Phoneme accuracy, word/sentence stress, vowel-consonant clarity from audio waveform.
 
-2. If the user spoke:
-   - "score": (number from 1 to 100 based on their actual pronunciation, rhythm, and intonation)
-   - "pronunciation_accuracy": (string percentage, e.g. "85%")
-   - "detailed_feedback": (constructive feedback in friendly Vietnamese pointing out accuracy and errors)
-   - "improved_sentence": (the correct native English pronunciation or sentence)
+SILENCE / ANTI-CHEAT RULES:
+- If audio is silent, noise-only, or no human speech: set ALL three scores to 0.
+- DO NOT hallucinate speech or award points for silence.
 
-Format the response as a JSON object containing EXACTLY these keys:
-- "score": (number from 0 to 100)
-- "pronunciation_accuracy": (string percentage)
-- "detailed_feedback": (string in Vietnamese)
-- "improved_sentence": (string)
+DO NOT compute an overall score — the system calculates: overallScore = round((CA + OF + PR) / 3)
 
-Ensure the response contains ONLY valid JSON without markdown formatting.`;
+Also return:
+  4. "detailed_feedback": (string) Actionable feedback in friendly Vietnamese for each PTE criterion.
+  5. "improved_sentence": (string) The correct native English version.
+
+Format as strict JSON with EXACTLY these keys:
+"contentAccuracy", "oralFluency", "pronunciation", "detailed_feedback", "improved_sentence"
+No markdown, no backticks, no extra keys.`;
 
       const result = await geminiModel.generateContent({
         contents: [
@@ -352,53 +401,54 @@ Ensure the response contains ONLY valid JSON without markdown formatting.`;
             role: "user",
             parts: [
               { text: prompt },
-              {
-                inlineData: {
-                  data: audioBase64,
-                  mimeType: mimetype || "audio/webm"
-                }
-              }
+              { inlineData: { data: audioBase64, mimeType: mimetype || "audio/webm" } }
             ]
           }
         ],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
+        generationConfig: { responseMimeType: "application/json" }
       });
 
       let responseText = result.response.text();
-      // Clean up markdown block if present
       if (responseText.includes("```")) {
         responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
       }
 
       const parsed = JSON.parse(responseText);
 
-      const isNoSpeech = !parsed.detailed_feedback || 
-        parsed.detailed_feedback.toLowerCase().includes("không nhận diện") ||
-        parsed.detailed_feedback.toLowerCase().includes("no discernible speech") ||
-        Number(parsed.score) === 0;
+      // Validate & clamp mỗi sub-score
+      const clamp = (v) => Math.max(0, Math.min(100, Number.isFinite(Number(v)) ? Math.round(Number(v)) : 0));
+      const ca = clamp(parsed.contentAccuracy);
+      const of_ = clamp(parsed.oralFluency);
+      const pr = clamp(parsed.pronunciation);
 
-      const finalScore = isNoSpeech ? 0 : Math.max(0, Math.min(100, parsed.score !== undefined ? Number(parsed.score) : 0));
+      // PTE formula: 3 tiêu chí × 1/3 — tính tại backend, không tin AI tự tính
+      const overallScore = Math.round((ca + of_ + pr) / 3);
+
+      const isNoSpeech = overallScore === 0 && ca === 0 && of_ === 0 && pr === 0;
+      const feedbackText = isNoSpeech
+        ? "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và rõ ràng hơn."
+        : (typeof parsed.detailed_feedback === 'string' ? parsed.detailed_feedback : "Bạn đã hoàn thành phần phát âm!");
 
       return {
-        score: finalScore,
-        pronunciation_accuracy: `${finalScore}%`,
-        detailed_feedback: (isNoSpeech || finalScore === 0)
-          ? "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và rõ ràng hơn."
-          : (parsed.detailed_feedback || "Bạn đã hoàn thành phần phát âm!"),
-        improved_sentence: parsed.improved_sentence || expectedSentence || "",
-        
-        feedback: (isNoSpeech || finalScore === 0)
-          ? "Không nhận diện được giọng nói trong bản ghi âm. Vui lòng bấm micro, nói to và rõ ràng hơn."
-          : (parsed.detailed_feedback || "Bạn đã hoàn thành phần phát âm!"),
-        suggestedText: parsed.improved_sentence || expectedSentence || "",
-        errors: finalScore < 70 ? [(isNoSpeech ? "Chưa phát hiện giọng nói qua micro." : (parsed.detailed_feedback || "Cần phát âm rõ ràng hơn."))] : []
+        // Trường chính
+        score: overallScore,
+        // PTE sub-score breakdown
+        components: { contentAccuracy: ca, oralFluency: of_, pronunciation: pr },
+        scoringStandard: 'PTE Academic (Pearson — pearsonpte.com)',
+        pronunciation_accuracy: `${overallScore}%`,
+        detailed_feedback: feedbackText,
+        improved_sentence: typeof parsed.improved_sentence === 'string' ? parsed.improved_sentence : (expectedSentence || ''),
+        // Backward-compat aliases
+        feedback: feedbackText,
+        suggestedText: typeof parsed.improved_sentence === 'string' ? parsed.improved_sentence : (expectedSentence || ''),
+        errors: overallScore < 70 ? [isNoSpeech ? "Chưa phát hiện giọng nói qua micro." : feedbackText] : []
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.evaluateAudio:", error);
       return {
         score: 0,
+        components: { contentAccuracy: 0, oralFluency: 0, pronunciation: 0 },
+        scoringStandard: 'PTE Academic (Pearson — pearsonpte.com)',
         pronunciation_accuracy: "0%",
         detailed_feedback: "Chưa ghi nhận được âm thanh giọng nói từ micro. Vui lòng bấm micro và nói lại!",
         improved_sentence: expectedSentence || '',
