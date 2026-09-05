@@ -4,7 +4,23 @@
  * - Thuật toán Token Alignment (Dynamic Programming / Levenshtein Distance / WER).
  * - Đếm occurrenceIndex cho MỌI lần xuất hiện của từ mục tiêu (correct, missing, substituted)
  * - Tuyệt đối không suy đoán correct khi thiếu bằng chứng âm học (mặc định not_assessed).
- * - Tính toán điểm số Read Aloud và Q&A Speaking theo rubric và cơ chế Score Cap.
+ *
+ * === RUBRIC CHẤM ĐIỂM DỰA THEO CHUẨN QUỐC TẾ ===
+ *
+ * [Read Aloud] — Theo chuẩn PTE Academic (Pearson)
+ *   Nguồn: PTE Academic Score Guide — pearsonpte.com
+ *   3 tiêu chí cân bằng nhau (mỗi tiêu chí ~1/3):
+ *     Overall = (Content + OralFluency + Pronunciation) / 3
+ *
+ * [Q&A Speaking] — Theo chuẩn IELTS Speaking Band Descriptors
+ *   Nguồn: IELTS Official Public Band Descriptors — ielts.org
+ *   4 tiêu chí cân bằng nhau (mỗi tiêu chí 25%):
+ *     Overall = FluentCoherence×0.25 + LexicalResource×0.25 + GrammaticalRange×0.25 + Pronunciation×0.25
+ *   Cơ chế Relevance Gate (thay thế Score Cap tự chế):
+ *     Tham khảo: TOEFL iBT Speaking Scoring Rubrics (ETS) — off-topic response = 0
+ *     relevanceGate < 30  → overallScore = 0 (lạc đề hoàn toàn)
+ *     30 ≤ relevanceGate < 60 → cảnh báo, không giảm điểm
+ *     relevanceGate ≥ 60  → chấm điểm bình thường
  *
  * Người phụ trách task: NGUYỄN DŨNG QUỐC ANH
  * Hỗ trợ triển khai và kiểm thử mã nguồn: AI Agent
@@ -345,8 +361,18 @@ function buildWordLevelFeedback(targetText, transcription, wordAssessments = [])
 }
 
 /**
- * Tính toán điểm Read Aloud theo công thức chuẩn:
- * Overall = Pronunciation * 0.35 + ContentAccuracy * 0.30 + Fluency * 0.20 + Completeness * 0.15
+ * Tính toán điểm Read Aloud theo chuẩn PTE Academic (Pearson).
+ *
+ * Nguồn: PTE Academic Score Guide — pearsonpte.com
+ * PTE Academic đánh giá Read Aloud theo 3 tiêu chí cân bằng nhau:
+ *   - Content    (~1/3): Độ chính xác nội dung đọc so với câu mẫu (tính từ WER)
+ *   - Oral Fluency (~1/3): Sự trôi chảy, nhịp điệu, không ngắt quãng bất thường
+ *   - Pronunciation (~1/3): Phát âm chuẩn xác âm vị, trọng âm
+ *
+ * Công thức: Overall = round((Content + OralFluency + Pronunciation) / 3)
+ *
+ * Lưu ý: "Completeness" (đọc đủ từ) được tích hợp tự nhiên vào Content
+ * thông qua WER (từ bị bỏ sót = Deletion → làm tăng WER → giảm Content score).
  */
 function calculateReadAloudScore({ targetText, transcription, pronunciationScore = 0, fluencyScore = 0, wordAssessments = [] }) {
   const targetTokensExpanded = normalizeAndTokenize(targetText, true);
@@ -382,17 +408,19 @@ function calculateReadAloudScore({ targetText, transcription, pronunciationScore
 
   const { wer, correctMatches } = computeTokenAlignment(targetTokensExpanded, transcriptTokensExpanded);
 
-  // Clamping contentAccuracy trong khoảng [0, 100]
+  // Content Score = (1 - WER) × 100, clamped [0, 100]
+  // Tích hợp cả Completeness: từ bị bỏ sót (Deletion) đã phản ánh trong WER
   const contentAccuracy = Math.max(0, Math.min(100, Math.round((1 - Math.min(wer, 1.0)) * 100)));
 
-  // Completeness = matched / total
+  // Completeness vẫn được tính để hiển thị UI, nhưng KHÔNG dùng làm trọng số riêng
   const completeness = Math.max(0, Math.min(100, Math.round((correctMatches / targetTokensExpanded.length) * 100)));
 
   const pScore = Math.max(0, Math.min(100, Number(pronunciationScore) || 0));
   const fScore = Math.max(0, Math.min(100, Number(fluencyScore) || 0));
 
-  // Công thức trọng số Read Aloud
-  const rawOverall = (pScore * 0.35) + (contentAccuracy * 0.30) + (fScore * 0.20) + (completeness * 0.15);
+  // === PTE Academic Formula: 3 tiêu chí cân bằng nhau (~1/3 mỗi tiêu chí) ===
+  // Nguồn: PTE Academic Score Guide — pearsonpte.com
+  const rawOverall = (contentAccuracy + fScore + pScore) / 3;
   const overallScore = Math.max(0, Math.min(100, Math.round(rawOverall)));
 
   const words = buildWordLevelFeedback(targetText, transcription, wordAssessments);
@@ -410,38 +438,69 @@ function calculateReadAloudScore({ targetText, transcription, pronunciationScore
 }
 
 /**
- * Tính toán điểm Q&A Speaking theo rubric và cơ chế Score Cap:
- * RawScore = Relevance * 0.20 + Grammar * 0.20 + Vocabulary * 0.15 + Pronunciation * 0.25 + Fluency * 0.20
- * Score Cap:
- * - relevance < 20 => overallScore <= 49 (Fail)
- * - 20 <= relevance < 40 => overallScore <= 59 (Weak)
+ * Tính toán điểm Q&A Speaking theo chuẩn IELTS Speaking Band Descriptors.
+ *
+ * Nguồn: IELTS Official Public Band Descriptors — ielts.org
+ * IELTS Speaking đánh giá theo 4 tiêu chí cân bằng nhau (25% mỗi tiêu chí):
+ *   - Fluency & Coherence (FC)    : Sự trôi chảy, mạch lạc, liên kết ý tưởng
+ *   - Lexical Resource (LR)       : Vốn từ vựng, sự đa dạng và chính xác
+ *   - Grammatical Range & Accuracy: Cấu trúc ngữ pháp đa dạng và chính xác
+ *   - Pronunciation (PR)          : Phát âm, trọng âm, ngữ điệu
+ *
+ * Công thức IELTS:
+ *   Overall = (FC + LR + GRA + PR) / 4
+ *
+ * Cơ chế Relevance Gate (bổ sung cho bối cảnh E-learning không có giám khảo):
+ *   Tham khảo: TOEFL iBT Speaking Scoring Rubrics (ETS) — off-topic response = score 0
+ *   - relevanceGate < 30  → overallScore = 0 (lạc đề hoàn toàn, không chấm)
+ *   - 30 ≤ relevanceGate < 60 → chấm bình thường, hiển thị cảnh báo
+ *   - relevanceGate ≥ 60  → chấm bình thường
+ *
+ * Lưu ý tên tham số theo IELTS chính thức:
+ *   fluencyCoherence = Fluency & Coherence (FC)
+ *   lexicalResource  = Lexical Resource (LR)
+ *   grammaticalRange = Grammatical Range & Accuracy (GRA)
+ *   pronunciation    = Pronunciation (PR)
+ *   relevanceGate    = Không phải tiêu chí IELTS, chỉ dùng để phát hiện lạc đề
  */
-function calculateQAScore({ relevance = 0, grammar = 0, vocabulary = 0, pronunciation = 0, fluency = 0 }) {
-  const r = Math.max(0, Math.min(100, Number(relevance) || 0));
-  const g = Math.max(0, Math.min(100, Number(grammar) || 0));
-  const v = Math.max(0, Math.min(100, Number(vocabulary) || 0));
-  const p = Math.max(0, Math.min(100, Number(pronunciation) || 0));
-  const f = Math.max(0, Math.min(100, Number(fluency) || 0));
+function calculateQAScore({
+  relevanceGate,
+  fluencyCoherence,
+  lexicalResource,
+  grammaticalRange,
+  pronunciation = 0,
+  // Backward-compat aliases (tên cũ)
+  relevance,
+  fluency,
+  vocabulary,
+  grammar
+} = {}) {
+  // Hỗ trợ tên cũ nếu tên mới không được truyền vào (undefined).
+  // KHÔNG dùng ?? vì default 0 sẽ khiến ?? luôn chọn tên mới dù không được truyền.
+  const gateScore = Math.max(0, Math.min(100, Number(relevanceGate !== undefined ? relevanceGate : (relevance ?? 0)) || 0));
+  const fc        = Math.max(0, Math.min(100, Number(fluencyCoherence !== undefined ? fluencyCoherence : (fluency ?? 0)) || 0));
+  const lr        = Math.max(0, Math.min(100, Number(lexicalResource !== undefined ? lexicalResource : (vocabulary ?? 0)) || 0));
+  const gra       = Math.max(0, Math.min(100, Number(grammaticalRange !== undefined ? grammaticalRange : (grammar ?? 0)) || 0));
+  const pr        = Math.max(0, Math.min(100, Number(pronunciation) || 0));
 
-  const rawScore = (r * 0.20) + (g * 0.20) + (v * 0.15) + (p * 0.25) + (f * 0.20);
+  // === IELTS Formula: 4 tiêu chí cân bằng nhau (25% mỗi tiêu chí) ===
+  // Nguồn: IELTS Official Band Descriptors — ielts.org
+  const rawScore = (fc * 0.25) + (lr * 0.25) + (gra * 0.25) + (pr * 0.25);
   let overallScore = Math.round(rawScore);
 
-  let scoreCapApplied = false;
-  let scoreCapReason = null;
+  // === Relevance Gate (TOEFL iBT-inspired) ===
+  // TOEFL iBT: "Off-Topic responses receive a score of 0" — ETS TOEFL iBT Speaking Scoring Rubrics
+  let relevanceWarning = null;
+  let offTopic = false;
 
-  // Áp dụng Score Cap khi câu trả lời lạc đề
-  if (r < 20) {
-    if (overallScore > 49) {
-      overallScore = 49;
-      scoreCapApplied = true;
-      scoreCapReason = "Câu trả lời hoàn toàn lạc đề so với câu hỏi (Relevance < 20%), điểm tổng bị giới hạn trần tối đa 49 điểm.";
-    }
-  } else if (r < 40) {
-    if (overallScore > 59) {
-      overallScore = 59;
-      scoreCapApplied = true;
-      scoreCapReason = "Câu trả lời chưa đúng trọng tâm câu hỏi (Relevance < 40%), điểm tổng bị giới hạn trần tối đa 59 điểm.";
-    }
+  if (gateScore < 30) {
+    // Lạc đề hoàn toàn → không chấm điểm
+    overallScore = 0;
+    offTopic = true;
+    relevanceWarning = "Câu trả lời hoàn toàn lạc đề so với câu hỏi (Relevance Gate < 30). Điểm = 0. [Tham chiếu: TOEFL iBT Speaking Scoring Rubrics — ETS]";
+  } else if (gateScore < 60) {
+    // Chưa đúng trọng tâm → cảnh báo, không giảm điểm
+    relevanceWarning = "Câu trả lời chưa đúng trọng tâm câu hỏi (Relevance Gate < 60). Hãy bám sát chủ đề hơn.";
   }
 
   overallScore = Math.max(0, Math.min(100, overallScore));
@@ -449,14 +508,17 @@ function calculateQAScore({ relevance = 0, grammar = 0, vocabulary = 0, pronunci
   return {
     overallScore,
     components: {
-      relevance: r,
-      grammar: g,
-      vocabulary: v,
-      pronunciation: p,
-      fluency: f
+      fluencyCoherence: fc,
+      lexicalResource: lr,
+      grammaticalRange: gra,
+      pronunciation: pr,
+      relevanceGate: gateScore
     },
-    scoreCapApplied,
-    scoreCapReason
+    offTopic,
+    relevanceWarning,
+    // Backward-compat: giữ lại trường cũ để không break controller
+    scoreCapApplied: offTopic,
+    scoreCapReason: relevanceWarning
   };
 }
 

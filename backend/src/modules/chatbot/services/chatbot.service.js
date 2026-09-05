@@ -1697,11 +1697,17 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
     // Prompt chuyên biệt theo từng Mode
     let prompt;
     if (mode === 'read_aloud') {
-      prompt = `You are a strict, professional English pronunciation assessor.
+      prompt = `You are a strict, professional English pronunciation assessor following the PTE Academic (Pearson) Read Aloud scoring standard.
 Target sentence to read aloud: "${targetText}".
 Listen to the user's spoken audio waveform carefully.
 
-Rules:
+SCORING STANDARD — PTE Academic (Pearson) Read Aloud:
+PTE Academic evaluates Read Aloud on THREE equal criteria (~1/3 each):
+  1. "pronunciationScore" — Phoneme accuracy, word stress, vowel/consonant clarity (0-100)
+  2. "fluencyScore"       — Oral fluency: natural pace, rhythm, no unnatural hesitations or false starts (0-100)
+  Content accuracy (how closely the student read the target text) is computed automatically from transcript by the system — do NOT add a separate content score field.
+
+SCORING RULES:
 1. If silent, noise-only, or no speech detected:
    - "hasSpeech": false
    - "transcription": ""
@@ -1717,62 +1723,71 @@ Rules:
 2. If speech detected:
    - "hasSpeech": true
    - "transcription": (exact English words spoken by user)
-   - "pronunciationScore": (finite integer 0-100 evaluating acoustic phonemes, word stress, and ending sounds from audio)
-   - "fluencyScore": (finite integer 0-100 evaluating speaking pace, rhythm, pauses from audio)
-   - "wordAssessments": (array of objects for target words with acoustic evidence: [{"word": "example", "occurrenceIndex": 0, "status": "correct"|"mispronounced"|"uncertain", "confidence": 0.9, "feedback": "specific phoneme/stress issue or good"}])
+   - "pronunciationScore": (integer 0-100 — PTE criterion: phoneme accuracy, word/sentence stress, vowel-consonant articulation from audio)
+   - "fluencyScore": (integer 0-100 — PTE criterion: natural pace, rhythm, absence of hesitations/repetitions from audio)
+   - "wordAssessments": (array for each target word with acoustic evidence: [{"word": "example", "occurrenceIndex": 0, "status": "correct"|"mispronounced"|"uncertain", "confidence": 0.0-1.0, "feedback": "specific phoneme/stress issue or correct"}])
    - "quality": ("good"|"poor"|"uncertain"|"no_speech")
    - "noiseLevel": ("low"|"medium"|"high"|"unknown")
    - "warning": (string warning or null)
-   - "pronunciationFeedback": (actionable Vietnamese feedback on pronunciation)
-   - "fluencyFeedback": (actionable Vietnamese feedback on fluency and rhythm)
+   - "pronunciationFeedback": (actionable Vietnamese feedback on PTE pronunciation criterion)
+   - "fluencyFeedback": (actionable Vietnamese feedback on PTE oral fluency criterion)
    - "generalFeedback": (encouraging Vietnamese feedback)
 
-Format response as strict JSON object with keys:
+Format response as strict JSON object with EXACTLY these keys:
 "hasSpeech", "transcription", "pronunciationScore", "fluencyScore", "wordAssessments", "quality", "noiseLevel", "warning", "pronunciationFeedback", "fluencyFeedback", "generalFeedback"`;
-    } else {
       // mode === 'qa'
-      prompt = `You are a strict, professional English conversational speaking assessor.
+      prompt = `You are a strict, professional English conversational speaking assessor following the IELTS Speaking Band Descriptors (British Council / IDP / Cambridge).
 Question given to the student: "${questionText}".
 Listen to the user's spoken audio response carefully.
 
-Rules:
+SCORING STANDARD — IELTS Speaking Band Descriptors (ielts.org):
+IELTS Speaking evaluates on FOUR equal criteria (25% each). Score each on integer 0-100:
+  1. "fluencyCoherence"  — Fluency & Coherence (FC): natural speed, no unnatural hesitation, logical idea flow, effective use of cohesive devices
+  2. "lexicalResource"   — Lexical Resource (LR): range and precision of vocabulary, use of less-common words, ability to paraphrase
+  3. "grammaticalRange"  — Grammatical Range & Accuracy (GRA): variety of grammatical structures, conditional, passive, relative clauses; accuracy
+  4. "pronunciationScore" — Pronunciation (PR): phonological features, word stress, sentence intonation, rhythm, overall intelligibility
+
+ADDITIONAL FIELD (not an IELTS criterion — used for off-topic detection only):
+  "relevanceScore" — integer 0-100: How directly does the answer address the question? Score below 30 if completely off-topic or answering a different question.
+
+SCORING RULES:
 1. If silent, noise-only, or no speech detected:
    - "hasSpeech": false
    - "transcription": ""
-   - "relevanceScore": 0
-   - "grammarScore": 0
-   - "vocabularyScore": 0
+   - "fluencyCoherence": 0
+   - "lexicalResource": 0
+   - "grammaticalRange": 0
    - "pronunciationScore": 0
-   - "fluencyScore": 0
+   - "relevanceScore": 0
    - "quality": "no_speech"
    - "noiseLevel": "unknown"
    - "warning": "Không phát hiện giọng nói."
-   - "relevanceFeedback": "Chưa ghi nhận câu trả lời."
-   - "grammarFeedback": "Chưa ghi nhận cấu trúc câu."
+   - "fluencyFeedback": "Chưa ghi nhận giọng nói."
    - "vocabularyFeedback": "Chưa ghi nhận từ vựng."
+   - "grammarFeedback": "Chưa ghi nhận cấu trúc câu."
    - "pronunciationFeedback": "Không phát hiện giọng nói."
-   - "fluencyFeedback": "Không ghi nhận giọng nói."
+   - "relevanceFeedback": "Chưa ghi nhận câu trả lời."
    - "improvedAnswer": "Please speak clearly into your microphone."
 2. If speech detected:
    - "hasSpeech": true
    - "transcription": (exact English words spoken by user)
-   - "relevanceScore": (finite integer 0-100: How directly and appropriately does the answer address the question? Severe penalty (<30) if off-topic or answering an unrelated topic)
-   - "grammarScore": (finite integer 0-100 based on transcript tenses, syntax, and subject-verb agreement)
-   - "vocabularyScore": (finite integer 0-100 based on word diversity and appropriateness)
-   - "pronunciationScore": (finite integer 0-100 based on acoustic phonemes and stress from audio)
-   - "fluencyScore": (finite integer 0-100 based on pace and flow from audio)
+   - "fluencyCoherence": (integer 0-100 — IELTS FC criterion: pace, no hesitation, logical idea connection)
+   - "lexicalResource": (integer 0-100 — IELTS LR criterion: vocabulary range, precision, paraphrase ability)
+   - "grammaticalRange": (integer 0-100 — IELTS GRA criterion: structural variety and accuracy)
+   - "pronunciationScore": (integer 0-100 — IELTS PR criterion: phonological accuracy, stress, intonation from audio)
+   - "relevanceScore": (integer 0-100 — off-topic detection only, NOT an IELTS criterion)
    - "quality": ("good"|"poor"|"uncertain"|"no_speech")
    - "noiseLevel": ("low"|"medium"|"high"|"unknown")
    - "warning": (string warning or null)
-   - "relevanceFeedback": (Vietnamese feedback regarding relevance to the prompt)
-   - "grammarFeedback": (Vietnamese feedback regarding grammar)
-   - "vocabularyFeedback": (Vietnamese feedback regarding vocabulary)
-   - "pronunciationFeedback": (Vietnamese feedback regarding pronunciation)
-   - "fluencyFeedback": (Vietnamese feedback regarding fluency)
+   - "fluencyFeedback": (Vietnamese feedback on IELTS Fluency & Coherence)
+   - "vocabularyFeedback": (Vietnamese feedback on IELTS Lexical Resource)
+   - "grammarFeedback": (Vietnamese feedback on IELTS Grammatical Range & Accuracy)
+   - "pronunciationFeedback": (Vietnamese feedback on IELTS Pronunciation)
+   - "relevanceFeedback": (Vietnamese feedback on topic relevance)
    - "improvedAnswer": (a native, natural alternative response in English)
 
-Format response as strict JSON object with keys:
-"hasSpeech", "transcription", "relevanceScore", "grammarScore", "vocabularyScore", "pronunciationScore", "fluencyScore", "quality", "noiseLevel", "warning", "relevanceFeedback", "grammarFeedback", "vocabularyFeedback", "pronunciationFeedback", "fluencyFeedback", "improvedAnswer"`;
+Format response as strict JSON object with EXACTLY these keys:
+"hasSpeech", "transcription", "fluencyCoherence", "lexicalResource", "grammaticalRange", "pronunciationScore", "relevanceScore", "quality", "noiseLevel", "warning", "fluencyFeedback", "vocabularyFeedback", "grammarFeedback", "pronunciationFeedback", "relevanceFeedback", "improvedAnswer"`;
     }
 
     let validated = null;
@@ -1893,11 +1908,11 @@ Format response as strict JSON object with keys:
       // mode === 'qa'
       if (!hasSpeech) {
         const scorerRes = speakingScorer.calculateQAScore({
-          relevance: 0,
-          grammar: 0,
-          vocabulary: 0,
+          fluencyCoherence: 0,
+          lexicalResource: 0,
+          grammaticalRange: 0,
           pronunciation: 0,
-          fluency: 0
+          relevanceGate: 0
         });
 
         return {
@@ -1920,11 +1935,13 @@ Format response as strict JSON object with keys:
       }
 
       const scorerRes = speakingScorer.calculateQAScore({
-        relevance: validated.scores.relevance,
-        grammar: validated.scores.grammar,
-        vocabulary: validated.scores.vocabulary,
-        pronunciation: validated.scores.pronunciation,
-        fluency: validated.scores.fluency
+        // Tên theo IELTS Band Descriptors — ielts.org (key từ speakingValidator cập nhật)
+        fluencyCoherence: validated.scores.fluencyCoherence,
+        lexicalResource:  validated.scores.lexicalResource,
+        grammaticalRange: validated.scores.grammaticalRange,
+        pronunciation:    validated.scores.pronunciation,
+        // Relevance Gate (TOEFL iBT-inspired) — không phải tiêu chí tính điểm
+        relevanceGate:    validated.scores.relevanceGate
       });
 
       return {
@@ -1934,6 +1951,10 @@ Format response as strict JSON object with keys:
         questionId: questionId || null,
         transcription: validated.transcription,
         overallScore: scorerRes.overallScore,
+        // Relevance Gate fields (TOEFL iBT-inspired)
+        offTopic: scorerRes.offTopic,
+        relevanceWarning: scorerRes.relevanceWarning,
+        // Backward-compat fields (giữ để không break frontend cũ)
         scoreCapApplied: scorerRes.scoreCapApplied,
         scoreCapReason: scorerRes.scoreCapReason,
         components: scorerRes.components,
