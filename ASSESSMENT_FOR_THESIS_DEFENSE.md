@@ -27,6 +27,7 @@
 - Tổ chức: `src/modules/*` (auth, courses, lessons, chatbot, progress, quizzes, admin, gamification, drm)
 - Middleware riêng biệt: JWT auth, error handling, logging, rate limiting
 - Số lượng module: **13 module** độc lập với controller-service-route pattern (admin, analytic, auth, chatbot, comments, consultation, courses, drm, gamification, instructor, lessons, progress, quizzes)
+- Số lượng module: 8+ module độc lập với controller-service-route pattern
 - ✅ Test coverage: **165 test pass** (0 fail)
 
 **Frontend - React 19 + Vite**
@@ -36,6 +37,7 @@
 - Styling: Tailwind CSS 3.4.4 + SCSS
 - UI Library: shadcn components, React Aria
 - Module-based structure: `src/modules/*` (academy, admin, analytics, auth, chatbot, courses, gamification, homepage, instructor, lessons, profile, progress, quizzes)
+- Module-based structure: `src/modules/*` (auth, courses, lessons, chatbot, quizzes, admin)
 
 **Database**
 - PostgreSQL 15+ (Supabase-compatible)
@@ -59,10 +61,10 @@
 
 ### 1.3 Tài Liệu Hỗ Trợ Toàn Diện
 
-- **README.md** (198 dòng, tiếng Việt): Giới thiệu, stack, cấu trúc, setup, usage guide
-- **PRODUCTION_READINESS_AUDIT.md** (165 dòng): Chi tiết verified vs unverified, 9 confirmed fixed, 6 known issues
-- **DESIGN.md** (37 dòng): Color palette, typography, components, motion guidelines
-- **PRODUCT.md** (61 dòng): User personas, positioning, brand personality, design principles
+- **README.md** (524 dòng, tiếng Việt): Giới thiệu, stack, cấu trúc, setup, usage guide
+- **PRODUCTION_READINESS_AUDIT.md** (166 dòng): Chi tiết verified vs unverified, 9 confirmed fixed, 6 known issues
+- **DESIGN.md** (38 dòng): Color palette, typography, components, motion guidelines
+- **PRODUCT.md** (62 dòng): User personas, positioning, brand personality, design principles
 - **PROJECT_STRUCTURE_CLEANUP.md**: Refactoring guidelines
 - **API Documentation**: Swagger UI tại `/api-docs`
 
@@ -178,6 +180,21 @@
 
 **Checklist chuẩn bị:**
 - [x] Xác minh `drm.controller.js` và `gamification.controller.js` đều dùng `next(error)` — ✅ Confirmed
+### 2.5 Error Handling Chưa Đồng Nhất
+
+**Vấn đề:**
+- `backend/src/modules/drm/drm.controller.js:110, :165` tự trả HTTP 500 thay vì `next(error)`
+- `backend/src/modules/gamification/gamification.controller.js` tương tự
+- Không dùng error middleware chung → log mất context, response format không nhất quán
+
+**Mức độ:** 🟢 **Nhỏ** (không affect functionality, chỉ code quality)
+
+**Lời giải thích để trình bày:**
+> "DRM & Gamification controller cần refactor để dùng `next(error)` thay vì tự return 500.  
+> Này không phải bug, vì error middleware vẫn catch; chỉ là best practice chưa apply đầy đủ."
+
+**Checklist chuẩn bị:**
+- [ ] Nếu hỏi: "Error handling? Có centralized logging?" → Đáp: "Có error middleware chính, 2 controller ngoài lệ, sẽ fix"
 - [ ] Show `backend/src/middleware/error.middleware.js` (log, requestId, status code)
 
 ### 2.6 Profile Page Có Dummy Data
@@ -330,6 +347,14 @@ backend/src/modules/
   ├── lessons/       (auto-subtitle, video upload)
   ├── progress/      (completion tracking)
   └── quizzes/       (quiz creation, auto-grade)
+  ├── auth/        (JWT + Bcrypt)
+  ├── courses/     (CRUD + enrollment)
+  ├── lessons/     (auto-subtitle, video upload)
+  ├── chatbot/     (RAG + grounding)
+  ├── quizzes/     (quiz creation, auto-grade)
+  ├── progress/    (completion tracking)
+  ├── gamification/ (achievements, leaderboard)
+  └── drm/         (DASH/ClearKey licensing)
 ```
 
 ---
@@ -377,6 +402,7 @@ backend/src/modules/
 | Khía Cạnh | Điểm Mạnh | Mức Độ |
 |-----------|----------|--------|
 | **Kiến trúc** | Modular Monolith rõ ràng, **13 module** độc lập | ⭐⭐⭐⭐⭐ |
+| **Kiến trúc** | Modular Monolith rõ ràng, 8+ module độc lập | ⭐⭐⭐⭐⭐ |
 | **Technology stack** | Node/Express/React modern, Pinecone + Gemini actual | ⭐⭐⭐⭐⭐ |
 | **Testing** | 165 test pass (auth, progress, DRM, media lifecycle) | ⭐⭐⭐⭐⭐ |
 | **Documentation** | README + AUDIT + DESIGN + PRODUCT files | ⭐⭐⭐⭐⭐ |
@@ -394,6 +420,7 @@ backend/src/modules/
 | **Bundle size** | 3MB main chunk (unoptimized) | 🟡 Medium | 2-3 days |
 | **Live integration test** | STT, RAG, DRM playback, SMTP chưa E2E | 🟡 Medium | 2-3 days |
 | **Error handling consistency** | ✅ Đã fix — tất cả controller dùng `next(error)` | ✅ Done | Done |
+| **Error handling consistency** | 2 controller vẫn tự return 500 | 🟢 Small | 1 hour |
 | **Logging storage** | In-memory, cần centralized backend | 🟡 Medium | 1 day |
 | **Profile mock data** | Dummy stats trên profile page | 🟢 Small | 2 hours |
 
