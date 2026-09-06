@@ -266,13 +266,20 @@ async function generateSignedUrl(filePath, bucketName, expiresIn = 900, storageP
       return data?.signedUrl || null;
     }
     const bucket = resolveBucket();
-    const cacheKey = `${bucket}::${ttl}::${key}`;
+    const isPdf = key.toLowerCase().endsWith('.pdf');
+    const cacheKey = `${bucket}::${ttl}::${key}::${isPdf ? 'inline' : 'default'}`;
     const cached = signedUrlCache.get(cacheKey);
     if (cached?.expiresAt > Date.now()) return cached.url;
 
+    const commandInput = { Bucket: bucket, Key: key };
+    if (isPdf) {
+      commandInput.ResponseContentType = 'application/pdf';
+      commandInput.ResponseContentDisposition = 'inline';
+    }
+
     const url = await getSignedUrl(
       getClient(),
-      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      new GetObjectCommand(commandInput),
       { expiresIn: ttl }
     );
     const cacheMs = Math.max(1000, (ttl - Math.min(300, Math.floor(ttl / 10))) * 1000);

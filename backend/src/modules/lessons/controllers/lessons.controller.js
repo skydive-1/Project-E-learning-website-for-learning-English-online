@@ -47,7 +47,7 @@ function isUnprotectedExternalUrl(lesson) {
   return /^https?:\/\//i.test(source) && !source.includes('supabase.co');
 }
 
-function setProtectedPdfHeaders(res, filename = 'lesson.pdf') {
+function setProtectedPdfHeaders(res, filename = 'lesson.pdf', disposition = 'inline') {
   const originalFilename = String(filename || 'lesson.pdf').replace(/["\r\n]/g, '_');
   const asciiFilename = originalFilename
     .normalize('NFD')
@@ -60,15 +60,15 @@ function setProtectedPdfHeaders(res, filename = 'lesson.pdf') {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader(
     'Content-Disposition',
-    `inline; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`
+    `${disposition}; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`
   );
 }
 
-async function proxyPrivateStoragePdf(req, res, lesson, storageKey) {
+async function proxyPrivateStoragePdf(req, res, lesson, storageKey, disposition = 'inline') {
   const upstream = await supabaseStorage.fetchPrivateObject(
     storageKey,
     lesson.storage_bucket || 'documents',
-    req.headers.range || null,
+    req?.headers?.range || null,
     lesson.storage_provider || 'r2'
   );
 
@@ -95,7 +95,7 @@ async function proxyPrivateStoragePdf(req, res, lesson, storageKey) {
     });
   }
 
-  setProtectedPdfHeaders(res, `${lesson.title || 'lesson'}.pdf`);
+  setProtectedPdfHeaders(res, `${lesson.title || 'lesson'}.pdf`, disposition);
   res.status(upstream.status === 206 ? 206 : 200);
 
   const contentLength = upstream.headers.get('content-length');
@@ -669,8 +669,27 @@ exports.previewMaterial = async (req, res, next) => {
       return res.redirect(storageKey);
     }
 
-    // 4. Nếu là R2 private object
+    // 4. Nếu là R2 private object:
     if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
+      // Khi In-App PDF Viewer yêu cầu stream trực tiếp qua proxy để tránh IDM bắt link download từ R2
+      if (req.query?.stream === 'true') {
+        try {
+          return await proxyPrivateStoragePdf(
+            req,
+            res,
+            {
+              title: mat.file_name?.replace(/\.pdf$/i, '') || 'material',
+              storage_bucket: storageBucket,
+              storage_provider: mat.storage_provider || 'r2'
+            },
+            storageKey
+          );
+        } catch (streamErr) {
+          console.warn('Cảnh báo proxy tài liệu từ R2:', streamErr.message);
+        }
+      }
+
+      // Mặc định hoặc fallback: Chuyển hướng tới Signed URL (có response-content-disposition=inline)
       const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600, mat.storage_provider || 'r2');
       if (signedUrl) {
         return res.redirect(signedUrl);
@@ -681,8 +700,81 @@ exports.previewMaterial = async (req, res, next) => {
     const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
     const filePath = resolveSafePath(UPLOADS_ROOT, mat.file_url || '', { checkExists: true });
     if (filePath && fs.existsSync(filePath)) {
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(mat.file_name)}"`);
+      setProtectedPdfHeaders(res, mat.file_name);
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    return res.status(404).json({
+      success: false,
+      code: 'MISSING_SOURCE',
+      message: 'Tài liệu không còn tồn tại trên máy chủ lưu trữ.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Endpoint tải xuống tài liệu PDF đính kèm (Content-Disposition: attachment)
+ */
+exports.downloadMaterial = async (req, res, next) => {
+  try {
+    const { lessonId, materialId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role || 3, 10);
+
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, userRole);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền tải tài liệu của bài học này.'
+      });
+    }
+
+    const db = require('../../../config/database');
+    const matRes = await db.query(
+      `SELECT * FROM lesson_materials WHERE material_id = $1 AND lesson_id = $2`,
+      [materialId, lessonId]
+    );
+
+    if (matRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tài liệu đính kèm.'
+      });
+    }
+
+    const mat = matRes.rows[0];
+    const storageKey = mat.storage_key || mat.file_url;
+    const storageBucket = mat.storage_bucket || 'documents';
+
+    // R2 private object: Stream với attachment disposition
+    if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
+      try {
+        return await proxyPrivateStoragePdf(
+          req,
+          res,
+          {
+            title: mat.file_name?.replace(/\.pdf$/i, '') || 'material',
+            storage_bucket: storageBucket,
+            storage_provider: mat.storage_provider || 'r2'
+          },
+          storageKey,
+          'attachment'
+        );
+      } catch (streamErr) {
+        console.warn('Cảnh báo proxy tải tài liệu từ R2:', streamErr.message);
+        const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600, mat.storage_provider || 'r2');
+        if (signedUrl) {
+          return res.redirect(signedUrl);
+        }
+      }
+    }
+
+    const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
+    const filePath = resolveSafePath(UPLOADS_ROOT, mat.file_url || '', { checkExists: true });
+    if (filePath && fs.existsSync(filePath)) {
+      setProtectedPdfHeaders(res, mat.file_name, 'attachment');
       return fs.createReadStream(filePath).pipe(res);
     }
 
@@ -767,6 +859,66 @@ exports.streamLessonPdf = async (req, res, next) => {
     }
 
     return proxyPrivateStoragePdf(req, res, lesson, source.replace(/^\/+/, ''));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Tải xuống PDF chính của bài học (Content-Disposition: attachment)
+ */
+exports.downloadLessonPdf = async (req, res, next) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = parseInt(req.user?.roleId || req.user?.role || 3, 10);
+
+    const hasAccess = await coursesService.canUserAccessLesson(userId, lessonId, userRole);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        code: 'PDF_ACCESS_DENIED',
+        message: 'Bạn không có quyền truy cập tài liệu của bài học này.'
+      });
+    }
+
+    const lesson = await coursesService.getLessonById(lessonId);
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        code: 'LESSON_NOT_FOUND',
+        message: 'Không tìm thấy bài học.'
+      });
+    }
+
+    const source = lesson.storage_key || lesson.content_url || '';
+    if (!source) {
+      return res.status(404).json({
+        success: false,
+        code: 'PDF_SOURCE_NOT_SET',
+        message: 'Bài học chưa được cấu hình tài liệu PDF.'
+      });
+    }
+
+    if (/^https?:\/\//i.test(source) && !source.includes('supabase.co')) {
+      return res.redirect(source);
+    }
+
+    const isLegacyLocal = source.startsWith('/uploads/') || source.startsWith('uploads/');
+    if (isLegacyLocal) {
+      const filePath = resolveSafePath(UPLOADS_ROOT, source, { checkExists: true });
+      if (!filePath || !fs.existsSync(filePath)) {
+        return res.status(404).json({
+          success: false,
+          code: 'PDF_MISSING_SOURCE',
+          message: 'Tài liệu PDF local đã mất. Giảng viên cần tải lên lại tệp.'
+        });
+      }
+      setProtectedPdfHeaders(res, `${lesson.title || 'lesson'}.pdf`, 'attachment');
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    return proxyPrivateStoragePdf(req, res, lesson, source.replace(/^\/+/, ''), 'attachment');
   } catch (error) {
     next(error);
   }

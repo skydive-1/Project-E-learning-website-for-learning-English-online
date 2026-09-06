@@ -359,7 +359,7 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       expect(screen.getByTestId('mock-pdf-page-1')).toBeInTheDocument();
     });
 
-    it('4.4 sends the session JWT only to the protected lesson PDF endpoint', () => {
+    it('4.4 sends the session JWT only to the protected lesson PDF endpoint and includes token in query', () => {
       localStorage.setItem('token', 'session-token-for-pdf');
       render(
         <PdfStudyViewer
@@ -371,8 +371,34 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       );
 
       const document = screen.getByTestId('mock-pdf-document');
-      expect(document.getAttribute('data-file-url')).toMatch(/\/api\/lessons\/52\/pdf$/);
+      const fileUrl = document.getAttribute('data-file-url');
+      expect(fileUrl).toContain('/api/lessons/52/pdf');
+      expect(fileUrl).toContain('token=session-token-for-pdf');
       expect(document).toHaveAttribute('data-auth-header', 'Bearer session-token-for-pdf');
+    });
+
+    it('4.5 attaches Authorization header AND ?token= query parameter when VITE_API_URL has different origin', () => {
+      const originalEnv = import.meta.env.VITE_API_URL;
+      try {
+        import.meta.env.VITE_API_URL = 'https://backend-api.elearn.com/api';
+        localStorage.setItem('token', 'cross-domain-token-999');
+
+        render(
+          <PdfStudyViewer
+            pdfUrl="/api/lessons/88/pdf"
+            title="Cross Domain PDF"
+            user={{ email: 'learner@example.com' }}
+            notes={[]}
+          />
+        );
+
+        const document = screen.getByTestId('mock-pdf-document');
+        const fileUrl = document.getAttribute('data-file-url');
+        expect(fileUrl).toBe('https://backend-api.elearn.com/api/lessons/88/pdf?token=cross-domain-token-999');
+        expect(document).toHaveAttribute('data-auth-header', 'Bearer cross-domain-token-999');
+      } finally {
+        import.meta.env.VITE_API_URL = originalEnv;
+      }
     });
   });
 

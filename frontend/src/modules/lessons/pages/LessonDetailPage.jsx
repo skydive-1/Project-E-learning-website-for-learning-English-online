@@ -26,6 +26,7 @@ import {
   updatePdfNote,
   deletePdfNote
 } from '../services/pdfNotes.service';
+import { withPdfAuthToken } from '../utils/pdfAuthUrl';
 import shaka from 'shaka-player';
 import {
   getCourseDetails,
@@ -1702,7 +1703,7 @@ const LessonDetailPage = () => {
                                     </div>
                                   </div>
                                   <a
-                                    href={res.url}
+                                    href={withPdfAuthToken(res.url)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     download={res.name || true}
