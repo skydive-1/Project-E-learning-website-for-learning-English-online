@@ -4,6 +4,7 @@ const lessonsController = require('./controllers/lessons.controller');
 const subtitlesController = require('./controllers/subtitles.controller');
 const pdfNotesController = require('./controllers/pdfNotes.controller');
 const { authenticate, authorize, authenticateVideoToken } = require('../../middleware/auth.middleware');
+const { authenticatePdfAccess } = require('../../middleware/pdfAccess.middleware');
 const upload = require('../../middleware/upload.middleware');
 const {
   aiLimiter,
@@ -31,17 +32,18 @@ router.get('/dash/:lessonId/manifest.mpd', authenticateVideoToken, streamingLimi
 router.get('/dash/:lessonId/:segmentFile', authenticateVideoToken, streamingLimiter, lessonsController.streamDashSegment);
 
 // Tài liệu đính kèm bài học (Lesson Materials / Resources PDF)
-router.get('/:lessonId/pdf', authenticate, lessonsController.streamLessonPdf);
-router.get('/:lessonId/pdf/download', authenticate, lessonsController.downloadLessonPdf);
+router.get('/:lessonId/pdf', authenticatePdfAccess, lessonsController.streamLessonPdf);
+router.get('/:lessonId/pdf/download', authenticatePdfAccess, lessonsController.downloadLessonPdf);
 router.post('/:lessonId/materials', authenticate, authorize([1, 2]), uploadLimiter, upload.materialPdf.single('file'), lessonsController.uploadMaterial);
 router.get('/:lessonId/materials', authenticate, lessonsController.getMaterialsByLesson);
-router.get('/:lessonId/materials/:materialId/preview', authenticate, lessonsController.previewMaterial);
-router.get('/:lessonId/materials/:materialId/download', authenticate, lessonsController.downloadMaterial);
+router.get('/:lessonId/materials/:materialId/preview', authenticatePdfAccess, lessonsController.previewMaterial);
+router.get('/:lessonId/materials/:materialId/download', authenticatePdfAccess, lessonsController.downloadMaterial);
 router.delete('/:lessonId/materials/:materialId', authenticate, authorize([1, 2]), lessonsController.deleteMaterial);
 
 // Phụ đề thông minh & Kịch bản tương tác (Smart AI Subtitles & Interactive Transcript)
 router.get('/:lessonId/subtitle-status', authenticate, subtitlesController.getSubtitleStatus);
 router.get('/:lessonId/subtitles', authenticate, aiLimiter, subtitlesController.getSubtitles);
+router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), aiLimiter, subtitlesController.generateSubtitles);
 router.put('/:lessonId/subtitles', authenticate, authorize([1, 2]), subtitlesController.updateSubtitles);
 
 // Kiểm tra tình trạng vector RAG của bài học (Chỉ Admin / Instructor)

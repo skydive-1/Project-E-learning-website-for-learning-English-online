@@ -16,7 +16,99 @@ const {
 const { isSuperAdminUser } = require('../utils/superAdmin.util');
 
 /**
+ * Xác thực JWT token và nạp thông tin người dùng từ CSDL PostgreSQL.
+ * Hàm dùng chung cho authenticate() và authenticatePdfAccess().
+ */
+const verifyTokenAndLoadUser = async (token) => {
+  if (!token || token.trim() === '') {
+    const err = new Error('Không có token xác thực, quyền truy cập bị từ chối');
+    err.status = 401;
+    err.code = 'AUTH_REQUIRED';
+    err.name = 'AuthRequiredError';
+    throw err;
+  }
+
+  if (!process.env.JWT_SECRET) {
+    const err = new Error('Lỗi cấu hình hệ thống xác thực máy chủ');
+    err.status = 500;
+    err.code = 'AUTH_CONFIG_ERROR';
+    err.name = 'AuthConfigError';
+    throw err;
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (jwtErr) {
+    if (jwtErr.name === 'TokenExpiredError') {
+      const err = new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      err.status = 401;
+      err.code = 'TOKEN_EXPIRED';
+      err.name = 'TokenExpiredError';
+      throw err;
+    }
+    const err = new Error('Mã xác thực không hợp lệ. Vui lòng đăng nhập lại.');
+    err.status = 401;
+    err.code = 'TOKEN_INVALID';
+    err.name = 'TokenInvalidError';
+    throw err;
+  }
+
+  // Kiểm tra trực tiếp dữ liệu từ CSDL Postgres để đảm bảo tài khoản còn tồn tại và lấy role mới nhất
+  const userRes = await db.query(
+    'SELECT user_id, email, username, full_name, role_id FROM users WHERE user_id = $1 OR email = $2',
+    [decoded.id || 0, decoded.email || '']
+  );
+
+  if (userRes.rows.length === 0) {
+    const err = new Error('Tài khoản này đã bị xóa hoặc không còn tồn tại trên hệ thống. Vui lòng đăng nhập lại.');
+    err.status = 401;
+    err.code = 'USER_DELETED';
+    err.name = 'UserDeleted';
+    throw err;
+  }
+
+  const dbUser = userRes.rows[0];
+
+  // Bảo vệ logic: Đảm bảo thông tin trong token khớp chính xác với CSDL để tránh các lỗ hổng logic OR
+  if (decoded.id && dbUser.user_id !== decoded.id) {
+    const err = new Error('Thông tin mã xác thực không hợp lệ. Vui lòng đăng nhập lại.');
+    err.status = 401;
+    err.code = 'TOKEN_INVALID';
+    err.name = 'TokenInvalidError';
+    throw err;
+  }
+  if (decoded.email && dbUser.email.toLowerCase() !== decoded.email.toLowerCase()) {
+    const err = new Error('Thông tin mã xác thực không hợp lệ. Vui lòng đăng nhập lại.');
+    err.status = 401;
+    err.code = 'TOKEN_INVALID';
+    err.name = 'TokenInvalidError';
+    throw err;
+  }
+
+  // Gán thông tin thực tế mới nhất từ CSDL vào req.user (đảm bảo lấy role_id mới nhất từ DB)
+  const roleName = dbUser.role_id === 1 ? 'admin' : (dbUser.role_id === 2 ? 'instructor' : 'student');
+  const user = {
+    ...decoded,
+    id: dbUser.user_id,
+    email: dbUser.email,
+    username: dbUser.username,
+    fullName: dbUser.full_name,
+    roleId: dbUser.role_id,
+    role: roleName
+  };
+  user.isSuperAdmin = isSuperAdminUser(user);
+
+  // Cập nhật mốc hoạt động gần nhất phục vụ Realtime Online Tracking
+  db.query('UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE user_id = $1', [dbUser.user_id]).catch(() => {});
+
+  return user;
+};
+
+/**
  * Middleware xác thực người dùng đã đăng nhập (kiểm tra JWT & CSDL thực tế)
+ * CHỈ chấp nhận token qua Authorization header (Bearer <token>).
+ * KHÔNG chấp nhận query parameter hay cookie để phòng chống rò rỉ token và CSRF.
  */
 const authenticate = async (req, res, next) => {
   try {
@@ -24,10 +116,6 @@ const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (req.query && req.query.token) {
-      token = req.query.token;
-    } else if (req.cookies && req.cookies.token) {
-      token = req.cookies.token;
     }
 
     if (!token || token.trim() === '') {
@@ -39,86 +127,7 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({
-        success: false,
-        code: 'AUTH_CONFIG_ERROR',
-        error: 'AuthConfigError',
-        message: 'Lỗi cấu hình hệ thống xác thực máy chủ'
-      });
-    }
-
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (jwtErr) {
-      if (jwtErr.name === 'TokenExpiredError') {
-        return res.status(401).json({
-          success: false,
-          code: 'TOKEN_EXPIRED',
-          error: 'TokenExpiredError',
-          message: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
-        });
-      }
-      return res.status(401).json({
-        success: false,
-        code: 'TOKEN_INVALID',
-        error: 'TokenInvalidError',
-        message: 'Mã xác thực không hợp lệ. Vui lòng đăng nhập lại.'
-      });
-    }
-
-    // Kiểm tra trực tiếp dữ liệu từ CSDL Postgres để đảm bảo tài khoản còn tồn tại và lấy role mới nhất
-    const userRes = await db.query(
-      'SELECT user_id, email, username, full_name, role_id FROM users WHERE user_id = $1 OR email = $2',
-      [decoded.id || 0, decoded.email || '']
-    );
-
-    if (userRes.rows.length === 0) {
-      return res.status(401).json({
-        success: false,
-        code: 'USER_DELETED',
-        error: 'UserDeleted',
-        message: 'Tài khoản này đã bị xóa hoặc không còn tồn tại trên hệ thống. Vui lòng đăng nhập lại.'
-      });
-    }
-
-    const dbUser = userRes.rows[0];
-
-    // Bảo vệ logic: Đảm bảo thông tin trong token khớp chính xác với CSDL để tránh các lỗ hổng logic OR
-    if (decoded.id && dbUser.user_id !== decoded.id) {
-      return res.status(401).json({
-        success: false,
-        code: 'TOKEN_INVALID',
-        error: 'TokenInvalidError',
-        message: 'Thông tin mã xác thực không hợp lệ. Vui lòng đăng nhập lại.'
-      });
-    }
-    if (decoded.email && dbUser.email.toLowerCase() !== decoded.email.toLowerCase()) {
-      return res.status(401).json({
-        success: false,
-        code: 'TOKEN_INVALID',
-        error: 'TokenInvalidError',
-        message: 'Thông tin mã xác thực không hợp lệ. Vui lòng đăng nhập lại.'
-      });
-    }
-
-    // Gán thông tin thực tế mới nhất từ CSDL vào req.user (đảm bảo lấy role_id mới nhất từ DB)
-    const roleName = dbUser.role_id === 1 ? 'admin' : (dbUser.role_id === 2 ? 'instructor' : 'student');
-    req.user = {
-      ...decoded,
-      id: dbUser.user_id,
-      email: dbUser.email,
-      username: dbUser.username,
-      fullName: dbUser.full_name,
-      roleId: dbUser.role_id,
-      role: roleName
-    };
-    req.user.isSuperAdmin = isSuperAdminUser(req.user);
-
-    // Cập nhật mốc hoạt động gần nhất phục vụ Realtime Online Tracking
-    db.query('UPDATE users SET last_seen_at = CURRENT_TIMESTAMP WHERE user_id = $1', [dbUser.user_id]).catch(() => {});
-
+    req.user = await verifyTokenAndLoadUser(token);
     next();
   } catch (error) {
     const status = error.status || 500;
@@ -349,5 +358,7 @@ module.exports = {
   authenticate,
   optionalAuthenticate,
   authorize,
-  authenticateVideoToken
+  authenticateVideoToken,
+  verifyTokenAndLoadUser
 };
+
