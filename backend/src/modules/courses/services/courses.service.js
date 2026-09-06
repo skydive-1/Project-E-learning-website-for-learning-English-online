@@ -122,8 +122,9 @@ class CoursesService {
    * Helper phân giải và chuẩn hóa metadata lưu trữ của một bài học
    */
   _resolveMediaMetadata(les) {
-    const contentType = (les.contentType || les.content_type || les.type || 'video').toLowerCase();
-    const contentUrl = les.contentUrl || les.content_url || '';
+    const rawType = (les.contentType || les.content_type || les.type || 'video').toLowerCase();
+    const contentType = rawType === 'youtube' ? 'video' : rawType;
+    const contentUrl = les.contentUrl || les.content_url || les.youtubeUrl || les.youtube_url || '';
     const isNonMedia = ['quiz', 'text', 'speaking'].includes(contentType) || (!contentUrl && !les.storageKey && !les.storage_key);
 
     if (isNonMedia) {
@@ -222,7 +223,7 @@ class CoursesService {
     if (existingQuizRes.rows.length > 0) {
       quizId = existingQuizRes.rows[0].quiz_id;
       existingQuestionsRes = await client.query(
-        'SELECT question_id, question_text, options, correct_answer, question_type FROM questions WHERE quiz_id = $1',
+        'SELECT question_id, question_text, options, correct_answer, question_type, audio_url, passage_text FROM questions WHERE quiz_id = $1',
         [quizId]
       );
       await client.query(
@@ -300,10 +301,12 @@ class CoursesService {
         correctAnswer = '';
       }
 
+      const audioUrl = question.audio_url || question.audioUrl || null;
+      const passageText = question.passage_text || question.passageText || null;
       await client.query(
-        `INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type)
-         VALUES ($1, $2, $3::jsonb, $4, $5, $6)`,
-        [quizId, questionText, JSON.stringify(options), correctAnswer, explanation, questionType]
+        `INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type, audio_url, passage_text)
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)`,
+        [quizId, questionText, JSON.stringify(options), correctAnswer, explanation, questionType, audioUrl, passageText]
       );
     }
   }
@@ -321,8 +324,8 @@ class CoursesService {
       err.status = 400; err.code = 'INVALID_COURSE_STRUCTURE'; throw err;
     }
     for (const lesson of result.rows) {
-      if (['quiz', 'text', 'speaking'].includes(String(lesson.content_type).toLowerCase())) continue;
-      const validExternal = lesson.storage_provider === 'external' && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
+      if (['quiz', 'text', 'speaking', 'youtube'].includes(String(lesson.content_type).toLowerCase())) continue;
+      const validExternal = ['external', 'youtube'].includes(lesson.storage_provider) && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
       const validInternal = ['r2', 'supabase'].includes(lesson.storage_provider) && lesson.storage_bucket && lesson.storage_key &&
         lesson.mime_type && lesson.media_status === 'READY';
       if (!validExternal && !validInternal) {
@@ -375,8 +378,8 @@ class CoursesService {
       await client.query('BEGIN');
 
       const {
-        courseName,
         subjectId,
+        courseName,
         description,
         thumbnail_url,
         price,
@@ -386,6 +389,27 @@ class CoursesService {
         sections
       } = courseData;
 
+      if (!courseName || !String(courseName).trim()) {
+        const error = new Error('Tên khóa học không được để trống.');
+        error.status = 400;
+        error.code = 'COURSE_NAME_REQUIRED';
+        throw error;
+      }
+
+      if (String(courseName).trim().length > 50) {
+        const error = new Error('Tên khóa học không được vượt quá 50 ký tự.');
+        error.status = 400;
+        error.code = 'COURSE_NAME_TOO_LONG';
+        throw error;
+      }
+
+      if (!subjectId) {
+        const error = new Error('Vui lòng chọn môn học cho khóa học.');
+        error.status = 400;
+        error.code = 'SUBJECT_REQUIRED';
+        throw error;
+      }
+
       let finalStatus = 'draft';
       if (status === 1 || status === '1' || status === 'published') {
         finalStatus = 'published';
@@ -394,6 +418,8 @@ class CoursesService {
       }
       const finalPrice = price || 0;
       const finalSubjectId = subjectId ? parseInt(subjectId, 10) : null;
+      const finalStartDate = startDate || courseData.start_date || new Date().toISOString().split('T')[0];
+      const finalEndDate = endDate || courseData.end_date || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       // Chèn khóa học; publish validation chạy trên database state sau khi claim media.
       const courseResult = await client.query(`
@@ -418,8 +444,8 @@ class CoursesService {
         thumbnail_url,
         finalPrice,
         finalStatus,
-        startDate || null,
-        endDate || null
+        finalStartDate,
+        finalEndDate
       ]);
 
       const newCourse = courseResult.rows[0];
@@ -687,6 +713,12 @@ class CoursesService {
         values.push(subjectId ? parseInt(subjectId, 10) : null);
       }
       if (courseName !== undefined) {
+        if (courseName && String(courseName).trim().length > 50) {
+          const error = new Error('Tên khóa học không được vượt quá 50 ký tự.');
+          error.status = 400;
+          error.code = 'COURSE_NAME_TOO_LONG';
+          throw error;
+        }
         updates.push(`course_name = $${paramIndex++}`);
         values.push(courseName);
       }

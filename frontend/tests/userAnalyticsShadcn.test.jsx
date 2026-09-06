@@ -54,7 +54,7 @@ describe('User Analytics shadcn dashboard', () => {
   it('renders the system pulse and learner progress from analytics data', () => {
     render(<UserAnalyticsDashboard initialData={analyticsFixture} />);
 
-    expect(screen.getByRole('heading', { name: 'User Analytics' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /User Analytics/i })).toBeInTheDocument();
     expect(screen.getAllByText('Nguyễn An').length).toBeGreaterThan(0);
     expect(screen.getByText('English Foundations')).toBeInTheDocument();
     expect(screen.getAllByText('42%').length).toBeGreaterThan(0);

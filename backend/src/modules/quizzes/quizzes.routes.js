@@ -18,6 +18,9 @@ router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
 // (Chỉ dành cho Giảng viên / Admin — đặt TRƯỚC route /:courseId công khai bên dưới)
 router.get('/manage/course/:courseId', authenticate, authorize([1, 2]), quizzesController.getQuizzesForManagement);
 
+// Route: GET /api/quizzes/audio-stream - Stream/redirect file âm thanh bài nghe Cloudflare R2
+router.get('/audio-stream', quizzesController.streamAudio);
+
 // Route: GET /api/quizzes/:courseId (Công khai — KHÔNG trả đáp án đúng / gợi ý điền khuyết)
 router.get('/:courseId', quizzesController.getQuizzes);
 

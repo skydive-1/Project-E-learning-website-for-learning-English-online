@@ -15,8 +15,17 @@ import {
   FiPlay, 
   FiPause, 
   FiEdit3,
-  FiGrid
+  FiGrid,
+  FiHeadphones,
+  FiBookOpen
 } from 'react-icons/fi';
+
+const resolveAudioUrl = (url) => {
+  if (!url) return '';
+  if (/^(https?:\/\/|blob:|data:)/i.test(url)) return url;
+  return `/api/quizzes/audio-stream?key=${encodeURIComponent(url)}`;
+};
+
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
@@ -589,15 +598,13 @@ const PlayQuizPage = () => {
                         {effectiveQuestionType === 'writing' ? (
                           <><FiEdit3 aria-hidden="true" /><span>Viết luận</span></>
                         ) : effectiveQuestionType === 'pronunciation' ? (
-<>
-  <FiMic aria-hidden="true" />
-  <span>Bài nói &amp; Phát âm (AI Voice)</span>
-</>
-) : effectiveQuestionType === 'open_cloze' ? (
-<>
-  <FiGrid aria-hidden="true" />
-  <span>Điền từ vào đoạn văn</span>
-</>
+                          <><FiMic aria-hidden="true" /><span>Bài nói &amp; Phát âm (AI Voice)</span></>
+                        ) : effectiveQuestionType === 'open_cloze' ? (
+                          <><FiGrid aria-hidden="true" /><span>Điền từ vào đoạn văn</span></>
+                        ) : effectiveQuestionType === 'listening' ? (
+                          <><FiHeadphones aria-hidden="true" /><span>Nghe hiểu (Listening)</span></>
+                        ) : effectiveQuestionType === 'reading' ? (
+                          <><FiBookOpen aria-hidden="true" /><span>Đọc hiểu (Reading)</span></>
                         ) : (
                           <><FiAward aria-hidden="true" /><span>Trắc nghiệm</span></>
                         )}
@@ -609,8 +616,34 @@ const PlayQuizPage = () => {
                       </h2>
                     </div>
 
+                    {/* Reading Passage if Reading question */}
+                    {effectiveQuestionType === 'reading' && (currentQuestion.passage_text || currentQuestion.passageText) && (
+                      <div className="my-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-left">
+                        <span className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider block mb-1.5">
+                          Đoạn văn đọc hiểu (Reading Passage):
+                        </span>
+                        <div className="max-h-56 overflow-y-auto text-sm leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-line pr-2 rounded-lg bg-white/60 dark:bg-slate-900/60 p-3 border border-amber-500/15">
+                          {currentQuestion.passage_text || currentQuestion.passageText}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Listening Audio if Listening question */}
+                    {effectiveQuestionType === 'listening' && (currentQuestion.audio_url || currentQuestion.audioUrl) && (
+                      <div className="my-3 p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/25 flex flex-col items-center gap-2">
+                        <span className="text-xs font-bold text-cyan-800 dark:text-cyan-300 uppercase tracking-wider">
+                          File âm thanh bài nghe:
+                        </span>
+                        <audio
+                          src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
+                          controls
+                          className="w-full max-w-md h-10 outline-none rounded-lg"
+                        />
+                      </div>
+                    )}
+
                     {/* Elegant Circular Timer or AI badge */}
-                    {effectiveQuestionType === 'multiple_choice' ? (
+                    {['multiple_choice', 'listening', 'reading'].includes(effectiveQuestionType) ? (
                       <div className="flex justify-center items-center my-4">
                         <div 
                           style={{
@@ -637,8 +670,8 @@ const PlayQuizPage = () => {
                       </div>
                     )}
 
-                    {/* Choices Grid (For Multiple Choice) */}
-                    {effectiveQuestionType === 'multiple_choice' && (
+                    {/* Choices Grid (For Multiple Choice, Listening, Reading) */}
+                    {['multiple_choice', 'listening', 'reading'].includes(effectiveQuestionType) && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-slate-100 dark:border-slate-700">
                         {(currentQuestion.options || []).map((opt, oIdx) => {
                           const optKey = String.fromCharCode(65 + oIdx);

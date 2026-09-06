@@ -104,3 +104,14 @@ window.speechSynthesis = {
   speak: vi.fn()
 };
 global.SpeechSynthesisUtterance = vi.fn();
+
+// Mock ResizeObserver for JSDOM
+if (!global.ResizeObserver) {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  window.ResizeObserver = global.ResizeObserver;
+}
+

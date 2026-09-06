@@ -190,12 +190,15 @@ const testConnection = async () => {
         ALTER TABLE questions ALTER COLUMN correct_answer TYPE TEXT;
         ALTER TABLE questions ALTER COLUMN correct_answer DROP NOT NULL;
         ALTER TABLE questions ADD COLUMN IF NOT EXISTS explanation TEXT;
+        ALTER TABLE questions ADD COLUMN IF NOT EXISTS audio_url TEXT;
+        ALTER TABLE questions ADD COLUMN IF NOT EXISTS passage_text TEXT;
         ALTER TABLE questions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
         ALTER TABLE questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE questions DROP CONSTRAINT IF EXISTS chk_question_type;
         ALTER TABLE questions DROP CONSTRAINT IF EXISTS questions_question_type_check;
-        ALTER TABLE questions ADD CONSTRAINT questions_question_type_check CHECK (question_type IS NULL OR question_type IN ('multiple_choice', 'writing', 'pronunciation', 'open_cloze'));
+        ALTER TABLE questions ADD CONSTRAINT chk_question_type CHECK (question_type IS NULL OR question_type IN ('multiple_choice', 'writing', 'pronunciation', 'open_cloze', 'listening', 'reading'));
       `);
-      console.log('✅ Tự động đồng bộ: Đảm bảo các cột question_type (hỗ trợ open_cloze), explanation, correct_answer kiểu TEXT trong questions');
+      console.log('✅ Tự động đồng bộ: Đảm bảo các cột question_type (hỗ trợ open_cloze, listening, reading), explanation, audio_url, passage_text trong questions');
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tự động đồng bộ cột bảng questions:', migErr.message);
     }

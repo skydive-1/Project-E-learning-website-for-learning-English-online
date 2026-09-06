@@ -18,7 +18,9 @@ import {
   AlertCircleIcon,
   FileUpIcon,
   LayersIcon,
-  GraduationCapIcon
+  GraduationCapIcon,
+  HeadphonesIcon,
+  BookOpenIcon
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +31,14 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { syncClozeGaps, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { generateQuizAiFromPdf } from '../../quizzes/services/quizzes.service';
+import { instructorService } from '../../instructor/services/instructor.service';
+
+const resolveAudioUrl = (url) => {
+  if (!url) return '';
+  if (/^(https?:\/\/|blob:|data:)/i.test(url)) return url;
+  return `/api/quizzes/audio-stream?key=${encodeURIComponent(url)}`;
+};
+
 
 const difficultyItems = [
   { label: 'Dễ (Easy)', value: 'Easy' },
@@ -115,6 +125,26 @@ const questionTypes = [
     iconBg: 'bg-amber-100/90 dark:bg-amber-950/80',
     activeBorder: 'border-amber-500 bg-amber-50/80 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 ring-1 ring-amber-500/30',
     checkColor: 'bg-amber-600 text-white'
+  },
+  { 
+    value: 'listening', 
+    label: 'Nghe hiểu (Listening)', 
+    icon: HeadphonesIcon, 
+    desc: 'Nghe audio và chọn đáp án đúng A/B/C/D',
+    iconColor: 'text-cyan-600 dark:text-cyan-400',
+    iconBg: 'bg-cyan-100/90 dark:bg-cyan-950/80',
+    activeBorder: 'border-cyan-500 bg-cyan-50/80 dark:bg-cyan-950/40 text-cyan-950 dark:text-cyan-100 ring-1 ring-cyan-500/30',
+    checkColor: 'bg-cyan-600 text-white'
+  },
+  { 
+    value: 'reading', 
+    label: 'Đọc hiểu (Reading)', 
+    icon: BookOpenIcon, 
+    desc: 'Đoạn văn đọc hiểu + câu hỏi A/B/C/D',
+    iconColor: 'text-rose-600 dark:text-rose-400',
+    iconBg: 'bg-rose-100/90 dark:bg-rose-950/80',
+    activeBorder: 'border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100 ring-1 ring-rose-500/30',
+    checkColor: 'bg-rose-600 text-white'
   }
 ];
 
@@ -123,6 +153,27 @@ const typeLabels = Object.fromEntries(questionTypes.map(type => [type.value, typ
 const QuestionEditor = ({ question, index, onChange, onRemove }) => {
   const type = question.question_type || 'multiple_choice';
   const options = Array.isArray(question.options) ? question.options : ['', '', '', ''];
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
+
+  const handleAudioUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingAudio(true);
+      const localUrl = URL.createObjectURL(file);
+      setAudioPreviewUrl(localUrl);
+      const res = await instructorService.uploadMedia(file);
+      const uploadedKey = res?.fileUrl || res?.storageKey;
+      if (uploadedKey) {
+        onChange({ audio_url: uploadedKey });
+      }
+    } catch (err) {
+      console.error('Lỗi upload file audio:', err);
+    } finally {
+      setUploadingAudio(false);
+    }
+  };
 
   const updatePassage = (value) => {
     onChange({
@@ -164,6 +215,71 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
 
       {/* Question Form Body */}
       <div className="flex flex-col gap-4">
+        {/* Reading Passage if Reading question */}
+        {type === 'reading' && (
+          <div>
+            <label htmlFor={`q-passage-${index}`} className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+              Đoạn văn đọc hiểu (Reading Passage) *
+            </label>
+            <Textarea
+              id={`q-passage-${index}`}
+              required
+              rows={4}
+              value={question.passage_text || ''}
+              placeholder="Nhập đoạn văn bản đọc hiểu tiếng Anh..."
+              onChange={(event) => onChange({ passage_text: event.target.value })}
+              className="text-sm resize-y bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+            />
+          </div>
+        )}
+
+        {/* Listening Audio Upload/URL if Listening question */}
+        {type === 'listening' && (
+          <div className="flex flex-col gap-2.5 p-3 rounded-xl bg-cyan-50/60 dark:bg-cyan-950/30 border border-cyan-200/80 dark:border-cyan-900/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-cyan-900 dark:text-cyan-200 flex items-center gap-1.5">
+                <HeadphonesIcon className="size-4 text-cyan-600 dark:text-cyan-400" />
+                File âm thanh bài nghe (Upload hoặc dán URL) *
+              </span>
+              {uploadingAudio && (
+                <span className="text-[11px] text-cyan-600 dark:text-cyan-400 font-semibold animate-pulse">
+                  Đang tải lên R2...
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={question.audio_url || ''}
+                placeholder="Dán link audio (https://...) hoặc bấm nút tải file bên cạnh"
+                onChange={(e) => onChange({ audio_url: e.target.value })}
+                className="text-xs h-9 bg-white dark:bg-slate-900 border-cyan-200 dark:border-cyan-800/60 flex-1"
+              />
+              <label className="inline-flex items-center justify-center px-3.5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors shrink-0 shadow-xs">
+                <UploadCloudIcon className="size-3.5 mr-1.5" />
+                <span>Tải file Audio</span>
+                <input
+                  type="file"
+                  accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                  className="hidden"
+                  onChange={handleAudioUpload}
+                />
+              </label>
+            </div>
+
+            {(audioPreviewUrl || question.audio_url) && (
+              <div className="mt-1 flex flex-col gap-1">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Nghe thử audio:</span>
+                <audio
+                  src={audioPreviewUrl || resolveAudioUrl(question.audio_url)}
+                  controls
+                  className="w-full h-8 outline-none"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <label htmlFor={`q-text-${index}`} className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
             {type === 'open_cloze' 
@@ -191,8 +307,8 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
           />
         </div>
 
-        {/* 1. Multiple Choice Options */}
-        {type === 'multiple_choice' && (
+        {/* 1. Multiple Choice Options (for multiple_choice, listening, reading) */}
+        {['multiple_choice', 'listening', 'reading'].includes(type) && (
           <div className="flex flex-col gap-2.5 pt-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">4 Lựa chọn trả lời *</span>
@@ -359,7 +475,7 @@ const CreateQuizDialog = ({
   onGenerateAiFromPdf
 }) => {
   const [selectedTypeToAdd, setSelectedTypeToAdd] = useState('multiple_choice');
-  const [aiSource, setAiSource] = useState('pdf'); // 'pdf' | 'topic'
+  const [aiSource, setAiSource] = useState('topic'); // 'topic' | 'pdf'
   const [pdfFiles, setPdfFiles] = useState([]); // Array of File objects
   const [pdfTargetLevel, setPdfTargetLevel] = useState('auto');
   const [pdfNotes, setPdfNotes] = useState('');
@@ -1069,7 +1185,7 @@ const CreateQuizDialog = ({
                         </span>
                       ) : (
                         <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          Đã chọn {selectedCount}/4 dạng
+                          Đã chọn {selectedCount}/{questionTypes.length} dạng
                         </span>
                       )}
                     </div>
@@ -1236,7 +1352,7 @@ const CreateQuizDialog = ({
                         </span>
                       ) : (
                         <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          Đã chọn {selectedCount}/4 dạng
+                          Đã chọn {selectedCount}/{questionTypes.length} dạng
                         </span>
                       )}
                     </div>

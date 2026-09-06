@@ -13,12 +13,17 @@ const TYPE_ALIASES = {
   cloze: 'open_cloze',
   gap_fill: 'open_cloze',
   fill_in_the_blanks: 'open_cloze',
+  listening: 'listening',
+  listen: 'listening',
+  reading: 'reading',
+  read: 'reading',
   multiple_choice: 'multiple_choice',
   multiplechoice: 'multiple_choice',
   mcq: 'multiple_choice'
 };
 
 const SPEAKING_PROMPT_PATTERN = /\b(?:speak|speaking|say|pronounce|pronunciation|repeat(?:\s+after\s+me)?|read\b[\s\S]*?\baloud|oral\s+(?:answer|response)|record\s+(?:your\s+)?(?:voice|answer)|answer\s+(?:out\s+)?loud)\b|phát\s*âm|đọc[\s\S]*?(?:thành\s*tiếng|to\s+(?:và\s+)?rõ)|\b(?:nói|ghi\s*âm|thu\s*âm)\b/iu;
+const WRITING_PROMPT_PATTERN = /\b(?:write|writing|essay|paragraph|respond in writing|describe)\b|viết\s*(?:đoạn|câu|bài|tự\s*luận)?|\btự\s*luận\b/iu;
 
 const normalizeType = (value) => {
   const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -36,6 +41,9 @@ export const getEffectiveQuestionType = (question) => {
   const explicitType = normalizeType(question.questionType || question.question_type);
   if (explicitType && explicitType !== 'multiple_choice') return explicitType;
 
+  if (question.audio_url || question.audioUrl) return 'listening';
+  if (question.passage_text || question.passageText) return 'reading';
+
   if (/\{\{\s*[A-Za-z0-9_-]+\s*\}\}/.test(String(question.question || question.question_text || ''))) {
     return 'open_cloze';
   }
@@ -49,6 +57,8 @@ export const getEffectiveQuestionType = (question) => {
     .toLowerCase();
 
   if (SPEAKING_PROMPT_PATTERN.test(promptAndGuide)) return 'pronunciation';
+  if (WRITING_PROMPT_PATTERN.test(promptAndGuide)) return 'writing';
+  if (question.correctAnswer || question.correct_answer) return 'pronunciation';
   return 'writing';
 };
 

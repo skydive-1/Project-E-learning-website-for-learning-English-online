@@ -39,11 +39,11 @@ const roadmapPaths = [
   {
     id: 'toeic',
     title: 'Lộ trình TOEIC 700+',
-    description: 'Xây dựng kỹ năng làm bài thi TOEIC chuyên sâu. Tập trung vào Listening & Reading thực chiến.',
+    description: 'Củng cố nền tảng TOEIC thực tế qua trắc nghiệm từ vựng, ngữ pháp theo cấp độ và phòng thi đấu Quiz PIN trực tiếp.',
     coursesCount: 8,
     students: '8.2k+',
     time: '4-6 tháng',
-    skills: ['Chiến thuật Part 1-7', 'Nghe hiểu công sở', 'Đọc hiểu báo chí & Email', 'Quản lý thời gian thi'],
+    skills: ['Trắc nghiệm ngữ pháp & từ vựng TOEIC', 'Luyện phát âm chuẩn phản xạ cùng AI', 'Luyện viết câu & đoạn văn có AI chấm điểm', 'Đấu trí trực tiếp qua phòng Quiz PIN'],
     image: '/images/meeting_group.png',
     isPro: false,
     subjectFilter: '2', // TOEIC Prep
@@ -55,24 +55,24 @@ const roadmapPaths = [
       },
       {
         step: 'Giai đoạn 2 (Tháng 3-4)',
-        name: 'Phương pháp Giải đề Part 1 đến Part 7',
-        desc: 'Bắt bài các bẫy thường gặp trong Part 1 (Hình ảnh), Part 2 (Hỏi đáp), Part 5 (Điền từ) và Part 7 (Đoạn văn).'
+        name: 'Luyện tập Trắc nghiệm & Phản xạ Câu hỏi',
+        desc: 'Luyện trắc nghiệm từ vựng, ngữ pháp trọng tâm theo cấp độ và rèn phản xạ xử lý câu hỏi dưới áp lực thời gian.'
       },
       {
         step: 'Giai đoạn 3 (Tháng 5-6)',
         name: 'Luyện đề Thực chiến & Chấm điểm AI',
-        desc: 'Làm đề thi thử trọn gói 200 câu trong 120 phút, phân tích lỗi sai chi tiết để đạt mốc TOEIC 700+.'
+        desc: 'Làm đề thi thử trọn gói, phân tích điểm mạnh điểm yếu chi tiết và thi đấu phản xạ để đạt mốc TOEIC 700+.'
       }
     ]
   },
   {
     id: 'ielts',
     title: 'Lộ trình IELTS 6.5+',
-    description: 'Rèn luyện 4 kỹ năng Nghe - Nói - Đọc - Viết toàn diện. Chuẩn bị vững chắc cho kỳ thi quốc tế.',
+    description: 'Nâng cao năng lực tiếng Anh với luyện phát âm AI chấm điểm (Speaking) và luyện viết bài luận có AI phản hồi (Writing).',
     coursesCount: 12,
     students: '15.1k+',
     time: '6-8 tháng',
-    skills: ['Academic Writing Task 1 & 2', 'Speaking Reflexes (Part 1-3)', 'Critical Reading & Skimming', 'Advanced Listening'],
+    skills: ['Luyện viết có AI chấm điểm và feedback (Writing)', 'Luyện phát âm có AI chấm điểm (Speaking)', 'Trắc nghiệm ngữ pháp/từ vựng theo cấp độ', 'Quiz PIN thi đấu trực tiếp phản xạ'],
     image: '/images/hero_illustration.png',
     isPro: false,
     subjectFilter: '1', // IELTS Masterclass
@@ -80,17 +80,17 @@ const roadmapPaths = [
       {
         step: 'Giai đoạn 1 (Tháng 1-2)',
         name: 'Xây dựng Nền tảng Academic (IELTS Foundation)',
-        desc: 'Tích lũy từ vựng学术 theo 20 chủ đề IELTS quen thuộc (Environment, Technology, Education, Health).'
+        desc: 'Tích lũy từ vựng học thuật theo 20 chủ đề IELTS quen thuộc (Environment, Technology, Education, Health).'
       },
       {
         step: 'Giai đoạn 2 (Tháng 3-5)',
-        name: 'Rèn luyện Chi tiết 4 Kỹ năng Nghe - Nói - Đọc - Viết',
-        desc: 'Luyện Viết Essay Task 2 (Opinion, Discussion), luyện Nói Speaking Part 2-3 với AI chấm câu và từ vựng.'
+        name: 'Thực hành Viết & Nói Chuyên sâu cùng Trợ lý AI',
+        desc: 'Luyện viết Essay có AI chấm điểm và feedback chi tiết, luyện phát âm chuẩn xác từng câu với trợ lý AI thông minh.'
       },
       {
         step: 'Giai đoạn 3 (Tháng 6-8)',
-        name: 'Luyện đề Cam-IELTS & Mock Test Thực tế',
-        desc: 'Giải đề Cambridge IELTS mới nhất, canh thời gian áp lực thực tế và hoàn thiện kỹ năng đạt Band 6.5+ - 7.5+.'
+        name: 'Luyện đề Tổng hợp & Thi đấu Phản xạ',
+        desc: 'Luyện bộ đề trắc nghiệm học thuật, hoàn thiện kỹ năng Viết - Nói và tham gia thi đấu Quiz PIN trực tiếp.'
       }
     ]
   }
