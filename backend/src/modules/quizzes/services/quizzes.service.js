@@ -38,7 +38,7 @@ class QuizzesService {
       // Lấy tất cả questions thuộc về danh sách quizzes trên
       const quizIds = quizzes.map(q => q.quiz_id);
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type, audio_url, passage_text
         FROM questions
         WHERE quiz_id = ANY($1)
         ORDER BY question_id ASC
@@ -79,7 +79,7 @@ class QuizzesService {
       const quiz = quizResult.rows[0];
 
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type, audio_url, passage_text
         FROM questions
         WHERE quiz_id = $1
         ORDER BY question_id ASC
@@ -110,7 +110,7 @@ class QuizzesService {
       const quiz = quizResult.rows[0];
 
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type, audio_url, passage_text
         FROM questions
         WHERE quiz_id = $1
         ORDER BY question_id ASC
@@ -556,14 +556,29 @@ No markdown, no backticks, no extra keys.`;
       if (questions && Array.isArray(questions) && questions.length > 0) {
         for (const q of questions) {
           const insertQuestionQuery = `
-            INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type)
-            VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+            INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, question_type, audio_url, passage_text)
+            VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
           `;
           const qText = q.question_text || q.questionText || q.question || '';
           const qExpl = q.explanation || '';
           const qType = String(q.question_type || q.questionType || 'multiple_choice').toLowerCase();
-          let qCorr = q.correct_answer ?? q.correctAnswer ?? q.answer ?? (qType === 'multiple_choice' ? 'A' : '');
+          let rawCorr = q.correct_answer ?? q.correctAnswer ?? q.answer;
+          let qCorr = rawCorr !== undefined && rawCorr !== null ? String(rawCorr).trim() : '';
+
+          if (['multiple_choice', 'listening', 'reading'].includes(qType)) {
+            if (!qCorr) {
+              const previewText = qText.trim()
+                ? (qText.trim().length > 50 ? `${qText.trim().slice(0, 50)}...` : qText.trim())
+                : 'Không có tiêu đề';
+              const error = new Error(`Câu hỏi "${previewText}" (loại ${qType}) chưa có đáp án đúng. Vui lòng chọn đáp án trước khi lưu.`);
+              error.status = 400;
+              error.statusCode = 400;
+              throw error;
+            }
+          }
           let opts = Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? [q.options] : []);
+          const audioUrl = q.audio_url || q.audioUrl || null;
+          const passageText = q.passage_text || q.passageText || null;
 
           if (qType === 'open_cloze') {
             const validated = validateOpenClozeQuestion({ questionText: qText, gaps: opts });
@@ -577,7 +592,9 @@ No markdown, no backticks, no extra keys.`;
             JSON.stringify(opts),
             qCorr,
             qExpl,
-            qType
+            qType,
+            audioUrl,
+            passageText
           ]);
         }
       }
@@ -606,7 +623,7 @@ No markdown, no backticks, no extra keys.`;
 
       const quizIds = quizzes.map(q => q.quiz_id);
       const questionsQuery = `
-        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
+        SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type, audio_url, passage_text
         FROM questions
         WHERE quiz_id = ANY($1)
         ORDER BY question_id ASC

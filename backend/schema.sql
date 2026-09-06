@@ -1,4 +1,4 @@
-﻿-- =====================================================================
+-- =====================================================================
 -- E-LEARN ACADEMY DATABASE SCHEMA & INITIAL SEED DATA
 -- Cấu trúc cơ sở dữ liệu hoàn chỉnh cho dự án E-Learn Academy
 -- Thực thi thủ công trên Supabase SQL Editor trước khi khởi chạy server
@@ -172,9 +172,11 @@ CREATE TABLE IF NOT EXISTS questions (
   correct_answer TEXT, -- A, B, C, D hoặc câu phát âm / đáp án mẫu (rỗng với open_cloze/writing)
   explanation TEXT,
   question_type VARCHAR(50) DEFAULT 'multiple_choice',
+  audio_url TEXT,
+  passage_text TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_question_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE,
-  CONSTRAINT chk_question_type CHECK (question_type IS NULL OR question_type IN ('multiple_choice', 'writing', 'pronunciation', 'open_cloze'))
+  CONSTRAINT chk_question_type CHECK (question_type IS NULL OR question_type IN ('multiple_choice', 'writing', 'pronunciation', 'open_cloze', 'listening', 'reading'))
 );
 
 -- 10. Tạo bảng Quiz Attempts (Lịch sử làm bài trắc nghiệm)

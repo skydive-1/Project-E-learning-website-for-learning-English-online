@@ -493,13 +493,16 @@ const CourseEditor = () => {
   };
 
   const handleAddQuizQuestion = (type = 'multiple_choice') => {
+    const isMultipleChoiceLike = ['multiple_choice', 'listening', 'reading'].includes(type);
     setQuizDialogQuestions(prev => [
       ...prev,
       {
         question_text: '',
         question_type: type,
-        options: type === 'multiple_choice' ? ['', '', '', ''] : [],
-        correct_answer: type === 'multiple_choice' ? 'A' : '',
+        audio_url: type === 'listening' ? '' : undefined,
+        passage_text: type === 'reading' ? '' : undefined,
+        options: isMultipleChoiceLike ? ['', '', '', ''] : [],
+        correct_answer: isMultipleChoiceLike ? 'A' : '',
         explanation: ''
       }
     ]);

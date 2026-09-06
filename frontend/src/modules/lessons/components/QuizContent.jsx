@@ -18,8 +18,17 @@ import {
   HelpCircle,
   Play,
   XCircle,
-  FileAudio
+  FileAudio,
+  Headphones,
+  BookOpen
 } from 'lucide-react';
+
+const resolveAudioUrl = (url) => {
+  if (!url) return '';
+  if (/^(https?:\/\/|blob:|data:)/i.test(url)) return url;
+  return `/api/quizzes/audio-stream?key=${encodeURIComponent(url)}`;
+};
+
 import { 
   getCourseQuizQuestions, 
   getFreeQuizById,
@@ -215,7 +224,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
     let correctCount = questions.reduce((total, question) => {
       const type = getEffectiveQuestionType(question);
-      if (type === 'multiple_choice') {
+      if (type === 'multiple_choice' || type === 'listening' || type === 'reading') {
         return total + (selectedAnswers[question.id] === question.correctAnswer ? 1 : 0);
       }
       return total + (Number(questionScores[question.id]) || 0) / 100;
@@ -508,6 +517,10 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
         return { label: 'Phát âm & Nói (AI Voice)', variant: 'outline', className: 'border-rose-500/30 text-rose-600 dark:text-rose-400 bg-rose-500/10' };
       case 'open_cloze':
         return { label: 'Điền từ đoạn văn', variant: 'outline', className: 'border-blue-500/30 text-blue-600 dark:text-blue-400 bg-blue-500/10' };
+      case 'listening':
+        return { label: 'Nghe hiểu (Listening)', variant: 'outline', className: 'border-cyan-500/30 text-cyan-600 dark:text-cyan-400 bg-cyan-500/10' };
+      case 'reading':
+        return { label: 'Đọc hiểu (Reading)', variant: 'outline', className: 'border-rose-500/30 text-rose-600 dark:text-rose-400 bg-rose-500/10' };
       case 'multiple_choice':
       default:
         return { label: 'Trắc nghiệm', variant: 'secondary', className: '' };
@@ -597,6 +610,34 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               )}
             </div>
 
+            {/* Reading Passage Container */}
+            {currentQuestionType === 'reading' && (currentQuestion.passage_text || currentQuestion.passageText) && (
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col gap-2 my-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-300">
+                  <BookOpen className="size-4" />
+                  <span>Đoạn văn đọc hiểu (Reading Passage):</span>
+                </div>
+                <div className="max-h-64 overflow-y-auto pr-2 text-sm leading-relaxed text-foreground whitespace-pre-line rounded-lg bg-background/60 p-3.5 border border-border">
+                  {currentQuestion.passage_text || currentQuestion.passageText}
+                </div>
+              </div>
+            )}
+
+            {/* Listening Audio Container */}
+            {currentQuestionType === 'listening' && (currentQuestion.audio_url || currentQuestion.audioUrl) && (
+              <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/25 flex flex-col gap-2 my-1">
+                <div className="flex items-center gap-2 text-xs font-bold text-cyan-700 dark:text-cyan-300">
+                  <Headphones className="size-4" />
+                  <span>Nghe đoạn âm thanh sau và chọn đáp án chính xác:</span>
+                </div>
+                <audio
+                  src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
+                  controls
+                  className="w-full h-10 outline-none rounded-lg shadow-xs"
+                />
+              </div>
+            )}
+
             <p className="text-base sm:text-lg font-bold text-foreground leading-relaxed mt-1">
               {currentQuestionType === 'open_cloze'
                 ? 'Hoàn thành đoạn văn bằng cách điền từ hoặc cụm từ phù hợp vào các ô trống:'
@@ -606,8 +647,8 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
           <Separator />
 
-          {/* DẠNG 1: TRẮC NGHIỆM (Multiple Choice) */}
-          {currentQuestionType === 'multiple_choice' && (
+          {/* DẠNG 1: TRẮC NGHIỆM / NGHE HIỂU / ĐỌC HIỂU (Multiple Choice, Listening, Reading) */}
+          {(currentQuestionType === 'multiple_choice' || currentQuestionType === 'listening' || currentQuestionType === 'reading') && (
             <div className="flex flex-col gap-3">
               {(Array.isArray(currentQuestion.options) ? currentQuestion.options : []).map((option, idx) => {
                 const optionKey = String.fromCharCode(65 + idx); // A, B, C, D

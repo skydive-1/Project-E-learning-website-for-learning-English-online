@@ -26,6 +26,7 @@
 - Framework: Node.js + Express v5.2.1
 - Tổ chức: `src/modules/*` (auth, courses, lessons, chatbot, progress, quizzes, admin, gamification, drm)
 - Middleware riêng biệt: JWT auth, error handling, logging, rate limiting
+- Số lượng module: **13 module** độc lập với controller-service-route pattern (admin, analytic, auth, chatbot, comments, consultation, courses, drm, gamification, instructor, lessons, progress, quizzes)
 - Số lượng module: 8+ module độc lập với controller-service-route pattern
 - ✅ Test coverage: **165 test pass** (0 fail)
 
@@ -35,6 +36,7 @@
 - State management: TanStack React Query 5.51.1
 - Styling: Tailwind CSS 3.4.4 + SCSS
 - UI Library: shadcn components, React Aria
+- Module-based structure: `src/modules/*` (academy, admin, analytics, auth, chatbot, courses, gamification, homepage, instructor, lessons, profile, progress, quizzes)
 - Module-based structure: `src/modules/*` (auth, courses, lessons, chatbot, quizzes, admin)
 
 **Database**
@@ -133,7 +135,7 @@
 
 **Mức độ:** 🟡 **Vừa** (ảnh hưởng đến page load time, không phải functionality)
 
-**Lời giải thích để trình bằng:**
+**Lời giải thích để trình bày:**
 > "Frontend bundle lớn vì load toàn bộ library (Shaka, PDF, charts) ở bundle chính.  
 > Optimized: Route-level lazy loading tách PDF viewer → `pdf.bundle.js`, Shaka → `video.bundle.js`, Dashboard → `dashboard.bundle.js`.  
 > Hiện tại: Gzip 944 kB chứng tỏ compression tốt; first paint vẫn nhanh vì cached CDN."
@@ -153,7 +155,7 @@
 
 **Mức độ:** 🟡 **Vừa** (trình duyệt khác nhau, API quota, test environment)
 
-**Lời giải thích để trình bằng:**
+**Lời giải thích để trình bày:**
 > "Code logic cho tất cả feature đã verify (trace từ route → service → external API).  
 > Contract test: `backend/tests/` chứng minh middleware, auth, DRM logic đúng.  
 > Live integration test chưa chạy vì: (1) Staging chưa có Gemini/Pinecone quota; (2) Test automation cần Playwright/Cypress + headless Chrome; (3) SMTP cần tài khoản test Gmail.  
@@ -164,6 +166,20 @@
 - [ ] Nếu hỏi "Video DRM có ngăn copy được không?" → **Demo:** Right-click video → Watermark hiện + no save option
 - [ ] Giải thích: "5 RAG grounding test pass, Shaka player code nối đủ, Gemini STT pipeline test pass"
 
+### 2.5 Error Handling ✅ Đã Đồng Nhất
+
+**Trạng thái (đã kiểm tra thực tế):**
+- `backend/src/modules/drm/drm.controller.js` — **Đã dùng `return next(error)`** đúng chuẩn ở cả 2 function: `getClearKeyLicense` (line 111) và `getLessonDrmInfo` (line 163)
+- `backend/src/modules/gamification/controllers/gamification.controller.js` — **Đã dùng `return next(error)`** đúng chuẩn ở cả `getStreak` và `getBadges`
+- Error middleware chung đã được áp dụng nhất quán trên toàn bộ controller
+
+**Mức độ:** ✅ **Đã xử lý** (không còn là điểm yếu)
+
+**Lời giải thích để trình bày:**
+> "Error handling đã thống nhất: tất cả controller dùng `next(error)` → error middleware chung xử lý log + response format nhất quán."
+
+**Checklist chuẩn bị:**
+- [x] Xác minh `drm.controller.js` và `gamification.controller.js` đều dùng `next(error)` — ✅ Confirmed
 ### 2.5 Error Handling Chưa Đồng Nhất
 
 **Vấn đề:**
@@ -207,7 +223,7 @@
 
 **Mức độ:** 🟡 **Vừa** (ảnh hưởng debugging production)
 
-**Lời giải thích để trình bằng:**
+**Lời giải thích để trình bày:**
 > "Logging infrastructure đã có (logger middleware, requestId, structured JSON format).  
 > Storage chưa config: Vercel auto-capture stdout; production cần CloudWatch/Datadog transport.  
 > Sẵn sàng: Code dùng logger thống nhất, chỉ cần thay transport."
@@ -318,6 +334,19 @@ npm test
 → Vẽ hoặc dùng folder tree:
 ```
 backend/src/modules/
+  ├── admin/         (admin dashboard, user management)
+  ├── analytic/      (analytics, reporting)
+  ├── auth/          (JWT + Bcrypt)
+  ├── chatbot/       (RAG + grounding)
+  ├── comments/      (lesson comments)
+  ├── consultation/  (email consultation, SMTP)
+  ├── courses/       (CRUD + enrollment)
+  ├── drm/           (DASH/ClearKey licensing)
+  ├── gamification/  (achievements, leaderboard)
+  ├── instructor/    (instructor management)
+  ├── lessons/       (auto-subtitle, video upload)
+  ├── progress/      (completion tracking)
+  └── quizzes/       (quiz creation, auto-grade)
   ├── auth/        (JWT + Bcrypt)
   ├── courses/     (CRUD + enrollment)
   ├── lessons/     (auto-subtitle, video upload)
@@ -372,6 +401,7 @@ backend/src/modules/
 
 | Khía Cạnh | Điểm Mạnh | Mức Độ |
 |-----------|----------|--------|
+| **Kiến trúc** | Modular Monolith rõ ràng, **13 module** độc lập | ⭐⭐⭐⭐⭐ |
 | **Kiến trúc** | Modular Monolith rõ ràng, 8+ module độc lập | ⭐⭐⭐⭐⭐ |
 | **Technology stack** | Node/Express/React modern, Pinecone + Gemini actual | ⭐⭐⭐⭐⭐ |
 | **Testing** | 165 test pass (auth, progress, DRM, media lifecycle) | ⭐⭐⭐⭐⭐ |
@@ -389,6 +419,7 @@ backend/src/modules/
 | **Rate limit scaling** | In-memory, cần Redis cho multi-instance | 🟡 Medium | 1 day |
 | **Bundle size** | 3MB main chunk (unoptimized) | 🟡 Medium | 2-3 days |
 | **Live integration test** | STT, RAG, DRM playback, SMTP chưa E2E | 🟡 Medium | 2-3 days |
+| **Error handling consistency** | ✅ Đã fix — tất cả controller dùng `next(error)` | ✅ Done | Done |
 | **Error handling consistency** | 2 controller vẫn tự return 500 | 🟢 Small | 1 hour |
 | **Logging storage** | In-memory, cần centralized backend | 🟡 Medium | 1 day |
 | **Profile mock data** | Dummy stats trên profile page | 🟢 Small | 2 hours |

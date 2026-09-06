@@ -65,12 +65,16 @@ export const normalizeQuestion = (q) => {
     type = 'writing';
   } else if (['open_cloze', 'cloze', 'fill_in_the_blank', 'fill_blank'].includes(rawType)) {
     type = 'open_cloze';
+  } else if (['listening', 'listen', 'audio_choice'].includes(rawType)) {
+    type = 'listening';
+  } else if (['reading', 'read', 'passage', 'comprehension'].includes(rawType)) {
+    type = 'reading';
   }
 
   const text = String(q.question_text || q.questionText || q.question || '').trim();
   const explanation = String(q.explanation || '').trim();
 
-  if (type === 'multiple_choice') {
+  if (type === 'multiple_choice' || type === 'listening' || type === 'reading') {
     // Clean and normalize options
     const rawOptions = Array.isArray(q.options) ? q.options : [];
     let cleanOptions = rawOptions.map(opt => {
@@ -106,10 +110,12 @@ export const normalizeQuestion = (q) => {
 
     return {
       question_text: text,
-      question_type: 'multiple_choice',
+      question_type: type,
       options: cleanOptions,
       correct_answer: correctAnswer,
-      explanation
+      explanation,
+      audio_url: type === 'listening' ? String(q.audio_url || q.audioUrl || '').trim() : null,
+      passage_text: type === 'reading' ? String(q.passage_text || q.passageText || '').trim() : null
     };
   }
 
@@ -123,7 +129,9 @@ export const normalizeQuestion = (q) => {
       question_type: 'pronunciation',
       options: [],
       correct_answer: rawAnswer,
-      explanation
+      explanation,
+      audio_url: null,
+      passage_text: null
     };
   }
 
@@ -133,7 +141,9 @@ export const normalizeQuestion = (q) => {
       question_type: 'writing',
       options: [],
       correct_answer: '',
-      explanation
+      explanation,
+      audio_url: null,
+      passage_text: null
     };
   }
 
@@ -144,7 +154,9 @@ export const normalizeQuestion = (q) => {
       question_type: 'open_cloze',
       options: gaps,
       correct_answer: '',
-      explanation
+      explanation,
+      audio_url: null,
+      passage_text: null
     };
   }
 
@@ -153,7 +165,9 @@ export const normalizeQuestion = (q) => {
     question_type: type,
     options: Array.isArray(q.options) ? q.options : [],
     correct_answer: String(q.correct_answer ?? q.correctAnswer ?? ''),
-    explanation
+    explanation,
+    audio_url: q.audio_url || q.audioUrl || null,
+    passage_text: q.passage_text || q.passageText || null
   };
 };
 

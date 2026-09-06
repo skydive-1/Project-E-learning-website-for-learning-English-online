@@ -10,9 +10,11 @@ const sanitizeQuestionForPlayer = (question) => {
     question_id: question.question_id,
     question_text: question.question_text,
     options: isOpenCloze ? sanitizeOpenClozeGaps(question.options) : question.options,
-    correct_answer: isOpenCloze ? '' : question.correct_answer,
+    correct_answer: '',
     explanation: question.explanation,
-    question_type: questionType
+    question_type: questionType,
+    audio_url: question.audio_url || null,
+    passage_text: question.passage_text || null
   };
 };
 
@@ -83,7 +85,9 @@ exports.getQuizzesForManagement = async (req, res, next) => {
           options: parsedOptions,
           correct_answer: q.correct_answer,
           explanation: q.explanation,
-          question_type: q.question_type
+          question_type: q.question_type,
+          audio_url: q.audio_url || null,
+          passage_text: q.passage_text || null
         };
       })
     }));
@@ -289,6 +293,7 @@ exports.createQuiz = async (req, res, next) => {
       data: result
     });
   } catch (error) {
+    if (!error.status && error.statusCode) error.status = error.statusCode;
     next(error);
   }
 };
@@ -600,3 +605,24 @@ exports.deleteQuiz = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.streamAudio = async (req, res, next) => {
+  try {
+    const key = req.query.key || req.query.url;
+    if (!key) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin audio' });
+    }
+    if (/^https?:\/\//i.test(key)) {
+      return res.redirect(key);
+    }
+    const r2Storage = require('../../../utils/r2Storage');
+    const signedUrl = await r2Storage.generateSignedUrl(key, 'audio', 3600);
+    if (signedUrl) {
+      return res.redirect(signedUrl);
+    }
+    return res.status(404).json({ success: false, message: 'Không tìm thấy file âm thanh bài nghe' });
+  } catch (error) {
+    next(error);
+  }
+};
+

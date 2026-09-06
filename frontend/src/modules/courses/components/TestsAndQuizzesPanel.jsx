@@ -166,11 +166,14 @@ const TestsAndQuizzesPanel = () => {
 
   // Tạo câu hỏi thủ công
   const handleAddQuestion = (questionType = 'multiple_choice') => {
+    const isMultipleChoiceLike = ['multiple_choice', 'listening', 'reading'].includes(questionType);
     const baseQuestion = {
       question_text: '',
       question_type: questionType,
-      options: questionType === 'multiple_choice' ? ['', '', '', ''] : [],
-      correct_answer: questionType === 'multiple_choice' ? 'A' : '',
+      audio_url: questionType === 'listening' ? '' : undefined,
+      passage_text: questionType === 'reading' ? '' : undefined,
+      options: isMultipleChoiceLike ? ['', '', '', ''] : [],
+      correct_answer: isMultipleChoiceLike ? 'A' : '',
       explanation: ''
     };
 
