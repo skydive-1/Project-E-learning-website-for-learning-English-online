@@ -16,6 +16,17 @@ import {
   FiDownload
 } from 'react-icons/fi';
 
+import { withPdfAuthToken } from '../../lessons/utils/pdfAuthUrl';
+
+// Đảm bảo DOMMatrix khả dụng trong mọi môi trường (Node jsdom test & browser)
+if (typeof window !== 'undefined' && typeof window.DOMMatrix === 'undefined') {
+  window.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+    }
+  };
+}
+
 // Cấu hình Bundled Worker cục bộ tương thích hoàn toàn với Vite và không phụ thuộc CDN bên ngoài
 if (typeof window !== 'undefined') {
   try {
@@ -127,7 +138,11 @@ const MaterialPdfPreviewModal = ({
           headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(pdfUrl, {
+        const targetUrl = withPdfAuthToken(pdfUrl);
+        const resolvedFetchUrl = typeof window !== 'undefined'
+          ? new URL(targetUrl, window.location.origin).toString()
+          : targetUrl;
+        const response = await fetch(resolvedFetchUrl, {
           method: 'GET',
           headers,
           credentials: 'include'
@@ -227,7 +242,7 @@ const MaterialPdfPreviewModal = ({
     // Nếu có endpoint download riêng từ backend (Content-Disposition: attachment):
     if (downloadUrl) {
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = withPdfAuthToken(downloadUrl);
       link.download = downloadFileName;
       document.body.appendChild(link);
       link.click();

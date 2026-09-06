@@ -30,6 +30,7 @@ import {
   uploadLessonMaterial,
   deleteLessonMaterial
 } from '../../lessons/services/lessons.service';
+import { withPdfAuthToken } from '../../lessons/utils/pdfAuthUrl';
 import '../styles/instructor.scss';
 
 const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
@@ -554,14 +555,9 @@ const CourseEditor = () => {
       return;
     }
     if (!mat.url) return;
-    const token = localStorage.getItem('token');
-    let previewUrl = mat.url;
-    const sep = previewUrl.includes('?') ? '&' : '?';
-    previewUrl = `${previewUrl}${sep}stream=true`;
-    if (token) {
-      previewUrl = `${previewUrl}&token=${encodeURIComponent(token)}`;
-    }
-    const downloadUrl = mat.url.replace('/preview', '/download') + (token ? `?token=${encodeURIComponent(token)}` : '');
+    const sep = mat.url.includes('?') ? '&' : '?';
+    const previewUrl = withPdfAuthToken(`${mat.url}${sep}stream=true`);
+    const downloadUrl = withPdfAuthToken(mat.url.replace('/preview', '/download'));
     setPreviewPdfModal({
       isOpen: true,
       url: previewUrl,
@@ -589,18 +585,14 @@ const CourseEditor = () => {
     }
     // 2. Nếu đã upload lên server:
     if (lesson.contentUrl || lesson.storageKey) {
-      const token = localStorage.getItem('token');
       const isPersisted = typeof lesson.id === 'number' && lesson.id < 1000000000000;
-      let previewUrl = isPersisted
+      const basePdfUrl = isPersisted
         ? `${apiClient.defaults.baseURL || '/api'}/lessons/${lesson.id}/pdf`
         : lesson.contentUrl;
-      const sep = previewUrl.includes('?') ? '&' : '?';
-      previewUrl = `${previewUrl}${sep}stream=true`;
-      if (token) {
-        previewUrl = `${previewUrl}&token=${encodeURIComponent(token)}`;
-      }
+      const sep = basePdfUrl.includes('?') ? '&' : '?';
+      const previewUrl = withPdfAuthToken(`${basePdfUrl}${sep}stream=true`);
       const downloadUrl = isPersisted
-        ? `${apiClient.defaults.baseURL || '/api'}/lessons/${lesson.id}/pdf/download${token ? `?token=${encodeURIComponent(token)}` : ''}`
+        ? withPdfAuthToken(`${apiClient.defaults.baseURL || '/api'}/lessons/${lesson.id}/pdf/download`)
         : '';
       setPreviewPdfModal({
         isOpen: true,

@@ -1,6 +1,18 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Mock DOMMatrix for pdfjs-dist / react-pdf in Node jsdom
+if (typeof global !== 'undefined' && !global.DOMMatrix) {
+  global.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.DOMMatrix = global.DOMMatrix;
+  }
+}
+
 // Mock Web Audio API & MediaRecorder
 class MockMediaRecorder {
   constructor(stream, options) {

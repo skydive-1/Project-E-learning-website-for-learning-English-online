@@ -67,15 +67,18 @@ export default function PdfStudyViewer({
         window.location.origin
       );
       const documentUrl = new URL(pdfUrl, window.location.origin);
-      const apiPath = apiBase.pathname.replace(/\/+$/, '');
-      const isProtectedLessonPdf = documentUrl.origin === apiBase.origin
-        && documentUrl.pathname.startsWith(`${apiPath}/lessons/`)
-        && documentUrl.pathname.endsWith('/pdf');
+      // 1. Nhận diện PDF cần bảo vệ bằng pathname (độc lập với domain/origin giữa frontend và backend)
+      const isProtectedLessonPdf = /\/lessons\/[^/]+\/pdf$/i.test(documentUrl.pathname);
       const token = isProtectedLessonPdf ? localStorage.getItem('token') : null;
 
       if (token) {
+        // 2. Build URL tuyệt đối trỏ thẳng về apiBase.origin (đảm bảo gọi đúng máy chủ backend)
+        const finalUrl = new URL(documentUrl.pathname + documentUrl.search, apiBase.origin);
+        // 3. Gắn đồng thời 2 lớp: Query param (?token=) cho authenticatePdfAccess và Header cho react-pdf
+        finalUrl.searchParams.set('token', token);
+
         return {
-          url: documentUrl.toString(),
+          url: finalUrl.toString(),
           httpHeaders: { Authorization: `Bearer ${token}` },
           withCredentials: true
         };
@@ -84,6 +87,7 @@ export default function PdfStudyViewer({
       // URL ngoài hoặc URL tương đối không hợp lệ sẽ được react-pdf xử lý như trước.
     }
 
+    // 4. Nếu không có token trong localStorage: giữ nguyên hành vi cũ (trả về pdfUrl thô)
     return pdfUrl;
   }, [pdfUrl]);
 
