@@ -20,17 +20,16 @@ const { isSuperAdminUser } = require('../utils/superAdmin.util');
  */
 const authenticate = async (req, res, next) => {
   try {
+    let token = null;
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        code: 'AUTH_REQUIRED',
-        error: 'AuthRequiredError',
-        message: 'Không có token xác thực, quyền truy cập bị từ chối'
-      });
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (req.query && req.query.token) {
+      token = req.query.token;
+    } else if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
     }
 
-    const token = authHeader.split(' ')[1];
     if (!token || token.trim() === '') {
       return res.status(401).json({
         success: false,

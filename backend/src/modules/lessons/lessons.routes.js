@@ -32,15 +32,16 @@ router.get('/dash/:lessonId/:segmentFile', authenticateVideoToken, streamingLimi
 
 // Tài liệu đính kèm bài học (Lesson Materials / Resources PDF)
 router.get('/:lessonId/pdf', authenticate, lessonsController.streamLessonPdf);
+router.get('/:lessonId/pdf/download', authenticate, lessonsController.downloadLessonPdf);
 router.post('/:lessonId/materials', authenticate, authorize([1, 2]), uploadLimiter, upload.materialPdf.single('file'), lessonsController.uploadMaterial);
 router.get('/:lessonId/materials', authenticate, lessonsController.getMaterialsByLesson);
 router.get('/:lessonId/materials/:materialId/preview', authenticate, lessonsController.previewMaterial);
+router.get('/:lessonId/materials/:materialId/download', authenticate, lessonsController.downloadMaterial);
 router.delete('/:lessonId/materials/:materialId', authenticate, authorize([1, 2]), lessonsController.deleteMaterial);
 
 // Phụ đề thông minh & Kịch bản tương tác (Smart AI Subtitles & Interactive Transcript)
 router.get('/:lessonId/subtitle-status', authenticate, subtitlesController.getSubtitleStatus);
 router.get('/:lessonId/subtitles', authenticate, aiLimiter, subtitlesController.getSubtitles);
-router.post('/:lessonId/generate-subtitles', authenticate, authorize([1, 2]), aiLimiter, subtitlesController.generateSubtitles);
 router.put('/:lessonId/subtitles', authenticate, authorize([1, 2]), subtitlesController.updateSubtitles);
 
 // Kiểm tra tình trạng vector RAG của bài học (Chỉ Admin / Instructor)

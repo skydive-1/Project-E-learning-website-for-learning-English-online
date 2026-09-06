@@ -4,12 +4,15 @@ import apiClient from '../../../config/api.config';
 import { 
   FiArrowLeft, FiSave, FiUpload, FiTrash2, 
   FiPlus, FiMove, FiVideo, FiFileText, FiAlertCircle, FiLoader,
-  FiCheckCircle, FiEdit, FiSearch, FiLayers, FiBook, FiZap, FiMessageSquare
+  FiCheckCircle, FiEdit, FiSearch, FiLayers, FiBook, FiZap,
+  FiEye, FiX, FiExternalLink, FiRefreshCw
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { SingleDatePicker } from '../../../components/ui';
 import InstructorCopyrightPolicyModal from '../components/InstructorCopyrightPolicyModal';
+import CourseEditorLoadingModal from '../components/CourseEditorLoadingModal';
+import MaterialPdfPreviewModal from '../components/MaterialPdfPreviewModal';
 import CreateQuizDialog from '../../courses/components/CreateQuizDialog';
 import { 
   createQuiz, 
@@ -20,7 +23,13 @@ import {
 } from '../../quizzes/services/quizzes.service';
 import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { useToast } from '../../../context/ToastContext';
-import { extractYouTubeVideoId, isYouTubeUrl } from '../../lessons/services/lessons.service';
+import { 
+  extractYouTubeVideoId, 
+  isYouTubeUrl,
+  getLessonMaterials,
+  uploadLessonMaterial,
+  deleteLessonMaterial
+} from '../../lessons/services/lessons.service';
 import '../styles/instructor.scss';
 
 const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
@@ -137,6 +146,12 @@ const CourseEditor = () => {
   ]);
 
   const [expandedSpeaking, setExpandedSpeaking] = useState({});
+  const [expandedMaterials, setExpandedMaterials] = useState({});
+  const [uploadingMaterials, setUploadingMaterials] = useState({});
+  const [stagedMaterials, setStagedMaterials] = useState({}); // { [lessonId]: File }
+  const materialFileInputRef = useRef({});
+  const [previewPdfModal, setPreviewPdfModal] = useState({ isOpen: false, url: '', file: null, downloadUrl: '', title: '', sizeKb: 0 });
+  const [loadingState, setLoadingState] = useState('idle'); // 'idle' | 'fetching' | 'saving_draft' | 'publishing'
   const [loading, setLoading] = useState(false);
   const [fetchingSubjects, setFetchingSubjects] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -169,6 +184,7 @@ const CourseEditor = () => {
       const fetchCourse = async () => {
         try {
           setLoading(true);
+          setLoadingState('fetching');
           const [courseRes, quizzesData] = await Promise.all([
             apiClient.get(`/courses/${courseId}`),
             fetchQuizzesForCourseManagement(courseId)
@@ -189,6 +205,23 @@ const CourseEditor = () => {
                 }
               });
             }
+
+            // Nạp danh sách tài liệu đính kèm (PDF Materials) của các bài học
+            const allLessonIds = (course.sections || [])
+              .flatMap(sec => (sec.lessons || []).map(l => l.lesson_id))
+              .filter(Boolean);
+
+            const materialsMap = {};
+            await Promise.allSettled(
+              allLessonIds.map(async (lid) => {
+                try {
+                  const mats = await getLessonMaterials(lid);
+                  materialsMap[lid] = mats;
+                } catch (e) {
+                  materialsMap[lid] = [];
+                }
+              })
+            );
 
             if (course.sections) {
               setSections(course.sections.map(sec => ({
@@ -218,6 +251,7 @@ const CourseEditor = () => {
                     uploading: false,
                     uploadVerified: isVerified,
                     fileName: l.content_url ? l.content_url.split('/').pop() : '',
+                    materials: materialsMap[l.lesson_id] || [],
                     speakingSentences: l.speaking_sentences || '',
                     speakingQuestions: l.speaking_questions || '',
                     quizId: attachedQuiz?.id || null,
@@ -236,6 +270,7 @@ const CourseEditor = () => {
           setErrorMsg('Không thể tải chi tiết khóa học từ máy chủ.');
         } finally {
           setLoading(false);
+          setLoadingState('idle');
         }
       };
       fetchCourse();
@@ -299,6 +334,7 @@ const CourseEditor = () => {
       contentUrl: '',
       youtubeUrl: '',
       uploading: false,
+      materials: [],
       speakingSentences: '',
       speakingQuestions: '',
       quizQuestions: [],
@@ -348,6 +384,330 @@ const CourseEditor = () => {
     }
   };
 
+  // Upload & Delete PDF Materials (Tài liệu đính kèm bài học)
+  const triggerMaterialFileSelect = (sIdx, lIdx) => {
+    const refKey = `${sIdx}-${lIdx}`;
+    if (materialFileInputRef.current[refKey]) {
+      materialFileInputRef.current[refKey].click();
+    }
+  };
+
+  const handleSelectMaterialFile = (sIdx, lIdx, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const lesson = sections[sIdx].lessons[lIdx];
+    const isPersisted = typeof lesson.id === 'number' && lesson.id < 1000000000000;
+    if (!isPersisted) {
+      showToast('Vui lòng nhấn "Lưu bản nháp" hoặc "Xuất bản" để tạo bài học trên hệ thống trước khi đính kèm tài liệu PDF.', 'warning', { duration: 6000 });
+      return;
+    }
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'pdf' && file.type !== 'application/pdf') {
+      showToast('Hệ thống chỉ hỗ trợ tệp định dạng PDF. Vui lòng chọn tệp .pdf', 'warning');
+      return;
+    }
+
+    const sizeMb = file.size / (1024 * 1024);
+    if (sizeMb > 50) {
+      showToast(`Dung lượng tệp (${sizeMb.toFixed(1)} MB) vượt quá giới hạn 50 MB.`, 'error');
+      return;
+    }
+
+    setStagedMaterials(prev => ({ ...prev, [lesson.id]: file }));
+    showToast(`Đã chọn tài liệu "${file.name}". Bạn có thể "Xem trước" ngay bây giờ hoặc nhấn "Tải tài liệu" để lưu vào bài học.`, 'info');
+  };
+
+  const handlePreviewStagedMaterial = (lessonId) => {
+    const file = stagedMaterials[lessonId];
+    if (!file) return;
+    setPreviewPdfModal({
+      isOpen: true,
+      file,
+      url: '',
+      downloadUrl: '',
+      title: file.name || 'Tài liệu PDF bài học',
+      sizeKb: Math.round(file.size / 1024)
+    });
+  };
+
+  const handleCancelStagedMaterial = (lessonId) => {
+    setStagedMaterials(prev => {
+      const copy = { ...prev };
+      delete copy[lessonId];
+      return copy;
+    });
+  };
+
+  const handleConfirmUploadMaterial = async (sIdx, lIdx) => {
+    const lesson = sections[sIdx].lessons[lIdx];
+    const file = stagedMaterials[lesson.id];
+    if (!file) return;
+
+    setUploadingMaterials(prev => ({ ...prev, [lesson.id]: true }));
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const newMaterial = await uploadLessonMaterial(lesson.id, formData);
+      if (newMaterial) {
+        setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+          ...sec,
+          lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+            ...les,
+            materials: [...(les.materials || []), newMaterial]
+          })
+        }));
+        handleCancelStagedMaterial(lesson.id);
+        showToast(`Đã tải lên tài liệu "${file.name}" thành công! Hệ thống AI đã tự động nạp nội dung để hỗ trợ học viên.`, 'success');
+      }
+    } catch (err) {
+      console.error('Lỗi tải tài liệu PDF:', err);
+      showToast(err.response?.data?.message || 'Không thể tải lên tài liệu PDF. Vui lòng thử lại.', 'error');
+    } finally {
+      setUploadingMaterials(prev => ({ ...prev, [lesson.id]: false }));
+    }
+  };
+
+  const handleUploadMaterialFile = async (sIdx, lIdx, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const lesson = sections[sIdx].lessons[lIdx];
+    const isPersisted = typeof lesson.id === 'number' && lesson.id < 1000000000000;
+    if (!isPersisted) {
+      showToast('Vui lòng nhấn "Lưu bản nháp" hoặc "Xuất bản" để tạo bài học trên hệ thống trước khi tải tài liệu PDF đính kèm.', 'warning', { duration: 6000 });
+      return;
+    }
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'pdf' && file.type !== 'application/pdf') {
+      showToast('Hệ thống chỉ hỗ trợ tệp định dạng PDF. Vui lòng chọn tệp .pdf', 'warning');
+      return;
+    }
+
+    const sizeMb = file.size / (1024 * 1024);
+    if (sizeMb > 50) {
+      showToast(`Dung lượng tệp (${sizeMb.toFixed(1)} MB) vượt quá giới hạn 50 MB.`, 'error');
+      return;
+    }
+
+    setUploadingMaterials(prev => ({ ...prev, [lesson.id]: true }));
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const newMaterial = await uploadLessonMaterial(lesson.id, formData);
+      if (newMaterial) {
+        setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+          ...sec,
+          lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+            ...les,
+            materials: [...(les.materials || []), newMaterial]
+          })
+        }));
+        showToast(`Đã tải lên tài liệu "${file.name}" thành công! Hệ thống AI đã tự động nạp nội dung để hỗ trợ học viên.`, 'success');
+      }
+    } catch (err) {
+      console.error('Lỗi tải tài liệu PDF:', err);
+      showToast(err.response?.data?.message || 'Không thể tải lên tài liệu PDF. Vui lòng thử lại.', 'error');
+    } finally {
+      setUploadingMaterials(prev => ({ ...prev, [lesson.id]: false }));
+    }
+  };
+
+  const handleDeleteMaterial = async (sIdx, lIdx, materialId, materialName) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa tài liệu "${materialName || 'này'}" khỏi bài học?`)) {
+      return;
+    }
+    const lesson = sections[sIdx].lessons[lIdx];
+    try {
+      await deleteLessonMaterial(lesson.id, materialId);
+      setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+        ...sec,
+        lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+          ...les,
+          materials: (les.materials || []).filter(m => m.id !== materialId)
+        })
+      }));
+      showToast('Đã xóa tài liệu đính kèm thành công.', 'info');
+    } catch (err) {
+      console.error('Lỗi xóa tài liệu:', err);
+      showToast(err.response?.data?.message || 'Không thể xóa tài liệu. Vui lòng thử lại.', 'error');
+    }
+  };
+
+  const handlePreviewMaterial = (mat) => {
+    if (!mat) return;
+    if (mat.file) {
+      setPreviewPdfModal({
+        isOpen: true,
+        file: mat.file,
+        url: '',
+        downloadUrl: '',
+        title: mat.name || mat.file.name || 'Tài liệu PDF bài học',
+        sizeKb: Math.round(mat.file.size / 1024)
+      });
+      return;
+    }
+    if (!mat.url) return;
+    const token = localStorage.getItem('token');
+    let previewUrl = mat.url;
+    const sep = previewUrl.includes('?') ? '&' : '?';
+    previewUrl = `${previewUrl}${sep}stream=true`;
+    if (token) {
+      previewUrl = `${previewUrl}&token=${encodeURIComponent(token)}`;
+    }
+    const downloadUrl = mat.url.replace('/preview', '/download') + (token ? `?token=${encodeURIComponent(token)}` : '');
+    setPreviewPdfModal({
+      isOpen: true,
+      url: previewUrl,
+      file: null,
+      downloadUrl,
+      title: mat.name || 'Tài liệu PDF bài học',
+      sizeKb: mat.sizeKb || Math.round((mat.sizeBytes || 0) / 1024)
+    });
+  };
+
+  const handlePreviewLessonPdf = (lesson) => {
+    if (!lesson) return;
+    // 1. Nếu có file vừa chọn cục bộ chưa upload:
+    const localFile = lesson.stagedPdfFile || lesson.localPdfFile;
+    if (localFile) {
+      setPreviewPdfModal({
+        isOpen: true,
+        file: localFile,
+        url: '',
+        downloadUrl: '',
+        title: localFile.name || lesson.title || 'Bài giảng PDF',
+        sizeKb: Math.round(localFile.size / 1024)
+      });
+      return;
+    }
+    // 2. Nếu đã upload lên server:
+    if (lesson.contentUrl || lesson.storageKey) {
+      const token = localStorage.getItem('token');
+      const isPersisted = typeof lesson.id === 'number' && lesson.id < 1000000000000;
+      let previewUrl = isPersisted
+        ? `${apiClient.defaults.baseURL || '/api'}/lessons/${lesson.id}/pdf`
+        : lesson.contentUrl;
+      const sep = previewUrl.includes('?') ? '&' : '?';
+      previewUrl = `${previewUrl}${sep}stream=true`;
+      if (token) {
+        previewUrl = `${previewUrl}&token=${encodeURIComponent(token)}`;
+      }
+      const downloadUrl = isPersisted
+        ? `${apiClient.defaults.baseURL || '/api'}/lessons/${lesson.id}/pdf/download${token ? `?token=${encodeURIComponent(token)}` : ''}`
+        : '';
+      setPreviewPdfModal({
+        isOpen: true,
+        url: previewUrl,
+        file: null,
+        downloadUrl,
+        title: lesson.fileName || lesson.title || 'Bài giảng PDF',
+        sizeKb: lesson.sizeKb || (lesson.sizeBytes ? Math.round(lesson.sizeBytes / 1024) : 0)
+      });
+    }
+  };
+
+  const executeLessonFileUpload = async (sIdx, lIdx, file) => {
+    if (!file) return;
+    const isPdfFile = file.type === 'application/pdf' || file.name.split('.').pop().toLowerCase() === 'pdf';
+    const fileSizeMB = file.size / (1024 * 1024);
+    const fileSizeFormatted = fileSizeMB >= 1
+      ? `${fileSizeMB.toFixed(1)} MB`
+      : `${(file.size / 1024).toFixed(0)} KB`;
+
+    setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+      ...sec,
+      lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+        ...les,
+        localPdfFile: isPdfFile ? file : null,
+        uploading: true,
+        uploadError: null,
+        uploadProgress: 0
+      })
+    }));
+    setErrorMsg('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('courseName', courseName.trim() || 'Khoa hoc chua dat ten');
+    if (courseId) formData.append('courseId', String(courseId));
+    formData.append('sectionName', sections[sIdx].title || `Chuong ${sIdx + 1}`);
+    formData.append('sectionOrder', String(sIdx + 1));
+    formData.append('lessonName', sections[sIdx].lessons[lIdx].title || `Bai ${lIdx + 1}`);
+    formData.append('lessonOrder', String(lIdx + 1));
+
+    try {
+      const response = await apiClient.post('/courses/upload', formData, {
+        timeout: 300000,
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setSections(prev => {
+              return prev.map((sec, si) => si !== sIdx ? sec : {
+                ...sec,
+                lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+                  ...les,
+                  uploadProgress: percent
+                })
+              });
+            });
+          }
+        }
+      });
+
+      if (response.data && response.data.success) {
+        if (!response.data.pendingUploadId || !response.data.storageKey || !response.data.storageBucket ||
+            !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
+          throw new Error('Phản hồi thiếu metadata bắt buộc. Vui lòng thử tải lại.');
+        }
+        setSections(prev => {
+          return prev.map((sec, si) => si !== sIdx ? sec : {
+            ...sec,
+            lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+              ...applySuccessfulUploadToLesson(les, response.data, file),
+              stagedPdfFile: null,
+              uploadProgress: 100,
+              fileSizeFormatted
+            })
+          });
+        });
+        showToast(`Đã tải lên tệp "${file.name}" thành công!`, 'success');
+      } else {
+        throw new Error(response.data?.message || 'Không thể xác thực tệp.');
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải file:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Lỗi khi tải file lên máy chủ.';
+      setErrorMsg(errMsg);
+      setSections(prev => {
+        return prev.map((sec, si) => si !== sIdx ? sec : {
+          ...sec,
+          lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+            ...les,
+            uploading: false,
+            uploadVerified: false,
+            uploadError: errMsg,
+            uploadProgress: 0
+          })
+        });
+      });
+    }
+  };
+
+  const handleUploadStagedLessonPdf = async (sIdx, lIdx) => {
+    const lesson = sections[sIdx].lessons[lIdx];
+    const file = lesson.stagedPdfFile || lesson.localPdfFile;
+    if (!file) return;
+    await executeLessonFileUpload(sIdx, lIdx, file);
+  };
+
   const handleFileChange = async (sIdx, lIdx, e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -391,82 +751,26 @@ const CourseEditor = () => {
       ? `${fileSizeMB.toFixed(1)} MB`
       : `${(file.size / 1024).toFixed(0)} KB`;
 
-    const newSections = [...sections];
-    newSections[sIdx].lessons[lIdx] = {
-      ...newSections[sIdx].lessons[lIdx],
-      uploading: true,
-      uploadError: null,
-      uploadProgress: 0
-    };
-    setSections(newSections);
-    setErrorMsg('');
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('courseName', courseName.trim() || 'Khoa hoc chua dat ten');
-    if (courseId) formData.append('courseId', String(courseId));
-    formData.append('sectionName', sections[sIdx].title || `Chuong ${sIdx + 1}`);
-    formData.append('sectionOrder', String(sIdx + 1));
-    formData.append('lessonName', sections[sIdx].lessons[lIdx].title || `Bai ${lIdx + 1}`);
-    formData.append('lessonOrder', String(lIdx + 1));
-
-    try {
-      const response = await apiClient.post('/courses/upload', formData, {
-        timeout: 300000,
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setSections(prev => {
-              return prev.map((sec, si) => si !== sIdx ? sec : {
-                ...sec,
-                lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
-                  ...les,
-                  uploadProgress: percent
-                })
-              });
-            });
-          }
-        }
-      });
-
-      if (response.data && response.data.success) {
-        if (!response.data.pendingUploadId || !response.data.storageKey || !response.data.storageBucket ||
-            !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
-          throw new Error('Phản hồi thiếu metadata bắt buộc. Vui lòng thử tải lại.');
-        }
-        setSections(prev => {
-          return prev.map((sec, si) => si !== sIdx ? sec : {
-            ...sec,
-            lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
-              ...applySuccessfulUploadToLesson(les, response.data, file),
-              uploadProgress: 100,
-              fileSizeFormatted
-            })
-          });
-        });
-      } else {
-        throw new Error(response.data?.message || 'Không thể xác thực tệp.');
-      }
-    } catch (err) {
-      console.error('Lỗi khi tải file:', err);
-      const errMsg = err.response?.data?.message || err.message || 'Lỗi khi tải file lên máy chủ.';
-      setErrorMsg(errMsg);
-      setSections(prev => {
-        return prev.map((sec, si) => si !== sIdx ? sec : {
-          ...sec,
-          lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
-            ...les,
-            uploading: false,
-            uploadVerified: false,
-            uploadError: errMsg,
-            uploadProgress: 0
-          })
-        });
-      });
-    } finally {
+    // Nếu là bài học PDF: Lưu vào stagedPdfFile để giảng viên xem trước trước khi tải lên
+    if (lessonType === 'pdf') {
+      const newSections = [...sections];
+      newSections[sIdx].lessons[lIdx] = {
+        ...newSections[sIdx].lessons[lIdx],
+        stagedPdfFile: file,
+        localPdfFile: file,
+        fileName: file.name,
+        fileSizeFormatted,
+        uploadError: null
+      };
+      setSections(newSections);
+      showToast(`Đã chọn bài giảng PDF "${file.name}". Bạn có thể "Xem trước" ngay bây giờ hoặc nhấn "Tải lên" để lưu.`, 'info');
       if (e.target) e.target.value = '';
+      return;
     }
+
+    // Với Video: Tải lên trực tiếp
+    await executeLessonFileUpload(sIdx, lIdx, file);
+    if (e.target) e.target.value = '';
   };
 
   // ── Quizzes Handlers ──────────────────────────────────────────────────────
@@ -755,6 +1059,7 @@ const CourseEditor = () => {
     }
 
     setLoading(true);
+    setLoadingState(status === 0 ? 'saving_draft' : 'publishing');
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -816,6 +1121,7 @@ const CourseEditor = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
+      setLoadingState('idle');
       setPolicyModalOpen(false);
     }
   };
@@ -1097,9 +1403,9 @@ const CourseEditor = () => {
                                       rel="noreferrer"
                                       className="btn-upload-media uploaded"
                                       style={{ textDecoration: 'none', padding: '6px 12px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                                      title="Xem trước video trên YouTube"
+                                      title="Mở video trên YouTube trong tab mới"
                                     >
-                                      <FiCheckCircle /> <span>Xem thử ↗</span>
+                                      <FiExternalLink /> <span>Xem trên YouTube ↗</span>
                                     </a>
                                   ) : (
                                     <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
@@ -1116,28 +1422,65 @@ const CourseEditor = () => {
                                     onChange={(e) => handleFileChange(sIdx, lIdx, e)}
                                     accept={lesson.type === 'video' ? 'video/mp4' : 'application/pdf'}
                                   />
-                                  <button 
-                                    type="button"
-                                    className={`btn-upload-media ${lesson.contentUrl ? 'uploaded' : ''}`}
-                                    onClick={() => triggerFileSelect(sIdx, lIdx)}
-                                    disabled={lesson.uploading}
-                                    title={lesson.type === 'video'
-                                      ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
-                                      : 'Chỉ nhận PDF — Tối đa 500 MB'
-                                    }
-                                  >
-                                    {lesson.uploading ? (
-                                      <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
-                                    ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
-                                      <><FiUpload /> <span>Cần tải lại</span></>
-                                    ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
-                                      <><FiUpload /> <span>Chờ kiểm định</span></>
-                                    ) : lesson.contentUrl ? (
-                                      <><FiCheckCircle /> <span>Đã tải lên</span></>
-                                    ) : (
-                                      <><FiUpload /> <span>Tải lên {lesson.type === 'video' ? 'Video' : 'PDF'}</span></>
-                                    )}
-                                  </button>
+                                   {lesson.type === 'pdf' && (lesson.stagedPdfFile || lesson.localPdfFile) && !lesson.contentUrl ? (
+                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                       <button 
+                                         type="button"
+                                         className="btn-upload-media"
+                                         style={{ background: 'rgba(37, 99, 235, 0.1)', borderColor: '#2563eb', color: '#2563eb', fontWeight: 600 }}
+                                         onClick={() => handlePreviewLessonPdf(lesson)}
+                                         title="Xem trước bài giảng PDF bằng HTML5 Canvas trực tiếp trên website"
+                                       >
+                                         <FiEye /> <span>Xem trước</span>
+                                       </button>
+                                       <button 
+                                         type="button"
+                                         className="btn-upload-media"
+                                         style={{ background: '#16a34a', borderColor: '#16a34a', color: '#ffffff', fontWeight: 600 }}
+                                         onClick={() => handleUploadStagedLessonPdf(sIdx, lIdx)}
+                                         disabled={lesson.uploading}
+                                         title="Tải tệp PDF này lên máy chủ"
+                                       >
+                                         {lesson.uploading ? (
+                                           <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
+                                         ) : (
+                                           <><FiUpload /> <span>Tải lên</span></>
+                                         )}
+                                       </button>
+                                       <button 
+                                         type="button"
+                                         className="btn-upload-media"
+                                         onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                         disabled={lesson.uploading}
+                                         title="Chọn tệp PDF khác"
+                                       >
+                                         <FiRefreshCw /> <span>Đổi tệp</span>
+                                       </button>
+                                     </div>
+                                   ) : (
+                                     <button 
+                                       type="button"
+                                       className={`btn-upload-media ${lesson.contentUrl ? 'uploaded' : ''}`}
+                                       onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                       disabled={lesson.uploading}
+                                       title={lesson.type === 'video'
+                                         ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
+                                         : 'Chỉ nhận PDF — Tối đa 500 MB'
+                                       }
+                                     >
+                                       {lesson.uploading ? (
+                                         <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
+                                       ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
+                                         <><FiUpload /> <span>Cần tải lại</span></>
+                                       ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
+                                         <><FiUpload /> <span>Chờ kiểm định</span></>
+                                       ) : lesson.contentUrl ? (
+                                         <><FiCheckCircle /> <span>Đã tải lên</span></>
+                                       ) : (
+                                         <><FiUpload /> <span>{lesson.type === 'video' ? 'Tải lên Video' : 'Chọn tệp PDF'}</span></>
+                                       )}
+                                     </button>
+                                   )}
                                 </>
                               )}
 
@@ -1252,38 +1595,21 @@ const CourseEditor = () => {
 
                               <span className="toolbar-divider" />
 
-                              {/* Speaking Exercise Toggle */}
+                              {/* PDF Materials Toggle */}
                               <button
                                 type="button"
-                                onClick={() => setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: !prev[lesson.id] }))}
-                                className={`btn-speaking-pill ${expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions ? 'active' : ''}`}
+                                onClick={() => setExpandedMaterials(prev => ({ ...prev, [lesson.id]: !prev[lesson.id] }))}
+                                className={`btn-materials-pill ${(lesson.materials && lesson.materials.length > 0) || expandedMaterials[lesson.id] ? 'active' : ''}`}
+                                title="Thêm tài liệu học tập hoặc slide PDF cho bài học"
                               >
-                                <FiMessageSquare />
+                                <FiFileText className="media-pdf-icon" />
                                 <span>
-                                  {expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions
-                                    ? 'Ẩn bài tập speaking'
-                                    : 'Thêm bài tập speaking'
+                                  {lesson.materials && lesson.materials.length > 0
+                                    ? `Tài liệu PDF (${lesson.materials.length})`
+                                    : 'Thêm tài liệu PDF'
                                   }
                                 </span>
                               </button>
-
-                              {(lesson.speakingSentences || lesson.speakingQuestions) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (window.confirm("Bạn có chắc chắn muốn xóa bài tập Speaking này?")) {
-                                      handleLessonChange(sIdx, lIdx, 'speakingSentences', '');
-                                      handleLessonChange(sIdx, lIdx, 'speakingQuestions', '');
-                                      setExpandedSpeaking(prev => ({ ...prev, [lesson.id]: false }));
-                                    }
-                                  }}
-                                  className="btn-toolbar-link danger"
-                                  title="Xóa bài tập Speaking"
-                                >
-                                  <FiTrash2 />
-                                  <span>Xóa speaking</span>
-                                </button>
-                              )}
                             </div>
 
                             {/* Right side of toolbar: File details info pill */}
@@ -1324,7 +1650,16 @@ const CourseEditor = () => {
                                   <span className="storage-badge">
                                     Cloudflare R2
                                   </span>
-                                  {lesson.contentUrl.startsWith('http') && (
+                                  {lesson.type === 'pdf' ? (
+                                    <button 
+                                      type="button" 
+                                      className="view-link"
+                                      onClick={() => handlePreviewLessonPdf(lesson)}
+                                      title="Xem trước bài giảng PDF trực tiếp trên website"
+                                    >
+                                      Xem trước
+                                    </button>
+                                  ) : lesson.contentUrl.startsWith('http') && (
                                     <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="view-link">
                                       Xem tệp
                                     </a>
@@ -1334,34 +1669,131 @@ const CourseEditor = () => {
                             )}
                           </div>
 
-                          {/* Speaking panel */}
-                          {(expandedSpeaking[lesson.id] || lesson.speakingSentences || lesson.speakingQuestions) && (
-                            <div className="card-speaking-panel">
-                              <div className="speaking-col">
-                                <span className="speaking-label">
-                                  <span>1. Câu luyện phát âm AI (Đọc mẫu - Cú pháp: Tiếng Anh | Bản dịch):</span>
-                                  <span className="optional-hint">(Tùy chọn)</span>
-                                </span>
-                                <textarea
-                                  value={lesson.speakingSentences || ''}
-                                  onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingSentences', e.target.value)}
-                                  placeholder="Ví dụ:&#10;Welcome to our speaking class. | Chào mừng bạn đến với lớp học.&#10;Practice makes perfect. | Luyện tập tạo nên sự hoàn hảo."
-                                  rows={3}
-                                />
+                          {/* PDF Materials Panel */}
+                          {expandedMaterials[lesson.id] && (
+                            <div className="card-materials-panel">
+                              <div className="materials-panel-header">
+                                <div className="materials-header-title">
+                                  <FiFileText className="title-icon" />
+                                  <div>
+                                    <h4>Tài liệu học tập & Slide PDF đính kèm</h4>
+                                    <p>Học viên có thể xem trực tiếp qua trình đọc PDF chuyên dụng, ghi chú thông minh và tra cứu cùng Trợ lý AI.</p>
+                                  </div>
+                                </div>
+                                <div className="materials-header-actions">
+                                  <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    ref={el => materialFileInputRef.current[`${sIdx}-${lIdx}`] = el}
+                                    style={{ display: 'none' }}
+                                    onChange={(e) => handleSelectMaterialFile(sIdx, lIdx, e)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => triggerMaterialFileSelect(sIdx, lIdx)}
+                                    disabled={uploadingMaterials[lesson.id]}
+                                    className="btn-upload-material"
+                                    title="Chọn tệp PDF từ máy tính để xem trước hoặc tải lên (Tối đa 50 MB)"
+                                  >
+                                    <FiUpload />
+                                    <span>Chọn tệp PDF</span>
+                                  </button>
+                                </div>
                               </div>
-                              
-                              <div className="speaking-col">
-                                <span className="speaking-label">
-                                  <span>2. Câu hỏi phản xạ nói Q&A (Cú pháp: Câu hỏi | Bản dịch):</span>
-                                  <span className="optional-hint">(Tùy chọn)</span>
-                                </span>
-                                <textarea
-                                  value={lesson.speakingQuestions || ''}
-                                  onChange={(e) => handleLessonChange(sIdx, lIdx, 'speakingQuestions', e.target.value)}
-                                  placeholder="Ví dụ:&#10;What did you do last weekend? | Cuối tuần trước bạn đã làm gì?&#10;Tell me about your family. | Hãy chia sẻ về gia đình bạn."
-                                  rows={3}
-                                />
-                              </div>
+
+                              {/* Khối tài liệu vừa chọn (Chưa tải lên server) */}
+                              {stagedMaterials[lesson.id] && (
+                                <div className="staged-material-card">
+                                  <div className="staged-material-info">
+                                    <div className="staged-badge">
+                                      <FiFileText />
+                                      <span>Tài liệu vừa chọn (Chưa tải lên server)</span>
+                                    </div>
+                                    <div className="staged-filename" title={stagedMaterials[lesson.id].name}>
+                                      {stagedMaterials[lesson.id].name}
+                                    </div>
+                                    <div className="staged-filesize">
+                                      {Math.round(stagedMaterials[lesson.id].size / 1024)} KB • Sẵn sàng xem trước hoặc tải lên máy chủ
+                                    </div>
+                                  </div>
+                                  <div className="staged-material-actions">
+                                    <button
+                                      type="button"
+                                      className="btn-staged-action preview"
+                                      onClick={() => handlePreviewStagedMaterial(lesson.id)}
+                                      title="Xem trước tài liệu PDF ngay trên website bằng HTML5 Canvas"
+                                    >
+                                      <FiEye />
+                                      <span>Xem trước</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-staged-action upload"
+                                      disabled={uploadingMaterials[lesson.id]}
+                                      onClick={() => handleConfirmUploadMaterial(sIdx, lIdx)}
+                                      title="Tải tệp này lên lưu trữ Cloudflare R2"
+                                    >
+                                      {uploadingMaterials[lesson.id] ? (
+                                        <>
+                                          <FiLoader className="spin" />
+                                          <span>Đang tải lên...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <FiUpload />
+                                          <span>Tải tài liệu</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-staged-action cancel"
+                                      disabled={uploadingMaterials[lesson.id]}
+                                      onClick={() => handleCancelStagedMaterial(lesson.id)}
+                                      title="Hủy chọn tệp này"
+                                    >
+                                      <FiX />
+                                      <span>Hủy</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* List of uploaded materials */}
+                              {lesson.materials && lesson.materials.length > 0 ? (
+                                <div className="materials-list">
+                                  {lesson.materials.map((mat) => (
+                                    <div key={mat.id} className="material-item-row">
+                                      <div className="material-item-main">
+                                        <span className="material-pdf-badge">PDF</span>
+                                        <div className="material-meta-block">
+                                          <span className="material-name" title={mat.name}>{mat.name}</span>
+                                          <span className="material-details">
+                                            {mat.sizeKb ? `${mat.sizeKb} KB` : (mat.sizeBytes ? `${Math.round(mat.sizeBytes / 1024)} KB` : 'Tài liệu học tập')}
+                                            {mat.createdAt ? ` • Đã tải lên ${new Date(mat.createdAt).toLocaleDateString('vi-VN')}` : ''}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="material-item-actions">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteMaterial(sIdx, lIdx, mat.id, mat.name)}
+                                          className="btn-material-action delete"
+                                          title="Xóa tài liệu này khỏi bài học"
+                                        >
+                                          <FiTrash2 />
+                                          <span>Xóa</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : !stagedMaterials[lesson.id] && (
+                                <div className="materials-empty-state">
+                                  <FiFileText className="empty-icon" />
+                                  <span>Chưa có tài liệu đính kèm nào. Nhấn <strong>"Chọn tệp PDF"</strong> để xem trước và tải lên slide bài giảng hoặc tài liệu đọc cho bài học này.</span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1628,18 +2060,22 @@ const CourseEditor = () => {
         canUseAi={true}
       />
 
-      {/* Mini loading overlay for full publishing */}
-      {loading && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.4)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, color: '#fff', fontSize: '18px', fontWeight: '700'
-        }}>
-          <div style={{ background: '#0f172a', padding: '32px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-            <FiLoader className="spin" style={{ fontSize: '36px' }} />
-            <span>Đang lưu thông tin khóa học...</span>
-          </div>
-        </div>
-      )}
+      {/* Impeccable Loading Modal (Initial load, saving draft, publishing) */}
+      <CourseEditorLoadingModal
+        isOpen={loadingState !== 'idle' || loading}
+        mode={loadingState}
+      />
+
+      {/* In-App PDF Preview Modal (Không cần tải file về máy, mở trực tiếp) */}
+      <MaterialPdfPreviewModal
+        isOpen={previewPdfModal.isOpen}
+        pdfUrl={previewPdfModal.url}
+        file={previewPdfModal.file}
+        downloadUrl={previewPdfModal.downloadUrl}
+        title={previewPdfModal.title}
+        sizeKb={previewPdfModal.sizeKb}
+        onClose={() => setPreviewPdfModal(prev => ({ ...prev, isOpen: false, file: null }))}
+      />
     </div>
   );
 };
