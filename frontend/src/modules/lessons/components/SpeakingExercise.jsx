@@ -487,19 +487,19 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                     <div className="text-[11px] font-bold uppercase tracking-wider text-slate-450">Điểm thành phần (Rubric):</div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10.5px] text-slate-500">Phát âm (35%)</div>
+                        <div className="text-[10.5px] text-slate-500">Phát âm (~33%)</div>
                         <div className="text-sm font-extrabold text-smart-indigo">{result.components.pronunciation || 0}%</div>
                       </div>
                       <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10.5px] text-slate-500">Khớp nội dung (30%)</div>
+                        <div className="text-[10.5px] text-slate-500">Khớp nội dung (~33%)</div>
                         <div className="text-sm font-extrabold text-blue-600">{result.components.contentAccuracy || 0}%</div>
                       </div>
                       <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10.5px] text-slate-500">Độ trôi chảy (20%)</div>
+                        <div className="text-[10.5px] text-slate-500">Độ trôi chảy (~33%)</div>
                         <div className="text-sm font-extrabold text-emerald-600">{result.components.fluency || 0}%</div>
                       </div>
                       <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10.5px] text-slate-500">Hoàn thành (15%)</div>
+                        <div className="text-[10.5px] text-slate-500">Hoàn thành (Tham khảo)</div>
                         <div className="text-sm font-extrabold text-purple-600">{result.components.completeness || 0}%</div>
                       </div>
                     </div>
@@ -720,44 +720,78 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
                   )}
                 </div>
 
-                {/* Score Cap Callout if applied */}
-                {result && result.scoreCapApplied && !isLoading && (
-                  <div className="my-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl text-xs flex items-start space-x-2 text-amber-800 dark:text-amber-300 animate-fade">
-                    <FiAlertCircle className="text-base shrink-0 mt-0.5" />
+                {/* Score Cap / Severe Off-Topic Callout (relevanceGate < 30) */}
+                {result && (result.scoreCapApplied || result.offTopic) && !isLoading && (
+                  <div className="my-3 p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-xl text-xs flex items-start space-x-2 text-rose-800 dark:text-rose-300 animate-fade">
+                    <FiAlertCircle className="text-base shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
                     <div className="font-semibold">
-                      {result.scoreCapReason || "Điểm tổng bị giới hạn do câu trả lời chưa bám sát trọng tâm câu hỏi."}
+                      {result.scoreCapReason || result.relevanceWarning || "Điểm tổng bị giới hạn do câu trả lời chưa bám sát trọng tâm câu hỏi."}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mild Relevance Warning Callout (30 <= relevanceGate < 60) - Không trừ điểm */}
+                {result && result.relevanceWarning && !result.scoreCapApplied && !result.offTopic && !isLoading && (
+                  <div className="my-3 p-3 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 rounded-xl text-xs flex items-start space-x-2 text-sky-800 dark:text-sky-300 animate-fade">
+                    <FiAlertCircle className="text-base shrink-0 mt-0.5 text-sky-600 dark:text-sky-400" />
+                    <div className="font-medium">
+                      {result.relevanceWarning}
                     </div>
                   </div>
                 )}
 
                 {/* Component Scores for Q&A */}
-                {result && result.components && !isLoading && (
-                  <div className="my-3 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/50 space-y-2.5">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-450">Điểm thành phần Q&A:</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10px] text-slate-500">Trọng tâm (20%)</div>
-                        <div className="text-xs font-extrabold text-smart-indigo">{result.components.relevance || 0}%</div>
+                {result && result.components && !isLoading && (() => {
+                  const gateVal = Number(result.components.relevanceGate ?? result.components.relevance ?? 0);
+                  const gateBadge = gateVal >= 60
+                    ? { text: 'Đạt', cls: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' }
+                    : gateVal >= 30
+                    ? { text: 'Cảnh báo', cls: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' }
+                    : { text: 'Lạc đề', cls: 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800' };
+
+                  return (
+                    <div className="my-3 p-3.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/50 space-y-2.5">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-450">Điểm thành phần Q&A (Chuẩn IELTS):</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                          <div className="text-[10px] text-slate-500">Trôi chảy & Mạch lạc (25%)</div>
+                          <div className="text-xs sm:text-sm font-extrabold text-pink-600">
+                            {result.components.fluencyCoherence ?? result.components.fluency ?? 0}%
+                          </div>
+                        </div>
+                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                          <div className="text-[10px] text-slate-500">Từ vựng (25%)</div>
+                          <div className="text-xs sm:text-sm font-extrabold text-emerald-600">
+                            {result.components.lexicalResource ?? result.components.vocabulary ?? 0}%
+                          </div>
+                        </div>
+                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                          <div className="text-[10px] text-slate-500">Ngữ pháp (25%)</div>
+                          <div className="text-xs sm:text-sm font-extrabold text-blue-600">
+                            {result.components.grammaticalRange ?? result.components.grammar ?? 0}%
+                          </div>
+                        </div>
+                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
+                          <div className="text-[10px] text-slate-500">Phát âm (25%)</div>
+                          <div className="text-xs sm:text-sm font-extrabold text-purple-600">
+                            {result.components.pronunciation ?? 0}%
+                          </div>
+                        </div>
                       </div>
-                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10px] text-slate-500">Ngữ pháp (20%)</div>
-                        <div className="text-xs font-extrabold text-blue-600">{result.components.grammar || 0}%</div>
-                      </div>
-                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10px] text-slate-500">Từ vựng (15%)</div>
-                        <div className="text-xs font-extrabold text-emerald-600">{result.components.vocabulary || 0}%</div>
-                      </div>
-                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10px] text-slate-500">Phát âm (25%)</div>
-                        <div className="text-xs font-extrabold text-purple-600">{result.components.pronunciation || 0}%</div>
-                      </div>
-                      <div className="p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700">
-                        <div className="text-[10px] text-slate-500">Trôi chảy (20%)</div>
-                        <div className="text-xs font-extrabold text-pink-600">{result.components.fluency || 0}%</div>
+
+                      {/* Ô Gate riêng biệt (kiểm soát lạc đề, không tính % vào điểm) */}
+                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded-lg border border-slate-150 dark:border-slate-700 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                          <span className="font-semibold text-slate-700 dark:text-slate-200">Độ bám sát chủ đề (Gate):</span>
+                          <span className="text-[10.5px] text-slate-400 hidden sm:inline">(Kiểm soát lạc đề — không tính % vào điểm IELTS)</span>
+                        </div>
+                        <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border ${gateBadge.cls}`}>
+                          {gateBadge.text}
+                        </span>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Error Banner if API fails */}
                 {errorMsg && !isLoading && (

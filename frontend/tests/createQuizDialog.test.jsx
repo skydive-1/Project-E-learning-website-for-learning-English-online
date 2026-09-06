@@ -84,4 +84,100 @@ describe('CreateQuizDialog shadcn UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /Bắt đầu tạo câu hỏi/i }));
     expect(onGenerateAi).toHaveBeenCalledTimes(1);
   });
+
+  it('displays "Chưa chọn đáp án đúng" badge and red outline when question has no correct_answer', () => {
+    const questionWithoutAnswer = {
+      question_text: 'Sample question without answer',
+      question_type: 'multiple_choice',
+      options: ['Option A', 'Option B', 'Option C', 'Option D'],
+      correct_answer: '',
+      explanation: ''
+    };
+
+    const questions = [questionWithoutAnswer];
+    render(
+      <CreateQuizDialog
+        open
+        onOpenChange={vi.fn()}
+        createMode="manual"
+        onCreateModeChange={vi.fn()}
+        quizTitle="Test Quiz"
+        onQuizTitleChange={vi.fn()}
+        quizDescription=""
+        onQuizDescriptionChange={vi.fn()}
+        quizDifficulty="Easy"
+        onQuizDifficultyChange={vi.fn()}
+        quizTimeLimit={10}
+        onQuizTimeLimitChange={vi.fn()}
+        isPrivate={false}
+        onPrivateChange={vi.fn()}
+        pinCode=""
+        onPinCodeChange={vi.fn()}
+        questions={questions}
+        onQuestionsChange={vi.fn()}
+        onAddQuestion={vi.fn()}
+        submitting={false}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Chưa chọn đáp án đúng')).toBeInTheDocument();
+  });
+
+  it('prevents form submission and scrolls to invalid question when correct_answer is missing', () => {
+    const handleSubmit = vi.fn();
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    const questions = [
+      {
+        question_text: 'Valid Question',
+        question_type: 'multiple_choice',
+        options: ['A1', 'B1', 'C1', 'D1'],
+        correct_answer: 'A',
+        explanation: ''
+      },
+      {
+        question_text: 'Question without answer',
+        question_type: 'multiple_choice',
+        options: ['A2', 'B2', 'C2', 'D2'],
+        correct_answer: '',
+        explanation: ''
+      }
+    ];
+
+    render(
+      <CreateQuizDialog
+        open
+        onOpenChange={vi.fn()}
+        createMode="manual"
+        onCreateModeChange={vi.fn()}
+        quizTitle="Test Quiz"
+        onQuizTitleChange={vi.fn()}
+        quizDescription=""
+        onQuizDescriptionChange={vi.fn()}
+        quizDifficulty="Easy"
+        onQuizDifficultyChange={vi.fn()}
+        quizTimeLimit={10}
+        onQuizTimeLimitChange={vi.fn()}
+        isPrivate={false}
+        onPrivateChange={vi.fn()}
+        pinCode=""
+        onPinCodeChange={vi.fn()}
+        questions={questions}
+        onQuestionsChange={vi.fn()}
+        onAddQuestion={vi.fn()}
+        submitting={false}
+        onSubmit={handleSubmit}
+      />
+    );
+
+    const submitBtn = screen.getByRole('button', { name: /Xuất bản đề thi/i });
+    fireEvent.click(submitBtn);
+
+    // Form onSubmit must NOT have been called because validation blocked it
+    expect(handleSubmit).not.toHaveBeenCalled();
+    // Auto-scroll called on question card
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
 });

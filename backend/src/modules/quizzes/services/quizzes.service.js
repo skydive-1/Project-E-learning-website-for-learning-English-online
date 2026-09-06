@@ -562,7 +562,20 @@ No markdown, no backticks, no extra keys.`;
           const qText = q.question_text || q.questionText || q.question || '';
           const qExpl = q.explanation || '';
           const qType = String(q.question_type || q.questionType || 'multiple_choice').toLowerCase();
-          let qCorr = q.correct_answer ?? q.correctAnswer ?? q.answer ?? ((qType === 'multiple_choice' || qType === 'listening' || qType === 'reading') ? 'A' : '');
+          let rawCorr = q.correct_answer ?? q.correctAnswer ?? q.answer;
+          let qCorr = rawCorr !== undefined && rawCorr !== null ? String(rawCorr).trim() : '';
+
+          if (['multiple_choice', 'listening', 'reading'].includes(qType)) {
+            if (!qCorr) {
+              const previewText = qText.trim()
+                ? (qText.trim().length > 50 ? `${qText.trim().slice(0, 50)}...` : qText.trim())
+                : 'Không có tiêu đề';
+              const error = new Error(`Câu hỏi "${previewText}" (loại ${qType}) chưa có đáp án đúng. Vui lòng chọn đáp án trước khi lưu.`);
+              error.status = 400;
+              error.statusCode = 400;
+              throw error;
+            }
+          }
           let opts = Array.isArray(q.options) ? q.options : (typeof q.options === 'string' ? [q.options] : []);
           const audioUrl = q.audio_url || q.audioUrl || null;
           const passageText = q.passage_text || q.passageText || null;

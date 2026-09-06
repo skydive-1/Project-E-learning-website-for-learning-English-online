@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { syncClozeGaps, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { generateQuizAiFromPdf } from '../../quizzes/services/quizzes.service';
 import { instructorService } from '../../instructor/services/instructor.service';
+import { useToast } from '../../../context/ToastContext';
 
 const resolveAudioUrl = (url) => {
   if (!url) return '';
@@ -189,8 +190,18 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
     });
   };
 
+  const needsAnswer = ['multiple_choice', 'listening', 'reading'].includes(type);
+  const isMissingAnswer = needsAnswer && (!question.correct_answer || !String(question.correct_answer).trim());
+
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 p-4 transition-all hover:border-slate-300 dark:hover:border-slate-700 shadow-xs">
+    <div
+      id={`question-card-${index}`}
+      className={`rounded-xl border transition-all shadow-xs p-4 ${
+        isMissingAnswer
+          ? 'border-red-400 dark:border-red-500/80 bg-red-50/20 dark:bg-red-950/10 ring-1 ring-red-400/30'
+          : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700'
+      }`}
+    >
       {/* Question Card Header */}
       <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
@@ -200,6 +211,12 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
           <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
             {typeLabels[type] || 'Trắc nghiệm'}
           </span>
+          {isMissingAnswer && (
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-100/80 dark:bg-red-950/60 border border-red-200 dark:border-red-900/50 px-2 py-0.5 rounded-md animate-pulse">
+              <AlertCircleIcon className="size-3 shrink-0" />
+              <span>Chưa chọn đáp án đúng</span>
+            </span>
+          )}
         </div>
         <Button 
           type="button" 
@@ -316,37 +333,47 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {['A', 'B', 'C', 'D'].map((letter, optIdx) => (
-                <div key={letter} className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 pr-2.5 focus-within:border-blue-500 transition-colors">
-                  <span className={`flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
-                    (question.correct_answer || 'A') === letter 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                  }`}>
-                    {letter}
-                  </span>
-                  <Input
-                    required
-                    aria-label={`Đáp án ${letter}`}
-                    value={options[optIdx] || ''}
-                    placeholder={`Lựa chọn ${letter}...`}
-                    onChange={(event) => {
-                      const next = [...options];
-                      next[optIdx] = event.target.value;
-                      onChange({ options: next });
-                    }}
-                    className="h-8 text-xs border-0 shadow-none focus-visible:ring-0 px-1 bg-transparent"
-                  />
-                  <input
-                    type="radio"
-                    name={`correct-radio-${index}`}
-                    checked={(question.correct_answer || 'A') === letter}
-                    onChange={() => onChange({ correct_answer: letter })}
-                    title={`Đặt ${letter} là đáp án đúng`}
-                    className="accent-blue-600 size-4 cursor-pointer"
-                  />
-                </div>
-              ))}
+              {['A', 'B', 'C', 'D'].map((letter, optIdx) => {
+                const isSelected = question.correct_answer === letter;
+                return (
+                  <div
+                    key={letter}
+                    className={`flex items-center gap-2 rounded-lg border transition-colors p-1.5 pr-2.5 focus-within:border-blue-500 ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 ring-1 ring-blue-500/20'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <span className={`flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                      isSelected
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}>
+                      {letter}
+                    </span>
+                    <Input
+                      required
+                      aria-label={`Đáp án ${letter}`}
+                      value={options[optIdx] || ''}
+                      placeholder={`Lựa chọn ${letter}...`}
+                      onChange={(event) => {
+                        const next = [...options];
+                        next[optIdx] = event.target.value;
+                        onChange({ options: next });
+                      }}
+                      className="h-8 text-xs border-0 shadow-none focus-visible:ring-0 px-1 bg-transparent"
+                    />
+                    <input
+                      type="radio"
+                      name={`correct-radio-${index}`}
+                      checked={isSelected}
+                      onChange={() => onChange({ correct_answer: letter })}
+                      title={`Đặt ${letter} là đáp án đúng`}
+                      className="accent-blue-600 size-4 cursor-pointer"
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -483,6 +510,41 @@ const CreateQuizDialog = ({
   const [pdfError, setPdfError] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const showToast = useToast();
+
+  const handleManualSubmit = (e) => {
+    e.preventDefault();
+
+    const missingIndices = [];
+    questions.forEach((q, idx) => {
+      const qType = q.question_type || 'multiple_choice';
+      if (['multiple_choice', 'listening', 'reading'].includes(qType)) {
+        const corr = q.correct_answer ?? q.correctAnswer ?? q.answer;
+        if (!corr || !String(corr).trim()) {
+          missingIndices.push(idx + 1);
+        }
+      }
+    });
+
+    if (missingIndices.length > 0) {
+      const msg = `Câu ${missingIndices.join(', ')} chưa chọn đáp án đúng. Vui lòng kiểm tra lại.`;
+      if (typeof showToast === 'function') {
+        showToast(msg, 'error');
+      } else {
+        alert(msg);
+      }
+
+      const firstInvalidCard = document.getElementById(`question-card-${missingIndices[0] - 1}`);
+      if (firstInvalidCard) {
+        firstInvalidCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    if (onSubmit) {
+      onSubmit(e);
+    }
+  };
 
   const formatFileSize = (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
@@ -742,7 +804,7 @@ const CreateQuizDialog = ({
         {/* ========================================================= */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           {createMode === 'manual' ? (
-            <form id="manual-quiz-form" onSubmit={onSubmit} className="flex flex-col gap-5">
+            <form id="manual-quiz-form" onSubmit={handleManualSubmit} className="flex flex-col gap-5">
               
               {/* Basic Info Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

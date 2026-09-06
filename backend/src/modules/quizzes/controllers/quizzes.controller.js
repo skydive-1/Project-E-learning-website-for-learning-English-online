@@ -293,6 +293,7 @@ exports.createQuiz = async (req, res, next) => {
       data: result
     });
   } catch (error) {
+    if (!error.status && error.statusCode) error.status = error.statusCode;
     next(error);
   }
 };
