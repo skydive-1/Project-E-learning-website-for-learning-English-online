@@ -80,4 +80,33 @@ describe('Lesson suggested questions', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Câu hỏi một từ bài học?' })).toBeInTheDocument());
     expect(getSuggestedQuestionsMock).toHaveBeenCalledTimes(2);
   });
+
+  it('allows user to manually refresh suggested questions with forceRefresh', async () => {
+    const questionsSet1 = [
+      'Câu hỏi 1 set A?',
+      'Câu hỏi 2 set A?',
+      'Câu hỏi 3 set A?',
+      'Câu hỏi 4 set A?'
+    ];
+    const questionsSet2 = [
+      'Câu hỏi 1 set B?',
+      'Câu hỏi 2 set B?',
+      'Câu hỏi 3 set B?',
+      'Câu hỏi 4 set B?'
+    ];
+    getSuggestedQuestionsMock
+      .mockResolvedValueOnce(questionsSet1)
+      .mockResolvedValueOnce(questionsSet2);
+
+    render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: questionsSet1[0] })).toBeInTheDocument());
+    expect(getSuggestedQuestionsMock).toHaveBeenCalledWith(49, false);
+
+    const refreshBtn = screen.getByTitle('Làm mới câu hỏi gợi ý từ AI');
+    fireEvent.click(refreshBtn);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: questionsSet2[0] })).toBeInTheDocument());
+    expect(getSuggestedQuestionsMock).toHaveBeenCalledWith(49, true);
+  });
 });

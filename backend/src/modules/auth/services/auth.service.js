@@ -850,7 +850,7 @@ class AuthService {
    * Author: NGUYỄN THANH LIÊM (Backend & Security Developer)
    */
   async getUserStats(userId) {
-    const client = await db.getClient();
+    const client = typeof db.getClient === 'function' ? await db.getClient() : await db.pool.connect();
     try {
       // 1. Số khóa học đã có tiến trình
       const enrolledResult = await client.query(`

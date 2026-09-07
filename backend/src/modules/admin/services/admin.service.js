@@ -839,15 +839,24 @@ const getAiQuotaDashboard = async (days = 30) => {
   }
 
   const users = usersRes.rows.map((user) => {
+    const isAdmin = user.role_id === 1;
+    const adminDefaultLimit = 50;
     const questionQuota = getQuestionQuotaSnapshot({
       roleId: user.role_id,
       usedQuestions: user.used_questions_24h,
       windowStartedAt: user.question_window_started_at
     });
-    const usagePercentage = questionQuota.unlimited || !questionQuota.limit
+
+    const effectiveLimit = isAdmin ? (user.question_limit_24h || adminDefaultLimit) : questionQuota.limit;
+    const effectiveUsed = isAdmin ? (user.used_questions_24h || 0) : (questionQuota.used || 0);
+    const effectiveRemaining = isAdmin ? Math.max(0, effectiveLimit - effectiveUsed) : questionQuota.remaining;
+    const effectiveUnlimited = isAdmin ? false : questionQuota.unlimited;
+
+    const usagePercentage = effectiveUnlimited || !effectiveLimit
       ? 0
-      : Math.min(100, Math.round((questionQuota.used / questionQuota.limit) * 100));
-    const quotaStatus = questionQuota.unlimited
+      : Math.min(100, Math.round((effectiveUsed / effectiveLimit) * 100));
+
+    const quotaStatus = effectiveUnlimited
       ? 'unlimited'
       : usagePercentage >= 100
         ? 'exhausted'
@@ -855,18 +864,18 @@ const getAiQuotaDashboard = async (days = 30) => {
           ? 'critical'
           : usagePercentage >= 50
             ? 'warning'
-            : questionQuota.used === 0
+            : effectiveUsed === 0
               ? 'unused'
               : 'normal';
 
     return {
       ...user,
-      used_questions_24h: questionQuota.used,
-      question_limit_24h: questionQuota.limit,
-      questions_remaining_24h: questionQuota.remaining,
-      question_quota_unlimited: questionQuota.unlimited,
+      used_questions_24h: effectiveUsed,
+      question_limit_24h: effectiveLimit,
+      questions_remaining_24h: effectiveRemaining,
+      question_quota_unlimited: effectiveUnlimited,
       question_window_started_at: questionQuota.windowStartedAt,
-      question_reset_at: questionQuota.resetAt,
+      question_reset_at: questionQuota.resetAt || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
       question_usage_percentage: usagePercentage,
       question_quota_status: quotaStatus
     };

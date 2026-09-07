@@ -45,9 +45,10 @@ const poolConfig = dbConnectionString
 
 const pool = new Pool({
   ...poolConfig,
-  max: 20,
-  idleTimeoutMillis: 30000,
+  max: 10,
+  idleTimeoutMillis: 15000,
   connectionTimeoutMillis: 10000,
+  allowExitOnIdle: true,
 });
 
 // Lắng nghe sự kiện lỗi trên các client nhàn rỗi trong pool
@@ -668,5 +669,6 @@ const testConnection = async () => {
 module.exports = {
   query: (text, params) => pool.query(text, params),
   pool,
+  getClient: () => pool.connect(),
   testConnection
 };

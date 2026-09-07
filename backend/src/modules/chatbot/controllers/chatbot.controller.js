@@ -368,8 +368,9 @@ exports.getTokenBalance = async (req, res, next) => {
 exports.getSuggestedQuestions = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
+    const forceRefresh = req.query.refresh === 'true';
     const suggestedQuestionsService = require('../../lessons/services/suggestedQuestions.service');
-    const questions = await suggestedQuestionsService.getSuggestedQuestionsByLessonId(lessonId);
+    const questions = await suggestedQuestionsService.getSuggestedQuestionsByLessonId(lessonId, forceRefresh);
 
     res.status(200).json({
       success: true,

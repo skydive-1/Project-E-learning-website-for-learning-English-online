@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   askChatbotStream, 
@@ -91,8 +91,31 @@ const ChatBox = ({
     let currentAccumulated = '';
     const words = fullText.split(/(\s+)/);
     for (let i = 0; i < words.length; i++) {
-      if (!isMountedRef.current || signal?.aborted) return;
+      if (!isMountedRef.current) return;
+      if (signal?.aborted) {
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+          ...m,
+          text: currentAccumulated,
+          isStreaming: false,
+          isStopped: true,
+          ...extraProps
+        } : m));
+        return;
+      }
+
       currentAccumulated += words[i];
+
+      // Khi người dùng chuyển tab (Alt+Tab), xả trực tiếp toàn bộ text còn lại để không bị timer throttling
+      if (typeof document !== 'undefined' && document.hidden) {
+        setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+          ...m,
+          text: fullText,
+          isStreaming: false,
+          ...extraProps
+        } : m));
+        return;
+      }
+
       setMessages(prev => prev.map(m => m.id === aiMessageId ? { ...m, text: currentAccumulated, isStreaming: true, ...extraProps } : m));
       await new Promise(r => setTimeout(r, Math.random() * 10 + 12));
     }
@@ -174,10 +197,21 @@ const ChatBox = ({
     stopRecording();
   };
 
+  // Quản lý trạng thái tự động cuộn thông minh (User Scroll Detection)
+  const isAutoScrollEnabledRef = useRef(true);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+
   // Cuộn xuống tin nhắn mới nhất
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior = "auto") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    isAutoScrollEnabledRef.current = true;
+    setShowScrollBottomBtn(false);
   };
+
+  const handleScrollPosition = useCallback((isAtBottom) => {
+    isAutoScrollEnabledRef.current = isAtBottom;
+    setShowScrollBottomBtn(!isAtBottom);
+  }, []);
 
   // Nạp lịch sử hội thoại
   useEffect(() => {
@@ -237,7 +271,9 @@ const ChatBox = ({
   }, [user?.userId, lessonId]);
 
   useEffect(() => {
-    scrollToBottom();
+    if (isAutoScrollEnabledRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
   }, [messages, isLoading, isHistoryLoading]);
 
   const handleSendMessage = async (textToSend = null, quickAction = null) => {
@@ -269,8 +305,19 @@ const ChatBox = ({
       timestamp: new Date()
     };
 
+    // Đánh dấu message ID đang hoạt động để nút Stop có thể dừng chính xác
+    activeAiMessageIdRef.current = aiMessageId;
+
+    // Reset tự động cuộn xuống đáy cho câu hỏi mới
+    isAutoScrollEnabledRef.current = true;
+    setShowScrollBottomBtn(false);
+
     setMessages(prev => [...prev, userMessage, aiSkeletonMessage]);
     setIsLoading(true);
+
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
 
     try {
       if (quickAction === 'LESSON_QUICK_QUIZ' || text.toLowerCase().includes("trắc nghiệm") || text.toLowerCase().includes("bài tập ôn nhanh")) {
@@ -344,7 +391,14 @@ const ChatBox = ({
       }
     } catch (error) {
       if (error.name === 'AbortError') {
-        // Luồng stream bị hủy chủ động do chuyển câu hỏi hoặc unmount -> Bỏ qua không báo lỗi
+        // Luồng stream bị hủy chủ động do nút Stop hoặc chuyển câu hỏi -> Giữ nguyên text đã sinh và tắt trạng thái streaming
+        if (isMountedRef.current) {
+          setMessages(prev => prev.map(m => m.id === aiMessageId ? {
+            ...m,
+            isStreaming: false,
+            isStopped: true
+          } : m));
+        }
         return;
       }
 
@@ -398,17 +452,23 @@ const ChatBox = ({
   const handleStopResponse = () => {
     const activeMessageId = activeAiMessageIdRef.current;
     const activeController = abortControllerRef.current;
-    if (!activeMessageId || !activeController) return;
 
-    activeController.abort();
-    abortControllerRef.current = null;
-    activeAiMessageIdRef.current = null;
+    if (activeController) {
+      try {
+        activeController.abort();
+      } catch (_) {}
+      abortControllerRef.current = null;
+    }
 
-    setMessages(prev => prev.map(message => message.id === activeMessageId ? {
-      ...message,
-      isStreaming: false,
-      isStopped: true
-    } : message));
+    if (activeMessageId) {
+      setMessages(prev => prev.map(message => message.id === activeMessageId ? {
+        ...message,
+        isStreaming: false,
+        isStopped: true
+      } : message));
+      activeAiMessageIdRef.current = null;
+    }
+
     setIsLoading(false);
   };
 
@@ -495,7 +555,7 @@ const ChatBox = ({
 
       {/* 2. Main Conversation Area / Empty State */}
       {messages.length === 1 && !isLoading && !isHistoryLoading ? (
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col justify-center">
+        <div className="flex-1 overflow-y-auto p-3.5 flex flex-col justify-end pb-4">
           <EmptyState
             lessonId={lessonId}
             lessonTitle={lessonTitle}
@@ -512,6 +572,9 @@ const ChatBox = ({
           onNavigate={handleNavigateLesson}
           lessonId={lessonId}
           messagesEndRef={messagesEndRef}
+          onScrollPosition={handleScrollPosition}
+          showScrollBottomBtn={showScrollBottomBtn}
+          onScrollToBottom={() => scrollToBottom("smooth")}
         />
       )}
 

@@ -1,5 +1,5 @@
-import React from 'react';
-import { FiAlertTriangle, FiClock, FiCpu } from 'react-icons/fi';
+import React, { useRef } from 'react';
+import { FiAlertTriangle, FiClock, FiCpu, FiArrowDown } from 'react-icons/fi';
 import LessonCard from './LessonCard';
 import AiThinkingState from './AiThinkingState';
 
@@ -7,7 +7,8 @@ import AiThinkingState from './AiThinkingState';
  * MessageList Component (Udemy AI Assistant direction)
  * - Tối ưu tỷ lệ giãn dòng (line-height: 1.6), kích thước font dễ đọc
  * - Phân biệt trực quan rõ ràng giữa User Bubble và AI Bubble
- * - Hỗ trợ render Markdown mượt mà, bài tập trắc nghiệm và Verified Lesson Cards
+ * - Tự do cuộn chuột mượt mà khi AI đang stream, không bị giật nảy
+ * - Nút nổi "Cuộn xuống dưới" khi người dùng cuộn lên trên
  */
 const MessageList = ({
   messages,
@@ -17,8 +18,23 @@ const MessageList = ({
   onSeekVideo,
   onNavigate,
   lessonId,
-  messagesEndRef
+  messagesEndRef,
+  onScrollPosition,
+  showScrollBottomBtn,
+  onScrollToBottom
 }) => {
+  const containerRef = useRef(null);
+
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+    const el = containerRef.current;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isAtBottom = distanceToBottom <= 80;
+    if (onScrollPosition) {
+      onScrollPosition(isAtBottom);
+    }
+  };
+
   if (isHistoryLoading) {
     return (
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-900/40">
@@ -44,7 +60,12 @@ const MessageList = ({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-slate-50/40 dark:bg-slate-900/40 scroll-smooth">
+    <div className="flex-1 relative overflow-hidden flex flex-col">
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-5 bg-slate-50/40 dark:bg-slate-900/40"
+      >
       {messages.map((msg) => {
         const isUser = msg.sender === 'user';
         const isError = msg.isError;
@@ -256,6 +277,23 @@ const MessageList = ({
       })}
 
       <div ref={messagesEndRef} />
+      </div>
+
+      {/* Nút nổi cuộn xuống đáy thông minh khi người dùng cuộn lên đọc tin cũ */}
+      {showScrollBottomBtn && (
+        <div className="absolute bottom-3 right-4 z-20 animate-fade-in">
+          <button
+            type="button"
+            onClick={onScrollToBottom}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-800/95 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg rounded-full text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-smart-indigo dark:hover:text-indigo-400 transition-all duration-200 cursor-pointer backdrop-blur-xs active:scale-95"
+            title="Cuộn xuống tin nhắn mới nhất"
+            aria-label="Cuộn xuống tin nhắn mới nhất"
+          >
+            <FiArrowDown className="text-xs animate-bounce" />
+            <span>Cuộn xuống dưới</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

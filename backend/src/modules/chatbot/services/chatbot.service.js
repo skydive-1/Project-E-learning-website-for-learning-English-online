@@ -902,6 +902,19 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
         retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
       }
+
+      // Automatic Current Lesson Context Injection:
+      // Khi học viên đang ở trong bài học, nếu retrieval chưa lấy được context, tự động nạp Full Context bài học
+      if (!contextText && lessonId && Number(lessonId) > 0) {
+        try {
+          const lessonFullCtx = await getLessonFullContext(lessonId, accessInfo);
+          if (lessonFullCtx && lessonFullCtx.hasContent) {
+            contextText = lessonFullCtx.combinedContext;
+          }
+        } catch (ctxErr) {
+          console.warn('[CurrentLesson Context Injection Warning]:', ctxErr.message);
+        }
+      }
     }
 
     const verifiedEvidence = await buildVerifiedEvidence({
@@ -912,6 +925,24 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
       lessonId,
       courseId: accessInfo.courseId
     });
+
+    // Đảm bảo bài học hiện tại luôn có trong sources khi người học đang ở trong bài học
+    if (!isGlobalChat && lessonId && Number(lessonId) > 0 && verifiedEvidence.sources.length === 0) {
+      verifiedEvidence.sources.push({
+        lessonId: Number(lessonId),
+        lessonTitle: accessInfo.lesson?.lesson_title || 'Bài học hiện tại',
+        sectionTitle: accessInfo.lesson?.section_title || 'Chương học',
+        courseName: accessInfo.lesson?.course_name,
+        badgeText: 'Bài học hiện tại'
+      });
+      verifiedEvidence.actions.push({
+        type: 'OPEN_LESSON',
+        lessonId: Number(lessonId),
+        lessonTitle: accessInfo.lesson?.lesson_title,
+        sectionTitle: accessInfo.lesson?.section_title
+      });
+    }
+
     const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
 
     if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources)) {
@@ -1123,6 +1154,19 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
         retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
       }
+
+      // Automatic Current Lesson Context Injection:
+      // Khi học viên đang ở trong bài học, nếu retrieval chưa lấy được context, tự động nạp Full Context bài học
+      if (!contextText && lessonId && Number(lessonId) > 0) {
+        try {
+          const lessonFullCtx = await getLessonFullContext(lessonId, accessInfo);
+          if (lessonFullCtx && lessonFullCtx.hasContent) {
+            contextText = lessonFullCtx.combinedContext;
+          }
+        } catch (ctxErr) {
+          console.warn('[CurrentLesson Context Injection Warning (Stream)]:', ctxErr.message);
+        }
+      }
     }
 
     const verifiedEvidence = await buildVerifiedEvidence({
@@ -1133,6 +1177,24 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       lessonId,
       courseId: accessInfo.courseId
     });
+
+    // Đảm bảo bài học hiện tại luôn có trong sources khi người học đang ở trong bài học
+    if (!isGlobalChat && lessonId && Number(lessonId) > 0 && verifiedEvidence.sources.length === 0) {
+      verifiedEvidence.sources.push({
+        lessonId: Number(lessonId),
+        lessonTitle: accessInfo.lesson?.lesson_title || 'Bài học hiện tại',
+        sectionTitle: accessInfo.lesson?.section_title || 'Chương học',
+        courseName: accessInfo.lesson?.course_name,
+        badgeText: 'Bài học hiện tại'
+      });
+      verifiedEvidence.actions.push({
+        type: 'OPEN_LESSON',
+        lessonId: Number(lessonId),
+        lessonTitle: accessInfo.lesson?.lesson_title,
+        sectionTitle: accessInfo.lesson?.section_title
+      });
+    }
+
     const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
     const globalGenerationProfile = isGlobalChat
       ? selectGlobalChatProfile(question)

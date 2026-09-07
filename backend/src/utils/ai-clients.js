@@ -121,6 +121,37 @@ function getGeminiFallbackModels(preferredModel) {
   ].filter(Boolean)));
 }
 
+// Map lưu trữ thời điểm hết hạn quota (cooldown) của từng model khi gặp lỗi 429
+const modelQuotaCooldown = new Map();
+
+function markModelQuotaExhausted(model, durationMs = 10 * 60 * 1000) {
+  if (!model) return;
+  modelQuotaCooldown.set(String(model).trim(), Date.now() + durationMs);
+}
+
+function getPrioritizedFallbackModels(preferredModel) {
+  const models = getGeminiFallbackModels(preferredModel);
+  const now = Date.now();
+  const available = [];
+  const coolingDown = [];
+
+  for (const m of models) {
+    const expiresAt = modelQuotaCooldown.get(m);
+    if (expiresAt && now < expiresAt) {
+      coolingDown.push(m);
+    } else {
+      available.push(m);
+    }
+  }
+
+  // Nếu tất cả các model đều đang trong cooldown, vẫn thử lại theo thứ tự ban đầu
+  if (available.length === 0) {
+    return models;
+  }
+
+  return [...available, ...coolingDown];
+}
+
 const isGeminiQuotaError = (error) => {
   const message = String(error?.message || '');
   return error?.status === 429
@@ -243,7 +274,13 @@ async function recordGeminiQuotaSignal({ error, model }) {
   try {
     if (!isGeminiQuotaError(error)) return;
 
+    markModelQuotaExhausted(model, 10 * 60 * 1000);
+
     const parsed = parseGeminiQuotaViolation(error, model);
+    if (parsed?.model) {
+      markModelQuotaExhausted(parsed.model, 10 * 60 * 1000);
+    }
+
     const rawForLog = sanitizeQuotaDetail(
       error?.response?.data ?? error?.body ?? error?.details ?? error?.error ?? { message: error?.message }
     );
@@ -379,7 +416,7 @@ function normalizeRequest(request) {
  */
 async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
   const preferredModel = modelOverride || GEMINI_MODELS.primary;
-  const fallbackModels = getGeminiFallbackModels(preferredModel);
+  const fallbackModels = getPrioritizedFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
 
@@ -425,7 +462,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
  */
 async function executeGenerateStream(client, contents, config, modelOverride = null) {
   const preferredModel = modelOverride || GEMINI_MODELS.primary;
-  const fallbackModels = getGeminiFallbackModels(preferredModel);
+  const fallbackModels = getPrioritizedFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
 

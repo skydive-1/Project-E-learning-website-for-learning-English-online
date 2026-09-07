@@ -54,7 +54,21 @@ test('legacy template sets are detected for automatic regeneration', () => {
     'Một câu khác?'
   ]), true);
   assert.equal(isLegacyGenericQuestionSet([
+    'Bài này có những ý chính nào?',
+    'Khái niệm nào cần ghi nhớ?',
+    'Từ nào xuất hiện trong bài?',
+    'Kiểm tra nhanh kiến thức bài này?'
+  ]), true);
+  assert.equal(isLegacyGenericQuestionSet([
     '“small talk” được dùng khi nào?',
     '“greetings” xuất hiện ở đâu?'
   ]), false);
 });
+
+test('contextual fallback without transcript uses lesson title and avoids generic prompts', () => {
+  const questions = getFallbackSuggestedQuestions('Nguyên âm đôi /e/ và /ai/', 'Basic Pronunciation');
+  assert.equal(questions.length, 4);
+  assert.equal(isLegacyGenericQuestionSet(questions), false);
+  assert.equal(questions.every(q => q.includes('Nguyên âm đôi /e/ và /ai/')), true);
+});
+
