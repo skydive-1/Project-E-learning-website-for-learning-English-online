@@ -2,6 +2,7 @@ const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
+const lessonStreamCache = require('../../../utils/lessonStreamCache');
 const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
 
 class CoursesService {
@@ -653,6 +654,7 @@ class CoursesService {
     const claimedUploadIds = [];
     const assetsToCleanup = [];
     const subtitleLessonIds = [];
+    const lessonIdsToInvalidate = new Set();
 
     try {
       await client.query('BEGIN');
@@ -759,6 +761,17 @@ class CoursesService {
 
       // --- SYNCHRONIZE SECTIONS AND LESSONS ---
       if (sections && Array.isArray(sections)) {
+        const existingCourseLessonsRes = await client.query(
+          `SELECT l.lesson_id
+           FROM lessons l
+           JOIN sections s ON s.section_id = l.section_id
+           WHERE s.course_id = $1`,
+          [courseId]
+        );
+        for (const row of existingCourseLessonsRes.rows) {
+          lessonIdsToInvalidate.add(row.lesson_id);
+        }
+
         const existingSectionsRes = await client.query(
           'SELECT section_id FROM sections WHERE course_id = $1',
           [courseId]
@@ -952,6 +965,10 @@ class CoursesService {
       const resultingStatus = finalStatus === undefined ? existingCourse.status : finalStatus;
       if (resultingStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
+
+      for (const lessonId of lessonIdsToInvalidate) {
+        lessonStreamCache.invalidateLessonStreamCache(lessonId);
+      }
 
       await this._queueAutoSubtitles(subtitleLessonIds);
 

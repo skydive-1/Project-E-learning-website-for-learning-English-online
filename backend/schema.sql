@@ -362,6 +362,8 @@ CREATE TABLE IF NOT EXISTS lesson_subtitles (
   cues JSONB NOT NULL DEFAULT '[]',
   subtitle_status VARCHAR(20) NOT NULL DEFAULT 'ready',
   source_content_url TEXT,
+  error_code VARCHAR(80),
+  error_message TEXT,
   is_auto_generated_fallback BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

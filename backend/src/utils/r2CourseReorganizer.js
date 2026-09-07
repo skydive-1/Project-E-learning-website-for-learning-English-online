@@ -26,6 +26,7 @@ const {
 } = require('@aws-sdk/client-s3');
 const db = require('../config/database');
 const r2 = require('./r2Storage');
+const lessonStreamCache = require('./lessonStreamCache');
 const { buildCourseAssetPrefix } = require('./mediaObjectKey.util');
 
 function mediaKindFor(row) {
@@ -181,6 +182,9 @@ async function persistReference(row, destinationKey) {
       [destinationKey, row.source_key]
     );
     await client.query('COMMIT');
+    if (row.ref_type === 'lesson') {
+      lessonStreamCache.invalidateLessonStreamCache(row.ref_id);
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -424,6 +428,9 @@ async function persistSupabaseMigration(row, newKey, newBucket) {
       [newBucket, newKey, row.source_key]
     );
     await client.query('COMMIT');
+    if (row.ref_type === 'lesson') {
+      lessonStreamCache.invalidateLessonStreamCache(row.ref_id);
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

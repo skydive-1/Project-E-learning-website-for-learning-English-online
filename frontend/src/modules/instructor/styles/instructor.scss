@@ -888,7 +888,9 @@ $border-light: var(--border-color, #e2e8f0);
         // Storage details right pill
         .toolbar-right {
           display: flex;
+          flex-direction: column;
           align-items: center;
+          gap: 6px;
         }
 
         .media-info-pill {
@@ -926,6 +928,70 @@ $border-light: var(--border-color, #e2e8f0);
             text-decoration: underline;
             font-size: 11px;
             margin-left: 2px;
+          }
+        }
+
+        .youtube-subtitle-status {
+          width: min(100%, 360px);
+          padding: 7px 9px;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          display: flex;
+          align-items: flex-start;
+          gap: 7px;
+          font-size: 11px;
+          line-height: 1.35;
+
+          > svg {
+            flex: 0 0 auto;
+            margin-top: 1px;
+            font-size: 13px;
+          }
+
+          > span {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 2px;
+          }
+
+          strong {
+            font-size: 11.5px;
+            font-weight: 700;
+          }
+
+          small {
+            color: inherit;
+            font-size: 10.5px;
+            opacity: 0.9;
+          }
+
+          &.is-ready {
+            color: #047857;
+            background: rgba(16, 185, 129, 0.08);
+            border-color: rgba(16, 185, 129, 0.24);
+          }
+
+          &.is-working {
+            color: #92400e;
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(217, 119, 6, 0.28);
+          }
+
+          &.is-error {
+            color: #b91c1c;
+            background: rgba(239, 68, 68, 0.08);
+            border-color: rgba(220, 38, 38, 0.24);
+          }
+
+          &.is-empty {
+            color: #475569;
+            background: rgba(100, 116, 139, 0.08);
+            border-color: rgba(100, 116, 139, 0.2);
+          }
+
+          .subtitle-status-spinner {
+            animation: subtitle-status-spin 0.9s linear infinite;
           }
         }
       }
@@ -1755,6 +1821,32 @@ html.dark {
             color: #a7f3d0 !important;
           }
         }
+
+        .youtube-subtitle-status {
+          &.is-ready {
+            color: #a7f3d0 !important;
+            background: rgba(16, 185, 129, 0.12) !important;
+            border-color: rgba(16, 185, 129, 0.28) !important;
+          }
+
+          &.is-working {
+            color: #fde68a !important;
+            background: rgba(245, 158, 11, 0.12) !important;
+            border-color: rgba(245, 158, 11, 0.3) !important;
+          }
+
+          &.is-error {
+            color: #fecaca !important;
+            background: rgba(239, 68, 68, 0.13) !important;
+            border-color: rgba(248, 113, 113, 0.32) !important;
+          }
+
+          &.is-empty {
+            color: #cbd5e1 !important;
+            background: rgba(148, 163, 184, 0.1) !important;
+            border-color: rgba(148, 163, 184, 0.24) !important;
+          }
+        }
       }
 
       .card-materials-panel, .card-speaking-panel {
@@ -1959,6 +2051,16 @@ html.dark {
       .empty-title { color: #f1f5f9 !important; }
       .empty-desc { color: #94a3b8 !important; }
     }
+  }
+}
+
+@keyframes subtitle-status-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .youtube-subtitle-status .subtitle-status-spinner {
+    animation: none !important;
   }
 }
 
@@ -2687,5 +2789,4 @@ html.dark {
     }
   }
 }
-
 

@@ -53,6 +53,8 @@ exports.getSubtitleStatus = async (req, res, next) => {
       data: {
         lessonId: Number(lessonId),
         status: result.status,   // none | pending | processing | ready | failed
+        code: result.code,
+        message: result.message,
         updatedAt: result.updatedAt
       }
     });

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
+const lessonStreamCache = require('../../../utils/lessonStreamCache');
 
 class LessonsService {
   /**
@@ -194,6 +195,10 @@ class LessonsService {
       const result = await db.query(queryText, values);
       const updatedLesson = result.rows[0];
 
+      if (updatedLesson && mediaMayChange) {
+        lessonStreamCache.invalidateLessonStreamCache(updatedLesson.lesson_id);
+      }
+
       // Auto-trigger RAG ingestion neu content_url thay doi (non-blocking)
       const newContentUrl = contentUrl !== undefined ? contentUrl : content_url;
       if (newContentUrl && updatedLesson?.lesson_id) {
@@ -241,6 +246,10 @@ class LessonsService {
 
       const result = await db.query('DELETE FROM lessons WHERE lesson_id = $1 RETURNING lesson_id', [cleanLessonId]);
       const deleted = result.rows.length > 0;
+
+      if (deleted) {
+        lessonStreamCache.invalidateLessonStreamCache(cleanLessonId);
+      }
 
       if (deleted && assetsToCleanup.length > 0) {
         orphanCleanupService.cleanupUnreferencedAssets(assetsToCleanup).catch((err) => {

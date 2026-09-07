@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const lessonsService = require('../services/lessons.service');
 const coursesService = require('../../courses/services/courses.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
+const lessonStreamCache = require('../../../utils/lessonStreamCache');
 const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
 const {
   createClientFingerprint,
@@ -179,15 +180,21 @@ async function proxyPrivateStorageVideo(req, res, lesson, storageKey) {
   return upstreamStream.pipe(res);
 }
 
-async function proxyPrivateDashSegment(req, res, lesson, segmentKey, fallbackContentType) {
+async function proxyPrivateDashSegment(req, res, lesson, segmentKey, fallbackContentType, timing = null) {
   const range = resolveBoundedRange(req.headers.range, null);
   if (!range.valid) return sendRangeNotSatisfiable(res, null);
-  const upstream = await supabaseStorage.fetchPrivateObject(
-    segmentKey,
-    lesson.storage_bucket || 'videos',
-    range.header,
-    lesson.storage_provider || 'r2'
-  );
+  const r2StartedAt = timing ? Date.now() : null;
+  let upstream;
+  try {
+    upstream = await supabaseStorage.fetchPrivateObject(
+      segmentKey,
+      lesson.storage_bucket || 'videos',
+      range.header,
+      lesson.storage_provider || 'r2'
+    );
+  } finally {
+    if (timing) timing.r2FetchMs = Date.now() - r2StartedAt;
+  }
   if (!upstream || upstream.status === 404) {
     return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
   }
@@ -213,8 +220,13 @@ async function proxyPrivateDashSegment(req, res, lesson, segmentKey, fallbackCon
   return stream.pipe(res);
 }
 
-async function resolveReadyDashLesson(req, res) {
-  const lesson = await coursesService.getLessonById(req.params.lessonId);
+async function resolveReadyDashLesson(req, res, timing = null) {
+  const lesson = await lessonStreamCache.getCachedLessonForStreaming(
+    req.params.lessonId,
+    timing
+      ? { onCacheStatus: status => { timing.cache = status; } }
+      : undefined
+  );
   if (!lesson) {
     res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Không tìm thấy bài giảng' });
     return null;
@@ -282,12 +294,47 @@ exports.streamDashManifest = async (req, res, next) => {
 };
 
 exports.streamDashSegment = async (req, res, next) => {
+  const timing = process.env.DEBUG_DASH_TIMING === 'true'
+    ? {
+        lessonId: req.params.lessonId,
+        segment: req.params.segmentFile,
+        startedAt: Date.now(),
+        cache: null,
+        resolveLessonMs: null,
+        r2FetchMs: null,
+        logged: false
+      }
+    : null;
+
+  if (timing) {
+    const logTiming = () => {
+      if (timing.logged) return;
+      timing.logged = true;
+      console.info('[DASH Timing]', {
+        lessonId: timing.lessonId,
+        segment: timing.segment,
+        cache: timing.cache,
+        resolveLessonMs: timing.resolveLessonMs,
+        r2FetchMs: timing.r2FetchMs,
+        totalRequestMs: Date.now() - timing.startedAt
+      });
+    };
+    res.once?.('finish', logTiming);
+    res.once?.('close', logTiming);
+  }
+
   try {
     const segment = req.params.segmentFile;
     if (!segment || !/^[A-Za-z0-9_.-]+$/.test(segment) || (!segment.endsWith('.m4s') && !segment.endsWith('.mp4'))) {
       return res.status(400).json({ success: false, code: 'INVALID_DASH_SEGMENT', message: 'Tên segment không hợp lệ' });
     }
-    const resolved = await resolveReadyDashLesson(req, res);
+    const resolveStartedAt = timing ? Date.now() : null;
+    let resolved;
+    try {
+      resolved = await resolveReadyDashLesson(req, res, timing);
+    } finally {
+      if (timing) timing.resolveLessonMs = Date.now() - resolveStartedAt;
+    }
     if (!resolved) return;
     if (resolved.storageKey) {
       const segmentKey = path.posix.join(path.posix.dirname(resolved.storageKey), segment);
@@ -296,7 +343,8 @@ exports.streamDashSegment = async (req, res, next) => {
         res,
         resolved.lesson,
         segmentKey,
-        segment.endsWith('.m4s') ? 'video/iso.segment' : 'video/mp4'
+        segment.endsWith('.m4s') ? 'video/iso.segment' : 'video/mp4',
+        timing
       );
     }
     const segmentPath = resolveSafePath(path.dirname(resolved.manifestPath), segment, { checkExists: true });
