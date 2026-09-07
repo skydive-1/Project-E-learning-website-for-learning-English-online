@@ -13,6 +13,7 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 const db = require('../../../config/database');
 const { geminiModel } = require('../../../utils/ai-clients');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
+const youtubeTranscript = require('../../../utils/youtubeTranscript.util');
 const lessonsService = require('./lessons.service');
 
 /**
@@ -81,32 +82,45 @@ class SubtitlesService {
    */
   async getSubtitleStatus(lessonId) {
     const queryText = `
-      SELECT subtitle_status, updated_at
+      SELECT subtitle_status, error_code, error_message, updated_at
       FROM lesson_subtitles
       WHERE lesson_id = $1
       LIMIT 1;
     `;
     const { rows } = await db.query(queryText, [lessonId]);
     if (rows.length > 0) {
-      return { status: rows[0].subtitle_status || 'ready', updatedAt: rows[0].updated_at };
+      const status = rows[0].subtitle_status || 'ready';
+      return {
+        status,
+        code: status === 'failed' ? (rows[0].error_code || null) : null,
+        message: status === 'failed' ? (rows[0].error_message || null) : null,
+        updatedAt: rows[0].updated_at
+      };
     }
-    return { status: 'none', updatedAt: null };
+    return { status: 'none', code: null, message: null, updatedAt: null };
   }
 
   /**
    * Đặt trạng thái phụ đề (dùng để track tiến trình xử lý nền)
    */
-  async setSubtitleStatus(lessonId, status, sourceContentUrl = null) {
+  async setSubtitleStatus(lessonId, status, sourceContentUrl = null, errorDetails = {}) {
+    const errorCode = status === 'failed' ? (errorDetails.code || null) : null;
+    const errorMessage = status === 'failed' ? (errorDetails.message || null) : null;
     const queryText = `
-      INSERT INTO lesson_subtitles (lesson_id, cues, subtitle_status, source_content_url, updated_at)
-      VALUES ($1, '[]'::jsonb, $2, $3, CURRENT_TIMESTAMP)
+      INSERT INTO lesson_subtitles (
+        lesson_id, cues, subtitle_status, source_content_url,
+        error_code, error_message, updated_at
+      )
+      VALUES ($1, '[]'::jsonb, $2, $3, $4, $5, CURRENT_TIMESTAMP)
       ON CONFLICT (lesson_id)
       DO UPDATE SET
         subtitle_status = EXCLUDED.subtitle_status,
         source_content_url = COALESCE(EXCLUDED.source_content_url, lesson_subtitles.source_content_url),
+        error_code = EXCLUDED.error_code,
+        error_message = EXCLUDED.error_message,
         updated_at = CURRENT_TIMESTAMP;
     `;
-    await db.query(queryText, [lessonId, status, sourceContentUrl]);
+    await db.query(queryText, [lessonId, status, sourceContentUrl, errorCode, errorMessage]);
   }
 
   /**
@@ -128,9 +142,9 @@ class SubtitlesService {
     await db.query(
       `INSERT INTO lesson_subtitles (
          lesson_id, en_vtt, vi_vtt, bilingual_vtt, cues,
-         subtitle_status, source_content_url, updated_at
+         subtitle_status, source_content_url, error_code, error_message, updated_at
        )
-       VALUES ($1, NULL, NULL, NULL, '[]'::jsonb, 'pending', $2, CURRENT_TIMESTAMP)
+       VALUES ($1, NULL, NULL, NULL, '[]'::jsonb, 'pending', $2, NULL, NULL, CURRENT_TIMESTAMP)
        ON CONFLICT (lesson_id)
        DO UPDATE SET
          en_vtt = NULL,
@@ -139,6 +153,8 @@ class SubtitlesService {
          cues = '[]'::jsonb,
          subtitle_status = 'pending',
          source_content_url = EXCLUDED.source_content_url,
+         error_code = NULL,
+         error_message = NULL,
          updated_at = CURRENT_TIMESTAMP`,
       [cleanLessonId, lesson.content_url]
     );
@@ -215,7 +231,9 @@ class SubtitlesService {
     for (const row of rows) {
       await db.query(
         `UPDATE lesson_subtitles
-         SET subtitle_status = 'pending', source_content_url = $2, updated_at = CURRENT_TIMESTAMP
+         SET subtitle_status = 'pending', source_content_url = $2,
+             error_code = NULL, error_message = NULL,
+             updated_at = CURRENT_TIMESTAMP
          WHERE lesson_id = $1`,
         [row.lesson_id, row.source_content_url]
       );
@@ -540,6 +558,106 @@ Quy tắc:
     });
   }
 
+  createYoutubeTranslationBatches(cues) {
+    const totalCharacters = cues.reduce((sum, cue) => sum + cue.en.length, 0);
+    if (cues.length <= 1 || totalCharacters <= 12000) return [cues];
+
+    const targetCharacters = Math.ceil(totalCharacters / 2);
+    let runningCharacters = 0;
+    let splitIndex = 1;
+    for (let index = 0; index < cues.length - 1; index += 1) {
+      runningCharacters += cues[index].en.length;
+      if (runningCharacters >= targetCharacters) {
+        splitIndex = index + 1;
+        break;
+      }
+    }
+    return [cues.slice(0, splitIndex), cues.slice(splitIndex)].filter(batch => batch.length > 0);
+  }
+
+  async translateYoutubeTranscriptWithGemini(transcriptSegments) {
+    const sourceCues = transcriptSegments.map((segment, index) => {
+      const start = Number(segment.start);
+      const duration = Number(segment.duration);
+      const end = start + Math.max(duration, 0.001);
+      return {
+        id: index + 1,
+        start,
+        end,
+        startFormatted: formatVttTimestamp(start),
+        endFormatted: formatVttTimestamp(end),
+        en: segment.text,
+        vi: ''
+      };
+    });
+
+    const translatedCues = [];
+    const batches = this.createYoutubeTranslationBatches(sourceCues);
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+      const batch = batches[batchIndex];
+      const translationInput = batch.map(cue => ({ id: cue.id, en: cue.en }));
+      const prompt = `
+Bạn là biên dịch viên phụ đề cho nền tảng học tiếng Anh.
+Hãy dịch chính xác từng câu tiếng Anh sau sang tiếng Việt tự nhiên, rõ nghĩa và phù hợp ngữ cảnh giảng dạy.
+
+Yêu cầu bắt buộc:
+- Chỉ trả về JSON hợp lệ, không markdown và không giải thích.
+- Giữ nguyên mỗi id; không bỏ, thêm, gộp hoặc tách câu.
+- Chỉ dịch nội dung. Không thay đổi thứ tự.
+- Cấu trúc đầu ra: {"translations":[{"id":1,"vi":"Bản dịch tiếng Việt"}]}
+
+Dữ liệu:
+${JSON.stringify(translationInput)}
+`;
+
+      const response = await geminiModel.generateContent({
+        model: GEMINI_MODELS.subtitle,
+        purpose: 'subtitle_translation_youtube',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 65536,
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const responseText = response?.response?.text?.() || response?.text?.() || '';
+      const cleanJson = responseText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+      let parsed;
+      try {
+        parsed = JSON.parse(cleanJson);
+      } catch (error) {
+        const translationError = new Error(`Gemini trả về JSON dịch phụ đề YouTube không hợp lệ: ${error.message}`);
+        translationError.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
+        throw translationError;
+      }
+
+      const translations = Array.isArray(parsed?.translations) ? parsed.translations : [];
+      const translationById = new Map();
+      for (const item of translations) {
+        const id = Number(item?.id);
+        const vi = String(item?.vi || '').trim();
+        if (!Number.isInteger(id) || !vi || translationById.has(id)) {
+          const translationError = new Error('Gemini trả về danh sách dịch phụ đề YouTube bị thiếu hoặc trùng ID.');
+          translationError.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
+          throw translationError;
+        }
+        translationById.set(id, vi);
+      }
+
+      for (const cue of batch) {
+        const vi = translationById.get(cue.id);
+        if (!vi) {
+          const translationError = new Error(`Gemini không trả bản dịch cho cue YouTube id=${cue.id}.`);
+          translationError.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
+          throw translationError;
+        }
+        translatedCues.push({ ...cue, vi });
+      }
+    }
+
+    return translatedCues;
+  }
+
   /**
    * Tải video từ URL (Signed URL Supabase) về file tạm cục bộ để FFmpeg xử lý
    * @param {string} signedUrl - URL tạm của Supabase Storage (có thời hạn)
@@ -620,6 +738,7 @@ Quy tắc:
     let rawContentUrl = '';
     let videoFilePath = null;
     let tempVideoPath = null; // File tạm cần xóa sau khi xử lý xong
+    let generatedCues = [];
 
     try {
       // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
@@ -650,7 +769,10 @@ Quy tắc:
       if (expectedSourceUrl) {
         const claimed = await db.query(
           `UPDATE lesson_subtitles
-           SET subtitle_status = 'processing', updated_at = CURRENT_TIMESTAMP
+           SET subtitle_status = 'processing',
+               error_code = NULL,
+               error_message = NULL,
+               updated_at = CURRENT_TIMESTAMP
            WHERE lesson_id = $1 AND source_content_url = $2
            RETURNING lesson_id`,
           [lessonId, expectedSourceUrl]
@@ -661,7 +783,13 @@ Quy tắc:
       }
 
       // --- Nhận diện nguồn video ---
-      if (rawContentUrl.startsWith('/uploads/')) {
+      const youtubeVideoId = youtubeTranscript.extractYoutubeVideoId(rawContentUrl);
+      if (youtubeVideoId) {
+        console.log(`[YouTube Subtitles] Bài học ${lessonId}: Đang lấy phụ đề công khai cho video ${youtubeVideoId}...`);
+        const transcriptSegments = await youtubeTranscript.fetchYoutubeTranscript(youtubeVideoId);
+        generatedCues = await this.translateYoutubeTranscriptWithGemini(transcriptSegments);
+        console.log(`[YouTube Subtitles] ✅ Đã lấy và dịch ${generatedCues.length} cue cho bài học ${lessonId}.`);
+      } else if (rawContentUrl.startsWith('/uploads/')) {
         // PATH C (legacy): Video cũ còn nằm trên local disk
         let localSourceUrl = rawContentUrl;
         if (rawContentUrl.endsWith('.mpd')) {
@@ -705,7 +833,7 @@ Quy tắc:
       }
 
       // Tại điểm này, videoFilePath là đường dẫn local hợp lệ (hoặc null nếu không resolve được)
-      if (!videoFilePath || !fs.existsSync(videoFilePath)) {
+      if (!youtubeVideoId && (!videoFilePath || !fs.existsSync(videoFilePath))) {
         throw new Error(
           `Không thể truy cập file video cho bài học ${lessonId}. ` +
           `content_url="${rawContentUrl}". ` +
@@ -713,11 +841,9 @@ Quy tắc:
         );
       }
 
-      let generatedCues = [];
-
       // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python khi được bật.
       const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'true').toLowerCase() === 'true';
-      if (vadEnabled) {
+      if (!youtubeVideoId && vadEnabled) {
         console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
         const vadCues = await this.runSilenceVadPipeline(videoFilePath, {
           workers: Number(process.env.SUBTITLE_VAD_WORKERS) || 1
@@ -733,7 +859,7 @@ Quy tắc:
       }
 
       // Direct-audio chỉ là chế độ tương thích được bật rõ bằng ENABLE_SUBTITLE_VAD=false.
-      if (!vadEnabled) {
+      if (!youtubeVideoId && !vadEnabled) {
         console.log(`[Ưu tiên 2 - Gemini Direct Audio] Kích hoạt bóc băng audio cho bài học ${lessonId}...`);
         const os = require('os');
         const tempAudioDir = path.join(os.tmpdir(), 'elearn_temp_audio');
@@ -851,15 +977,27 @@ Quy tắc:
       // Chỉ job của đúng source được phép ghi failed; job cũ không
       // được ghi đè trạng thái pending của video mới.
       try {
+        const errorCode = pipelineErr?.code === 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
+          ? 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
+          : null;
+        const errorMessage = errorCode
+          ? youtubeTranscript.YOUTUBE_NO_CAPTIONS_MESSAGE
+          : null;
         if (expectedSourceUrl) {
           await db.query(
             `UPDATE lesson_subtitles
-             SET subtitle_status = 'failed', updated_at = CURRENT_TIMESTAMP
+             SET subtitle_status = 'failed',
+                 error_code = $3,
+                 error_message = $4,
+                 updated_at = CURRENT_TIMESTAMP
              WHERE lesson_id = $1 AND source_content_url = $2`,
-            [lessonId, expectedSourceUrl]
+            [lessonId, expectedSourceUrl, errorCode, errorMessage]
           );
         } else {
-          await this.setSubtitleStatus(lessonId, 'failed', rawContentUrl || null);
+          await this.setSubtitleStatus(lessonId, 'failed', rawContentUrl || null, {
+            code: errorCode,
+            message: errorMessage
+          });
         }
       } catch (_) {}
       throw pipelineErr;

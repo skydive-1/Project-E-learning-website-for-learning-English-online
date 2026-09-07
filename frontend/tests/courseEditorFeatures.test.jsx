@@ -169,6 +169,20 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
           }
         });
       }
+      if (url === '/lessons/101/subtitle-status') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              lessonId: 101,
+              status: 'failed',
+              code: 'YOUTUBE_NO_CAPTIONS_AVAILABLE',
+              message: 'Video YouTube này không có phụ đề công khai. Vui lòng bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.',
+              updatedAt: '2026-09-07T00:00:00.000Z'
+            }
+          }
+        });
+      }
       if (url.includes('/quizzes')) {
         return Promise.resolve({
           data: { success: true, quizzes: [] }
@@ -242,6 +256,25 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     const closeBtn = screen.getByRole('button', { name: /Đóng cửa sổ xem trước/i });
     expect(closeBtn).toBeInTheDocument();
     fireEvent.click(closeBtn);
+  });
+
+  it('shows instructors the actionable YouTube public-caption failure', async () => {
+    render(
+      <BrowserRouter>
+        <CourseEditor />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Chương trình học/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/Chương trình học/i));
+
+    const statusTitle = await screen.findByText('Video chưa có phụ đề công khai');
+    expect(statusTitle.closest('[role="status"]')).toHaveAttribute('aria-live', 'polite');
+    expect(
+      screen.getByText('Bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.')
+    ).toBeInTheDocument();
   });
 
   it('handles local PDF file (chưa upload) using URL.createObjectURL and URL.revokeObjectURL', async () => {
@@ -324,4 +357,3 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     expect(onDownload).toHaveBeenCalledTimes(1);
   });
 });
-

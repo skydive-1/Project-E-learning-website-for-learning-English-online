@@ -31,6 +31,7 @@ import {
   deleteLessonMaterial
 } from '../../lessons/services/lessons.service';
 import { withPdfAuthToken } from '../../lessons/utils/pdfAuthUrl';
+import { subtitlesService } from '../../lessons/services/subtitles.service';
 import '../styles/instructor.scss';
 
 const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
@@ -38,6 +39,90 @@ const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
     <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
   </svg>
 );
+
+const YOUTUBE_NO_CAPTIONS_CODE = 'YOUTUBE_NO_CAPTIONS_AVAILABLE';
+
+const YouTubeSubtitleStatus = ({ lessonId }) => {
+  const [subtitleState, setSubtitleState] = useState(null);
+
+  useEffect(() => {
+    if (!lessonId) return undefined;
+
+    let cancelled = false;
+    let pollTimer = null;
+
+    const loadStatus = async () => {
+      try {
+        const result = await subtitlesService.getSubtitleStatus(lessonId);
+        if (cancelled) return;
+        setSubtitleState(result);
+        if (result.status === 'pending' || result.status === 'processing') {
+          pollTimer = window.setTimeout(loadStatus, 5000);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn(`[CourseEditor] Không thể lấy trạng thái phụ đề cho bài học ${lessonId}:`, error?.message);
+          setSubtitleState(null);
+        }
+      }
+    };
+
+    loadStatus();
+    return () => {
+      cancelled = true;
+      if (pollTimer) window.clearTimeout(pollTimer);
+    };
+  }, [lessonId]);
+
+  if (!subtitleState) return null;
+
+  const noPublicCaptions = subtitleState.status === 'failed' && subtitleState.code === YOUTUBE_NO_CAPTIONS_CODE;
+  const statusContent = noPublicCaptions
+    ? {
+        tone: 'error',
+        icon: <FiAlertCircle aria-hidden="true" />,
+        title: 'Video chưa có phụ đề công khai',
+        detail: 'Bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.'
+      }
+    : subtitleState.status === 'failed'
+      ? {
+          tone: 'error',
+          icon: <FiAlertCircle aria-hidden="true" />,
+          title: 'Tạo phụ đề thất bại',
+          detail: subtitleState.message || 'Vui lòng thử lại sau.'
+        }
+      : subtitleState.status === 'ready'
+        ? {
+            tone: 'ready',
+            icon: <FiCheckCircle aria-hidden="true" />,
+            title: 'Phụ đề đã sẵn sàng'
+          }
+        : subtitleState.status === 'pending' || subtitleState.status === 'processing'
+          ? {
+              tone: 'working',
+              icon: <FiLoader className="subtitle-status-spinner" aria-hidden="true" />,
+              title: 'Đang tạo phụ đề'
+            }
+          : {
+              tone: 'empty',
+              icon: <FiAlertCircle aria-hidden="true" />,
+              title: 'Chưa có phụ đề'
+            };
+
+  return (
+    <div
+      className={`youtube-subtitle-status is-${statusContent.tone}`}
+      role="status"
+      aria-live="polite"
+    >
+      {statusContent.icon}
+      <span>
+        <strong>{statusContent.title}</strong>
+        {statusContent.detail && <small>{statusContent.detail}</small>}
+      </span>
+    </div>
+  );
+};
 
 const isAllowedExternalMediaUrl = (url = '') => /^https?:\/\//i.test(url) && !/\.supabase\.co(?:\/|$)/i.test(url);
 
@@ -237,6 +322,7 @@ const CourseEditor = () => {
 
                   return {
                     id: l.lesson_id,
+                    isPersisted: true,
                     title: l.title,
                     type: isYouTube ? 'youtube' : l.content_type,
                     contentUrl: l.content_url,
@@ -1628,6 +1714,7 @@ const CourseEditor = () => {
                                     </a>
                                   )}
                                 </div>
+                                {lesson.isPersisted && <YouTubeSubtitleStatus lessonId={lesson.id} />}
                               </div>
                             ) : lesson.contentUrl && !lesson.uploading && (
                               <div className="toolbar-right">
