@@ -63,6 +63,17 @@ describe('Lesson suggested questions', () => {
     expect(screen.queryByText(/Mục đích và nội dung chính/i)).not.toBeInTheDocument();
   });
 
+  it('shows an honest unavailable state when the lesson has no transcript', async () => {
+    const questions = [];
+    Object.defineProperty(questions, 'contentAvailable', { value: false });
+    getSuggestedQuestionsMock.mockResolvedValue(questions);
+
+    render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Bài học chưa có transcript'));
+    expect(screen.queryByRole('button', { name: 'Thử tải lại' })).not.toBeInTheDocument();
+  });
+
   it('surfaces API failures and retries on demand', async () => {
     getSuggestedQuestionsMock
       .mockRejectedValueOnce(new Error('Backend unavailable'))
@@ -79,5 +90,34 @@ describe('Lesson suggested questions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Thử tải lại' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Câu hỏi một từ bài học?' })).toBeInTheDocument());
     expect(getSuggestedQuestionsMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows user to manually refresh suggested questions with forceRefresh', async () => {
+    const questionsSet1 = [
+      'Câu hỏi 1 set A?',
+      'Câu hỏi 2 set A?',
+      'Câu hỏi 3 set A?',
+      'Câu hỏi 4 set A?'
+    ];
+    const questionsSet2 = [
+      'Câu hỏi 1 set B?',
+      'Câu hỏi 2 set B?',
+      'Câu hỏi 3 set B?',
+      'Câu hỏi 4 set B?'
+    ];
+    getSuggestedQuestionsMock
+      .mockResolvedValueOnce(questionsSet1)
+      .mockResolvedValueOnce(questionsSet2);
+
+    render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: questionsSet1[0] })).toBeInTheDocument());
+    expect(getSuggestedQuestionsMock).toHaveBeenCalledWith(49, false);
+
+    const refreshBtn = screen.getByTitle('Làm mới câu hỏi gợi ý từ AI');
+    fireEvent.click(refreshBtn);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: questionsSet2[0] })).toBeInTheDocument());
+    expect(getSuggestedQuestionsMock).toHaveBeenCalledWith(49, true);
   });
 });

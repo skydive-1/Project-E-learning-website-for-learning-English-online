@@ -156,7 +156,7 @@ const AIQuotaUsageBoard = () => {
       t('Tên đăng nhập'),
       'Email',
       t('Vai trò'),
-      t('Token mô hình đã dùng'),
+      t('Usage Limit'),
       t('Lượt hỏi hôm nay'),
       t('Hạn mức câu hỏi trong ngày'),
       t('Số câu hỏi còn lại'),
@@ -164,20 +164,31 @@ const AIQuotaUsageBoard = () => {
       t('Trạng thái'),
       t('Tương tác gần nhất')
     ];
-    const rows = dashboardData.users.map(u => [
-      u.user_id,
-      `"${u.full_name || ''}"`,
-      `"${u.username || ''}"`,
-      `"${u.email || ''}"`,
-      `"${getRoleLabel(u.role_id)}"`,
-      u.used_tokens,
-      u.question_quota_unlimited ? t('Không giới hạn') : u.used_questions_24h,
-      u.question_quota_unlimited ? t('Không giới hạn') : u.question_limit_24h,
-      u.question_quota_unlimited ? t('Không giới hạn') : u.questions_remaining_24h,
-      `"${u.question_reset_at || ''}"`,
-      `"${getStatusLabel(u.question_quota_status)}"`,
-      `"${u.last_ai_activity_at || 'N/A'}"`
-    ]);
+    const rows = dashboardData.users.map(u => {
+      const isAdmin = u.role_id === 1;
+      const isUnlimited = Boolean(u.question_quota_unlimited) && !isAdmin;
+      const adminLimit = u.question_limit_24h || 50;
+      const usedQ = u.used_questions_24h || 0;
+      const limitQ = isUnlimited ? null : (u.question_limit_24h || (isAdmin ? adminLimit : (u.role_id === 2 ? 20 : 10)));
+      const remainingQ = isUnlimited ? null : (u.questions_remaining_24h !== null && u.questions_remaining_24h !== undefined ? u.questions_remaining_24h : Math.max(0, limitQ - usedQ));
+      const tokenMax = u.max_tokens || 6000;
+      const tokenPct = u.usage_percentage !== undefined && u.usage_percentage !== null ? u.usage_percentage : Math.min(100, Math.round(((u.used_tokens || 0) / tokenMax) * 100));
+
+      return [
+        u.user_id,
+        `"${u.full_name || ''}"`,
+        `"${u.username || ''}"`,
+        `"${u.email || ''}"`,
+        `"${getRoleLabel(u.role_id)}"`,
+        `"${tokenPct}% (${u.used_tokens || 0}/${tokenMax})"`,
+        isUnlimited ? t('Không giới hạn') : usedQ,
+        isUnlimited ? t('Không giới hạn') : limitQ,
+        isUnlimited ? t('Không giới hạn') : remainingQ,
+        `"${u.question_reset_at || ''}"`,
+        `"${getStatusLabel(u.question_quota_status)}"`,
+        `"${u.last_ai_activity_at || 'N/A'}"`
+      ];
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -507,7 +518,7 @@ const AIQuotaUsageBoard = () => {
                 <th>{t('Tên hiển thị')}</th>
                 <th>{t('Email / Tên đăng nhập')}</th>
                 <th>{t('Vai trò')}</th>
-                <th>{t('Token mô hình đã dùng')}</th>
+                <th>{t('Usage Limit')}</th>
                 <th>{t('Câu hỏi / hạn mức (hôm nay)')}</th>
                 <th>{t('Còn lại / đặt lại')}</th>
                 <th style={{ textAlign: 'center' }}>{t('Hành động')}</th>
@@ -522,11 +533,34 @@ const AIQuotaUsageBoard = () => {
                 </tr>
               ) : (
                 filteredUsers.map((user) => {
-                  const pct = user.question_usage_percentage || 0;
-                  const isUnlimited = Boolean(user.question_quota_unlimited);
-                  const isExhausted = pct >= 100;
-                  const isCritical = pct >= 80 && pct < 100;
-                  const isWarning = pct >= 50 && pct < 80;
+                  // 1. Hạn mức sử dụng Token mô hình (Usage Limit) - hiển thị phần trăm (%)
+                  const tokenLimit = user.max_tokens || 6000;
+                  const tokenPct = user.usage_percentage !== undefined && user.usage_percentage !== null
+                    ? user.usage_percentage
+                    : Math.min(100, Math.round(((user.used_tokens || 0) / tokenLimit) * 100));
+
+                  // 2. Hạn mức câu hỏi trong ngày: Tài khoản Admin hiển thị bình thường giống học viên và giảng viên
+                  const isAdmin = user.role_id === 1;
+                  const isUnlimited = Boolean(user.question_quota_unlimited) && !isAdmin;
+                  const adminDefaultLimit = 50;
+                  const usedQuestions = user.used_questions_24h || 0;
+                  const questionLimit = isUnlimited
+                    ? null
+                    : (user.question_limit_24h || (isAdmin ? adminDefaultLimit : (user.role_id === 2 ? 20 : 10)));
+                  const remainingQuestions = isUnlimited
+                    ? null
+                    : (user.questions_remaining_24h !== null && user.questions_remaining_24h !== undefined
+                        ? user.questions_remaining_24h
+                        : Math.max(0, questionLimit - usedQuestions));
+                  const pct = isUnlimited
+                    ? 0
+                    : (user.question_usage_percentage !== undefined && user.question_usage_percentage !== null && !isAdmin
+                        ? user.question_usage_percentage
+                        : Math.min(100, Math.round((usedQuestions / questionLimit) * 100)));
+
+                  const isExhausted = !isUnlimited && pct >= 100;
+                  const isCritical = !isUnlimited && pct >= 80 && pct < 100;
+                  const isWarning = !isUnlimited && pct >= 50 && pct < 80;
 
                   return (
                     <tr key={user.user_id}>
@@ -559,15 +593,17 @@ const AIQuotaUsageBoard = () => {
                         </span>
                       </td>
 
-                      {/* Token mô hình đã tiêu thụ, không phải hạn mức lượt hỏi */}
+                      {/* Usage Limit: Hiển thị phần trăm (%) kèm số lượng token đã dùng */}
                       <td>
                         <div className="font-mono font-bold text-sm text-slate-200">
-                          {numberFormatter.format(user.used_tokens || 0)}
+                          {tokenPct}%
                         </div>
-                        <div className="text-[11px] text-slate-500">{t('token mô hình')}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          {numberFormatter.format(user.used_tokens || 0)} / {numberFormatter.format(tokenLimit)}
+                        </div>
                       </td>
 
-                      {/* Lượt hỏi theo role */}
+                      {/* Lượt hỏi theo role - Admin hiển thị bình thường giống học viên và giảng viên */}
                       <td>
                         {isUnlimited ? (
                           <span className="ai-unlimited-badge">{t('Không giới hạn')}</span>
@@ -575,7 +611,7 @@ const AIQuotaUsageBoard = () => {
                           <div className="ai-quota-bar-cell">
                             <div className="flex justify-between items-center text-xs font-mono mb-1">
                               <span className="font-bold text-slate-200">
-                                {numberFormatter.format(user.used_questions_24h || 0)} / {numberFormatter.format(user.question_limit_24h || 0)}
+                                {numberFormatter.format(usedQuestions)} / {numberFormatter.format(questionLimit)}
                               </span>
                               <span className={`ai-pct-pill ${isExhausted ? 'red' : isCritical ? 'orange' : isWarning ? 'yellow' : 'blue'}`}>
                                 {pct}%
@@ -597,9 +633,9 @@ const AIQuotaUsageBoard = () => {
                           <span className="font-semibold text-emerald-400">{t('Không giới hạn')}</span>
                         ) : (
                           <div>
-                            <div className={`font-mono font-bold text-sm ${user.questions_remaining_24h <= 0 ? 'text-rose-400' : 'text-slate-200'}`}>
+                            <div className={`font-mono font-bold text-sm ${remainingQuestions <= 0 ? 'text-rose-400' : 'text-slate-200'}`}>
                               {t('{{count}} câu còn lại', {
-                                count: numberFormatter.format(user.questions_remaining_24h || 0)
+                                count: numberFormatter.format(remainingQuestions)
                               })}
                             </div>
                             <div className="text-[11px] text-slate-500 mt-1">

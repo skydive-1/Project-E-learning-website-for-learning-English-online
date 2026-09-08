@@ -130,6 +130,8 @@ export const askChatbotStream = async (
 
   // Trả về Promise hoàn tất khi toàn bộ dữ liệu đã được hiển thị hết ra UI
   return new Promise((resolve, reject) => {
+    let handleVisibilitySync = null;
+
     const cleanup = () => {
       if (displayTimerId !== null) {
         clearTimeout(displayTimerId);
@@ -138,6 +140,10 @@ export const askChatbotStream = async (
       if (options.signal && abortHandler) {
         options.signal.removeEventListener('abort', abortHandler);
         abortHandler = null;
+      }
+      if (typeof document !== 'undefined' && handleVisibilitySync) {
+        document.removeEventListener('visibilitychange', handleVisibilitySync);
+        handleVisibilitySync = null;
       }
     };
 
@@ -185,6 +191,29 @@ export const askChatbotStream = async (
       options.signal.addEventListener('abort', abortHandler, { once: true });
     }
 
+    handleVisibilitySync = () => {
+      if (isSettled) return;
+      if (typeof document !== 'undefined' && !document.hidden) {
+        if (displayedText.length < rawFullText.length) {
+          displayedText = rawFullText;
+          charactersBudget = 0;
+          if (onChunk) {
+            onChunk(displayedText, {
+              sources,
+              actions,
+              metadata,
+              isTyping: !isNetworkDone,
+              isComplete: isNetworkDone
+            });
+          }
+        }
+        lastFrameAt = Date.now();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilitySync);
+    }
+
     // DISPLAY LOOP: nhịp 16 ms, có ngân sách ký tự theo thời gian và trần 2 ký tự/frame.
     // Bộ đệm mạng lớn không thể gây ra một lần render hàng chục ký tự nữa.
     const runDisplayFrame = () => {
@@ -198,8 +227,26 @@ export const askChatbotStream = async (
       const now = Date.now();
       const revealAfter = requestStartedAt + CHATBOT_STREAM_PACING.minimumThinkingMs;
       const remainingChars = rawFullText.length - displayedText.length;
+      const isTabHidden = typeof document !== 'undefined' && document.hidden;
 
-      if (now < revealAfter) {
+      if (isTabHidden) {
+        // Khi người dùng chuyển tab/Alt+Tab, không bóp nghẹt 2 ký tự/giây
+        // Đồng bộ trực tiếp theo lượng text thực tế từ mạng để tiến trình sinh câu trả lời chạy bình thường
+        if (remainingChars > 0) {
+          displayedText = rawFullText;
+          charactersBudget = 0;
+          if (onChunk) {
+            onChunk(displayedText, {
+              sources,
+              actions,
+              metadata,
+              isTyping: !isNetworkDone,
+              isComplete: isNetworkDone
+            });
+          }
+        }
+        lastFrameAt = now;
+      } else if (now < revealAfter) {
         // Không cộng dồn ngân sách trong thời gian suy nghĩ để tránh xả chữ ở frame đầu.
         lastFrameAt = now;
       } else if (remainingChars > 0) {
@@ -247,7 +294,7 @@ export const askChatbotStream = async (
         return;
       }
 
-      displayTimerId = setTimeout(runDisplayFrame, CHATBOT_STREAM_PACING.frameMs);
+      displayTimerId = setTimeout(runDisplayFrame, isTabHidden ? 100 : CHATBOT_STREAM_PACING.frameMs);
     };
 
     displayTimerId = setTimeout(runDisplayFrame, CHATBOT_STREAM_PACING.frameMs);
@@ -308,8 +355,18 @@ export const askChatbotStream = async (
                 } else if (parsed.type === 'token' || parsed.text) {
                   const tokenText = parsed.text || '';
                   rawFullText += tokenText;
-                  // Đẩy vào rawFullText, KHÔNG gọi onChunk ngay lập tức ở đây
-                  // Display Ticker Loop sẽ nhả mượt từng chữ!
+                  if (typeof document !== 'undefined' && document.hidden) {
+                    displayedText = rawFullText;
+                    if (onChunk) {
+                      onChunk(displayedText, {
+                        sources,
+                        actions,
+                        metadata,
+                        isTyping: true,
+                        isComplete: false
+                      });
+                    }
+                  }
                 } else if (parsed.error) {
                   throw createChatbotApiError(parsed.error, {
                     code: parsed.code,
@@ -523,12 +580,22 @@ export const getTokenBalance = async (userId) => {
  * @param {number|string} lessonId
  * @returns {Promise<Array<string>>}
  */
-export const getSuggestedQuestions = async (lessonId) => {
+export const getSuggestedQuestions = async (lessonId, refresh = false) => {
   if (!lessonId || Number(lessonId) <= 0) return [];
   try {
-    const response = await apiClient.get(`/chatbot/suggested-questions/${lessonId}`);
+    const url = refresh 
+      ? `/chatbot/suggested-questions/${lessonId}?refresh=true` 
+      : `/chatbot/suggested-questions/${lessonId}`;
+    const response = await apiClient.get(url);
     if (response.data && response.data.success && Array.isArray(response.data.questions)) {
-      return response.data.questions;
+      const questions = response.data.questions;
+      if (typeof response.data.contentAvailable === 'boolean') {
+        Object.defineProperty(questions, 'contentAvailable', {
+          value: response.data.contentAvailable,
+          enumerable: false
+        });
+      }
+      return questions;
     }
     throw new Error('Phản hồi câu hỏi gợi ý từ máy chủ không đúng định dạng.');
   } catch (error) {
@@ -536,6 +603,3 @@ export const getSuggestedQuestions = async (lessonId) => {
     throw error;
   }
 };
-
-
-

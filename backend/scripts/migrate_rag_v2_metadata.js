@@ -75,11 +75,11 @@ async function runMigration() {
       }
     }
 
-    let fullText = row.lesson_title || '';
+    let fullText = '';
     let cuesText = '';
     if (Array.isArray(cues) && cues.length > 0) {
-      cuesText = cues.map(c => c.en).filter(Boolean).join(' ');
-      fullText += ' ' + cuesText;
+      cuesText = cues.map(c => c.en || c.vi || c.text || '').filter(Boolean).join(' ');
+      fullText = cuesText;
     }
 
     if (!fullText.trim() || fullText.length < 10) {

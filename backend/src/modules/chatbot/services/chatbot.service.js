@@ -1,4 +1,5 @@
 const { geminiModel, geminiSpeakingModel, getSpeakingModelName, embeddingModel, pineconeIndex } = require("../../../utils/ai-clients");
+const { getActiveRagVersion, getRagIndex } = require('../../../utils/ragIndex.util');
 const speakingScorer = require("../../../utils/speakingScorer");
 const speakingValidator = require("../../../utils/speakingValidator");
 const db = require("../../../config/database");
@@ -104,7 +105,8 @@ const verifyLessonAndCourseAccess = async (userId, lessonId) => {
   }
 
   const hierarchyRes = await db.query(`
-    SELECT l.lesson_id, l.title as lesson_title, s.section_id, s.title as section_title, s.course_id, c.course_name, c.price, c.instructor_id
+    SELECT l.lesson_id, l.title as lesson_title, s.section_id, s.title as section_title, s.course_id,
+           c.course_name, c.price, c.instructor_id, c.status as course_status
     FROM lessons l
     JOIN sections s ON l.section_id = s.section_id
     JOIN courses c ON s.course_id = c.course_id
@@ -122,6 +124,7 @@ const verifyLessonAndCourseAccess = async (userId, lessonId) => {
   const courseId = Number(lessonInfo.course_id);
   const coursePrice = Number(lessonInfo.price || 0);
   const instructorId = Number(lessonInfo.instructor_id);
+  const isPublished = ['published', '1'].includes(String(lessonInfo.course_status || '').toLowerCase());
 
   if (userId) {
     const parsedUserId = Number(userId);
@@ -130,15 +133,20 @@ const verifyLessonAndCourseAccess = async (userId, lessonId) => {
       const roleId = Number(userRes.rows[0].role_id);
       // 1. Admin (role 1) có toàn quyền
       if (roleId === 1) {
-        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true, roleId, isAdmin: true };
       }
       // 2. Giảng viên sở hữu khóa học
       if (roleId === 2 && instructorId === parsedUserId) {
-        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true, roleId, isOwner: true };
+      }
+      if (!isPublished) {
+        const unavailableErr = new Error('Khóa học này chưa được xuất bản.');
+        unavailableErr.status = 403;
+        throw unavailableErr;
       }
       // 3. Khóa học miễn phí (price = 0)
       if (coursePrice === 0) {
-        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true, roleId };
       }
       // 4. Học viên đã ghi danh / thanh toán thành công
       const paymentRes = await db.query(
@@ -146,7 +154,7 @@ const verifyLessonAndCourseAccess = async (userId, lessonId) => {
         [parsedUserId, courseId]
       );
       if (paymentRes.rows.length > 0) {
-        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
+        return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true, roleId };
       }
       // Chưa thanh toán khóa học có phí
       const forbiddenErr = new Error('Bạn chưa ghi danh khóa học này để sử dụng trợ lý học tập AI.');
@@ -155,8 +163,8 @@ const verifyLessonAndCourseAccess = async (userId, lessonId) => {
     }
   }
 
-  // Khóa học miễn phí mặc định cho phép truy cập
-  if (coursePrice === 0) {
+  // Chỉ khóa học miễn phí đã xuất bản mới cho phép truy cập ẩn danh.
+  if (coursePrice === 0 && isPublished) {
     return { isGlobal: false, courseId, lesson: lessonInfo, authorized: true };
   }
 
@@ -169,14 +177,15 @@ const verifyLessonAndCourseAccess = async (userId, lessonId) => {
  * Hàm tìm kiếm ngữ cảnh thống nhất (Hỗ trợ cả Current-Lesson QA và Course-Wide Search)
  */
 const retrieveContext = async (lessonId, question, mode = 'current_lesson', verifiedCourseId = null) => {
-  const embeddingResult = await embeddingModel.embedContent({
-    content: { parts: [{ text: question }] },
-    outputDimensionality: 768
-  });
-  const queryVector = embeddingResult.embedding?.values;
-
-  if (!queryVector) {
-    throw new Error("Không thể tạo vector embedding từ câu hỏi.");
+  let queryVector = null;
+  try {
+    const embeddingResult = await embeddingModel.embedContent({
+      content: { parts: [{ text: question }] },
+      outputDimensionality: 768
+    });
+    queryVector = embeddingResult.embedding?.values || null;
+  } catch (embeddingErr) {
+    console.warn('[Embedding Retrieval Warning]:', embeddingErr.message);
   }
 
   const queryOptions = {
@@ -184,17 +193,11 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     includeMetadata: true
   };
 
-  const activeVersion = (process.env.ACTIVE_RAG_VERSION || 'v2').toLowerCase();
+  const activeVersion = getActiveRagVersion();
   const isV2 = activeVersion === 'v2';
 
   // 1. Phân giải Namespace tương ứng với phiên bản kích hoạt
-  const targetNamespace = isV2
-    ? (process.env.PINECONE_NAMESPACE_V2 || process.env.PINECONE_NAMESPACE || 'rag-v2')
-    : (process.env.PINECONE_NAMESPACE_V1 || '');
-
-  const targetIndex = (pineconeIndex && typeof pineconeIndex.namespace === 'function' && targetNamespace)
-    ? pineconeIndex.namespace(targetNamespace)
-    : pineconeIndex;
+  const targetIndex = getRagIndex(pineconeIndex, activeVersion);
 
   const {
     searchPostgreSQLLexical,
@@ -205,6 +208,7 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
   let matches = [];
   let rankedLessons = [];
   let contextText = "";
+  let hasContentEvidence = false;
 
   if (isV2 && mode === 'course_wide' && verifiedCourseId) {
     // 2.A. V2 Hybrid Retrieval (Course-Wide): Pinecone Semantic Search (topK=8) + PostgreSQL Lexical Search + Grouping & Rerank
@@ -220,7 +224,7 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     // Chạy song song Semantic Vector Search và PostgreSQL Lexical Search độc lập (Resilient)
     try {
       const results = await Promise.allSettled([
-        targetIndex ? targetIndex.query(queryOptions) : Promise.resolve({ matches: [] }),
+        targetIndex && queryVector ? targetIndex.query(queryOptions) : Promise.resolve({ matches: [] }),
         searchPostgreSQLLexical(question, Number(verifiedCourseId))
       ]);
 
@@ -243,6 +247,7 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     rankedLessons = mergeGroupAndRerank(vectorMatches, lexicalMatches, question, { topK: 3 });
 
     matches = rankedLessons;
+    hasContentEvidence = rankedLessons.some(lesson => Array.isArray(lesson.chunks) && lesson.chunks.some(Boolean));
     contextText = rankedLessons.map(l => {
       const chunkSnippet = l.chunks && l.chunks.length > 0 ? l.chunks.join("\n") : "(Tài liệu bài học)";
       return `[Bài học: "${l.lessonTitle}" - Chương: "${l.sectionTitle}" (Lesson ID: ${l.lessonId}) - Độ tin cậy: ${(l.rerankScore * 100).toFixed(1)}%]\n${chunkSnippet}`;
@@ -269,7 +274,7 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     }
 
     try {
-      if (targetIndex) {
+      if (targetIndex && queryVector) {
         const queryResponse = await targetIndex.query(queryOptions);
         const configuredThreshold = Number(process.env.RAG_CONFIDENCE_THRESHOLD);
         const minimumConfidence = Number.isFinite(configuredThreshold)
@@ -288,6 +293,12 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
       .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
       .filter(Boolean)
       .join("\n");
+    hasContentEvidence = matches.some(match => {
+      const metadata = match.metadata || {};
+      const sourceType = metadata.source || metadata.source_type || metadata.content_type;
+      const text = metadata.text || metadata.content || metadata.context;
+      return Boolean(text && !['lesson-metadata', 'lesson_metadata', 'metadata'].includes(sourceType));
+    });
 
     // 2.C. PostgreSQL Grounding Fallback: Nếu Pinecone rỗng hoặc chưa nạp vector cho bài học này,
     // tự động truy vấn trực tiếp thông tin bài học & phụ đề từ PostgreSQL để AI luôn hiểu rõ bài học
@@ -310,16 +321,15 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
             if (subRes.rows.length > 0 && subRes.rows[0].cues) {
               const cues = Array.isArray(subRes.rows[0].cues) ? subRes.rows[0].cues : JSON.parse(subRes.rows[0].cues);
               if (cues && cues.length > 0) {
-                subText = cues.slice(0, 35).map(c => `[${c.startFormatted || c.start}s] (EN) ${c.en || ''} - (VI) ${c.vi || ''}`).join('\n');
+                subText = buildGroundedCueText(cues, { withTimestamps: true });
               }
             }
           } catch (_) {}
 
-          contextText = [
-            `[BÀI HỌC]: "${row.lesson_title}" | [CHƯƠNG]: "${row.section_title}" | [KHÓA HỌC]: "${row.course_name}"`,
-            row.course_description ? `[Mô tả khóa học]: ${row.course_description}` : '',
-            subText ? `\n[NỘI DUNG LỜI THOẠI BÀI HỌC]:\n${subText}` : ''
-          ].filter(Boolean).join('\n');
+          if (subText) {
+            contextText = `[NỘI DUNG LỜI THOẠI BÀI HỌC]:\n${subText}`;
+            hasContentEvidence = true;
+          }
         }
       } catch (dbErr) {
         console.warn('[PostgreSQL Grounding Fallback Warning]:', dbErr.message);
@@ -327,7 +337,7 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
     }
   }
 
-  return { contextText, matches, rankedLessons };
+  return { contextText, matches, rankedLessons, hasContentEvidence };
 };
 
 const { routeIntent, INTENTS } = require('./intentRouter.service');
@@ -348,21 +358,26 @@ async function buildVerifiedEvidence({
   lessonId,
   courseId
 }) {
-  const isCurrentLessonIntent = detectedIntent?.intent === INTENTS.CURRENT_LESSON_QA
-    || detectedIntent?.intent === 'SUMMARIZE_CURRENT_LESSON'
-    || detectedIntent?.intent === INTENTS.SUMMARIZE_CURRENT_LESSON;
-
-  if (!retrievalRes && !timestampInfo && (isGlobalChat || !isCurrentLessonIntent)) {
+  const hasRetrievalEvidence = Boolean(
+    retrievalRes?.contextText
+    || retrievalRes?.matches?.length
+    || retrievalRes?.rankedLessons?.length
+  );
+  if (!hasRetrievalEvidence && !timestampInfo) {
     return { sources: [], actions: [] };
   }
 
   const verifiedOutput = await buildVerifiedSources({
     intent: detectedIntent ? detectedIntent.intent : 'SEARCH_LESSON',
-    rankedLessons: retrievalRes?.rankedLessons
-      || (retrievalRes?.matches
+    rankedLessons: retrievalRes?.rankedLessons?.length
+      ? retrievalRes.rankedLessons
+      : (retrievalRes?.matches
         ? retrievalRes.matches.map(match => ({
           lessonId: match.metadata?.lesson_id,
-          rerankScore: match.score
+          rerankScore: match.score,
+          sourceType: match.metadata?.source || match.metadata?.source_type || match.metadata?.content_type,
+          startTime: match.metadata?.start_time,
+          endTime: match.metadata?.end_time
         }))
         : []),
     currentLessonId: lessonId,
@@ -374,6 +389,27 @@ async function buildVerifiedEvidence({
     sources: verifiedOutput.sources || [],
     actions: verifiedOutput.actions || []
   };
+}
+
+function shouldUseTranscriptWindow(question = '') {
+  const normalized = String(question).toLowerCase().trim();
+  if (!normalized) return false;
+  return /phần (này|vừa rồi|tiếp theo)|đoạn (này|vừa qua|sau)|vừa (nói|học|xem|nghe)|trước đó|câu vừa rồi|tiếp theo là gì|mốc (thời gian|hiện tại)|timestamp|current (part|point)|just (said|now)|previous part|next part/.test(normalized);
+}
+
+function buildGroundedCueText(cues = [], { maxCues = 240, maxChars = 24000, withTimestamps = false } = {}) {
+  if (!Array.isArray(cues) || cues.length === 0) return '';
+  const sampleSize = Math.min(cues.length, maxCues);
+  const selected = sampleSize === cues.length
+    ? cues
+    : Array.from({ length: sampleSize }, (_, index) => cues[Math.floor(index * (cues.length - 1) / (sampleSize - 1))]);
+
+  return selected.map(cue => {
+    const primaryText = cue?.en || cue?.vi || cue?.text || '';
+    if (!primaryText) return '';
+    const bilingualText = cue?.en && cue?.vi && cue.vi !== cue.en ? `${primaryText} (${cue.vi})` : primaryText;
+    return withTimestamps ? `[${cue.startFormatted || cue.start || 0}s] ${bilingualText}` : bilingualText;
+  }).filter(Boolean).join('\n').slice(0, maxChars);
 }
 
 /**
@@ -494,7 +530,7 @@ async function getLessonFullContext(lessonId, accessInfo = null) {
   // 1. Lấy thông tin bài học và phân cấp (lesson -> section -> course) từ PostgreSQL
   const hierarchyRes = await db.query(`
     SELECT 
-      l.lesson_id, l.title as lesson_title, l.content_type, l.content_url,
+      l.lesson_id, l.title as lesson_title, l.content, l.content_type, l.content_url,
       l.speaking_sentences, l.speaking_questions,
       s.section_id, s.title as section_title,
       c.course_id, c.course_name, c.description as course_description
@@ -519,26 +555,15 @@ async function getLessonFullContext(lessonId, accessInfo = null) {
     if (subRes.rows.length > 0 && subRes.rows[0].cues) {
       subtitleCues = subRes.rows[0].cues;
       if (Array.isArray(subtitleCues) && subtitleCues.length > 0) {
-        subtitleText = subtitleCues.map(c => c.en ? `${c.en} ${c.vi ? `(${c.vi})` : ''}` : '').filter(Boolean).join('\n');
+        subtitleText = buildGroundedCueText(subtitleCues);
       }
     }
   } catch (err) {
     console.warn(`[QuickAction] Cảnh báo đọc phụ đề lessonId=${lessonId}:`, err.message);
   }
 
-  // 3. Lấy tài liệu đính kèm nếu có
-  let materialsText = '';
-  try {
-    const matRes = await db.query(
-      'SELECT file_name, file_url FROM lesson_materials WHERE lesson_id = $1',
-      [parsedLessonId]
-    );
-    if (matRes.rows.length > 0) {
-      materialsText = matRes.rows.map(m => `[Tài liệu đính kèm: ${m.file_name}]`).join('\n');
-    }
-  } catch (err) {
-    console.warn(`[QuickAction] Cảnh báo đọc tài liệu lessonId=${lessonId}:`, err.message);
-  }
+  // Tên/tệp PDF không phải là nội dung đã trích xuất, nên không dùng làm bằng chứng RAG.
+  const lessonText = typeof lesson.content === 'string' ? lesson.content.trim() : '';
 
   // 4. Lấy nội dung luyện nói nếu có
   let speakingText = '';
@@ -552,8 +577,8 @@ async function getLessonFullContext(lessonId, accessInfo = null) {
   const combinedContext = [
     `BÀI HỌC: "${lesson.lesson_title}"`,
     `CHƯƠNG: "${lesson.section_title}" | KHÓA HỌC: "${lesson.course_name}"`,
+    lessonText ? `\n--- NỘI DUNG VĂN BẢN BÀI HỌC ---\n${lessonText}` : '',
     subtitleText ? `\n--- NỘI DUNG LỜI THOẠI & PHỤ ĐỀ BÀI HỌC ---\n${subtitleText}` : '',
-    materialsText ? `\n--- TÀI LIỆU VĂN BẢN ĐÍNH KÈM ---\n${materialsText}` : '',
     speakingText ? `\n--- NỘI DUNG LUYỆN NÓI ---\n${speakingText}` : ''
   ].filter(Boolean).join('\n');
 
@@ -561,7 +586,7 @@ async function getLessonFullContext(lessonId, accessInfo = null) {
     lesson,
     courseId: Number(lesson.course_id),
     combinedContext,
-    hasContent: Boolean(subtitleText || materialsText || speakingText),
+    hasContent: Boolean(lessonText || subtitleText || speakingText),
     cuesCount: subtitleCues.length
   };
 }
@@ -715,8 +740,8 @@ ${lessonContext.combinedContext}`;
     const cleanJson = rawText.replace(/```json\s*|```/g, '').trim();
     parsedQuestions = JSON.parse(cleanJson);
 
-    if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
-      throw new Error("Dữ liệu Quiz không phải là mảng hợp lệ.");
+    if (!Array.isArray(parsedQuestions) || parsedQuestions.length < 3 || parsedQuestions.length > 4) {
+      throw new Error("Dữ liệu Quiz phải là mảng gồm 3 đến 4 câu hỏi.");
     }
   } catch (err) {
     if (isGeminiQuotaExhausted(err)) throw err;
@@ -823,6 +848,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
     let conversationHistory = [];
     let retrievalRes = null;
     let timestampInfo = null;
+    let hasContentEvidence = false;
     let globalCourses = [];
     let globalCoursesLoadFailed = false;
 
@@ -835,6 +861,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
         const coursesResult = await db.query(`
           SELECT course_name, description 
           FROM courses 
+          WHERE LOWER(CAST(status AS TEXT)) IN ('published', '1')
           ORDER BY course_id ASC
         `);
         globalCourses = coursesResult.rows;
@@ -878,6 +905,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
       // Xử lý Time-window Transcript Retrieval nếu có currentTime và câu hỏi liên quan bài hiện tại
       if (
         (effectiveScope === 'current_lesson' || detectedIntent.intent === INTENTS.CURRENT_LESSON_QA) &&
+        shouldUseTranscriptWindow(question) &&
         currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0
       ) {
         const timeWindowRes = await getTranscriptWindowContext(lessonId, currentTime, question);
@@ -888,6 +916,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
             startTime: timeWindowRes.startTime,
             endTime: timeWindowRes.endTime
           };
+          hasContentEvidence = true;
         }
       }
 
@@ -901,6 +930,33 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
 
         retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
+        hasContentEvidence = retrievalRes.hasContentEvidence === true;
+      }
+
+      // Automatic Current Lesson Context Injection:
+      // Khi học viên đang ở trong bài học, nếu retrieval chưa lấy được context, tự động nạp Full Context bài học
+      if (!contextText && lessonId && Number(lessonId) > 0) {
+        try {
+          const lessonFullCtx = await getLessonFullContext(lessonId, accessInfo);
+          if (lessonFullCtx && lessonFullCtx.hasContent) {
+            contextText = lessonFullCtx.combinedContext;
+            hasContentEvidence = true;
+            retrievalRes = {
+              contextText,
+              matches: [],
+              rankedLessons: [{
+                lessonId: Number(lessonId),
+                lessonTitle: accessInfo.lesson?.lesson_title,
+                sectionTitle: accessInfo.lesson?.section_title,
+                rerankScore: 1,
+                sourceType: 'postgresql_content'
+              }],
+              hasContentEvidence: true
+            };
+          }
+        } catch (ctxErr) {
+          console.warn('[CurrentLesson Context Injection Warning]:', ctxErr.message);
+        }
       }
     }
 
@@ -912,9 +968,12 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
       lessonId,
       courseId: accessInfo.courseId
     });
-    const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
 
-    if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources)) {
+    const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
+    const allowMetadataOnly = [INTENTS.SEARCH_LESSON, INTENTS.NAVIGATE_TO_LESSON, INTENTS.RECOMMEND_LESSON]
+      .includes(detectedIntent?.intent);
+
+    if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources, { hasContentEvidence, allowMetadataOnly })) {
       return {
         success: true,
         reply: getInsufficientGroundingReply(detectedIntent?.intent),
@@ -988,14 +1047,7 @@ CÂU HỎI CỦA HỌC VIÊN:
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChat:", error);
-    if (isGeminiQuotaExhausted(error)) throw error;
-    return {
-      success: false,
-      reply: "Rất tiếc, đã có sự cố kết nối tới hệ thống AI Assistant. Vui lòng thử lại sau ít phút.",
-      intent: "GENERAL_ENGLISH_QA",
-      sources: [],
-      actions: []
-    };
+    throw error;
   }
 };
 
@@ -1039,6 +1091,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     let conversationHistory = [];
     let retrievalRes = null;
     let timestampInfo = null;
+    let hasContentEvidence = false;
     let effectiveScope = 'current_lesson';
     let globalCourses = [];
     let globalCoursesLoadFailed = false;
@@ -1052,6 +1105,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
         const coursesResult = await db.query(`
           SELECT course_name, description 
           FROM courses 
+          WHERE LOWER(CAST(status AS TEXT)) IN ('published', '1')
           ORDER BY course_id ASC
         `);
         globalCourses = coursesResult.rows;
@@ -1099,6 +1153,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       // Xử lý Time-window Transcript Retrieval nếu có currentTime và câu hỏi liên quan bài hiện tại
       if (
         (effectiveScope === 'current_lesson' || detectedIntent.intent === INTENTS.CURRENT_LESSON_QA) &&
+        shouldUseTranscriptWindow(question) &&
         currentTime !== null && currentTime !== undefined && !isNaN(Number(currentTime)) && Number(currentTime) >= 0
       ) {
         const timeWindowRes = await getTranscriptWindowContext(lessonId, currentTime, question);
@@ -1109,6 +1164,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
             startTime: timeWindowRes.startTime,
             endTime: timeWindowRes.endTime
           };
+          hasContentEvidence = true;
         }
       }
 
@@ -1122,6 +1178,33 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
 
         retrievalRes = await retrieveContext(lessonId, retrievalQuery, effectiveScope, accessInfo.courseId);
         contextText = retrievalRes.contextText;
+        hasContentEvidence = retrievalRes.hasContentEvidence === true;
+      }
+
+      // Automatic Current Lesson Context Injection:
+      // Khi học viên đang ở trong bài học, nếu retrieval chưa lấy được context, tự động nạp Full Context bài học
+      if (!contextText && lessonId && Number(lessonId) > 0) {
+        try {
+          const lessonFullCtx = await getLessonFullContext(lessonId, accessInfo);
+          if (lessonFullCtx && lessonFullCtx.hasContent) {
+            contextText = lessonFullCtx.combinedContext;
+            hasContentEvidence = true;
+            retrievalRes = {
+              contextText,
+              matches: [],
+              rankedLessons: [{
+                lessonId: Number(lessonId),
+                lessonTitle: accessInfo.lesson?.lesson_title,
+                sectionTitle: accessInfo.lesson?.section_title,
+                rerankScore: 1,
+                sourceType: 'postgresql_content'
+              }],
+              hasContentEvidence: true
+            };
+          }
+        } catch (ctxErr) {
+          console.warn('[CurrentLesson Context Injection Warning (Stream)]:', ctxErr.message);
+        }
       }
     }
 
@@ -1133,7 +1216,10 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       lessonId,
       courseId: accessInfo.courseId
     });
+
     const groundingRequired = requiresSourceGrounding({ isGlobalChat, detectedIntent });
+    const allowMetadataOnly = [INTENTS.SEARCH_LESSON, INTENTS.NAVIGATE_TO_LESSON, INTENTS.RECOMMEND_LESSON]
+      .includes(detectedIntent?.intent);
     const globalGenerationProfile = isGlobalChat
       ? selectGlobalChatProfile(question)
       : null;
@@ -1149,7 +1235,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
       });
     }
 
-    if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources)) {
+    if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources, { hasContentEvidence, allowMetadataOnly })) {
       const safeReply = getInsufficientGroundingReply(detectedIntent?.intent);
       if (onChunk) {
         onChunk({ type: 'token', text: safeReply });
@@ -1238,8 +1324,7 @@ CÂU HỎI CỦA HỌC VIÊN:
     };
   } catch (error) {
     console.error("Lỗi xảy ra tại handleRagChatStream:", error);
-    if (isGeminiQuotaExhausted(error)) throw error;
-    throw new Error("Hệ thống AI Assistant đang bận.");
+    throw error;
   }
 };
 
@@ -1264,7 +1349,9 @@ class ChatbotService {
 
       const chatbotError = new Error(error.message || "Dịch vụ Chatbot AI tạm thời gặp sự cố");
       chatbotError.name = "ChatbotError";
-      chatbotError.status = 503;
+      chatbotError.status = error.status || 503;
+      chatbotError.code = error.code;
+      chatbotError.cause = error;
       throw chatbotError;
     }
   }
@@ -1419,114 +1506,6 @@ class ChatbotService {
     }
   }
 
-  async generateQuiz(lessonId) {
-    try {
-      const isGlobalChat = !lessonId || Number(lessonId) === 0;
-      let contextText = "";
-
-      if (isGlobalChat) {
-        try {
-          const coursesResult = await db.query(`
-            SELECT course_name, description 
-            FROM courses 
-            ORDER BY course_id ASC
-          `);
-          const coursesList = coursesResult.rows;
-          if (coursesList.length > 0) {
-            contextText = "Danh sách khóa học trên hệ thống:\n" +
-              coursesList.map((c, idx) => `${idx + 1}. Khóa học: "${c.course_name}" - ${c.description || ""}`).join("\n");
-          }
-        } catch (dbErr) {
-          console.warn("Lỗi lấy danh sách khóa học khi tạo quiz:", dbErr.message);
-        }
-      } else {
-        try {
-          const lessonRes = await db.query('SELECT title, content FROM lessons WHERE lesson_id = $1', [lessonId]);
-          const lessonInfo = lessonRes.rows[0];
-          const lessonTitle = lessonInfo?.title || `Bài học #${lessonId}`;
-
-          const embeddingResult = await embeddingModel.embedContent({
-            content: { parts: [{ text: `Kiến thức trọng tâm, ngữ pháp và từ vựng bài học ${lessonTitle}` }] },
-            outputDimensionality: 768
-          });
-          const queryVector = embeddingResult.embedding?.values;
-
-          if (queryVector) {
-            const queryOptions = {
-              vector: queryVector,
-              topK: 3,
-              includeMetadata: true,
-              filter: { lesson_id: { $eq: Number(lessonId) } }
-            };
-
-            const queryResponse = await pineconeIndex.query(queryOptions);
-            const matches = queryResponse.matches || [];
-            const ragText = matches
-              .map(match => match.metadata?.text || match.metadata?.content || match.metadata?.context || "")
-              .filter(Boolean)
-              .join("\n");
-
-            contextText = `Tiêu đề bài học: ${lessonTitle}\nNội dung bổ trợ: ${ragText || lessonInfo?.content || ""}`;
-          } else {
-            contextText = `Tiêu đề bài học: ${lessonTitle}\nNội dung: ${lessonInfo?.content || ""}`;
-          }
-        } catch (ragErr) {
-          console.warn("⚠️ Lỗi truy vấn Pinecone RAG khi tạo quiz, sử dụng thông tin DB:", ragErr.message);
-          try {
-            const lessonRes = await db.query('SELECT title, content FROM lessons WHERE lesson_id = $1', [lessonId]);
-            if (lessonRes.rows.length > 0) {
-              contextText = `Bài học: ${lessonRes.rows[0].title}\nNội dung: ${lessonRes.rows[0].content || ""}`;
-            }
-          } catch (e) {}
-        }
-      }
-
-      const prompt = `You are a professional English teacher at E-Learn Academy.
-Based on the following lesson/course context, generate EXACTLY 2 multiple-choice practice quiz questions (4 options each, exactly 1 correct answer) to test the student's comprehension, grammar, or vocabulary.
-
-CONTEXT:
-${contextText || "English grammar, vocabulary, and communication skills"}
-
-REQUIREMENTS:
-- Output MUST be a valid JSON array of exactly 2 quiz objects.
-- Each quiz object MUST contain EXACTLY these keys:
-  - "question": (string question in Vietnamese or English)
-  - "options": (array of 4 distinct string choices)
-  - "correctAnswer": (integer 0, 1, 2, or 3 pointing to the correct choice in options)
-  - "explanation": (friendly, clear explanation in Vietnamese explaining why this answer is correct)
-
-Ensure the response contains ONLY valid JSON without markdown code fences.`;
-
-      const result = await geminiModel.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
-      });
-
-      let responseText = result.response.text();
-      if (responseText.includes("```")) {
-        responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-      }
-
-      const parsedQuiz = JSON.parse(responseText);
-      if (!Array.isArray(parsedQuiz) || parsedQuiz.length === 0) {
-        throw new Error("Dữ liệu quiz từ AI không đúng định dạng mảng.");
-      }
-
-      return parsedQuiz;
-    } catch (error) {
-      console.error("Lỗi xảy ra tại ChatbotService.generateQuiz:", error);
-      if (isGeminiQuotaExhausted(error)) throw error;
-      throw new Error("Không thể tạo bài tập trắc nghiệm tự động: " + error.message);
-    }
-  }
-
   /**
    * Xử lý Audio đa năng: Voice Chatbot RAG (chat) hoặc Speaking Assessment (read_aloud / qa)
    */
@@ -1599,6 +1578,12 @@ Ensure the response contains ONLY valid JSON without markdown code fences.`;
           sources: [],
           actions: []
         };
+      }
+      if (transcription.length > 2000) {
+        const err = new Error('Nội dung nhận diện vượt quá giới hạn 2000 ký tự.');
+        err.status = 400;
+        err.code = 'QUESTION_TOO_LONG';
+        throw err;
       }
 
       // Tái sử dụng luồng ask RAG hiện có của chatbot mà không làm ảnh hưởng logic RAG
@@ -1735,6 +1720,7 @@ SCORING RULES:
 
 Format response as strict JSON object with EXACTLY these keys:
 "hasSpeech", "transcription", "pronunciationScore", "fluencyScore", "wordAssessments", "quality", "noiseLevel", "warning", "pronunciationFeedback", "fluencyFeedback", "generalFeedback"`;
+    } else {
       // mode === 'qa'
       prompt = `You are a strict, professional English conversational speaking assessor following the IELTS Speaking Band Descriptors (British Council / IDP / Cambridge).
 Question given to the student: "${questionText}".
@@ -2029,7 +2015,8 @@ module.exports = {
   retrieveContext,
   getLessonFullContext,
   handleLessonKeyVocab,
-  handleLessonQuickQuiz
+  handleLessonQuickQuiz,
+  shouldUseTranscriptWindow
 };
 
 

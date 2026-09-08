@@ -238,7 +238,7 @@ async function buildVerifiedSources({
       lessonId: auth.lessonId,
       lessonTitle: auth.lessonTitle,
       contentType: auth.contentType || 'video',
-      sourceType: item.lexicalScore > 0 ? (item.semanticScore > 0 ? 'hybrid' : 'lexical') : 'transcript',
+      sourceType: item.sourceType || item.contentType || (item.lexicalScore > 0 ? (item.semanticScore > 0 ? 'hybrid' : 'lexical') : 'lesson_metadata'),
       relevanceScore: item.rerankScore || 1.0,
       badgeText
     };

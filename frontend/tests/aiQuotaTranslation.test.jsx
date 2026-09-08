@@ -94,13 +94,13 @@ describe('AI quota management translations', () => {
     expect(await screen.findByText('Total model tokens used')).toBeInTheDocument();
     expect(screen.getByText('Users using AI')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reset all student question usage' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Model tokens used' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Usage Limit' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Questions / quota (today)' })).toBeInTheDocument();
     expect(screen.getByText('Student')).toBeInTheDocument();
     expect(screen.getByText('4 / 10')).toBeInTheDocument();
     expect(screen.getByText('3 / 20')).toBeInTheDocument();
-    expect(screen.getAllByText('Unlimited').length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText(/\/ 50/)).not.toBeInTheDocument();
+    expect(screen.getByText('0 / 50')).toBeInTheDocument();
+    expect(screen.getByText('50 questions remaining')).toBeInTheDocument();
   });
 
   it('renders a localized, actionable 404 state in Vietnamese', async () => {

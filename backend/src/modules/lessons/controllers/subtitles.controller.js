@@ -89,7 +89,7 @@ exports.generateSubtitles = async (req, res, next) => {
   }
 };
 
-const { ingestLessonTranscript } = require('../services/ragIngestion.service');
+const { ingestLessonTranscript, deleteLessonVectors } = require('../services/ragIngestion.service');
 
 /**
  * PUT /api/lessons/:lessonId/subtitles - Cập nhật phụ đề tùy chỉnh
@@ -107,9 +107,11 @@ exports.updateSubtitles = async (req, res, next) => {
       subtitle_status: 'ready'
     });
 
-    // Đồng bộ ngay transcript mới nhất vào Pinecone RAG Vector DB (chạy nền non-blocking)
+    // Đồng bộ transcript và xóa vector cũ nếu phụ đề bị làm rỗng.
     if (cues && Array.isArray(cues) && cues.length > 0) {
-      ingestLessonTranscript(lessonId, cues);
+      await ingestLessonTranscript(lessonId, cues);
+    } else {
+      await deleteLessonVectors(lessonId, 'auto-subtitle-transcript');
     }
 
     return res.status(200).json({
@@ -129,6 +131,7 @@ exports.getLessonRagStatus = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
     const { pineconeIndex } = require('../../../utils/ai-clients');
+    const { getRagIndex, getRagNamespace } = require('../../../utils/ragIndex.util');
 
     if (!pineconeIndex || typeof pineconeIndex.describeIndexStats !== 'function') {
       const error = new Error('Pinecone chưa được cấu hình hoặc chưa sẵn sàng.');
@@ -137,14 +140,20 @@ exports.getLessonRagStatus = async (req, res, next) => {
       throw error;
     }
 
-    const namespace = process.env.PINECONE_NAMESPACE_V2 || process.env.PINECONE_NAMESPACE || 'rag-v2';
-    const stats = await pineconeIndex.describeIndexStats({
+    const namespace = getRagNamespace();
+    const targetIndex = getRagIndex(pineconeIndex);
+    const stats = await targetIndex.describeIndexStats({
       filter: {
         lesson_id: { $eq: Number(lessonId) },
         schema_version: { $eq: 'v2' }
       }
     });
-    const chunkCount = Number(stats?.namespaces?.[namespace]?.recordCount || 0);
+    const chunkCount = Number(
+      stats?.namespaces?.[namespace]?.recordCount
+      || stats?.namespaces?.['']?.recordCount
+      || stats?.totalRecordCount
+      || 0
+    );
     const hasData = chunkCount > 0;
 
     return res.status(200).json({

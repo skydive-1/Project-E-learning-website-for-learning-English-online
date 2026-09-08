@@ -7,11 +7,15 @@ function requiresSourceGrounding({ isGlobalChat = false, detectedIntent = null }
   return GROUNDED_SCOPES.has(detectedIntent.scope);
 }
 
-function hasUsableGrounding(contextText, sources = []) {
-  return typeof contextText === 'string'
-    && contextText.trim().length > 0
-    && Array.isArray(sources)
-    && sources.length > 0;
+function hasUsableGrounding(contextText, sources = [], options = {}) {
+  const hasVerifiedContext = typeof contextText === 'string' && contextText.trim().length > 0;
+  const hasVerifiedSource = Array.isArray(sources) && sources.length > 0;
+  const hasContentEvidence = options.hasContentEvidence === true;
+  const allowMetadataOnly = options.allowMetadataOnly === true;
+
+  return hasVerifiedContext
+    && hasVerifiedSource
+    && (hasContentEvidence || allowMetadataOnly);
 }
 
 function getInsufficientGroundingReply(intent) {

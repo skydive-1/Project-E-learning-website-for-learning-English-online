@@ -249,6 +249,10 @@ class LessonsService {
 
       if (deleted) {
         lessonStreamCache.invalidateLessonStreamCache(cleanLessonId);
+        const { deleteLessonVectors } = require('./ragIngestion.service');
+        deleteLessonVectors(cleanLessonId).catch((err) => {
+          console.warn(`[RAG Vector Delete] Không thể xóa vector lessonId=${cleanLessonId}:`, err.message);
+        });
       }
 
       if (deleted && assetsToCleanup.length > 0) {

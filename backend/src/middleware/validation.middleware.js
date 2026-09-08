@@ -21,6 +21,13 @@ const validate = (schema) => (req, res, next) => {
         }
 
         if (value !== undefined && value !== null) {
+          if (rules.type === 'string' && typeof value !== 'string') {
+            const error = new Error(`Trường '${field}' phải là chuỗi`);
+            error.name = 'ValidationError';
+            error.status = 400;
+            return next(error);
+          }
+
           // 2. Check email format
           if (rules.isEmail) {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,6 +42,13 @@ const validate = (schema) => (req, res, next) => {
           // 3. Check min length
           if (rules.minLength && String(value).length < rules.minLength) {
             const error = new Error(`Trường '${field}' phải dài tối thiểu ${rules.minLength} ký tự`);
+            error.name = 'ValidationError';
+            error.status = 400;
+            return next(error);
+          }
+
+          if (rules.maxLength && String(value).length > rules.maxLength) {
+            const error = new Error(`Trường '${field}' không được vượt quá ${rules.maxLength} ký tự`);
             error.name = 'ValidationError';
             error.status = 400;
             return next(error);

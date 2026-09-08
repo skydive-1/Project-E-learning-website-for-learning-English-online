@@ -10,7 +10,7 @@ const { aiLimiter, uploadLimiter } = require('../../middleware/rateLimit.middlew
 // Schema Validation
 const askSchema = {
   body: {
-    question: { required: true },
+    question: { required: true, type: 'string', maxLength: 2000 },
     lessonId: { required: false },
     scope: { required: false }
   }
@@ -25,7 +25,7 @@ router.post('/generate-quiz', authenticate, aiLimiter, checkQuestionLimit, chatb
 router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBalance);
 
 // API Lấy 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
-router.get('/suggested-questions/:lessonId', authenticate, chatbotController.getSuggestedQuestions);
+router.get('/suggested-questions/:lessonId', authenticate, aiLimiter, checkQuestionLimit, chatbotController.getSuggestedQuestions);
 
 
 // API Lịch sử Chat (Yêu cầu xác thực JWT)
@@ -35,7 +35,14 @@ router.delete('/history/:lessonId', authenticate, chatbotController.clearHistory
 router.delete('/history', authenticate, chatbotController.clearHistory);
 
 // API xử lý phát âm (Audio)
-router.post('/audio', authenticate, aiLimiter, uploadLimiter, upload.audioMemory.single('audio'), upload.verifyAudioMagicBytes, chatbotController.processAudio);
+const checkAudioChatLimit = (req, res, next) => {
+  const requestedMode = req.body?.mode;
+  const isLegacyChat = !requestedMode && req.body?.isQA !== 'true' && !String(req.body?.targetText || '').trim();
+  if (requestedMode === 'chat' || isLegacyChat) return checkQuestionLimit(req, res, next);
+  return next();
+};
+
+router.post('/audio', authenticate, aiLimiter, uploadLimiter, upload.audioMemory.single('audio'), upload.verifyAudioMagicBytes, checkAudioChatLimit, chatbotController.processAudio);
 
 /**
  * @swagger
