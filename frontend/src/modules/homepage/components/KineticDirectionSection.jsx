@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { motion, useReducedMotion, useScroll, useTransform, useSpring } from 'motion/react';
+import ProtectedVideo from '../../../components/common/ProtectedVideo';
 
 const KINETIC_CLOSE_RANGE = [0, 0.42, 0.94];
 
@@ -111,10 +112,10 @@ const KineticDirectionSection = () => {
               className="apple-kinetic-video-frame"
               style={videoFrameStyle}
             >
-              <video 
+              <ProtectedVideo
                 ref={videoRef}
                 className="apple-inline-video"
-                src="/videos/girl_typing.mp4"
+                assetId="girl-typing"
                 loop
                 muted
                 playsInline

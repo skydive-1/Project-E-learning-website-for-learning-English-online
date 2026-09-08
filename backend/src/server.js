@@ -24,6 +24,7 @@ const coursesRoutes = require('./modules/courses/courses.routes');
 const chatbotRoutes = require('./modules/chatbot/chatbot.routes');
 const progressRoutes = require('./modules/progress/progress.routes');
 const lessonsRoutes = require('./modules/lessons/lessons.routes');
+const mediaRoutes = require('./modules/media/media.routes');
 const instructorRoutes = require('./modules/instructor/instructor.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const quizzesRoutes = require('./modules/quizzes/quizzes.routes');
@@ -33,6 +34,7 @@ const gamificationRoutes = require('./modules/gamification/gamification.routes')
 const commentsRoutes = require('./modules/comments/comments.routes');
 const drmRoutes = require('./modules/drm/drm.routes');
 const { checkShakaPackagerInstalled } = require('./utils/drmPackager.util');
+const { blockDirectVideoAccess } = require('./modules/media/directVideoAccess.middleware');
 
 // ===== SWAGGER =====
 const swaggerSpec = require('./swagger');
@@ -92,13 +94,9 @@ app.use(loggerMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Bảo vệ thư mục video khóa học, chặn tải trực tiếp qua static URL
-app.use('/uploads/courses/videos', (req, res) => {
-  return res.status(403).json({
-    success: false,
-    message: 'Quyền truy cập bị từ chối: Không được phép tải trực tiếp tệp video của khóa học.'
-  });
-});
+// Chặn mọi định dạng video/manifest dưới /uploads. Tất cả video chỉ được đọc qua
+// endpoint stream có vé; các loại tài liệu không phải video vẫn dùng static route.
+app.use('/uploads', blockDirectVideoAccess);
 
 // Serve static files (uploads)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -126,6 +124,7 @@ app.use('/api/courses', coursesRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/lessons', lessonsRoutes);
+app.use('/api/media', mediaRoutes);
 app.use('/api/instructor', instructorRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quizzes', quizzesRoutes);

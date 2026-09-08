@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const {
   createClientFingerprint,
+  getPublicVideoTicketFromRequest,
   getRequestSourceOrigin,
   getVideoTicketFromRequest,
   isAllowedMediaSource,
@@ -354,8 +355,97 @@ const authenticateVideoToken = (req, res, next) => {
   }
 };
 
+/**
+ * Xác thực vé ngắn hạn dành riêng cho video giao diện công khai.
+ * Cookie này tách khỏi vé bài học để các video ở Footer/Home không ghi đè
+ * quyền phát video bài giảng đang mở.
+ */
+const authenticatePublicVideoToken = (req, res, next) => {
+  try {
+    if (isAutomatedDownloader(req)) {
+      return res.status(403).json({
+        success: false,
+        code: 'DOWNLOAD_MANAGER_BLOCKED',
+        message: 'Forbidden: Automated download managers are strictly prohibited.'
+      });
+    }
+
+    if (!isAllowedMediaSource(req)) {
+      return res.status(403).json({
+        success: false,
+        code: 'HOTLINK_BLOCKED',
+        message: 'Hotlink Protection: nguồn yêu cầu không thuộc tên miền frontend đã cấu hình.'
+      });
+    }
+
+    const { token, transport } = getPublicVideoTicketFromRequest(req);
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        code: 'AUTH_REQUIRED',
+        message: 'Không có vé phát video giao diện trong cookie/header.'
+      });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        code: 'AUTH_CONFIG_ERROR',
+        message: 'JWT_SECRET chưa được cấu hình trên hệ thống'
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (decoded.type !== 'public_video_stream_ticket') {
+      return res.status(403).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        message: 'Mã xác thực không đúng loại vé video giao diện'
+      });
+    }
+
+    if (decoded.clientHash && decoded.clientHash !== createClientFingerprint(req)) {
+      return res.status(403).json({
+        success: false,
+        code: 'CLIENT_MISMATCH',
+        message: 'Vé phát không thuộc phiên trình duyệt hiện tại.'
+      });
+    }
+
+    const requestOrigin = getRequestSourceOrigin(req);
+    if (decoded.origin && requestOrigin && decoded.origin !== requestOrigin) {
+      return res.status(403).json({
+        success: false,
+        code: 'ORIGIN_MISMATCH',
+        message: 'Nguồn phát video không khớp với nguồn đã cấp vé.'
+      });
+    }
+
+    if (!registerTicketRequest(req, res, decoded)) {
+      return res.status(429).json({
+        success: false,
+        code: 'PARALLEL_STREAM_LIMIT',
+        message: 'Quá nhiều kết nối tải video song song cho cùng một vé phát.'
+      });
+    }
+
+    req.publicVideoTicket = decoded;
+    req.videoTicketTransport = transport;
+    return next();
+  } catch (error) {
+    return res.status(error.name === 'TokenExpiredError' ? 401 : 403).json({
+      success: false,
+      code: error.name === 'TokenExpiredError' ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID',
+      message: error.name === 'TokenExpiredError'
+        ? 'Vé phát video đã hết hạn. Vui lòng tải lại vé.'
+        : 'Vé phát video không hợp lệ.'
+    });
+  }
+};
+
 module.exports = {
   authenticate,
+  authenticatePublicVideoToken,
   optionalAuthenticate,
   authorize,
   authenticateVideoToken,

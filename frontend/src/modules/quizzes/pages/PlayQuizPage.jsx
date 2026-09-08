@@ -75,6 +75,7 @@ const PlayQuizPage = () => {
 
   // Feedback states
   const [selectedOptionKey, setSelectedOptionKey] = useState(null);
+  const [animatingOptionKey, setAnimatingOptionKey] = useState(null);
   const [feedbackType, setFeedbackType] = useState(''); // 'correct', 'incorrect', 'timeout'
   const [earnedPoints, setEarnedPoints] = useState(0);
 
@@ -229,6 +230,7 @@ const PlayQuizPage = () => {
     setAnswersLog([]);
     setTimeLeft(20);
     setSelectedAnswers({});
+    setAnimatingOptionKey(null);
     setWritingAnswer('');
     setClozeAnswers({});
     setClozeFeedback(null);
@@ -236,9 +238,10 @@ const PlayQuizPage = () => {
   };
 
   const handleAnswerClick = (optionKey) => {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' || animatingOptionKey) return;
     if (timerRef.current) clearInterval(timerRef.current);
     
+    setAnimatingOptionKey(optionKey);
     setSelectedOptionKey(optionKey);
     setSelectedAnswers(prev => ({
       ...prev,
@@ -261,7 +264,12 @@ const PlayQuizPage = () => {
 
     setEarnedPoints(pts);
     setAnswersLog(prev => [...prev, { isCorrect, pointsEarned: pts }]);
-    setGameState('feedback');
+
+    // Hold for 420ms for visual micro-feedback on the choice before transition
+    setTimeout(() => {
+      setAnimatingOptionKey(null);
+      setGameState('feedback');
+    }, 420);
   };
 
   const handleTimeout = () => {
@@ -676,18 +684,41 @@ const PlayQuizPage = () => {
                         {(currentQuestion.options || []).map((opt, oIdx) => {
                           const optKey = String.fromCharCode(65 + oIdx);
                           const shapeInfo = shapes[optKey];
+                          const isThisAnimating = animatingOptionKey === optKey;
+                          const isSelectedCorrect = isThisAnimating && optKey === currentQuestion.correctAnswer;
+                          const isSelectedIncorrect = isThisAnimating && optKey !== currentQuestion.correctAnswer;
+
+                          let microFeedbackClass = '';
+                          if (isSelectedCorrect) microFeedbackClass = 'quiz-opt-correct-breath';
+                          else if (isSelectedIncorrect) microFeedbackClass = 'quiz-opt-incorrect-shake';
+
+                          const activeBorderColor = isThisAnimating
+                            ? (isSelectedCorrect ? '#10b981' : '#ef4444')
+                            : shapeInfo?.color;
+
+                          const activeBgColor = isThisAnimating
+                            ? (isSelectedCorrect ? '#10b981' : '#ef4444')
+                            : shapeInfo?.color;
+
                           return (
                             <button
                               key={oIdx}
+                              disabled={Boolean(animatingOptionKey)}
                               onClick={() => handleAnswerClick(optKey)}
-                              style={{ borderColor: shapeInfo.color }}
-                              className={`border-2 ${shapeInfo.hoverBg} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[68px] group`}
+                              style={{ borderColor: activeBorderColor }}
+                              className={`border-2 ${shapeInfo?.hoverBg || ''} ${microFeedbackClass} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[68px] group`}
                             >
                               <span 
-                                style={{ backgroundColor: shapeInfo.color }}
+                                style={{ backgroundColor: activeBgColor }}
                                 className="w-8 h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-sm group-hover:scale-105 transition-transform"
                               >
-                                {shapeInfo.char}
+                                {isSelectedCorrect ? (
+                                  <FiCheck className="text-base" />
+                                ) : isSelectedIncorrect ? (
+                                  <FiX className="text-base" />
+                                ) : (
+                                  shapeInfo?.char || optKey
+                                )}
                               </span>
                               <span className="text-slate-700 dark:text-slate-200 font-extrabold">{opt}</span>
                             </button>

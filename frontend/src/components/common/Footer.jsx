@@ -1,67 +1,193 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiBookOpen, FiGlobe, FiCpu, FiShield } from 'react-icons/fi';
+import apiClient from '../../config/api.config';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../context/ThemeContext';
+import ProtectedVideo from './ProtectedVideo';
+import './Footer.css';
 
 const Footer = () => {
-  const { t } = useLanguage();
+  const { language } = useLanguage();
+  const { theme } = useTheme();
+  const isEn = language === 'ENG';
+  const isDark = theme === 'dark';
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState('');
+
+  const handleSubscribe = async (event) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(normalizedEmail)) {
+      setSubscriptionError(isEn
+        ? 'Please enter a valid email address.'
+        : 'Vui lòng nhập địa chỉ email hợp lệ.');
+      return;
+    }
+
+    setSubscriptionError('');
+    setIsSubmitting(true);
+
+    try {
+      await apiClient.post('/consultation/register', {
+        fullname: isEn ? 'E-Learn learner' : 'Học viên E-Learn',
+        email: normalizedEmail
+      });
+      setEmail('');
+      setIsSubmitted(true);
+    } catch (error) {
+      setIsSubmitted(false);
+      setSubscriptionError(
+        error?.response?.data?.message || (isEn
+          ? 'We could not complete your registration. Please try again.'
+          : 'Chưa thể hoàn tất đăng ký. Vui lòng thử lại.')
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const productLinks = [
+    { label: isEn ? 'Courses' : 'Chương trình học', to: '/courses' },
+    { label: isEn ? 'Roadmap' : 'Lộ trình Academy', to: '/academy' },
+    { label: isEn ? 'Quizzes' : 'Luyện tập Quiz', to: '/quizzes' },
+    { label: isEn ? 'My Courses' : 'Khóa học của tôi', to: '/my-courses' }
+  ];
+
+  const companyLinks = [
+    { label: isEn ? 'Development Team' : 'Đội ngũ phát triển', to: '/#team' },
+    { label: isEn ? 'Analytics' : 'Phân tích học tập', to: '/analytics' },
+    { label: isEn ? 'Contact & FAQ' : 'Hỗ trợ & Hỏi đáp', to: '/#faq' }
+  ];
 
   return (
-    <footer className="main-footer border-t border-teal-500/20 bg-slate-900/90 text-slate-300 py-12 backdrop-blur-md transition-colors duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          {/* Brand Col */}
-          <div className="md:col-span-2 space-y-4">
-            <Link to="/" className="inline-flex items-center gap-2.5 text-xl font-extrabold text-teal-400 hover:text-teal-300 transition-colors">
-              <div className="p-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-400">
-                <FiBookOpen className="w-5 h-5" />
+    <footer className="site-footer" data-theme={isDark ? 'dark' : 'light'}>
+      <div className="site-footer__container">
+        <div className="site-footer__grid">
+          <div className="site-footer__brand-col">
+            <span className="site-footer__brand-title">
+              E-Learn Academy
+            </span>
+
+            <div className="site-footer__mascot-wrapper">
+              <div className="site-footer__mascot-stage">
+                <ProtectedVideo
+                  assetId={isDark ? 'mascot-sleep-dark' : 'mascot-idle-light'}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="metadata"
+                  disablePictureInPicture
+                  className="site-footer__mascot-video"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                />
               </div>
-              <span className="tracking-tight">EngLearn Pro</span>
-            </Link>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-md">
-              {t('Nền tảng học tiếng Anh trực tuyến thế hệ mới tích hợp Trợ lý AI cá nhân hóa, phương pháp ghi nhớ phản xạ chủ động.')}
-            </p>
-            <div className="flex items-center space-x-3 text-slate-400">
-              <span className="inline-flex items-center text-xs bg-teal-500/10 text-teal-400 border border-teal-500/20 px-2.5 py-1 rounded-full font-medium">
-                <FiGlobe className="mr-1.5 w-3.5 h-3.5" /> Global English 2026
-              </span>
-              <span className="inline-flex items-center text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-full font-medium">
-                <FiCpu className="mr-1.5 w-3.5 h-3.5" /> AI Powered Platform
-              </span>
             </div>
           </div>
 
-          {/* Quick Navigation */}
-          <div>
-            <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4">{t('Khám phá')}</h3>
-            <ul className="space-y-2.5 text-xs">
-              <li><Link to="/courses" className="hover:text-teal-400 transition-colors">{t('Chương trình học')}</Link></li>
-              <li><Link to="/academy" className="hover:text-teal-400 transition-colors">{t('Lộ trình Academy')}</Link></li>
-              <li><Link to="/quizzes" className="hover:text-teal-400 transition-colors">{t('Quiz & Trắc nghiệm')}</Link></li>
-              <li><Link to="/my-courses" className="hover:text-teal-400 transition-colors">{t('Khóa học của tôi')}</Link></li>
+          <div className="site-footer__nav-col">
+            <h3 className="site-footer__col-heading">
+              {isEn ? 'Product' : 'Sản phẩm'}
+            </h3>
+            <ul className="site-footer__nav-list">
+              {productLinks.map((item) => (
+                <li key={item.label}>
+                  {item.to.startsWith('/#') ? (
+                    <a href={item.to} className="site-footer__nav-link">
+                      {item.label}
+                    </a>
+                  ) : (
+                    <Link to={item.to} className="site-footer__nav-link">
+                      {item.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
             </ul>
           </div>
 
-          {/* Technology & Security */}
-          <div>
-            <h3 className="text-sm font-semibold text-white tracking-wider uppercase mb-4">{t('Nền Tảng')}</h3>
-            <ul className="space-y-2.5 text-xs text-slate-400">
-              <li className="flex items-center gap-1.5 text-slate-300">
-                <FiCpu className="w-3.5 h-3.5 text-teal-400 shrink-0" /> Trợ lý AI RAG 24/7
-              </li>
-              <li className="flex items-center gap-1.5 text-slate-300">
-                <FiShield className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> Bảo mật DRM Stream Video
-              </li>
-              <li className="flex items-center gap-1.5 text-slate-300">
-                <FiGlobe className="w-3.5 h-3.5 text-blue-400 shrink-0" /> Khung chuẩn CEFR Quốc Tế
-              </li>
+          <div className="site-footer__nav-col">
+            <h3 className="site-footer__col-heading">
+              {isEn ? 'Company' : 'Dự án'}
+            </h3>
+            <ul className="site-footer__nav-list">
+              {companyLinks.map((item) => (
+                <li key={item.label}>
+                  {item.to.startsWith('/#') ? (
+                    <a href={item.to} className="site-footer__nav-link">
+                      {item.label}
+                    </a>
+                  ) : (
+                    <Link to={item.to} className="site-footer__nav-link">
+                      {item.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
             </ul>
           </div>
+
+          <div className="site-footer__newsletter-col">
+            <h3 className="site-footer__col-heading">
+              {isEn ? 'Stay in the loop' : 'Cập nhật tin tức'}
+            </h3>
+            <p className="site-footer__newsletter-desc">
+              {isEn
+                ? 'Receive learning updates and your personalized English roadmap by email.'
+                : 'Nhận cập nhật học tập và lộ trình tiếng Anh cá nhân hóa qua email.'}
+            </p>
+
+            {isSubmitted ? (
+              <p role="status" className="site-footer__success-msg">
+                {isEn
+                  ? 'Registration successful. Please check your inbox.'
+                  : 'Đăng ký thành công. Vui lòng kiểm tra hộp thư.'}
+              </p>
+            ) : (
+              <form onSubmit={handleSubscribe} className="site-footer__newsletter-form" noValidate>
+                <label className="sr-only" htmlFor="footer-subscription-email">
+                  {isEn ? 'Email address' : 'Địa chỉ email'}
+                </label>
+                <input
+                  id="footer-subscription-email"
+                  type="email"
+                  required
+                  maxLength={254}
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder={isEn ? 'Your email address' : 'Nhập email của bạn...'}
+                  className="site-footer__input"
+                  disabled={isSubmitting}
+                  aria-invalid={Boolean(subscriptionError)}
+                  aria-describedby={subscriptionError ? 'footer-subscription-error' : undefined}
+                />
+                <button type="submit" className="site-footer__submit-btn" disabled={isSubmitting}>
+                  {isSubmitting
+                    ? (isEn ? 'Sending...' : 'Đang gửi...')
+                    : (isEn ? 'Subscribe' : 'Đăng ký')}
+                </button>
+              </form>
+            )}
+
+            {subscriptionError && (
+              <p id="footer-subscription-error" role="alert" className="site-footer__error-msg">
+                {subscriptionError}
+              </p>
+            )}
+          </div>
+
         </div>
 
-        {/* Bottom copyright */}
-        <div className="pt-6 border-t border-slate-800 text-xs text-slate-500">
-          <p>© 2026 EngLearn Pro. All rights reserved.</p>
+        <div className="site-footer__bottom">
+          <p className="site-footer__copyright">
+            © 2026 E-Learn Academy. {isEn ? 'All rights reserved.' : 'Tất cả quyền được bảo lưu.'}
+          </p>
         </div>
       </div>
     </footer>
@@ -69,4 +195,3 @@ const Footer = () => {
 };
 
 export default Footer;
-

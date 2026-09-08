@@ -79,7 +79,15 @@ const PLAYER_OPTIONS = {
 };
 
 const LessonVideoPlayer = forwardRef(function LessonVideoPlayer(
-  { title = 'Video bài giảng', className = '', tracks = [], onError, ...videoProps },
+  {
+    title = 'Video bài giảng',
+    className = '',
+    tracks = [],
+    onError,
+    onContextMenu,
+    onDragStart,
+    ...videoProps
+  },
   forwardedRef
 ) {
   const videoElementRef = useRef(null);
@@ -140,6 +148,18 @@ const LessonVideoPlayer = forwardRef(function LessonVideoPlayer(
         aria-label={title}
         className={`lesson-plyr-video ${className}`.trim()}
         {...videoProps}
+        data-idm-prevent-download="true"
+        controlsList="nodownload noremoteplayback"
+        disablePictureInPicture
+        disableRemotePlayback
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onContextMenu?.(event);
+        }}
+        onDragStart={(event) => {
+          event.preventDefault();
+          onDragStart?.(event);
+        }}
         onError={(event) => {
           if (!isDestroyingRef.current) onError?.(event);
         }}

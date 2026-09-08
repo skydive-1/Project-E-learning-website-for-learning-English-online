@@ -242,6 +242,7 @@ const CourseEditor = () => {
   const [fetchingSubjects, setFetchingSubjects] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [invalidFieldKey, setInvalidFieldKey] = useState(null);
 
   // ── Quizzes Dialog State ──────────────────────────────────────────────────
   const [quizDialogTarget, setQuizDialogTarget] = useState(null); // { sIdx, lIdx }
@@ -1068,14 +1069,19 @@ const CourseEditor = () => {
   const handleInitiatePublish = () => {
     if (!courseName.trim()) {
       setErrorMsg('Vui lòng nhập tên khóa học.');
+      setInvalidFieldKey('courseName');
+      setActiveHubTab('basic');
       return;
     }
     if (!subjectId) {
       setErrorMsg('Vui lòng chọn môn học.');
+      setInvalidFieldKey('subjectId');
+      setActiveHubTab('basic');
       return;
     }
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
+      setActiveHubTab('curriculum');
       return;
     }
 
@@ -1083,16 +1089,21 @@ const CourseEditor = () => {
       const section = sections[sIdx];
       if (!section.title.trim()) {
         setErrorMsg(`Tên chương thứ ${sIdx + 1} không được để trống.`);
+        setInvalidFieldKey(`section-${sIdx}`);
+        setActiveHubTab('curriculum');
         return;
       }
       if (section.lessons.length === 0) {
         setErrorMsg(`Chương "${section.title}" phải có ít nhất 1 bài học.`);
+        setActiveHubTab('curriculum');
         return;
       }
       for (let lIdx = 0; lIdx < section.lessons.length; lIdx++) {
         const lesson = section.lessons[lIdx];
         if (!lesson.title.trim()) {
           setErrorMsg(`Tên bài học trong chương "${section.title}" không được để trống.`);
+          setInvalidFieldKey(`lesson-${sIdx}-${lIdx}`);
+          setActiveHubTab('curriculum');
           return;
         }
         if (lesson.uploading) {
@@ -1125,17 +1136,23 @@ const CourseEditor = () => {
   const executeSubmitCourse = async (status = 1) => {
     if (!courseName.trim()) {
       setErrorMsg('Vui lòng nhập tên khóa học.');
+      setInvalidFieldKey('courseName');
+      setActiveHubTab('basic');
       return;
     }
     if (!subjectId) {
       setErrorMsg('Vui lòng chọn môn học.');
+      setInvalidFieldKey('subjectId');
+      setActiveHubTab('basic');
       return;
     }
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
+      setActiveHubTab('curriculum');
       return;
     }
 
+    setInvalidFieldKey(null);
     setLoading(true);
     setLoadingState(status === 0 ? 'saving_draft' : 'publishing');
     setErrorMsg('');
@@ -1327,8 +1344,12 @@ const CourseEditor = () => {
                   <input 
                     type="text" 
                     value={courseName}
-                    onChange={(e) => setCourseName(e.target.value)}
+                    onChange={(e) => {
+                      setCourseName(e.target.value);
+                      if (invalidFieldKey === 'courseName') setInvalidFieldKey(null);
+                    }}
                     placeholder="Ví dụ: Luyện thi IELTS mục tiêu 6.5+"
+                    className={invalidFieldKey === 'courseName' ? 'input-error-shake' : ''}
                     style={{
                       width: '100%', padding: '12px', borderRadius: '8px', fontSize: '14px'
                     }}
@@ -1344,7 +1365,11 @@ const CourseEditor = () => {
                   ) : (
                     <select 
                       value={subjectId}
-                      onChange={(e) => setSubjectId(e.target.value)}
+                      onChange={(e) => {
+                        setSubjectId(e.target.value);
+                        if (invalidFieldKey === 'subjectId') setInvalidFieldKey(null);
+                      }}
+                      className={invalidFieldKey === 'subjectId' ? 'input-error-shake' : ''}
                       style={{
                         width: '100%', padding: '12px', borderRadius: '8px', fontSize: '14px'
                       }}
@@ -1399,7 +1424,11 @@ const CourseEditor = () => {
                       <input 
                         type="text" 
                         value={section.title} 
-                        onChange={(e) => handleSectionTitleChange(sIdx, e.target.value)}
+                        onChange={(e) => {
+                          handleSectionTitleChange(sIdx, e.target.value);
+                          if (invalidFieldKey === `section-${sIdx}`) setInvalidFieldKey(null);
+                        }}
+                        className={invalidFieldKey === `section-${sIdx}` ? 'input-error-shake' : ''}
                       />
                     </div>
                     <div className="section-actions">
@@ -1438,9 +1467,12 @@ const CourseEditor = () => {
                             <div className="title-input-wrapper">
                               <input 
                                 type="text"
-                                className="lesson-title-input"
+                                className={`lesson-title-input ${invalidFieldKey === `lesson-${sIdx}-${lIdx}` ? 'input-error-shake' : ''}`}
                                 value={lesson.title}
-                                onChange={(e) => handleLessonChange(sIdx, lIdx, 'title', e.target.value)}
+                                onChange={(e) => {
+                                  handleLessonChange(sIdx, lIdx, 'title', e.target.value);
+                                  if (invalidFieldKey === `lesson-${sIdx}-${lIdx}`) setInvalidFieldKey(null);
+                                }}
                                 placeholder="Nhập tên bài học..."
                               />
                             </div>
