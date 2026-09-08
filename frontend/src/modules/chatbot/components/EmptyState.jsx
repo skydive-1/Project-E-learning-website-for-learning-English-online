@@ -53,16 +53,25 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
   const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [questionsError, setQuestionsError] = useState('');
+  const [questionsUnavailable, setQuestionsUnavailable] = useState(false);
 
   const loadSuggestedQuestions = useCallback(async (forceRefresh = false) => {
     if (isGlobal || Number(lessonId) <= 0) return;
 
     setSuggestedQuestions([]);
     setQuestionsError('');
+    setQuestionsUnavailable(false);
     setIsLoadingQuestions(true);
     try {
       const questions = await getSuggestedQuestions(lessonId, forceRefresh);
       const normalizedQuestions = normalizeLessonQuestions(questions);
+      if (normalizedQuestions.length === 0 && questions.contentAvailable === false) {
+        setQuestionsUnavailable(true);
+        setQuestionsError(isEng
+          ? 'This lesson does not have a transcript yet, so grounded suggestions are unavailable.'
+          : 'Bài học chưa có transcript nên chưa thể tạo câu hỏi gợi ý có căn cứ.');
+        return;
+      }
       if (normalizedQuestions.length !== 4) {
         throw new Error('Máy chủ không trả về đủ bốn câu hỏi bám theo nội dung bài học.');
       }
@@ -182,14 +191,14 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
                   <p className="text-[12px] font-semibold leading-snug">
                     {questionsError}
                   </p>
-                  <button
+                  {!questionsUnavailable && <button
                     type="button"
                     onClick={() => loadSuggestedQuestions(true)}
                     className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-[12px] font-semibold text-rose-800 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100 dark:hover:bg-rose-900/50 cursor-pointer"
                   >
                     <FiRefreshCw aria-hidden="true" />
                     {isEng ? "Try again" : "Thử tải lại"}
-                  </button>
+                  </button>}
                 </div>
               </div>
             </div>

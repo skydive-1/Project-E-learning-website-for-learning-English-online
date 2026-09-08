@@ -1,5 +1,5 @@
 /**
- * Backfill Script: Nạp lại toàn bộ dữ liệu RAG Vector vào Pinecone cho các bài học đã có phụ đề từ trước
+ * Backfill Script: Nạp metadata cho mọi bài học và transcript thật vào Pinecone khi có phụ đề
  * Usage: node scripts/backfillRagIngestion.js (chạy từ thư mục backend)
  * 
  * Phụ trách:
@@ -10,12 +10,13 @@
 require('dotenv').config();
 const db = require('../src/config/database');
 const { ingestLessonTranscript } = require('../src/modules/lessons/services/ragIngestion.service');
+const { ingestLessonMetadata } = require('../src/modules/lessons/services/lessonRagIngestion.service');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function runBackfill() {
   console.log("==========================================================================");
-  console.log("🚀 BẮT ĐẦU BACKFILL RAG INGESTION CHO TOÀN BỘ BÀI HỌC CÓ PHỤ ĐỀ");
+  console.log("🚀 BẮT ĐẦU BACKFILL RAG INGESTION CHO TOÀN BỘ BÀI HỌC");
   console.log("==========================================================================");
 
   try {
@@ -25,31 +26,32 @@ async function runBackfill() {
       throw new Error("Không thể kết nối đến cơ sở dữ liệu PostgreSQL.");
     }
 
-    // 2. Truy vấn danh sách bài học có phụ đề trong bảng lesson_subtitles
+    // 2. Truy vấn mọi bài học: metadata luôn được nạp, transcript chỉ nạp khi có cues thật.
     const query = `
-      SELECT ls.lesson_id, ls.cues, l.title
-      FROM lesson_subtitles ls
-      LEFT JOIN lessons l ON ls.lesson_id = l.lesson_id
-      ORDER BY ls.lesson_id ASC;
+      SELECT l.lesson_id, ls.cues, l.title
+      FROM lessons l
+      LEFT JOIN lesson_subtitles ls ON ls.lesson_id = l.lesson_id
+      ORDER BY l.lesson_id ASC;
     `;
     const result = await db.query(query);
     const rows = result.rows || [];
 
-    console.log(`\n📋 Tìm thấy tổng cộng ${rows.length} bài học đã có dữ liệu phụ đề trong CSDL.\n`);
+    console.log(`\n📋 Tìm thấy tổng cộng ${rows.length} bài học trong CSDL.\n`);
 
     if (rows.length === 0) {
-      console.log("⚠️ Không có bài học nào có phụ đề để backfill.");
+      console.log("⚠️ Không có bài học nào để backfill.");
       process.exit(0);
     }
 
     let successCount = 0;
     let skippedCount = 0;
 
-    // 3. Xử lý tuần tự từng bài học kèm delay 500ms để chống rate-limit
+    // 3. Xử lý tuần tự; dịch vụ embedding tự throttle và retry theo quota của Google.
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const lessonId = row.lesson_id;
       const lessonTitle = row.title || 'Untitled';
+      await ingestLessonMetadata(lessonId, { throwOnError: true });
       
       let cues = [];
       try {

@@ -173,12 +173,15 @@ const normalizeGeminiError = (error) => {
   if (!isGeminiQuotaError(error)) return error;
 
   const quotaError = new Error(
-    'Gemini 3.7 Flash hiện đã hết hạn mức sử dụng của hệ thống. Vui lòng thử lại sau khi Google tự động đặt lại hạn mức.'
+    'Dịch vụ Gemini hiện đã chạm hạn mức sử dụng tạm thời. Vui lòng thử lại sau khi Google đặt lại hạn mức.'
   );
   quotaError.name = 'GeminiQuotaError';
   quotaError.status = 503;
   quotaError.code = 'GEMINI_QUOTA_EXHAUSTED';
   quotaError.cause = error;
+  const retryMatch = String(error?.message || '').match(/retry in\s+(\d+(?:\.\d+)?)s/i)
+    || String(error?.message || '').match(/retry(?:Delay)?[\\"'\s:=]+(\d+(?:\.\d+)?)s/i);
+  if (retryMatch) quotaError.retryAfterMs = Math.ceil(Number(retryMatch[1]) * 1000);
   return quotaError;
 };
 
@@ -270,6 +273,8 @@ function parseGeminiQuotaViolation(error, fallbackModel = null) {
 /**
  * Fire-and-forget an toàn: lỗi parser/DB không bao giờ làm thay đổi luồng Gemini.
  */
+const quotaLogLastAt = new Map();
+
 async function recordGeminiQuotaSignal({ error, model }) {
   try {
     if (!isGeminiQuotaError(error)) return;
@@ -281,10 +286,15 @@ async function recordGeminiQuotaSignal({ error, model }) {
       markModelQuotaExhausted(parsed.model, 10 * 60 * 1000);
     }
 
-    const rawForLog = sanitizeQuotaDetail(
-      error?.response?.data ?? error?.body ?? error?.details ?? error?.error ?? { message: error?.message }
-    );
-    console.warn('[Gemini Quota 429] Raw structured body (sanitized):', JSON.stringify(rawForLog));
+    const logKey = `${parsed?.model || model || 'unknown'}:${parsed?.dimension || 'unknown'}`;
+    const now = Date.now();
+    if (now - (quotaLogLastAt.get(logKey) || 0) >= 60_000) {
+      quotaLogLastAt.set(logKey, now);
+      console.warn(
+        `[Gemini Quota 429] model=${parsed?.model || model || 'unknown'}, `
+        + `dimension=${parsed?.dimension || 'unknown'}, providerLimit=${parsed?.providerLimit ?? 'unknown'}.`
+      );
+    }
 
     if (!parsed) {
       console.warn('[Gemini Quota 429] Không xác định được model/dimension; bỏ qua notice.');

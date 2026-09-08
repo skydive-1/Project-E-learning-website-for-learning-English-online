@@ -186,13 +186,15 @@ test('failed AI requests can release a reserved question without crossing window
 });
 
 test('Gemini provider quota errors are normalized for every user role', () => {
-  const providerError = new Error('429 RESOURCE_EXHAUSTED: Quota exceeded');
+  const providerError = new Error('429 RESOURCE_EXHAUSTED: Quota exceeded. Please retry in 9.25s.');
   providerError.status = 429;
 
   const normalized = normalizeGeminiError(providerError);
   assert.equal(normalized.status, 503);
   assert.equal(normalized.code, 'GEMINI_QUOTA_EXHAUSTED');
-  assert.match(normalized.message, /Gemini 3\.7 Flash/);
+  assert.match(normalized.message, /Dịch vụ Gemini/);
+  assert.doesNotMatch(normalized.message, /3\.7 Flash/);
+  assert.equal(normalized.retryAfterMs, 9250);
 });
 
 // ─── NEW: Vietnam midnight boundary tests ──────────────────────────────────

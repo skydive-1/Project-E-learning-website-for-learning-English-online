@@ -43,6 +43,13 @@ const GROUNDING_STOP_WORDS = new Set([
   'you', 'the', 'and', 'for', 'are', 'was', 'were', 'have', 'has', 'can', 'will'
 ]);
 
+function markGenerationUsage(questions, generatedByAi = false, contentAvailable = null) {
+  const result = Array.isArray(questions) ? questions : [];
+  Object.defineProperty(result, 'generatedByAi', { value: generatedByAi, enumerable: false });
+  Object.defineProperty(result, 'contentAvailable', { value: contentAvailable, enumerable: false });
+  return result;
+}
+
 function normalizeForMatch(value = '') {
   return String(value)
     .normalize('NFD')
@@ -113,7 +120,7 @@ function isLegacyGenericQuestionSet(questions = []) {
 }
 
 function normalizeSuggestedQuestions(questions = [], sourceText = '') {
-  if (!Array.isArray(questions)) return [];
+  if (!Array.isArray(questions) || !String(sourceText).trim()) return [];
 
   const sourceTokens = new Set(getMeaningfulTokens(sourceText));
   const requireGrounding = sourceTokens.size > 0;
@@ -122,9 +129,10 @@ function normalizeSuggestedQuestions(questions = [], sourceText = '') {
   const seen = new Set();
 
   return questions.reduce((result, rawQuestion) => {
-    if (result.length >= QUESTION_COUNT || typeof rawQuestion !== 'string') return result;
+    const rawText = typeof rawQuestion === 'string' ? rawQuestion : rawQuestion?.question;
+    if (result.length >= QUESTION_COUNT || typeof rawText !== 'string') return result;
 
-    let question = rawQuestion.replace(/\s+/g, ' ').trim();
+    let question = rawText.replace(/\s+/g, ' ').trim();
     if (!question || question.length > MAX_QUESTION_LENGTH) return result;
     if (!question.endsWith('?')) question = `${question.replace(/[.!]+$/, '')}?`;
 
@@ -156,6 +164,26 @@ function normalizeSuggestedQuestions(questions = [], sourceText = '') {
   }, []);
 }
 
+function normalizeSuggestedItems(items = [], transcriptText = '') {
+  if (!Array.isArray(items) || !String(transcriptText).trim()) return [];
+  const normalizedTranscript = normalizeForMatch(transcriptText).replace(/\s+/g, ' ').trim();
+  const validated = [];
+
+  for (const item of items) {
+    if (validated.length >= QUESTION_COUNT || !item || typeof item !== 'object') continue;
+    const evidence = typeof item.evidence === 'string' ? item.evidence.replace(/\s+/g, ' ').trim() : '';
+    const normalizedEvidence = normalizeForMatch(evidence).replace(/\s+/g, ' ').trim();
+    if (normalizedEvidence.length < 12 || !normalizedTranscript.includes(normalizedEvidence)) {
+      console.warn('[SuggestedQuestions Grounding] Loại câu hỏi có evidence không tồn tại trong transcript.');
+      continue;
+    }
+    const normalizedQuestion = normalizeSuggestedQuestions([item.question], transcriptText)[0];
+    if (!normalizedQuestion || validated.some(entry => normalizeForMatch(entry.question) === normalizeForMatch(normalizedQuestion))) continue;
+    validated.push({ question: normalizedQuestion, evidence });
+  }
+  return validated;
+}
+
 /**
  * 1. Trả về 4 câu hỏi gợi ý bám sát bài học theo ngữ cảnh (Fallback an toàn 0 token, 0ms)
  * @param {string} lessonTitle 
@@ -167,30 +195,16 @@ function getFallbackSuggestedQuestions(lessonTitle = '', courseName = '', source
   const groundedTerms = extractGroundedTerms(sourceText);
   if (groundedTerms.length > 0) {
     const templates = [
-      term => `Ý nghĩa và cách dùng của “${term}” trong bài giảng?`,
-      term => `Giáo viên đưa ra ví dụ nào về “${term}” trong video?`,
-      term => `Đoạn nào trong video hướng dẫn về “${term}”?`,
-      term => `Tóm tắt nội dung chính về “${term}” được giảng trong video?`
+      term => `Giáo viên giải thích gì về “${term}” trong bài?`,
+      term => `Bài giảng nêu điểm nào liên quan đến “${term}”?`,
+      term => `Nội dung về “${term}” được trình bày như thế nào?`,
+      term => `Bài giảng nhấn mạnh điều gì khi nói về “${term}”?`
     ];
 
     return templates.map((template, index) => template(groundedTerms[index % groundedTerms.length]));
   }
 
-  let cleanTitle = (lessonTitle || '')
-    .replace(/^(\d+[\.\s\-:]+|Bài\s+\d+[\.\s\-:]+|Mini-Quiz\s+\d+[\.\s\-:]+|Đề thi\s+[^:-]+[\.\s\-:]+)/i, '')
-    .replace(/\s*\([^)]*\)/g, '')
-    .trim();
-  if (cleanTitle.length > 45) {
-    cleanTitle = cleanTitle.slice(0, 42).trim() + '...';
-  }
-  const subject = cleanTitle || courseName || 'bài học';
-
-  return [
-    `Nội dung cốt lõi của "${subject}" là gì?`,
-    `Định nghĩa và nguyên lý của "${subject}"?`,
-    `Ví dụ minh họa tiêu biểu cho "${subject}"?`,
-    `Cách áp dụng "${subject}" trong giao tiếp thực tế?`
-  ];
+  return [];
 }
 
 /**
@@ -202,7 +216,7 @@ function getFallbackSuggestedQuestions(lessonTitle = '', courseName = '', source
 async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
   const parsedLessonId = parseInt(lessonId, 10);
   if (isNaN(parsedLessonId) || parsedLessonId <= 0) {
-    return getFallbackSuggestedQuestions();
+    return markGenerationUsage(getFallbackSuggestedQuestions());
   }
 
   try {
@@ -217,21 +231,21 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
       LIMIT 1
     `, [parsedLessonId]);
 
-    if (res.rows.length === 0) return getFallbackSuggestedQuestions();
+    if (res.rows.length === 0) return markGenerationUsage(getFallbackSuggestedQuestions());
 
     const { lesson_title, section_title, course_name, cues, questions: dbQuestions } = res.rows[0];
     const transcriptCues = cues || [];
     const transcriptText = buildTranscriptText(transcriptCues);
-    const combinedContext = `${course_name || ''} ${section_title || ''} ${lesson_title || ''} ${transcriptText}`.trim();
+    if (!transcriptText) return markGenerationUsage([], false, false);
 
     if (!forceRefresh && dbQuestions) {
       let questions = dbQuestions;
       if (typeof questions === 'string') {
         try { questions = JSON.parse(questions); } catch (_) {}
       }
-      const normalizedQuestions = normalizeSuggestedQuestions(questions, combinedContext);
-      if (!isLegacyGenericQuestionSet(questions) && normalizedQuestions.length === QUESTION_COUNT) {
-        return normalizedQuestions;
+      const normalizedItems = normalizeSuggestedItems(questions, transcriptText);
+      if (normalizedItems.length === QUESTION_COUNT) {
+        return markGenerationUsage(normalizedItems.map(item => item.question), false, true);
       }
     }
 
@@ -239,7 +253,7 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
     return generateAndSaveSuggestedQuestions(parsedLessonId, transcriptCues);
   } catch (err) {
     console.warn(`[SuggestedQuestions Warning] Lỗi đọc DB lessonId=${lessonId}:`, err.message);
-    return getFallbackSuggestedQuestions();
+    return markGenerationUsage(getFallbackSuggestedQuestions());
   }
 }
 
@@ -252,7 +266,7 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
 async function generateAndSaveSuggestedQuestions(lessonId, cues = null) {
   const parsedLessonId = parseInt(lessonId, 10);
   if (isNaN(parsedLessonId) || parsedLessonId <= 0) {
-    return getFallbackSuggestedQuestions();
+    return markGenerationUsage(getFallbackSuggestedQuestions());
   }
 
   try {
@@ -269,7 +283,7 @@ async function generateAndSaveSuggestedQuestions(lessonId, cues = null) {
 
     if (infoRes.rows.length === 0) {
       console.warn(`[SuggestedQuestions] ⚠️ Không tìm thấy bài học id=${parsedLessonId}`);
-      return getFallbackSuggestedQuestions();
+      return markGenerationUsage(getFallbackSuggestedQuestions());
     }
 
     const { lesson_title, section_title, course_name } = infoRes.rows[0];
@@ -287,12 +301,13 @@ async function generateAndSaveSuggestedQuestions(lessonId, cues = null) {
     }
 
     const transcriptText = buildTranscriptText(transcriptCues);
-    const combinedContext = `${course_name || ''} ${section_title || ''} ${lesson_title || ''} ${transcriptText}`.trim();
+    if (!transcriptText || transcriptText.length <= 30) {
+      console.log(`[SuggestedQuestions] Không gọi Gemini vì lessonId=${parsedLessonId} chưa có transcript sử dụng được.`);
+      return markGenerationUsage([], false, false);
+    }
 
     // 3. Xây dựng Prompt nghiêm ngặt: 100% DỰA TRÊN LỜI THOẠI/VIDEO THỰC TẾ
-    let prompt;
-    if (transcriptText && transcriptText.length > 30) {
-      prompt = `Bạn là Trợ lý AI giáo dục chuyên sâu tại E-Learn Academy.
+    const prompt = `Bạn là Trợ lý AI giáo dục chuyên sâu tại E-Learn Academy.
 Dưới đây là TOÀN BỘ LỜI THOẠI / TRANSCRIPT THỰC TẾ ĐƯỢC BÓC BĂNG TỪ VIDEO BÀI HỌC:
 - Khóa học: ${course_name || 'Khóa học tiếng Anh'}
 - Chương: ${section_title || 'Chương học'}
@@ -319,21 +334,9 @@ QUY TẮC BẮT BUỘC 100% (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
     { "question": "Câu hỏi 4?", "evidence": "câu thoại trích dẫn từ transcript" }
   ]
 }`;
-    } else {
-      prompt = `Bạn là Trợ lý AI giáo dục tại E-Learn Academy.
-Bài học: "${lesson_title}" thuộc khóa học "${course_name}".
-Hãy tạo đúng 4 câu hỏi gợi ý súc tích, chuyên sâu và bám sát tiêu đề và trọng tâm kiến thức của bài học này để học viên ôn tập:
-1. Bản chất cốt lõi của "${lesson_title}" là gì?
-2. Ví dụ thực tế tiêu biểu của "${lesson_title}"?
-3. Cách sử dụng chính xác kiến thức "${lesson_title}"?
-4. Ý nghĩa quan trọng cần ghi nhớ của bài học này?
-Mỗi câu hỏi từ 6 đến 16 từ, kết thúc bằng dấu '?'.
-Trả về DUY NHẤT JSON:
-{"items": [{"question": "Câu hỏi 1?"}, {"question": "Câu hỏi 2?"}, {"question": "Câu hỏi 3?"}, {"question": "Câu hỏi 4?"}]}`;
-    }
 
     // 4. Gọi Gemini với Timeout 45s
-    let generatedQuestions = null;
+    let generatedItems = null;
     try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Suggested Questions Generation Timeout (45000ms)')), 45000)
@@ -353,34 +356,29 @@ Trả về DUY NHẤT JSON:
       text = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
       const parsed = JSON.parse(text);
-      let rawList = [];
       if (parsed && Array.isArray(parsed.items)) {
-        rawList = parsed.items.map(item => typeof item === 'string' ? item : item.question).filter(Boolean);
-      } else if (parsed && Array.isArray(parsed.questions)) {
-        rawList = parsed.questions.filter(Boolean);
-      }
-
-      if (rawList.length > 0) {
-        generatedQuestions = normalizeSuggestedQuestions(rawList, combinedContext);
+        generatedItems = normalizeSuggestedItems(parsed.items, transcriptText);
       }
     } catch (aiErr) {
       console.warn(`[SuggestedQuestions Warning] Gemini gặp lỗi/timeout cho lessonId=${parsedLessonId}:`, aiErr.message);
     }
 
     // Nếu AI không trả về đủ 4 câu hỏi -> Sử dụng Fallback ngữ cảnh
-    if (!generatedQuestions || generatedQuestions.length !== QUESTION_COUNT) {
+    if (!generatedItems || generatedItems.length !== QUESTION_COUNT) {
       console.log(`[SuggestedQuestions] ⚠️ Dùng fallback ngữ cảnh bài học (lessonId=${parsedLessonId})`);
-      generatedQuestions = getFallbackSuggestedQuestions(lesson_title, course_name, transcriptText);
+      const evidence = transcriptText.slice(0, 240).trim();
+      generatedItems = getFallbackSuggestedQuestions(lesson_title, course_name, transcriptText)
+        .map(question => ({ question, evidence }));
     }
 
     // 5. Lưu / Ghi đè vào bảng lesson_suggested_questions
-    await saveQuestionsToDb(parsedLessonId, generatedQuestions);
+    await saveQuestionsToDb(parsedLessonId, generatedItems);
     console.log(`[SuggestedQuestions] ✅ Đã lưu thành công 4 câu hỏi gợi ý 100% bám sát video cho lessonId=${parsedLessonId} ("${lesson_title}")`);
 
-    return generatedQuestions;
+    return markGenerationUsage(generatedItems.map(item => item.question), true, true);
   } catch (err) {
     console.error(`[SuggestedQuestions Error] Lỗi sinh câu hỏi gợi ý cho lessonId=${parsedLessonId}:`, err.message);
-    return getFallbackSuggestedQuestions();
+    return markGenerationUsage(getFallbackSuggestedQuestions());
   }
 }
 
@@ -404,6 +402,7 @@ module.exports = {
   buildTranscriptText,
   isLegacyGenericQuestionSet,
   normalizeSuggestedQuestions,
+  normalizeSuggestedItems,
   getFallbackSuggestedQuestions,
   getSuggestedQuestionsByLessonId,
   generateAndSaveSuggestedQuestions,

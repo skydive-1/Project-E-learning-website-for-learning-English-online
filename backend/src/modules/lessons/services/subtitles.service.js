@@ -968,9 +968,9 @@ ${JSON.stringify(translationInput)}
       // giữ row pending để scheduler chạy source mới.
       if (!savedResult) return null;
 
-      // Tự động nạp transcript vào Pinecone RAG Vector DB (chạy nền non-blocking)
+      // Chỉ báo pipeline thành công sau khi transcript đã được đồng bộ vào Vector DB.
       const { ingestLessonTranscript } = require('./ragIngestion.service');
-      ingestLessonTranscript(lessonId, generatedCues);
+      await ingestLessonTranscript(lessonId, generatedCues);
 
       return savedResult;
     } catch (pipelineErr) {

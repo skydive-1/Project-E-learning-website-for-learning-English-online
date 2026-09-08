@@ -18,10 +18,19 @@ async function main() {
   try {
     let query, params;
     if (targetLessonId) {
-      query = 'SELECT l.lesson_id, l.title, l.content_url, l.content_type, s.title AS section_title, c.course_name FROM lessons l JOIN sections s ON l.section_id = s.section_id JOIN courses c ON s.course_id = c.course_id WHERE l.lesson_id = \ AND l.content_url IS NOT NULL AND l.content_url != \$\$\$\$';
+      query = `SELECT l.lesson_id, l.title, l.content_url, l.content_type, s.title AS section_title, c.course_name
+               FROM lessons l
+               JOIN sections s ON l.section_id = s.section_id
+               JOIN courses c ON s.course_id = c.course_id
+               WHERE l.lesson_id = $1 AND l.content_url IS NOT NULL AND l.content_url != ''`;
       params = [targetLessonId];
     } else {
-      query = 'SELECT l.lesson_id, l.title, l.content_url, l.content_type, s.title AS section_title, c.course_name FROM lessons l JOIN sections s ON l.section_id = s.section_id JOIN courses c ON s.course_id = c.course_id WHERE l.content_url IS NOT NULL AND l.content_url != \$\$\$\$ ORDER BY c.course_id, s.section_id, l.order_index, l.lesson_id';
+      query = `SELECT l.lesson_id, l.title, l.content_url, l.content_type, s.title AS section_title, c.course_name
+               FROM lessons l
+               JOIN sections s ON l.section_id = s.section_id
+               JOIN courses c ON s.course_id = c.course_id
+               WHERE l.content_url IS NOT NULL AND l.content_url != ''
+               ORDER BY c.course_id, s.section_id, l.order_index, l.lesson_id`;
       params = [];
     }
 

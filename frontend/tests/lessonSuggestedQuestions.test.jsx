@@ -63,6 +63,17 @@ describe('Lesson suggested questions', () => {
     expect(screen.queryByText(/Mục đích và nội dung chính/i)).not.toBeInTheDocument();
   });
 
+  it('shows an honest unavailable state when the lesson has no transcript', async () => {
+    const questions = [];
+    Object.defineProperty(questions, 'contentAvailable', { value: false });
+    getSuggestedQuestionsMock.mockResolvedValue(questions);
+
+    render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Bài học chưa có transcript'));
+    expect(screen.queryByRole('button', { name: 'Thử tải lại' })).not.toBeInTheDocument();
+  });
+
   it('surfaces API failures and retries on demand', async () => {
     getSuggestedQuestionsMock
       .mockRejectedValueOnce(new Error('Backend unavailable'))

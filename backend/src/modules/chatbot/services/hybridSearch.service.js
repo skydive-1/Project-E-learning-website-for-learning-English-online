@@ -161,6 +161,8 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
 
     const vecScore = typeof vMatch.score === 'number' ? vMatch.score : 0;
     const chunkText = meta.text || meta.content || meta.context || '';
+    const sourceType = meta.source || meta.source_type || meta.content_type || 'lesson_metadata';
+    const isContentChunk = !['lesson-metadata', 'lesson_metadata', 'metadata'].includes(sourceType);
 
     if (!lessonsGroup.has(lessonId)) {
       lessonsGroup.set(lessonId, {
@@ -169,7 +171,10 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
         sectionTitle: meta.section_title || '',
         semanticScore: vecScore,
         lexicalScore: 0,
-        chunks: chunkText ? [chunkText] : [],
+        chunks: chunkText && isContentChunk ? [chunkText] : [],
+        sourceType,
+        startTime: meta.start_time,
+        endTime: meta.end_time,
         rawMatches: [vMatch]
       });
     } else {
@@ -177,9 +182,10 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
       if (vecScore > g.semanticScore) {
         g.semanticScore = vecScore;
       }
-      if (chunkText && g.chunks.length < 2) {
+      if (chunkText && isContentChunk && g.chunks.length < 2) {
         g.chunks.push(chunkText);
       }
+      if (isContentChunk) g.sourceType = sourceType;
       g.rawMatches.push(vMatch);
     }
   }
@@ -195,6 +201,7 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
         semanticScore: 0,
         lexicalScore: lex.lexicalScore,
         chunks: [],
+        sourceType: 'lesson_metadata',
         rawMatches: []
       });
     } else {
@@ -240,6 +247,9 @@ function mergeGroupAndRerank(vectorMatches = [], lexicalMatches = [], query = ''
         semanticScore: Number(sem.toFixed(3)),
         lexicalScore: Number(lex.toFixed(3)),
         chunks: item.chunks,
+        sourceType: item.sourceType,
+        startTime: item.startTime,
+        endTime: item.endTime,
         matchCount: item.rawMatches ? item.rawMatches.length : 1
       });
     }

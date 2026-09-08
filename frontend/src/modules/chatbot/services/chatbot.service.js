@@ -588,7 +588,14 @@ export const getSuggestedQuestions = async (lessonId, refresh = false) => {
       : `/chatbot/suggested-questions/${lessonId}`;
     const response = await apiClient.get(url);
     if (response.data && response.data.success && Array.isArray(response.data.questions)) {
-      return response.data.questions;
+      const questions = response.data.questions;
+      if (typeof response.data.contentAvailable === 'boolean') {
+        Object.defineProperty(questions, 'contentAvailable', {
+          value: response.data.contentAvailable,
+          enumerable: false
+        });
+      }
+      return questions;
     }
     throw new Error('Phản hồi câu hỏi gợi ý từ máy chủ không đúng định dạng.');
   } catch (error) {

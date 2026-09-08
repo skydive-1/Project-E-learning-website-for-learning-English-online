@@ -320,7 +320,7 @@ const ChatBox = ({
     }, 50);
 
     try {
-      if (quickAction === 'LESSON_QUICK_QUIZ' || text.toLowerCase().includes("trắc nghiệm") || text.toLowerCase().includes("bài tập ôn nhanh")) {
+      if (quickAction === 'LESSON_QUICK_QUIZ' || /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(text.trim())) {
         const quizIntro = "Dưới đây là bài tập trắc nghiệm nhanh để bạn ôn tập kiến thức bài học này:";
         const quizData = await generateChatbotQuiz(lessonId);
         if (currentAbortController.signal.aborted) return;

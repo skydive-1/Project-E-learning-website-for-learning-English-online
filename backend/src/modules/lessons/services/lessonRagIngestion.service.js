@@ -16,11 +16,11 @@
 'use strict';
 
 const db = require('../../../config/database');
-const { ingestLessonTranscript } = require('./ragIngestion.service');
+const { ingestLessonTranscript, deleteLessonVectors } = require('./ragIngestion.service');
 
 // ─── Phase 1: Ingest Metadata (~50ms) ─────────────────────────────────────────
 
-async function ingestLessonMetadata(lessonId) {
+async function ingestLessonMetadata(lessonId, options = {}) {
   try {
     const res = await db.query(`
       SELECT l.lesson_id, l.title, s.title AS section_title, c.course_name, c.description AS course_description
@@ -44,6 +44,8 @@ async function ingestLessonMetadata(lessonId) {
     console.log(`[LessonRAG] ✅ Phase 1 metadata đã nạp thành công cho lessonId=${lessonId} ("${row.title}")`);
   } catch (err) {
     console.warn(`[LessonRAG] ⚠️ Phase 1 metadata thất bại lessonId=${lessonId}:`, err.message);
+    if (options.throwOnError) throw err;
+    return { success: false, error: err };
   }
 }
 
@@ -67,6 +69,7 @@ async function ingestVideoTranscript(lessonId) {
     return result;
   } catch (err) {
     console.error(`[LessonRAG] ❌ Phase 2 thất bại cho lessonId=${lessonId}:`, err.message);
+    throw err;
   }
 }
 
@@ -81,6 +84,11 @@ async function ingestVideoTranscript(lessonId) {
 async function triggerLessonRagIngestion(lessonId, rawStorageKey, triggerReason = 'unknown') {
   try {
     console.log(`[LessonRAG] 🚀 Trigger auto-RAG (lý do: ${triggerReason}) lessonId=${lessonId}`);
+
+    if (rawStorageKey && typeof rawStorageKey === 'string') {
+      await deleteLessonVectors(lessonId, 'auto-subtitle-transcript');
+      await db.query('DELETE FROM lesson_suggested_questions WHERE lesson_id = $1', [Number(lessonId)]);
+    }
 
     // Phase 1: Metadata nạp tức thì
     await ingestLessonMetadata(lessonId);

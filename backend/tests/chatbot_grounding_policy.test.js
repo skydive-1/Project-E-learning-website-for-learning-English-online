@@ -10,6 +10,7 @@ const {
   getInsufficientGroundingReply,
   getPromptGroundingRules
 } = require('../src/modules/chatbot/services/groundingPolicy.service');
+const { getRagNamespace, getRagIndex } = require('../src/utils/ragIndex.util');
 
 test('lesson and course retrieval intents require source grounding', () => {
   assert.equal(requiresSourceGrounding({
@@ -32,7 +33,9 @@ test('general English and global chat remain separate from lesson grounding', ()
 
 test('grounded generation requires both verified context and a verified source', () => {
   const source = [{ lessonId: 14, lessonTitle: 'Present Continuous' }];
-  assert.equal(hasUsableGrounding('Verified transcript content', source), true);
+  assert.equal(hasUsableGrounding('Verified transcript content', source, { hasContentEvidence: true }), true);
+  assert.equal(hasUsableGrounding('Lesson title only', source), false);
+  assert.equal(hasUsableGrounding('Lesson title only', source, { allowMetadataOnly: true }), true);
   assert.equal(hasUsableGrounding('', source), false);
   assert.equal(hasUsableGrounding('Unverified free text', []), false);
 });
@@ -55,7 +58,7 @@ test('sync and streaming request paths apply the grounding gate before Gemini ge
     'chatbot.service.js'
   );
   const source = fs.readFileSync(servicePath, 'utf8');
-  const gatePattern = 'if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources))';
+  const gatePattern = 'if (groundingRequired && !hasUsableGrounding(contextText, verifiedEvidence.sources, { hasContentEvidence, allowMetadataOnly }))';
   const firstGate = source.indexOf(gatePattern);
   const secondGate = source.indexOf(gatePattern, firstGate + gatePattern.length);
   const syncGeneration = source.indexOf('geminiModel.generateContent(generationRequest)');
@@ -65,4 +68,40 @@ test('sync and streaming request paths apply the grounding gate before Gemini ge
   assert.ok(secondGate > firstGate && secondGate < streamGeneration);
   assert.match(source, /const verifiedEvidence = await buildVerifiedEvidence/);
   assert.match(source, /getPromptGroundingRules\(groundingRequired\)/);
+  assert.equal((source.match(/async generateQuiz\(/g) || []).length, 1, 'generateQuiz must not be overridden');
+  assert.match(source, /shouldUseTranscriptWindow\(question\)/);
+  assert.match(source, /course_status/);
+  assert.match(source, /WHERE LOWER\(CAST\(status AS TEXT\)\) IN \('published', '1'\)/);
+});
+
+test('RAG reads and writes use the same versioned Pinecone namespace', () => {
+  const previousVersion = process.env.ACTIVE_RAG_VERSION;
+  const previousNamespace = process.env.PINECONE_NAMESPACE_V2;
+  process.env.ACTIVE_RAG_VERSION = 'v2';
+  process.env.PINECONE_NAMESPACE_V2 = 'verified-rag-v2';
+  const calls = [];
+  const index = { namespace: value => { calls.push(value); return { scoped: value }; } };
+
+  assert.equal(getRagNamespace(), 'verified-rag-v2');
+  assert.deepEqual(getRagIndex(index), { scoped: 'verified-rag-v2' });
+  assert.deepEqual(calls, ['verified-rag-v2']);
+
+  if (previousVersion === undefined) delete process.env.ACTIVE_RAG_VERSION;
+  else process.env.ACTIVE_RAG_VERSION = previousVersion;
+  if (previousNamespace === undefined) delete process.env.PINECONE_NAMESPACE_V2;
+  else process.env.PINECONE_NAMESPACE_V2 = previousNamespace;
+});
+
+test('RAG ingestion separates metadata IDs and exposes stale-vector cleanup', () => {
+  const ingestionPath = path.join(__dirname, '..', 'src', 'modules', 'lessons', 'services', 'ragIngestion.service.js');
+  const source = fs.readFileSync(ingestionPath, 'utf8');
+  assert.match(source, /v2-metadata-chunk/);
+  assert.match(source, /v2-transcript-chunk/);
+  assert.match(source, /async function deleteLessonVectors/);
+  assert.match(source, /createEmbeddingWithRetry/);
+  assert.match(source, /RAG_EMBEDDING_MIN_INTERVAL_MS/);
+  assert.match(source, /targetIndex\.upsert\(records\)/);
+  const recordsPreparedAt = source.indexOf('const records = []');
+  const replacementDeleteAt = source.indexOf('await deleteLessonVectors(lessonId, source, options.materialId);', recordsPreparedAt);
+  assert.ok(recordsPreparedAt >= 0 && replacementDeleteAt > recordsPreparedAt, 'old vectors are deleted only after embeddings are prepared');
 });

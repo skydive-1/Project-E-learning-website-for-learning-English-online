@@ -6,7 +6,8 @@ const {
   buildTranscriptText,
   getFallbackSuggestedQuestions,
   isLegacyGenericQuestionSet,
-  normalizeSuggestedQuestions
+  normalizeSuggestedQuestions,
+  normalizeSuggestedItems
 } = require('../src/modules/lessons/services/suggestedQuestions.service');
 
 test('suggested questions reject generic, ungrounded and oversized content', () => {
@@ -65,10 +66,22 @@ test('legacy template sets are detected for automatic regeneration', () => {
   ]), false);
 });
 
-test('contextual fallback without transcript uses lesson title and avoids generic prompts', () => {
+test('fallback without transcript returns no fabricated suggestions', () => {
   const questions = getFallbackSuggestedQuestions('Nguyên âm đôi /e/ và /ai/', 'Basic Pronunciation');
-  assert.equal(questions.length, 4);
-  assert.equal(isLegacyGenericQuestionSet(questions), false);
-  assert.equal(questions.every(q => q.includes('Nguyên âm đôi /e/ và /ai/')), true);
+  assert.deepEqual(questions, []);
+  assert.deepEqual(normalizeSuggestedQuestions(['Present perfect dùng khi nào?'], ''), []);
 });
 
+test('AI suggested question evidence must be a real transcript substring', () => {
+  const transcript = 'Today we practise small talk before meeting a new colleague.';
+  const items = normalizeSuggestedItems([
+    { question: 'Small talk được dùng trong tình huống nào?', evidence: 'we practise small talk' },
+    { question: 'Present perfect được giải thích ra sao?', evidence: 'Present perfect is taught here' },
+    { question: 'Câu hỏi thiếu bằng chứng?', evidence: '' }
+  ], transcript);
+
+  assert.deepEqual(items, [{
+    question: 'Small talk được dùng trong tình huống nào?',
+    evidence: 'we practise small talk'
+  }]);
+});

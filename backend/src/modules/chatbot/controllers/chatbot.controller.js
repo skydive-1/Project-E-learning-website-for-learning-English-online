@@ -13,7 +13,7 @@ exports.ask = async (req, res, next) => {
     const answer = await chatbotService.ask(question, lessonId, req.user?.id, scope || 'lesson', currentTime, quickAction);
 
     res.status(200).json({
-      success: true,
+      success: answer.success !== false,
       data: answer.reply !== undefined ? answer.reply : answer,
       intent: answer.intent || 'CURRENT_LESSON_QA',
       sources: answer.sources || [],
@@ -338,6 +338,7 @@ exports.processAudio = async (req, res, next) => {
         }
       } catch (e) { /* ignore cleanup error */ }
     }
+    await releaseQuestionLimit(req);
     next(error);
   }
 };
@@ -368,16 +369,20 @@ exports.getTokenBalance = async (req, res, next) => {
 exports.getSuggestedQuestions = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
+    await chatbotService.verifyLessonAndCourseAccess(req.user?.id || req.user?.userId, lessonId);
     const forceRefresh = req.query.refresh === 'true';
     const suggestedQuestionsService = require('../../lessons/services/suggestedQuestions.service');
     const questions = await suggestedQuestionsService.getSuggestedQuestionsByLessonId(lessonId, forceRefresh);
+    if (questions.generatedByAi !== true) await releaseQuestionLimit(req);
 
     res.status(200).json({
       success: true,
       lessonId: parseInt(lessonId, 10) || 0,
+      contentAvailable: questions.contentAvailable,
       questions
     });
   } catch (error) {
+    await releaseQuestionLimit(req);
     next(error);
   }
 };
