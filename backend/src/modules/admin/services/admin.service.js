@@ -4,8 +4,10 @@
 
 const { pool } = require('../../../config/database');
 const { supabaseAdmin } = require('../../../config/supabase');
+const { GEMINI_MODELS } = require('../../../config/ai-model');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
+const { getGeminiUsageTrend } = require('./geminiUsageTrend.service');
 
 // Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
 const getVietnamDateString = (date = new Date()) => {
@@ -583,8 +585,15 @@ const getAiQuotaDashboard = async (days = 30) => {
       SELECT
         created_at::date AS day,
         COALESCE(SUM(total_tokens), 0)::int AS estimated_tokens,
-        COALESCE(SUM(total_tokens) FILTER (WHERE purpose NOT IN ('embedding', 'speaking_stt')), 0)::int AS gemini_flash_tokens,
-        COALESCE(SUM(total_tokens) FILTER (WHERE purpose = 'embedding'), 0)::int AS gemini_embedding_tokens,
+        COALESCE(SUM(total_tokens) FILTER (
+          WHERE LOWER(model) NOT LIKE '%embedding%'
+            AND LOWER(purpose) NOT LIKE '%embedding%'
+            AND purpose <> 'speaking_stt'
+        ), 0)::int AS gemini_flash_tokens,
+        COALESCE(SUM(total_tokens) FILTER (
+          WHERE LOWER(model) LIKE '%embedding%'
+            OR LOWER(purpose) LIKE '%embedding%'
+        ), 0)::int AS gemini_embedding_tokens,
         COALESCE(SUM(total_tokens) FILTER (WHERE purpose = 'speaking_stt'), 0)::int AS speaking_stt_tokens,
         0::int AS backfilled_tokens
       FROM ai_usage_events, bounds
@@ -714,11 +723,37 @@ const getAiQuotaDashboard = async (days = 30) => {
     LIMIT 25
   `;
 
-  const [summaryRes, trendsRes, usersRes, logsRes] = await Promise.all([
+  // Chỉ sự cố provider phát sinh từ purpose RAG trong 30 phút gần nhất mới được gửi tới popup Admin.
+  const recentRagIncidentsQuery = `
+    SELECT
+      incident_id,
+      purpose,
+      model,
+      error_code,
+      http_status,
+      message,
+      retry_after_ms,
+      occurrence_count,
+      first_seen_at,
+      last_seen_at,
+      resolved_at
+    FROM ai_provider_incidents
+    WHERE workload = 'rag'
+      AND LEFT(purpose, 4) = 'rag_'
+      AND last_seen_at >= NOW() - INTERVAL '30 minutes'
+    ORDER BY last_seen_at DESC
+    LIMIT 10
+  `;
+
+  const [summaryRes, trendsRes, usersRes, logsRes, incidentsRes] = await Promise.all([
     pool.query(summaryQuery, [safeDays]),
     pool.query(trendsQuery, [safeDays]),
     pool.query(usersQuery),
-    pool.query(recentLogsQuery)
+    pool.query(recentLogsQuery),
+    pool.query(recentRagIncidentsQuery).catch((incidentError) => {
+      console.warn('[AI Dashboard] Không thể đọc sự cố RAG (non-fatal):', incidentError.message);
+      return { rows: [] };
+    })
   ]);
 
   const summary = summaryRes.rows[0] || {};
@@ -897,7 +932,20 @@ const getAiQuotaDashboard = async (days = 30) => {
     trends: trendsRes.rows,
     users,
     topConsumers,
-    recentAiLogs: logsRes.rows
+    recentAiLogs: logsRes.rows,
+    ragIncidents: incidentsRes.rows.map((row) => ({
+      incidentId: Number(row.incident_id),
+      purpose: row.purpose,
+      model: row.model,
+      errorCode: row.error_code,
+      httpStatus: row.http_status === null ? null : Number(row.http_status),
+      message: row.message,
+      retryAfterMs: row.retry_after_ms === null ? null : Number(row.retry_after_ms),
+      occurrenceCount: Number(row.occurrence_count || 1),
+      firstSeenAt: row.first_seen_at,
+      lastSeenAt: row.last_seen_at,
+      resolvedAt: row.resolved_at || null
+    }))
   };
 };
 
@@ -927,6 +975,15 @@ const getAiRateLimitCaps = async () => {
  * Tính usage theo model: RPM/TPM là rolling 60 giây, RPD reset lúc 00:00 Pacific.
  */
 const getRateLimitStatus = async () => {
+  const runtimeModels = Array.from(new Set([
+    GEMINI_MODELS.primary,
+    GEMINI_MODELS.fast,
+    GEMINI_MODELS.subtitle,
+    GEMINI_MODELS.speaking,
+    ...GEMINI_MODELS.fallbacks,
+    process.env.EMBEDDING_MODEL || 'gemini-embedding-001'
+  ].map((model) => String(model || '').trim()).filter(Boolean)));
+
   const [result, noticesResult] = await Promise.all([
     pool.query(`
     WITH bounds AS (
@@ -935,8 +992,15 @@ const getRateLimitStatus = async () => {
         NOW() - INTERVAL '24 hours' AS last_24_hours,
         date_trunc('day', NOW() AT TIME ZONE 'America/Los_Angeles') AS pacific_today
     ),
+    runtime_models AS (
+      SELECT UNNEST($1::text[]) AS model
+    ),
     recent_models AS (
-      SELECT DISTINCT e.model
+      SELECT model FROM runtime_models
+      UNION
+      SELECT model FROM ai_model_rate_limit_settings
+      UNION
+      SELECT e.model
       FROM ai_usage_events e
       CROSS JOIN bounds b
       WHERE e.created_at >= b.last_24_hours
@@ -947,12 +1011,33 @@ const getRateLimitStatus = async () => {
         COUNT(*) FILTER (
           WHERE e.created_at >= b.last_minute
         )::int AS rpm_current,
+        COUNT(*) FILTER (
+          WHERE e.created_at >= b.last_minute AND e.request_status = 'success'
+        )::int AS rpm_success,
+        COUNT(*) FILTER (
+          WHERE e.created_at >= b.last_minute AND e.request_status = 'error'
+        )::int AS rpm_error,
+        COUNT(*) FILTER (
+          WHERE e.created_at >= b.last_minute AND e.request_status = 'pending'
+        )::int AS rpm_pending,
         COALESCE(SUM(e.total_tokens) FILTER (
           WHERE e.created_at >= b.last_minute
         ), 0)::bigint AS tpm_current,
         COUNT(*) FILTER (
           WHERE date_trunc('day', e.created_at AT TIME ZONE 'America/Los_Angeles') = b.pacific_today
-        )::int AS rpd_current
+        )::int AS rpd_current,
+        COUNT(*) FILTER (
+          WHERE date_trunc('day', e.created_at AT TIME ZONE 'America/Los_Angeles') = b.pacific_today
+            AND e.request_status = 'success'
+        )::int AS rpd_success,
+        COUNT(*) FILTER (
+          WHERE date_trunc('day', e.created_at AT TIME ZONE 'America/Los_Angeles') = b.pacific_today
+            AND e.request_status = 'error'
+        )::int AS rpd_error,
+        COUNT(*) FILTER (
+          WHERE date_trunc('day', e.created_at AT TIME ZONE 'America/Los_Angeles') = b.pacific_today
+            AND e.request_status = 'pending'
+        )::int AS rpd_pending
       FROM ai_usage_events e
       JOIN recent_models rm ON rm.model = e.model
       CROSS JOIN bounds b
@@ -962,8 +1047,14 @@ const getRateLimitStatus = async () => {
     SELECT
       rm.model,
       COALESCE(ubm.rpm_current, 0)::int AS rpm_current,
+      COALESCE(ubm.rpm_success, 0)::int AS rpm_success,
+      COALESCE(ubm.rpm_error, 0)::int AS rpm_error,
+      COALESCE(ubm.rpm_pending, 0)::int AS rpm_pending,
       COALESCE(ubm.tpm_current, 0)::bigint AS tpm_current,
       COALESCE(ubm.rpd_current, 0)::int AS rpd_current,
+      COALESCE(ubm.rpd_success, 0)::int AS rpd_success,
+      COALESCE(ubm.rpd_error, 0)::int AS rpd_error,
+      COALESCE(ubm.rpd_pending, 0)::int AS rpd_pending,
       s.rpm_cap,
       s.tpm_cap,
       s.rpd_cap,
@@ -975,7 +1066,7 @@ const getRateLimitStatus = async () => {
     LEFT JOIN ai_model_rate_limit_settings s ON s.model = rm.model
     LEFT JOIN users u ON u.user_id = s.updated_by
     ORDER BY rm.model ASC
-    `),
+    `, [runtimeModels]),
     pool.query(`
       SELECT
         d.model,
@@ -1007,16 +1098,45 @@ const getRateLimitStatus = async () => {
       rpd: row.rpd_cap === null ? null : Number(row.rpd_cap)
     };
 
+    const percentUsed = {
+      rpm: percentOfCap(usage.rpm, caps.rpm),
+      tpm: percentOfCap(usage.tpm, caps.tpm),
+      rpd: percentOfCap(usage.rpd, caps.rpd)
+    };
+    const configured = caps.rpm !== null && caps.tpm !== null && caps.rpd !== null;
+    const overLimitDimensions = Object.keys(percentUsed).filter((dimension) => percentUsed[dimension] >= 100);
+    const peakPercent = Math.max(0, ...Object.values(percentUsed).filter(Number.isFinite));
+
     return {
       model: row.model,
       usage,
-      caps,
-      percentUsed: {
-        rpm: percentOfCap(usage.rpm, caps.rpm),
-        tpm: percentOfCap(usage.tpm, caps.tpm),
-        rpd: percentOfCap(usage.rpd, caps.rpd)
+      requestStatus: {
+        rpm: {
+          success: Number(row.rpm_success || 0),
+          error: Number(row.rpm_error || 0),
+          pending: Number(row.rpm_pending || 0)
+        },
+        rpd: {
+          success: Number(row.rpd_success || 0),
+          error: Number(row.rpd_error || 0),
+          pending: Number(row.rpd_pending || 0)
+        }
       },
-      configured: caps.rpm !== null && caps.tpm !== null && caps.rpd !== null,
+      caps,
+      percentUsed,
+      headroom: {
+        rpm: caps.rpm === null ? null : Math.max(0, caps.rpm - usage.rpm),
+        tpm: caps.tpm === null ? null : Math.max(0, caps.tpm - usage.tpm),
+        rpd: caps.rpd === null ? null : Math.max(0, caps.rpd - usage.rpd)
+      },
+      overLimitDimensions,
+      peakPercent,
+      riskLevel: !configured ? 'unconfigured'
+        : peakPercent >= 100 ? 'exceeded'
+          : peakPercent >= 85 ? 'critical'
+            : peakPercent >= 70 ? 'warning'
+              : 'healthy',
+      configured,
       updatedAt: row.updated_at || null,
       updatedBy: row.updated_by === null || row.updated_by === undefined
         ? null
@@ -1024,6 +1144,16 @@ const getRateLimitStatus = async () => {
       updatedByName: row.updated_by_name || null
     };
   });
+
+  const guard = {
+    scannedModels: models.length,
+    configuredModels: models.filter((item) => item.configured).length,
+    exceededModels: models.filter((item) => item.riskLevel === 'exceeded').length,
+    criticalModels: models.filter((item) => item.riskLevel === 'critical').length,
+    warningModels: models.filter((item) => item.riskLevel === 'warning').length,
+    unconfiguredModels: models.filter((item) => item.riskLevel === 'unconfigured').length,
+    checkedAt: new Date().toISOString()
+  };
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1033,6 +1163,7 @@ const getRateLimitStatus = async () => {
       rpdTimezone: 'America/Los_Angeles'
     },
     models,
+    guard,
     notices: noticesResult.rows.map((row) => ({
       model: row.model,
       dimension: row.dimension,
@@ -1190,6 +1321,7 @@ module.exports = {
   resetTokensByRole,
   getAnalyticsDashboard,
   getAiQuotaDashboard,
+  getGeminiUsageTrend,
   getAiRateLimitCaps,
   getRateLimitStatus,
   updateAiRateLimitCaps,

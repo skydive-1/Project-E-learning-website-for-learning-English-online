@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshCwIcon } from 'lucide-react';
 import {
   FiActivity,
   FiAlertTriangle,
@@ -11,6 +12,8 @@ import {
   FiSettings
 } from 'react-icons/fi';
 
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import {
@@ -18,6 +21,7 @@ import {
   getGeminiRateLimitStatus,
   updateGeminiRateLimitCaps
 } from '../services/adminAnalytics.service';
+import FreeTierUsageGuard from './FreeTierUsageGuard';
 
 // Chỉ là gợi ý ban đầu cho form trống; không được dùng để tính % trước khi admin lưu.
 const SUGGESTED_CAPS = Object.freeze({
@@ -32,6 +36,21 @@ const DIMENSIONS = [
   { key: 'tpm', label: 'TPM', help: 'Tokens / 60 giây' },
   { key: 'rpd', label: 'RPD', help: 'Requests / ngày Pacific' }
 ];
+
+const MIN_MANUAL_REFRESH_MS = 650;
+
+const waitForVisibleRefreshState = async (startedAt) => {
+  const remainingMs = MIN_MANUAL_REFRESH_MS - (Date.now() - startedAt);
+  if (remainingMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, remainingMs));
+  }
+};
+
+const getValidDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 const getLevel = (percent) => {
   if (percent === null || percent === undefined) return 'unconfigured';
@@ -68,31 +87,46 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [savingModel, setSavingModel] = useState(null);
   const [error, setError] = useState(null);
+  const latestTelemetryAt = getValidDate(status?.guard?.checkedAt || status?.generatedAt);
 
-  const fetchData = useCallback(async ({ silent = false } = {}) => {
+  const fetchData = useCallback(async ({ background = false, manual = false, fresh = false } = {}) => {
+    const manualStartedAt = manual ? Date.now() : 0;
     try {
-      if (silent) setRefreshing(true);
-      else setLoading(true);
-      setError(null);
+      if (manual) setRefreshing(true);
+      if (!background && !manual) setLoading(true);
+      if (!background) setError(null);
 
       const [nextStatus, nextCaps] = await Promise.all([
-        getGeminiRateLimitStatus(),
-        getGeminiRateLimitCaps()
+        getGeminiRateLimitStatus({ fresh }),
+        getGeminiRateLimitCaps({ fresh })
       ]);
       setStatus(nextStatus);
       setSavedCaps(nextCaps);
+      if (manual) {
+        await waitForVisibleRefreshState(manualStartedAt);
+        showToast(t('Đã cập nhật dữ liệu Gemini lúc {{time}}.', {
+          time: dateTimeFormatter.format(new Date(nextStatus.generatedAt || Date.now()))
+        }), 'success');
+      }
+      return true;
     } catch (requestError) {
       console.error('Không thể tải Gemini Rate Limits:', requestError);
-      setError(t('Không thể tải Rate Limits. Kiểm tra backend và thử lại.'));
+      const message = t('Không thể cập nhật Rate Limits. Dữ liệu hiện tại vẫn được giữ nguyên.');
+      if (manual) {
+        await waitForVisibleRefreshState(manualStartedAt);
+        showToast(message, 'error');
+      }
+      else if (!background) setError(t('Không thể tải Rate Limits. Kiểm tra backend và thử lại.'));
+      return false;
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!background && !manual) setLoading(false);
+      if (manual) setRefreshing(false);
     }
-  }, [t]);
+  }, [dateTimeFormatter, showToast, t]);
 
   useEffect(() => {
     fetchData();
-    const refreshTimer = window.setInterval(() => fetchData({ silent: true }), 15000);
+    const refreshTimer = window.setInterval(() => fetchData({ background: true }), 15000);
     return () => window.clearInterval(refreshTimer);
   }, [fetchData]);
 
@@ -143,7 +177,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       setSavingModel(model);
       await updateGeminiRateLimitCaps(payload);
       showToast(t('Đã lưu hạn mức cho {{model}}.', { model }), 'success');
-      await fetchData({ silent: true });
+      await fetchData({ background: true, fresh: true });
     } catch (saveError) {
       console.error('Không thể lưu Gemini Rate Limits:', saveError);
       showToast(saveError.response?.data?.message || t('Không thể lưu hạn mức. Vui lòng thử lại.'), 'error');
@@ -156,7 +190,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     return (
       <div className="ai-rate-state" role="status">
         <FiRefreshCw className="is-spinning" aria-hidden="true" />
-        <span>{t('Đang đọc mức sử dụng Gemini theo thời gian thực...')}</span>
+        <span>{t('Đang đọc dữ liệu sử dụng Gemini từ backend...')}</span>
       </div>
     );
   }
@@ -178,26 +212,67 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       <header className="ai-rate-header">
         <div>
           <h2>{t('Nhịp sử dụng Gemini')}</h2>
-          <p>{t('Theo dõi ba cửa sổ quota thật theo từng model. Cap chỉ có hiệu lực sau khi admin xác nhận và lưu.')}</p>
+          <p>{t('Theo dõi request Gemini do backend ghi nhận theo từng model. Cap chỉ có hiệu lực sau khi admin xác nhận và lưu.')}</p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="lg"
           className="ai-rate-refresh"
-          onClick={() => fetchData({ silent: true })}
+          onClick={() => fetchData({ manual: true, fresh: true })}
           disabled={refreshing}
+          aria-busy={refreshing}
+          aria-label={refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}
         >
-          <FiRefreshCw className={refreshing ? 'is-spinning' : ''} aria-hidden="true" />
+          {refreshing
+            ? <Spinner data-icon="inline-start" aria-hidden="true" />
+            : <RefreshCwIcon data-icon="inline-start" aria-hidden="true" />}
           {refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}
-        </button>
+        </Button>
       </header>
 
-      <div className="ai-rate-boundary-note">
-        <FiClock aria-hidden="true" />
-        <p>
-          <strong>{t('Hai loại hạn mức, hai mốc đặt lại.')}</strong>
-          {t(' RPM/TPM là cửa sổ trượt 60 giây; RPD đặt lại lúc 00:00 Pacific. Quota câu hỏi học viên ở tab Usage là quy tắc nội bộ theo giờ Việt Nam.')}
-        </p>
-      </div>
+      <section className="ai-rate-sync-status" aria-labelledby="ai-rate-sync-title" aria-live="polite">
+        <div className="ai-rate-sync-status__summary">
+          <span className={`ai-rate-sync-status__icon${refreshing ? ' is-refreshing' : ''}`}>
+            {refreshing
+              ? <Spinner aria-hidden="true" />
+              : <FiActivity aria-hidden="true" />}
+          </span>
+          <div>
+            <strong id="ai-rate-sync-title">
+              {refreshing ? t('Đang đồng bộ telemetry từ backend...') : t('Backend telemetry đang hoạt động')}
+            </strong>
+            <p>{t('Tự làm mới mỗi 15 giây · RPM/TPM là cửa sổ 60 giây · RPD đặt lại lúc 00:00 Pacific.')}</p>
+          </div>
+        </div>
+
+        <div className="ai-rate-sync-status__freshness">
+          <span><i aria-hidden="true" />{t('Trực tiếp từ backend')}</span>
+          <small>
+            <FiClock aria-hidden="true" />
+            {latestTelemetryAt
+              ? t('Cập nhật cuối: {{time}}', { time: dateTimeFormatter.format(latestTelemetryAt) })
+              : t('Chưa có thời điểm cập nhật')}
+          </small>
+        </div>
+
+        <div className="ai-rate-sync-status__provider">
+          <div>
+            <span>{t('Đối chiếu Google Cloud Monitoring')}</span>
+            <strong>{t('Chưa kết nối')}</strong>
+          </div>
+          <p>{t('Gemini API key không cấp quyền đọc Usage. Cần service account để đồng bộ metric từ Google; dữ liệu Google có thể trễ khoảng 150 giây.')}</p>
+          <a href="https://aistudio.google.com/usage" target="_blank" rel="noreferrer">
+            {t('Mở Google AI Studio')}
+            <FiExternalLink aria-hidden="true" />
+          </a>
+        </div>
+      </section>
+
+      <FreeTierUsageGuard
+        models={status?.models || []}
+        checkedAt={status?.guard?.checkedAt || status?.generatedAt}
+      />
 
       {(status?.notices || []).length > 0 && (
         <div className="ai-rate-discrepancy" role="alert">
@@ -268,6 +343,29 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="ai-model-request-status" aria-label={t('Trạng thái request hôm nay')}>
+                <span className="is-success">
+                  <FiCheck aria-hidden="true" />
+                  {t('{{count}} thành công', {
+                    count: numberFormatter.format(item.requestStatus?.rpd?.success || 0)
+                  })}
+                </span>
+                <span className={item.requestStatus?.rpd?.error > 0 ? 'is-error' : ''}>
+                  <FiAlertTriangle aria-hidden="true" />
+                  {t('{{count}} lỗi', {
+                    count: numberFormatter.format(item.requestStatus?.rpd?.error || 0)
+                  })}
+                </span>
+                {(item.requestStatus?.rpd?.pending || 0) > 0 && (
+                  <span className="is-pending">
+                    <FiClock aria-hidden="true" />
+                    {t('{{count}} đang xử lý', {
+                      count: numberFormatter.format(item.requestStatus.rpd.pending)
+                    })}
+                  </span>
+                )}
               </div>
 
               <footer>

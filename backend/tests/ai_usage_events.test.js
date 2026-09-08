@@ -2,7 +2,9 @@ const { describe, test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  beginAiUsageEvent,
   recordAiUsage,
+  failAiUsageEvent,
   runWithAiContext,
   COST_PER_M_TOKENS
 } = require('../src/utils/ai-clients');
@@ -221,6 +223,56 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
       assert.equal(dashboard.summary.estimatedCostUsd, 0.0022);
     } finally {
       db.pool.query = originalPoolQuery;
+    }
+  });
+
+  test('tracks a provider request from pending to success even without usageMetadata', async () => {
+    db.query = async (text, params) => {
+      dbQueries.push({ text, params });
+      if (/RETURNING id/i.test(text)) return { rows: [{ id: 314 }] };
+      return { rows: [] };
+    };
+
+    try {
+      const eventId = await beginAiUsageEvent({
+        userId: null,
+        purpose: 'rag_ingestion_embedding',
+        model: 'gemini-embedding-001'
+      });
+      await recordAiUsage({
+        eventId,
+        userId: null,
+        purpose: 'rag_ingestion_embedding',
+        model: 'gemini-embedding-001',
+        usageMetadata: null
+      });
+
+      assert.equal(eventId, 314);
+      assert.equal(dbQueries.length, 2);
+      assert.match(dbQueries[0].text, /request_status\)\s*VALUES \(\$1, \$2, \$3, 'pending'\)/i);
+      assert.match(dbQueries[1].text, /request_status = 'success'/i);
+      assert.deepEqual(dbQueries[1].params, [314, 0, 0, 0, 0]);
+    } finally {
+      db.query = originalQuery;
+    }
+  });
+
+  test('marks failed provider attempts so 429 requests remain visible to the guard', async () => {
+    db.query = async (text, params) => {
+      dbQueries.push({ text, params });
+      return { rows: [] };
+    };
+
+    try {
+      const quotaError = new Error('quota exceeded');
+      quotaError.code = 'RESOURCE_EXHAUSTED';
+      await failAiUsageEvent({ eventId: 271, error: quotaError });
+
+      assert.equal(dbQueries.length, 1);
+      assert.match(dbQueries[0].text, /request_status = 'error'/i);
+      assert.deepEqual(dbQueries[0].params, [271, 'RESOURCE_EXHAUSTED']);
+    } finally {
+      db.query = originalQuery;
     }
   });
 

@@ -21,6 +21,9 @@ router.get('/analytics', adminController.getAnalyticsDashboard);
 // GET /api/admin/ai-quota - Bảng Quản trị Toàn diện Hạn mức và Tiêu thụ Token AI
 router.get('/ai-quota', adminController.getAiQuotaDashboard);
 
+// Dữ liệu biểu đồ Gemini gần thời gian thực: Google Cloud Monitoring + fallback telemetry backend
+router.get('/gemini-usage/trends', adminController.getGeminiUsageTrend);
+
 // Hạn mức thật của Gemini theo model (tách biệt với middleware rate-limit nội bộ)
 router.get('/gemini-rate-limits/status', adminController.getAiRateLimitStatus);
 router.get('/gemini-rate-limits/caps', adminController.getAiRateLimitCaps);

@@ -181,7 +181,8 @@ const retrieveContext = async (lessonId, question, mode = 'current_lesson', veri
   try {
     const embeddingResult = await embeddingModel.embedContent({
       content: { parts: [{ text: question }] },
-      outputDimensionality: 768
+      outputDimensionality: 768,
+      purpose: 'rag_retrieval_embedding'
     });
     queryVector = embeddingResult.embedding?.values || null;
   } catch (embeddingErr) {
@@ -648,7 +649,10 @@ ${lessonContext.combinedContext}`;
       scope: 'current_lesson'
     });
 
-    const responseStream = await geminiModel.generateContentStream(prompt);
+    const responseStream = await geminiModel.generateContentStream({
+      contents: prompt,
+      purpose: 'rag_lesson_vocabulary'
+    });
     for await (const chunk of responseStream.stream) {
       const textChunk = chunk.text();
       if (textChunk) {
@@ -657,7 +661,10 @@ ${lessonContext.combinedContext}`;
       }
     }
   } else {
-    const result = await geminiModel.generateContent(prompt);
+    const result = await geminiModel.generateContent({
+      contents: prompt,
+      purpose: 'rag_lesson_vocabulary'
+    });
     replyText = result.response.text();
   }
 
@@ -730,6 +737,7 @@ ${lessonContext.combinedContext}`;
   let parsedQuestions = [];
   try {
     const result = await geminiModel.generateContent({
+      purpose: 'rag_lesson_quiz',
       contents: [{ role: 'user', parts: [{ text: quizPrompt }] }],
       generationConfig: {
         responseMimeType: "application/json"
@@ -1025,6 +1033,7 @@ CÂU HỎI CỦA HỌC VIÊN:
     const generationRequest = globalGenerationProfile
       ? {
         model: globalGenerationProfile.model,
+        purpose: 'chat',
         contents: systemPrompt,
         generationConfig: {
           maxOutputTokens: globalGenerationProfile.maxOutputTokens,
@@ -1034,7 +1043,10 @@ CÂU HỎI CỦA HỌC VIÊN:
           }
         }
       }
-      : systemPrompt;
+      : {
+        contents: systemPrompt,
+        purpose: 'rag_answer_generation'
+      };
     const result = await geminiModel.generateContent(generationRequest);
     const reply = result.response ? result.response.text() : (typeof result === 'string' ? result : "");
 
@@ -1286,6 +1298,7 @@ CÂU HỎI CỦA HỌC VIÊN:
     const generationRequest = globalGenerationProfile
       ? {
         model: globalGenerationProfile.model,
+        purpose: 'chat',
         contents: systemPrompt,
         generationConfig: {
           maxOutputTokens: globalGenerationProfile.maxOutputTokens,
@@ -1295,7 +1308,10 @@ CÂU HỎI CỦA HỌC VIÊN:
           }
         }
       }
-      : systemPrompt;
+      : {
+        contents: systemPrompt,
+        purpose: 'rag_answer_generation'
+      };
     const resultStream = await geminiModel.generateContentStream(generationRequest);
     let fullText = "";
 

@@ -11,6 +11,12 @@ const setForbiddenCode = (error, code) => {
   return error;
 };
 
+const disableLiveDataCache = (res) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+};
+
 /**
  * Lấy danh sách tất cả người dùng
  */
@@ -65,8 +71,25 @@ exports.getAiQuotaDashboard = async (req, res, next) => {
   }
 };
 
+exports.getGeminiUsageTrend = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const data = await adminService.getGeminiUsageTrend({
+      range: req.query.range,
+      metric: req.query.metric,
+      source: req.query.source,
+      model: req.query.model,
+      fresh: req.query.fresh === '1' || req.query.fresh === 'true'
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAiRateLimitStatus = async (req, res, next) => {
   try {
+    disableLiveDataCache(res);
     const status = await adminService.getRateLimitStatus();
     res.status(200).json({ success: true, data: status });
   } catch (error) {
@@ -76,6 +99,7 @@ exports.getAiRateLimitStatus = async (req, res, next) => {
 
 exports.getAiRateLimitCaps = async (req, res, next) => {
   try {
+    disableLiveDataCache(res);
     const caps = await adminService.getAiRateLimitCaps();
     res.status(200).json({ success: true, data: { models: caps } });
   } catch (error) {
