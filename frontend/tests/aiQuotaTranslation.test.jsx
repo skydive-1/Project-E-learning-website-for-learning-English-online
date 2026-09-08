@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../src/context/LanguageContext';
 import AIQuotaUsageBoard from '../src/modules/admin/components/AIQuotaUsageBoard';
-import { getAiQuotaAnalytics } from '../src/modules/admin/services/adminAnalytics.service';
+import { getAiQuotaAnalytics, getGeminiUsageTrends } from '../src/modules/admin/services/adminAnalytics.service';
 
 vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
   getAiQuotaAnalytics: vi.fn(),
+  getGeminiUsageTrends: vi.fn(),
   updateUserQuota: vi.fn(),
   resetUserAiToken: vi.fn(),
   resetBulkAiTokens: vi.fn(),
@@ -84,6 +85,11 @@ describe('AI quota management translations', () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.clearAllMocks();
+    getGeminiUsageTrends.mockResolvedValue({
+      range: '30d', metric: 'tokens', unit: 'tokens', model: 'all',
+      bucketSeconds: 86400, sourceRequested: 'auto', sourceUsed: 'backend',
+      providerStatus: 'connected', availableModels: [], series: []
+    });
   });
 
   it('renders the complete management surface in English', async () => {

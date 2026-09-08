@@ -24,6 +24,36 @@ export const getAiQuotaAnalytics = async (range = 30) => {
   return response.data.data;
 };
 
+export const getGeminiUsageTrends = async ({
+  range = '30d',
+  metric = 'tokens',
+  source = 'backend',
+  model = 'all',
+  fresh = false
+} = {}) => {
+  const response = await apiClient.get('/admin/gemini-usage/trends', {
+    params: {
+      range,
+      metric,
+      source,
+      model,
+      ...(fresh ? { fresh: 1, _refresh: Date.now() } : {})
+    },
+    ...(fresh ? {
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
+      }
+    } : {})
+  });
+
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error('Invalid Gemini usage trend response');
+  }
+
+  return response.data.data;
+};
+
 const makeLiveRefreshConfig = (fresh) => fresh ? {
   params: { _refresh: Date.now() },
   headers: {

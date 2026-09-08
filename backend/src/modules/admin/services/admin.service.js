@@ -7,6 +7,7 @@ const { supabaseAdmin } = require('../../../config/supabase');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
+const { getGeminiUsageTrend } = require('./geminiUsageTrend.service');
 
 // Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
 const getVietnamDateString = (date = new Date()) => {
@@ -584,8 +585,15 @@ const getAiQuotaDashboard = async (days = 30) => {
       SELECT
         created_at::date AS day,
         COALESCE(SUM(total_tokens), 0)::int AS estimated_tokens,
-        COALESCE(SUM(total_tokens) FILTER (WHERE purpose NOT IN ('embedding', 'speaking_stt')), 0)::int AS gemini_flash_tokens,
-        COALESCE(SUM(total_tokens) FILTER (WHERE purpose = 'embedding'), 0)::int AS gemini_embedding_tokens,
+        COALESCE(SUM(total_tokens) FILTER (
+          WHERE LOWER(model) NOT LIKE '%embedding%'
+            AND LOWER(purpose) NOT LIKE '%embedding%'
+            AND purpose <> 'speaking_stt'
+        ), 0)::int AS gemini_flash_tokens,
+        COALESCE(SUM(total_tokens) FILTER (
+          WHERE LOWER(model) LIKE '%embedding%'
+            OR LOWER(purpose) LIKE '%embedding%'
+        ), 0)::int AS gemini_embedding_tokens,
         COALESCE(SUM(total_tokens) FILTER (WHERE purpose = 'speaking_stt'), 0)::int AS speaking_stt_tokens,
         0::int AS backfilled_tokens
       FROM ai_usage_events, bounds
@@ -1313,6 +1321,7 @@ module.exports = {
   resetTokensByRole,
   getAnalyticsDashboard,
   getAiQuotaDashboard,
+  getGeminiUsageTrend,
   getAiRateLimitCaps,
   getRateLimitStatus,
   updateAiRateLimitCaps,

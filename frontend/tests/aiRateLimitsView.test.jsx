@@ -6,6 +6,7 @@ import { LanguageProvider } from '../src/context/LanguageContext';
 import AIQuotaControlCenter from '../src/modules/admin/components/AIQuotaControlCenter';
 import {
   getAiQuotaAnalytics,
+  getGeminiUsageTrends,
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
   updateGeminiRateLimitCaps
@@ -13,6 +14,7 @@ import {
 
 vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
   getAiQuotaAnalytics: vi.fn(),
+  getGeminiUsageTrends: vi.fn(),
   getGeminiRateLimitCaps: vi.fn(),
   getGeminiRateLimitStatus: vi.fn(),
   updateGeminiRateLimitCaps: vi.fn(),
@@ -33,6 +35,11 @@ describe('Gemini Rate Limits admin view', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     getAiQuotaAnalytics.mockResolvedValue(quotaFixture);
+    getGeminiUsageTrends.mockResolvedValue({
+      range: '30d', metric: 'tokens', unit: 'tokens', model: 'all',
+      bucketSeconds: 86400, sourceRequested: 'auto', sourceUsed: 'backend',
+      providerStatus: 'connected', availableModels: [], series: []
+    });
     getGeminiRateLimitCaps.mockResolvedValue([]);
     getGeminiRateLimitStatus.mockResolvedValue({
       generatedAt: '2026-09-02T00:00:00.000Z',

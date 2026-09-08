@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node --test tests/auth_middleware.test.js tests/auth_query_token_scope.test.js tests/gamification_auth.test.js tests/super_admin.test.js tests/admin_role_auth.test.js tests/chatbot_history_auth.test.js tests/password_reset.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/media_schema_trigger_order.test.js tests/auto_subtitle_trigger.test.js tests/youtube_transcript_subtitle.test.js tests/lesson_stream_cache.test.js tests/production_ai_environment.test.js tests/r2_course_reorganizer.test.js tests/rate_limit.test.js tests/ai_question_quota.test.js tests/ai_usage_events.test.js tests/ai_rate_limit_status.test.js tests/quizzes_question_type.test.js tests/suggested_questions.test.js tests/progress_completion_threshold.test.js tests/chatbot_grounding_policy.test.js tests/chatbot_stream_transport.test.js tests/chatbot_response_latency_policy.test.js tests/quizzes_security_leak.test.js tests/open_cloze_quiz.test.js tests/quiz_missing_correct_answer.test.js",
+    "test": "node --test tests/auth_middleware.test.js tests/auth_query_token_scope.test.js tests/gamification_auth.test.js tests/super_admin.test.js tests/admin_role_auth.test.js tests/chatbot_history_auth.test.js tests/password_reset.test.js tests/video_streaming.test.js tests/speaking_assessment.test.js tests/pdf_notes.test.js tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/media_schema_trigger_order.test.js tests/auto_subtitle_trigger.test.js tests/youtube_transcript_subtitle.test.js tests/lesson_stream_cache.test.js tests/production_ai_environment.test.js tests/r2_course_reorganizer.test.js tests/rate_limit.test.js tests/ai_question_quota.test.js tests/ai_usage_events.test.js tests/ai_rate_limit_status.test.js tests/gemini_usage_trend.test.js tests/quizzes_question_type.test.js tests/suggested_questions.test.js tests/progress_completion_threshold.test.js tests/chatbot_grounding_policy.test.js tests/chatbot_stream_transport.test.js tests/chatbot_response_latency_policy.test.js tests/quizzes_security_leak.test.js tests/open_cloze_quiz.test.js tests/quiz_missing_correct_answer.test.js",
     "test:media": "node --test tests/durable_media_pipeline.test.js tests/orphan_cleanup.test.js tests/safe_path_and_durable_r2.test.js tests/media_lifecycle_regression.test.js tests/media_object_key.test.js",
     "test:auth": "node --test tests/auth_middleware.test.js",
     "test:subtitles-python": "python -m unittest scripts/test_auto_subtitle_pipeline.py",
@@ -35,6 +35,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.1",
     "fluent-ffmpeg": "^2.1.3",
+    "google-auth-library": "^10.9.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",

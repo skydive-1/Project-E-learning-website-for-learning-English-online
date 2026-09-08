@@ -71,6 +71,22 @@ exports.getAiQuotaDashboard = async (req, res, next) => {
   }
 };
 
+exports.getGeminiUsageTrend = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const data = await adminService.getGeminiUsageTrend({
+      range: req.query.range,
+      metric: req.query.metric,
+      source: req.query.source,
+      model: req.query.model,
+      fresh: req.query.fresh === '1' || req.query.fresh === 'true'
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAiRateLimitStatus = async (req, res, next) => {
   try {
     disableLiveDataCache(res);

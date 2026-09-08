@@ -9,19 +9,8 @@ import {
   FiUsers, 
   FiMessageSquare, 
   FiCheck, 
-  FiX, 
-  FiTrendingUp
+  FiX
 } from 'react-icons/fi';
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip
-} from 'recharts';
 
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -31,6 +20,7 @@ import {
   resetBulkAiTokens 
 } from '../services/adminAnalytics.service';
 import RagIncidentAlertModal from './RagIncidentAlertModal';
+import GeminiUsageTrendChart from './GeminiUsageTrendChart';
 import { buildAiQuotaCsv, downloadCsvReport } from '../utils/aiQuotaCsv';
 import '../styles/ai-quota-board.scss';
 
@@ -39,14 +29,6 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
-  const compactFormatter = useMemo(() => new Intl.NumberFormat(locale, {
-    notation: 'compact',
-    maximumFractionDigits: 1
-  }), [locale]);
-  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
-    day: '2-digit',
-    month: '2-digit'
-  }), [locale]);
   const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: '2-digit',
@@ -65,7 +47,6 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   // State lọc và tìm kiếm (Chuẩn giao diện Admin)
   const [filterTab, setFilterTab] = useState('all'); // all, exhausted, critical, normal, unused, student, instructor, admin
   const [searchTerm, setSearchTerm] = useState('');
-  const [showChart, setShowChart] = useState(true);
 
   // State Modal xem lịch sử tương tác AI
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -301,61 +282,8 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
         </button>
       </div>
 
-      {/* 2. COLLAPSIBLE DAILY CONSUMPTION CHART */}
-      {showChart && dashboardData?.trends && dashboardData.trends.length > 0 && (
-        <div className="ai-chart-panel mb-5">
-          <div className="ai-chart-header">
-            <div className="flex items-center gap-2">
-              <FiTrendingUp className="text-blue-500 text-sm" />
-              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                {t('Xu hướng sử dụng token theo ngày ({{days}} ngày qua)', { days: rangeDays })}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" /> Gemini Flash
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" /> Embedding
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" /> Speaking STT
-              </div>
-              <button 
-                type="button" 
-                aria-label={t('Thu gọn')}
-                className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
-                onClick={() => setShowChart(false)}
-              >
-                {t('Thu gọn')} <FiX aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-          <div style={{ height: 180, width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={dashboardData.trends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255, 255, 255, 0.05)" />
-                <XAxis 
-                  dataKey="day" 
-                  tickFormatter={(val) => dateFormatter.format(new Date(val))}
-                  tick={{ fontSize: 10, fill: '#64748B' }}
-                  axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-                />
-                <YAxis 
-                  yAxisId="left"
-                  tickFormatter={(val) => compactFormatter.format(val)}
-                  tick={{ fontSize: 10, fill: '#64748B' }}
-                  axisLine={false}
-                />
-                <RechartsTooltip 
-                  contentStyle={{ backgroundColor: '#0B132B', borderColor: '#1E293B', borderRadius: 8, fontSize: 12 }}
-                  formatter={(val, name) => [`${numberFormatter.format(val)} token`, name]}
-                  labelFormatter={(lbl) => t('Ngày: {{date}}', { date: lbl })}
-                />
-                <Bar yAxisId="left" dataKey="gemini_flash_tokens" name="Gemini Flash" stackId="a" fill="#3B82F6" />
-                <Bar yAxisId="left" dataKey="gemini_embedding_tokens" name="Embedding" stackId="a" fill="#10B981" />
-                <Bar yAxisId="left" dataKey="speaking_stt_tokens" name="Voice STT" stackId="a" fill="#F59E0B" />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+      {/* 2. GOOGLE-LIKE GEMINI USAGE TREND WITH CLOUD MONITORING FALLBACK */}
+      <GeminiUsageTrendChart initialTrends={dashboardData?.trends || []} />
 
       {/* 3. FILTER PILL BUTTONS (Đúng theo mẫu screenshot) */}
       <div className="table-filters flex items-center justify-between flex-wrap gap-2">
