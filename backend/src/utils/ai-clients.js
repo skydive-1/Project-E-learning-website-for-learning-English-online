@@ -69,34 +69,72 @@ const DEFAULT_COST_RATE = Object.freeze({ input: 0.75, output: 3.75 });
 // ─── Usage Recording ───────────────────────────────────────────────────────
 
 /**
- * Record a Gemini API usage event.  Fire-and-forget: if the DB write fails
- * this logs but never throws, so usage tracking never breaks user-facing features.
+ * Open a provider-request event before calling Gemini. This makes RPM/RPD reflect
+ * every attempt, including failed requests and embedding responses without token
+ * metadata. Tracking is best-effort and must never break user-facing features.
  *
- * @param {{ userId?: number|null, purpose: string, model: string, usageMetadata?: object }} opts
+ * @param {{ userId?: number|null, purpose: string, model: string }} opts
  */
-async function recordAiUsage({ userId = null, purpose, model, usageMetadata }) {
+async function beginAiUsageEvent({ userId = null, purpose, model }) {
   try {
-    if (!usageMetadata) return;
+    const result = await db.query(
+      `INSERT INTO ai_usage_events
+         (user_id, purpose, model, request_status)
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING id`,
+      [userId || null, purpose || 'unknown', model]
+    );
+    return result.rows?.[0]?.id || null;
+  } catch (err) {
+    console.error('[AI Usage Recording] Failed to open usage event (non-fatal):', err.message);
+    return null;
+  }
+}
+
+/**
+ * Complete a Gemini API usage event. When eventId is absent this preserves the
+ * legacy insert path used by direct callers and older integrations.
+ *
+ * @param {{ eventId?: number|null, userId?: number|null, purpose: string, model: string, usageMetadata?: object }} opts
+ */
+async function recordAiUsage({ eventId = null, userId = null, purpose, model, usageMetadata }) {
+  try {
+    if (!usageMetadata && !eventId) return;
 
     // Field names vary across SDK versions — check both shapes.
-    const input  = usageMetadata.promptTokenCount   ?? usageMetadata.inputTokens  ?? 0;
-    const output = usageMetadata.candidatesTokenCount ?? usageMetadata.outputTokens ?? 0;
-    const total  = usageMetadata.totalTokenCount     ?? usageMetadata.totalTokens  ?? (input + output);
-    if (total === 0 && input === 0 && output === 0) return;
+    const input  = usageMetadata?.promptTokenCount   ?? usageMetadata?.inputTokens  ?? 0;
+    const output = usageMetadata?.candidatesTokenCount ?? usageMetadata?.outputTokens ?? 0;
+    const total  = usageMetadata?.totalTokenCount     ?? usageMetadata?.totalTokens  ?? (input + output);
+    if (!eventId && total === 0 && input === 0 && output === 0) return;
 
     const rates = COST_PER_M_TOKENS[model] || DEFAULT_COST_RATE;
     const cost  = ((input * rates.input) + (output * rates.output)) / 1_000_000;
 
-    // 1. Insert usage event row
-    await db.query(
-      `INSERT INTO ai_usage_events
-         (user_id, purpose, model, input_tokens, output_tokens, total_tokens, estimated_cost_usd)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [userId || null, purpose, model, input, output, total, cost]
-    );
+    if (eventId) {
+      await db.query(
+        `UPDATE ai_usage_events
+         SET input_tokens = $2,
+             output_tokens = $3,
+             total_tokens = $4,
+             estimated_cost_usd = $5,
+             request_status = 'success',
+             error_code = NULL,
+             completed_at = NOW()
+         WHERE id = $1`,
+        [eventId, input, output, total, cost]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO ai_usage_events
+           (user_id, purpose, model, input_tokens, output_tokens, total_tokens,
+            estimated_cost_usd, request_status, completed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'success', NOW())`,
+        [userId || null, purpose, model, input, output, total, cost]
+      );
+    }
 
     // 2. Increment user_token_limits.used_tokens (upsert)
-    if (userId) {
+    if (userId && total > 0) {
       await db.query(
         `INSERT INTO user_token_limits (user_id, max_tokens, used_tokens)
          VALUES ($1, 6000, $2)
@@ -184,6 +222,76 @@ const normalizeGeminiError = (error) => {
   if (retryMatch) quotaError.retryAfterMs = Math.ceil(Number(retryMatch[1]) * 1000);
   return quotaError;
 };
+
+const isRagPurpose = (purpose) => /^rag_[a-z0-9_]+$/i.test(String(purpose || '').trim());
+
+async function recordAiProviderIncident({ error, model, purpose }) {
+  if (!isRagPurpose(purpose)) return;
+  try {
+    const normalized = normalizeGeminiError(error);
+    const status = Number(error?.status || error?.statusCode || error?.response?.status || normalized?.status || 0) || null;
+    const code = String(normalized?.code || error?.code || error?.response?.data?.error?.status || 'GEMINI_PROVIDER_ERROR').slice(0, 100);
+    const message = String(normalized?.message || 'Dịch vụ Gemini gặp lỗi khi xử lý tác vụ RAG.').slice(0, 600);
+    const retryAfterMs = Number(normalized?.retryAfterMs || 0) || null;
+    await db.query(`
+      INSERT INTO ai_provider_incidents
+        (workload, purpose, model, error_code, http_status, message, retry_after_ms,
+         occurrence_count, first_seen_at, last_seen_at, resolved_at)
+      VALUES ('rag', $1, $2, $3, $4, $5, $6, 1, NOW(), NOW(), NULL)
+      ON CONFLICT (workload, purpose, model, error_code) WHERE resolved_at IS NULL
+      DO UPDATE SET
+        http_status = EXCLUDED.http_status,
+        message = EXCLUDED.message,
+        retry_after_ms = EXCLUDED.retry_after_ms,
+        occurrence_count = ai_provider_incidents.occurrence_count + 1,
+        last_seen_at = NOW()
+    `, [String(purpose), String(model || 'unknown'), code, status, message, retryAfterMs]);
+  } catch (incidentError) {
+    console.warn('[RAG Incident] Không thể lưu sự cố Gemini (non-fatal):', incidentError.message);
+  }
+}
+
+/** Mark an opened request as failed without leaking provider error details. */
+async function failAiUsageEvent({ eventId, error }) {
+  if (!eventId) return;
+
+  try {
+    const rawCode = error?.code
+      || error?.response?.data?.error?.status
+      || error?.status
+      || error?.statusCode
+      || error?.name
+      || 'PROVIDER_ERROR';
+    const errorCode = String(rawCode).trim().slice(0, 100) || 'PROVIDER_ERROR';
+
+    await db.query(
+      `UPDATE ai_usage_events
+       SET request_status = 'error',
+           error_code = $2,
+           completed_at = NOW()
+       WHERE id = $1`,
+      [eventId, errorCode]
+    );
+  } catch (err) {
+    console.error('[AI Usage Recording] Failed to close failed event (non-fatal):', err.message);
+  }
+}
+
+async function resolveAiProviderIncident({ model, purpose }) {
+  if (!isRagPurpose(purpose)) return;
+  try {
+    await db.query(`
+      UPDATE ai_provider_incidents
+      SET resolved_at = NOW()
+      WHERE workload = 'rag'
+        AND purpose = $1
+        AND model = $2
+        AND resolved_at IS NULL
+    `, [String(purpose), String(model || 'unknown')]);
+  } catch (incidentError) {
+    console.warn('[RAG Incident] Không thể đánh dấu sự cố đã phục hồi (non-fatal):', incidentError.message);
+  }
+}
 
 const sanitizeQuotaDetail = (value, depth = 0, seen = new WeakSet()) => {
   if (value === null || value === undefined) return value;
@@ -433,6 +541,15 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
+    const ctx = getAiContext();
+    const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
+    const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
+    const usageEventId = await beginAiUsageEvent({
+      userId: finalUserId,
+      purpose: finalPurpose,
+      model
+    });
+
     try {
       const response = await client.models.generateContent({
         model,
@@ -441,10 +558,9 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
       });
 
       // Record real usage from Gemini response
-      const ctx = getAiContext();
-      const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
-      const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
-      recordAiUsage({
+      resolveAiProviderIncident({ model, purpose: finalPurpose });
+      await recordAiUsage({
+        eventId: usageEventId,
         userId: finalUserId,
         purpose: finalPurpose,
         model,
@@ -454,6 +570,8 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
       return response;
     } catch (err) {
       lastError = err;
+      await failAiUsageEvent({ eventId: usageEventId, error: err });
+      recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
       recordGeminiQuotaSignal({ error: err, model });
       if (isRetryableGeminiError(err)) {
         console.warn(`[Gemini Fallback] ${model} thất bại, đang thử model kế tiếp.`);
@@ -470,7 +588,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
  * Returns { responseStream, modelUsed } so the wrapper can record usage
  * after the stream is fully consumed.
  */
-async function executeGenerateStream(client, contents, config, modelOverride = null) {
+async function executeGenerateStream(client, contents, config, modelOverride = null, customCtx = {}) {
   const preferredModel = modelOverride || GEMINI_MODELS.primary;
   const fallbackModels = getPrioritizedFallbackModels(preferredModel);
   const triedModels = new Set();
@@ -479,15 +597,26 @@ async function executeGenerateStream(client, contents, config, modelOverride = n
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
+    const ctx = getAiContext();
+    const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
+    const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
+    const usageEventId = await beginAiUsageEvent({
+      userId: finalUserId,
+      purpose: finalPurpose,
+      model
+    });
+
     try {
       const responseStream = await client.models.generateContentStream({
         model,
         contents,
         config
       });
-      return { responseStream, modelUsed: model };
+      return { responseStream, modelUsed: model, usageEventId, finalUserId, finalPurpose };
     } catch (err) {
       lastError = err;
+      await failAiUsageEvent({ eventId: usageEventId, error: err });
+      recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
       recordGeminiQuotaSignal({ error: err, model });
       if (isRetryableGeminiError(err)) {
         console.warn(`[Gemini Stream Fallback] ${model} thất bại, đang thử model kế tiếp.`);
@@ -535,31 +664,41 @@ const geminiModel = {
     const { contents, config, model, purpose, userId } = normalizeRequest(request);
 
     try {
-      const { responseStream, modelUsed } = await executeGenerateStream(client, contents, config, model);
-      const ctx = getAiContext();
-      const finalUserId = userId !== undefined ? userId : ctx.userId;
-      const finalPurpose = purpose || ctx.purpose || 'chat';
+      const {
+        responseStream,
+        modelUsed,
+        usageEventId,
+        finalUserId,
+        finalPurpose
+      } = await executeGenerateStream(client, contents, config, model, { purpose, userId });
+      resolveAiProviderIncident({ model: modelUsed, purpose: finalPurpose });
 
       // Tạo Async Generator bọc các chunk, ghi nhận usage khi stream kết thúc
       async function* wrapStream() {
         let lastUsageMetadata = null;
-        for await (const chunk of responseStream) {
-          const chunkText = typeof chunk.text === "function" ? chunk.text() : (chunk.text || "");
-          // Capture usageMetadata from the last chunk that has it
-          if (chunk.usageMetadata) lastUsageMetadata = chunk.usageMetadata;
-          yield {
-            text: () => chunkText,
-            candidates: chunk.candidates || [],
-            usageMetadata: chunk.usageMetadata || null
-          };
+        try {
+          for await (const chunk of responseStream) {
+            const chunkText = typeof chunk.text === "function" ? chunk.text() : (chunk.text || "");
+            // Capture usageMetadata from the last chunk that has it
+            if (chunk.usageMetadata) lastUsageMetadata = chunk.usageMetadata;
+            yield {
+              text: () => chunkText,
+              candidates: chunk.candidates || [],
+              usageMetadata: chunk.usageMetadata || null
+            };
+          }
+          // Responses without usageMetadata still close the request successfully.
+          await recordAiUsage({
+            eventId: usageEventId,
+            userId: finalUserId,
+            purpose: finalPurpose,
+            model: modelUsed,
+            usageMetadata: lastUsageMetadata
+          });
+        } catch (streamError) {
+          await failAiUsageEvent({ eventId: usageEventId, error: streamError });
+          throw streamError;
         }
-        // After stream is fully consumed, record usage
-        recordAiUsage({
-          userId: finalUserId,
-          purpose: finalPurpose,
-          model: modelUsed,
-          usageMetadata: lastUsageMetadata
-        });
       }
 
       const streamIterable = wrapStream();
@@ -623,6 +762,14 @@ const embeddingModel = {
     }
 
     const modelName = process.env.EMBEDDING_MODEL || "gemini-embedding-001";
+    const ctx = getAiContext();
+    const finalUserId = userId !== undefined ? userId : ctx.userId;
+    const finalPurpose = purpose || ctx.purpose || 'embedding';
+    const usageEventId = await beginAiUsageEvent({
+      userId: finalUserId,
+      purpose: finalPurpose,
+      model: modelName
+    });
 
     try {
       const response = await client.models.embedContent({
@@ -634,10 +781,9 @@ const embeddingModel = {
       });
 
       // Record real embedding usage
-      const ctx = getAiContext();
-      const finalUserId = userId !== undefined ? userId : ctx.userId;
-      const finalPurpose = purpose || 'embedding';
-      recordAiUsage({
+      resolveAiProviderIncident({ model: modelName, purpose: finalPurpose });
+      await recordAiUsage({
+        eventId: usageEventId,
         userId: finalUserId,
         purpose: finalPurpose,
         model: modelName,
@@ -653,6 +799,8 @@ const embeddingModel = {
       };
     } catch (error) {
       console.error(`[Embedding Model Error] Lỗi khi tạo vector từ ${modelName}:`, error.message);
+      await failAiUsageEvent({ eventId: usageEventId, error });
+      recordAiProviderIncident({ error, model: modelName, purpose: finalPurpose });
       recordGeminiQuotaSignal({ error, model: modelName });
       throw normalizeGeminiError(error);
     }
@@ -775,6 +923,14 @@ const geminiSpeakingModel = {
   async evaluateSpeaking({ contents, responseMimeType = "application/json", userId, purpose = 'speaking_stt' }) {
     const client = getAiClient();
     const model = getSpeakingModelName();
+    const ctx = getAiContext();
+    const finalUserId = userId !== undefined ? userId : ctx.userId;
+    const finalPurpose = purpose || 'speaking_stt';
+    const usageEventId = await beginAiUsageEvent({
+      userId: finalUserId,
+      purpose: finalPurpose,
+      model
+    });
     const config = {
       responseMimeType
     };
@@ -787,10 +943,8 @@ const geminiSpeakingModel = {
       });
 
       // Record real speaking assessment usage
-      const ctx = getAiContext();
-      const finalUserId = userId !== undefined ? userId : ctx.userId;
-      const finalPurpose = purpose || 'speaking_stt';
-      recordAiUsage({
+      await recordAiUsage({
+        eventId: usageEventId,
         userId: finalUserId,
         purpose: finalPurpose,
         model,
@@ -805,6 +959,7 @@ const geminiSpeakingModel = {
       };
     } catch (error) {
       console.error(`[Gemini Speaking Model Error] (${model}):`, error.message);
+      await failAiUsageEvent({ eventId: usageEventId, error });
       recordGeminiQuotaSignal({ error, model });
       // Không âm thầm fallback sang model khác để bảo đảm tính nhất quán của chuẩn chấm điểm
       throw normalizeGeminiError(error);
@@ -822,10 +977,15 @@ module.exports = {
   isGeminiQuotaError,
   isRetryableGeminiError,
   normalizeGeminiError,
+  isRagPurpose,
+  recordAiProviderIncident,
+  resolveAiProviderIncident,
   parseGeminiQuotaViolation,
   recordGeminiQuotaSignal,
   runWithAiContext,
+  beginAiUsageEvent,
   recordAiUsage,
+  failAiUsageEvent,
   normalizeRequest,
   getGeminiFallbackModels,
   geminiModel,

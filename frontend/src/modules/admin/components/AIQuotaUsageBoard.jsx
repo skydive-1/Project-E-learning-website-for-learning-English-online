@@ -30,9 +30,11 @@ import {
   resetUserAiToken, 
   resetBulkAiTokens 
 } from '../services/adminAnalytics.service';
+import RagIncidentAlertModal from './RagIncidentAlertModal';
+import { buildAiQuotaCsv, downloadCsvReport } from '../utils/aiQuotaCsv';
 import '../styles/ai-quota-board.scss';
 
-const AIQuotaUsageBoard = () => {
+const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   const showToast = useToast();
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
@@ -68,6 +70,7 @@ const AIQuotaUsageBoard = () => {
   // State Modal xem lịch sử tương tác AI
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [targetUserHistory, setTargetUserHistory] = useState(null);
+  const [dismissedIncidentIds, setDismissedIncidentIds] = useState([]);
 
   // Tải dữ liệu từ Backend
   const fetchQuotaData = useCallback(async (isSilent = false) => {
@@ -91,6 +94,11 @@ const AIQuotaUsageBoard = () => {
 
   useEffect(() => {
     fetchQuotaData();
+  }, [fetchQuotaData]);
+
+  useEffect(() => {
+    const incidentPoller = window.setInterval(() => fetchQuotaData(true), 30000);
+    return () => window.clearInterval(incidentPoller);
   }, [fetchQuotaData]);
 
   // Xử lý Reset Token cho 1 người dùng
@@ -139,65 +147,8 @@ const AIQuotaUsageBoard = () => {
       return;
     }
 
-    const getRoleLabel = (roleId) => (
-      roleId === 1 ? t('Quản trị viên hệ thống') : roleId === 2 ? t('Giảng viên hệ thống') : t('Học viên hệ thống')
-    );
-    const getStatusLabel = (status) => ({
-      exhausted: t('Đã hết hạn mức'),
-      critical: t('Sắp hết hạn mức'),
-      warning: t('Cảnh báo'),
-      normal: t('Bình thường'),
-      unused: t('Chưa sử dụng'),
-      unlimited: t('Không giới hạn')
-    })[status] || status;
-    const headers = [
-      t('ID người dùng'),
-      t('Họ tên'),
-      t('Tên đăng nhập'),
-      'Email',
-      t('Vai trò'),
-      t('Usage Limit'),
-      t('Lượt hỏi hôm nay'),
-      t('Hạn mức câu hỏi trong ngày'),
-      t('Số câu hỏi còn lại'),
-      t('Thời điểm đặt lại'),
-      t('Trạng thái'),
-      t('Tương tác gần nhất')
-    ];
-    const rows = dashboardData.users.map(u => {
-      const isAdmin = u.role_id === 1;
-      const isUnlimited = Boolean(u.question_quota_unlimited) && !isAdmin;
-      const adminLimit = u.question_limit_24h || 50;
-      const usedQ = u.used_questions_24h || 0;
-      const limitQ = isUnlimited ? null : (u.question_limit_24h || (isAdmin ? adminLimit : (u.role_id === 2 ? 20 : 10)));
-      const remainingQ = isUnlimited ? null : (u.questions_remaining_24h !== null && u.questions_remaining_24h !== undefined ? u.questions_remaining_24h : Math.max(0, limitQ - usedQ));
-      const tokenMax = u.max_tokens || 6000;
-      const tokenPct = u.usage_percentage !== undefined && u.usage_percentage !== null ? u.usage_percentage : Math.min(100, Math.round(((u.used_tokens || 0) / tokenMax) * 100));
-
-      return [
-        u.user_id,
-        `"${u.full_name || ''}"`,
-        `"${u.username || ''}"`,
-        `"${u.email || ''}"`,
-        `"${getRoleLabel(u.role_id)}"`,
-        `"${tokenPct}% (${u.used_tokens || 0}/${tokenMax})"`,
-        isUnlimited ? t('Không giới hạn') : usedQ,
-        isUnlimited ? t('Không giới hạn') : limitQ,
-        isUnlimited ? t('Không giới hạn') : remainingQ,
-        `"${u.question_reset_at || ''}"`,
-        `"${getStatusLabel(u.question_quota_status)}"`,
-        `"${u.last_ai_activity_at || 'N/A'}"`
-      ];
-    });
-
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ai_quota_usage_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const csvContent = buildAiQuotaCsv(dashboardData.users, t);
+    downloadCsvReport(csvContent, `ai_quota_usage_report_${new Date().toISOString().slice(0, 10)}.csv`);
     showToast(t('Đã xuất báo cáo CSV.'), 'success');
   };
 
@@ -252,6 +203,18 @@ const AIQuotaUsageBoard = () => {
     if (!targetUserHistory || !dashboardData?.recentAiLogs) return [];
     return dashboardData.recentAiLogs.filter(l => l.user_id === targetUserHistory.user_id);
   }, [targetUserHistory, dashboardData?.recentAiLogs]);
+
+  const visibleRagIncident = useMemo(() => (
+    (dashboardData?.ragIncidents || []).find((incident) => (
+      String(incident.purpose || '').startsWith('rag_')
+      && !dismissedIncidentIds.includes(incident.incidentId)
+    )) || null
+  ), [dashboardData?.ragIncidents, dismissedIncidentIds]);
+
+  const dismissRagIncident = useCallback(() => {
+    if (!visibleRagIncident) return;
+    setDismissedIncidentIds((current) => [...new Set([...current, visibleRagIncident.incidentId])]);
+  }, [visibleRagIncident]);
 
   return (
     <div className="users-table-container ai-quota-dashboard-view">
@@ -743,6 +706,12 @@ const AIQuotaUsageBoard = () => {
           </div>
         </div>
       )}
+
+      <RagIncidentAlertModal
+        incident={visibleRagIncident}
+        onClose={dismissRagIncident}
+        onOpenRateLimits={onOpenRateLimits}
+      />
     </div>
   );
 };

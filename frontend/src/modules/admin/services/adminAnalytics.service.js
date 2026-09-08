@@ -24,16 +24,30 @@ export const getAiQuotaAnalytics = async (range = 30) => {
   return response.data.data;
 };
 
-export const getGeminiRateLimitStatus = async () => {
-  const response = await apiClient.get('/admin/gemini-rate-limits/status');
+const makeLiveRefreshConfig = (fresh) => fresh ? {
+  params: { _refresh: Date.now() },
+  headers: {
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache'
+  }
+} : undefined;
+
+export const getGeminiRateLimitStatus = async ({ fresh = false } = {}) => {
+  const response = await apiClient.get(
+    '/admin/gemini-rate-limits/status',
+    makeLiveRefreshConfig(fresh)
+  );
   if (!response.data?.success || !response.data?.data) {
     throw new Error('Dữ liệu Rate Limits trả về không hợp lệ');
   }
   return response.data.data;
 };
 
-export const getGeminiRateLimitCaps = async () => {
-  const response = await apiClient.get('/admin/gemini-rate-limits/caps');
+export const getGeminiRateLimitCaps = async ({ fresh = false } = {}) => {
+  const response = await apiClient.get(
+    '/admin/gemini-rate-limits/caps',
+    makeLiveRefreshConfig(fresh)
+  );
   if (!response.data?.success || !response.data?.data) {
     throw new Error('Dữ liệu cấu hình Rate Limits trả về không hợp lệ');
   }

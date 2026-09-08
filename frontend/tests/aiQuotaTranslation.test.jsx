@@ -24,6 +24,7 @@ const dashboardFixture = {
   },
   trends: [],
   recentAiLogs: [],
+  ragIncidents: [],
   users: [{
     user_id: 12,
     full_name: 'Nguyen An',
@@ -136,5 +137,49 @@ describe('AI quota management translations', () => {
     expect(screen.getByText(
       'Cost excludes 916,284 backfilled tokens because Google does not provide per-request cost data.',
     )).toBeInTheDocument();
+  });
+
+  it('shows the popup for a Gemini quota incident tagged as RAG', async () => {
+    getAiQuotaAnalytics.mockResolvedValue({
+      ...dashboardFixture,
+      ragIncidents: [{
+        incidentId: 91,
+        purpose: 'rag_ingestion_embedding',
+        model: 'gemini-embedding-001',
+        errorCode: 'GEMINI_QUOTA_EXHAUSTED',
+        httpStatus: 429,
+        message: 'Dịch vụ Gemini hiện đã chạm hạn mức sử dụng tạm thời.',
+        retryAfterMs: 9250,
+        occurrenceCount: 4,
+        lastSeenAt: '2026-09-08T00:00:00.000Z',
+        resolvedAt: null,
+      }],
+    });
+
+    renderBoard();
+
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByText('Gemini đã chạm quota khi xử lý RAG')).toBeInTheDocument();
+    expect(screen.getByText('Nạp transcript vào Pinecone')).toBeInTheDocument();
+  });
+
+  it('never shows the RAG popup for an incident outside the RAG scope', async () => {
+    getAiQuotaAnalytics.mockResolvedValue({
+      ...dashboardFixture,
+      ragIncidents: [{
+        incidentId: 92,
+        purpose: 'chat',
+        model: 'gemini-3.7-flash',
+        errorCode: 'GEMINI_QUOTA_EXHAUSTED',
+        httpStatus: 429,
+        message: 'Quota',
+        occurrenceCount: 1,
+        lastSeenAt: '2026-09-08T00:00:00.000Z',
+      }],
+    });
+
+    renderBoard();
+    expect(await screen.findByText('Tổng token mô hình đã dùng')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });

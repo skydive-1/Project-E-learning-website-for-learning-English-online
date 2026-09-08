@@ -75,7 +75,7 @@ const AIQuotaControlCenter = ({ canManageCaps = false }) => {
         aria-labelledby={activeView === 'usage' ? 'ai-usage-tab' : 'ai-rate-limits-tab'}
       >
         {activeView === 'usage'
-          ? <AIQuotaUsageBoard />
+          ? <AIQuotaUsageBoard onOpenRateLimits={() => setActiveView('rate-limits')} />
           : <AIRateLimitsView canManageCaps={canManageCaps} />}
       </div>
     </section>

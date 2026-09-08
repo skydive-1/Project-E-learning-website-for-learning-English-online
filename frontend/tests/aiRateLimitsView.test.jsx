@@ -42,9 +42,29 @@ describe('Gemini Rate Limits admin view', () => {
         usage: { rpm: 7, tpm: 125000, rpd: 225 },
         caps: { rpm: 10, tpm: 250000, rpd: 250 },
         percentUsed: { rpm: 70, tpm: 50, rpd: 90 },
+        headroom: { rpm: 3, tpm: 125000, rpd: 25 },
+        requestStatus: {
+          rpm: { success: 5, error: 2, pending: 0 },
+          rpd: { success: 210, error: 15, pending: 0 }
+        },
+        riskLevel: 'critical',
         configured: true,
         updatedAt: '2026-09-02T00:00:00.000Z',
         updatedByName: 'Admin'
+      }, {
+        model: 'gemini-embedding-001',
+        usage: { rpm: 0, tpm: 0, rpd: 0 },
+        caps: { rpm: null, tpm: null, rpd: null },
+        percentUsed: { rpm: null, tpm: null, rpd: null },
+        headroom: { rpm: null, tpm: null, rpd: null },
+        requestStatus: {
+          rpm: { success: 0, error: 0, pending: 0 },
+          rpd: { success: 0, error: 0, pending: 0 }
+        },
+        riskLevel: 'unconfigured',
+        configured: false,
+        updatedAt: null,
+        updatedByName: null
       }]
     });
     updateGeminiRateLimitCaps.mockResolvedValue({ success: true });
@@ -62,9 +82,21 @@ describe('Gemini Rate Limits admin view', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Rate Limits Google/i }));
 
     expect((await screen.findAllByText('gemini-3.7-flash')).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('Hai loại hạn mức, hai mốc đặt lại.')).toBeInTheDocument();
+    expect(screen.getAllByText('gemini-embedding-001').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Backend telemetry đang hoạt động')).toBeInTheDocument();
+    expect(screen.getByText(/Tự làm mới mỗi 15 giây/)).toBeInTheDocument();
+    expect(screen.getByText('Trực tiếp từ backend')).toBeInTheDocument();
+    expect(screen.getByText(/Cập nhật cuối:/)).toBeInTheDocument();
+    expect(screen.getByText('Đối chiếu Google Cloud Monitoring')).toBeInTheDocument();
+    expect(screen.getByText('Chưa kết nối')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Mở Google AI Studio/i })).toHaveAttribute('href', 'https://aistudio.google.com/usage');
     expect(screen.getByRole('progressbar', { name: 'RPM gemini-3.7-flash' })).toHaveAttribute('aria-valuenow', '70');
     expect(screen.getByText('125.000')).toBeInTheDocument();
+    expect(screen.getByText('Free-tier Usage Guard')).toBeInTheDocument();
+    expect(screen.getByText('Sát ngưỡng 429')).toBeInTheDocument();
+    expect(screen.getByText('Còn 25 đơn vị trước cap')).toBeInTheDocument();
+    expect(screen.getByText('210 thành công')).toBeInTheDocument();
+    expect(screen.getByText('15 lỗi')).toBeInTheDocument();
     expect(screen.getByText(/Giá trị mặc định/)).toBeInTheDocument();
   });
 
@@ -89,6 +121,34 @@ describe('Gemini Rate Limits admin view', () => {
       expect(rateLimitTab).toHaveAttribute('tabindex', '0');
       expect(usageTab).toHaveAttribute('tabindex', '-1');
     });
+  });
+
+  it('forces a fresh status and cap request when Cập nhật ngay is clicked', async () => {
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Rate Limits Google/i }));
+    await screen.findAllByText('gemini-3.7-flash');
+    getGeminiRateLimitStatus.mockClear();
+    getGeminiRateLimitCaps.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cập nhật ngay' }));
+
+    expect(await screen.findByRole('button', { name: 'Đang cập nhật' })).toBeDisabled();
+    expect(screen.getByText('Đang đồng bộ telemetry từ backend...')).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="spinner"]')).toHaveClass('animate-spin');
+
+    await waitFor(() => {
+      expect(getGeminiRateLimitStatus).toHaveBeenCalledWith({ fresh: true });
+      expect(getGeminiRateLimitCaps).toHaveBeenCalledWith({ fresh: true });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cập nhật ngay' })).toBeEnabled();
+    }, { timeout: 2000 });
   });
 
   it('sends the explicitly saved model caps to the backend', async () => {

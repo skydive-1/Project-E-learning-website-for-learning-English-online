@@ -88,7 +88,8 @@ async function createEmbeddingWithRetry(text, lessonId, chunkIndex, totalChunks)
     try {
       return await scheduleEmbedding(() => embeddingModel.embedContent({
         content: { parts: [{ text }] },
-        outputDimensionality: 768
+        outputDimensionality: 768,
+        purpose: 'rag_ingestion_embedding'
       }));
     } catch (error) {
       if (!isEmbeddingQuotaError(error) || attempt === maxRetries) throw error;

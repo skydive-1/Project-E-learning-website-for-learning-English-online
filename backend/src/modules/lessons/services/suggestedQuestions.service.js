@@ -344,6 +344,7 @@ QUY TẮC BẮT BUỘC 100% (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
       const aiResponse = await Promise.race([
         geminiModel.generateContent({
+          purpose: 'rag_suggested_questions',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
             responseMimeType: 'application/json'

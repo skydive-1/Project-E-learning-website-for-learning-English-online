@@ -293,6 +293,11 @@ const testConnection = async () => {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
+        ALTER TABLE ai_usage_events
+          ADD COLUMN IF NOT EXISTS request_status VARCHAR(16) NOT NULL DEFAULT 'success',
+          ADD COLUMN IF NOT EXISTS error_code VARCHAR(100),
+          ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_user_date
           ON ai_usage_events(user_id, created_at);
 
@@ -301,6 +306,9 @@ const testConnection = async () => {
 
         CREATE INDEX IF NOT EXISTS idx_ai_usage_events_model_date
           ON ai_usage_events(model, created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_model_status_date
+          ON ai_usage_events(model, request_status, created_at);
       `);
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tạo bảng ai_usage_events:', migErr.message);
@@ -383,6 +391,35 @@ const testConnection = async () => {
       `);
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tạo bảng ai_rate_limit_discrepancies:', migErr.message);
+    }
+
+    // 3.1g. Sự cố Gemini chỉ dành cho workload RAG (phục vụ cảnh báo Admin có phạm vi chính xác)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS ai_provider_incidents (
+          incident_id BIGSERIAL PRIMARY KEY,
+          workload VARCHAR(24) NOT NULL,
+          purpose VARCHAR(120) NOT NULL,
+          model VARCHAR(160) NOT NULL,
+          error_code VARCHAR(100) NOT NULL,
+          http_status INTEGER,
+          message TEXT NOT NULL,
+          retry_after_ms INTEGER,
+          occurrence_count INTEGER NOT NULL DEFAULT 1,
+          first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          resolved_at TIMESTAMPTZ
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_provider_incidents_open
+          ON ai_provider_incidents(workload, purpose, model, error_code)
+          WHERE resolved_at IS NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_ai_provider_incidents_workload_seen
+          ON ai_provider_incidents(workload, last_seen_at DESC);
+      `);
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tạo bảng ai_provider_incidents:', migErr.message);
     }
 
     // 3.2. Bảng `lesson_comments` & `comment_upvotes`
