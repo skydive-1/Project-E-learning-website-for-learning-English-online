@@ -16,6 +16,7 @@ import {
 } from "@/components/base/date-picker/shared";
 import { cx } from "@/utils/cx";
 import { useDismissOnOutsidePress } from "@/utils/use-dismiss-on-outside-press";
+import { useLanguage } from "@/context/LanguageContext";
 
 /**
  * Figma source: Board UI → "Calendar_single" (node 3879:6708).
@@ -67,6 +68,8 @@ export function DatePicker({
   isOpen: controlledIsOpen,
   onOpenChange: controlledOnOpenChange,
 }: DatePickerProps) {
+  const { language } = useLanguage();
+  const locale = language === "ENG" ? "en-US" : "vi-VN";
   const ownTriggerRef = useRef<HTMLButtonElement>(null);
   const triggerRef = externalTriggerRef ?? ownTriggerRef;
   const isExternal = externalTriggerRef !== undefined;
@@ -126,7 +129,7 @@ export function DatePicker({
         >
           <RiCalendarLine className="size-5 shrink-0 text-foreground-icon-primary" aria-hidden />
           <span className="flex items-center justify-center whitespace-nowrap px-1 text-body-medium text-text-primary">
-            {committedValue ? formatTriggerDate(committedValue) : "Select date"}
+            {committedValue ? formatTriggerDate(committedValue, locale) : "Select date"}
           </span>
         </button>
       )}

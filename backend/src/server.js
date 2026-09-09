@@ -32,6 +32,7 @@ const consultationRoutes = require('./modules/consultation/consultation.routes')
 const analyticsRoutes = require('./modules/analytic/analytic.routes');
 const gamificationRoutes = require('./modules/gamification/gamification.routes');
 const commentsRoutes = require('./modules/comments/comments.routes');
+const discussionsRoutes = require('./modules/discussions/discussions.routes');
 const drmRoutes = require('./modules/drm/drm.routes');
 const { checkShakaPackagerInstalled } = require('./utils/drmPackager.util');
 const { blockDirectVideoAccess } = require('./modules/media/directVideoAccess.middleware');
@@ -132,6 +133,7 @@ app.use('/api/consultation', consultationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/comments', commentsRoutes);
+app.use('/api/discussions', discussionsRoutes);
 app.use('/api/drm', drmRoutes);
 
 // Setup Swagger UI

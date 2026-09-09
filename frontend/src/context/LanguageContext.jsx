@@ -527,6 +527,7 @@ export const LanguageProvider = ({ children }) => {
       translatedValue = translations.ENG?.[key]
         || allUiPhraseTranslations[key]
         || allUiPhraseTranslations[translations.VIE?.[key]]
+        || uiTranslator.translateValue(String(key), 'ENG')
         || key;
     } else {
       translatedValue = translations.VIE?.[key] || key;

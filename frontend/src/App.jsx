@@ -1,35 +1,54 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+// Giữ eager (tải ngay) chỉ những trang vào đầu tiên với tần suất cao nhất,
+// để không có màn hình loading nháy khi vừa mở web. Mọi trang còn lại
+// chuyển sang React.lazy() để mỗi route chỉ tải đúng code nó cần,
+// thay vì gộp hết (kể cả Shaka Player, Recharts, react-pdf...) vào 1 bundle
+// duy nhất tải cho MỌI người dùng bất kể họ vào trang nào.
 import LoginPage from './modules/auth/pages/LoginPage';
-import RegisterPage from './modules/auth/pages/RegisterPage';
-import ForgotPasswordPage from './modules/auth/pages/ForgotPasswordPage';
-import ResetPasswordPage from './modules/auth/pages/ResetPasswordPage';
 import HomePage from './modules/homepage/pages/HomePage';
 import AuthLayout from './modules/auth/components/AuthLayout';
-import ProfilePage from './modules/profile/pages/ProfilePage';
-import LessonDetailPage from './modules/lessons/pages/LessonDetailPage';
-import CourseListPage from './modules/courses/pages/CourseListPage';
-import MyCoursesPage from './modules/courses/pages/MyCoursesPage';
-import RoadmapPage from './modules/academy/pages/RoadmapPage';
-import InstructorDashboard from './modules/instructor/pages/InstructorDashboard';
-import CourseEditor from './modules/instructor/pages/CourseEditor';
-import AdminDashboard from './modules/admin/pages/AdminDashboard';
+
+const RegisterPage = lazy(() => import('./modules/auth/pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./modules/auth/pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./modules/auth/pages/ResetPasswordPage'));
+const ProfilePage = lazy(() => import('./modules/profile/pages/ProfilePage'));
+const LessonDetailPage = lazy(() => import('./modules/lessons/pages/LessonDetailPage'));
+const CourseListPage = lazy(() => import('./modules/courses/pages/CourseListPage'));
+const MyCoursesPage = lazy(() => import('./modules/courses/pages/MyCoursesPage'));
+const RoadmapPage = lazy(() => import('./modules/academy/pages/RoadmapPage'));
+const InstructorDashboard = lazy(() => import('./modules/instructor/pages/InstructorDashboard'));
+const CourseEditor = lazy(() => import('./modules/instructor/pages/CourseEditor'));
+const AdminDashboard = lazy(() => import('./modules/admin/pages/AdminDashboard'));
+const QuizzesListPage = lazy(() => import('./modules/quizzes/pages/QuizzesListPage'));
+const PlayQuizPage = lazy(() => import('./modules/quizzes/pages/PlayQuizPage'));
+const AnalyticsDashboardPage = lazy(() => import('./modules/analytics/pages/AnalyticsDashboardPage'));
+
 import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './components/common/ErrorBoundary';
-import QuizzesListPage from './modules/quizzes/pages/QuizzesListPage';
-import PlayQuizPage from './modules/quizzes/pages/PlayQuizPage';
 import GlobalChatbot from './components/common/GlobalChatbot';
 import OfflineIndicator from './components/common/OfflineIndicator';
 import MobileBottomNav from './components/common/MobileBottomNav';
-import AnalyticsDashboardPage from './modules/analytics/pages/AnalyticsDashboardPage';
 import { GamificationProvider } from './context/GamificationContext';
 import { ToastProvider } from './context/ToastContext';
 import BadgeUnlockModal from './modules/gamification/components/BadgeUnlockModal';
 import ClickParticleEffect from './components/common/ClickParticleEffect';
+
+// Fallback tối giản, không gây layout shift, hiển thị trong lúc chunk của
+// route đang tải (thường chỉ vài chục-vài trăm ms trên mạng bình thường).
+const RouteLoadingFallback = () => (
+  <div
+    role="status"
+    aria-label="Đang tải trang"
+    className="flex min-h-[40vh] w-full items-center justify-center"
+  >
+    <div className="size-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-500 dark:border-slate-700 dark:border-t-blue-400" />
+  </div>
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -70,6 +89,7 @@ function App() {
                 <AuthTokenRedirectHandler />
                 <AuthProvider>
                   <GamificationProvider>
+                  <Suspense fallback={<RouteLoadingFallback />}>
                   <Routes>
                     {/* Public Landing Route */}
                     <Route path="/" element={<HomePage />} />
@@ -172,6 +192,7 @@ function App() {
                       element={<Navigate to="/" replace />}
                     />
                   </Routes>
+                  </Suspense>
                   <GlobalChatbot />
                   <MobileBottomNav />
                   <BadgeUnlockModal />

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
+import AnimatedStatNumber from '../../../components/common/AnimatedStatNumber';
 import Footer from '../../../components/common/Footer';
 import { getCourseDetails } from '../../lessons/services/lessons.service';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -51,6 +52,7 @@ const MyCoursesPage = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const isEn = language === 'ENG';
+  const locale = isEn ? 'en-US' : 'vi-VN';
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'in_progress', 'completed'
@@ -193,7 +195,7 @@ const MyCoursesPage = () => {
                 </div>
               </div>
               <div className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                {isLoading || isError ? '—' : totalCourses}
+                {isLoading || isError ? '—' : <AnimatedStatNumber value={totalCourses} />}
               </div>
               <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                 {isEn ? 'Active curriculums' : 'Chương trình đang theo học'}
@@ -211,7 +213,7 @@ const MyCoursesPage = () => {
                 </div>
               </div>
               <div className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                {isLoading || isError ? '—' : completedCourses}
+                {isLoading || isError ? '—' : <AnimatedStatNumber value={completedCourses} />}
               </div>
               <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                 {isEn ? '100% completion milestones' : 'Đạt mốc hoàn thành 100%'}
@@ -229,7 +231,7 @@ const MyCoursesPage = () => {
                 </div>
               </div>
               <div className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-                {isLoading || isError ? '—' : `${averageProgress}%`}
+                {isLoading || isError ? '—' : <AnimatedStatNumber value={averageProgress} suffix="%" />}
               </div>
               {/* Mini Progress Track */}
               <div className="mt-2.5 h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -308,7 +310,7 @@ const MyCoursesPage = () => {
               {[...Array(6)].map((_, i) => <MyCourseCardSkeleton key={i} />)}
             </div>
           ) : isError ? (
-            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-red-200/70 dark:border-red-900/40 p-12 text-center max-w-lg mx-auto shadow-sm">
+            <div role="alert" className="rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-red-200/70 dark:border-red-900/40 p-12 text-center max-w-lg mx-auto shadow-sm">
               <FiAlertCircle className="size-12 text-rose-500 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
                 {isEn ? 'Could not load courses' : 'Không thể tải khóa học của bạn'}
@@ -399,7 +401,7 @@ const MyCoursesPage = () => {
                         <div className="absolute bottom-2.5 left-3 right-3">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/95 text-white backdrop-blur-md shadow-sm">
                             <FiClock className="w-3.5 h-3.5" />
-                            {isEn ? 'Opens:' : 'Chưa mở:'} {startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                            {isEn ? 'Opens:' : 'Chưa mở:'} {startDate.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })}
                           </span>
                         </div>
                       )}

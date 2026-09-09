@@ -150,7 +150,7 @@ const TestsAndQuizzesPanel = () => {
   };
 
   const handleDeleteManagedQuiz = async (quizId, title) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa đề thi "${title}" không?`)) {
+    if (!window.confirm(t(`Bạn có chắc chắn muốn xóa đề thi "${title}" không?`))) {
       return;
     }
     try {

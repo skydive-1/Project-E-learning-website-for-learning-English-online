@@ -17,7 +17,9 @@ import {
   FiEdit3,
   FiGrid,
   FiHeadphones,
-  FiBookOpen
+  FiBookOpen,
+  FiAlertCircle,
+  FiLock
 } from 'react-icons/fi';
 
 const resolveAudioUrl = (url) => {
@@ -39,9 +41,11 @@ import {
   submitAudioAnswer,
   submitOpenClozeAnswer
 } from '../services/quizzes.service';
+import { getAiQuotaStatus } from '../../chatbot/services/quota.service';
 import useStudyTimeTracker from '../../lessons/hooks/useStudyTimeTracker';
 import getEffectiveQuestionType from '../utils/questionType';
 import OpenClozeQuestion from '../components/OpenClozeQuestion';
+import QuotaIndicator from '../../chatbot/components/QuotaIndicator';
 
 const PlayQuizPage = () => {
   const { quizId } = useParams();
@@ -52,6 +56,8 @@ const PlayQuizPage = () => {
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [aiQuota, setAiQuota] = useState(null);
+  const [quotaLoading, setQuotaLoading] = useState(true);
 
   // States
   const [gameState, setGameState] = useState('intro'); // 'intro', 'playing', 'feedback', 'podium'
@@ -96,8 +102,13 @@ const PlayQuizPage = () => {
     const fetchQuiz = async () => {
       try {
         setLoading(true);
-        const data = await getFreeQuizById(quizId);
+        const [data, quotaData] = await Promise.all([
+          getFreeQuizById(quizId),
+          getAiQuotaStatus()
+        ]);
         setQuiz(data);
+        setAiQuota(quotaData);
+        setQuotaLoading(false);
       } catch (err) {
         console.error("Lỗi tải thông tin đề thi trắc nghiệm:", err);
       } finally {
@@ -559,6 +570,17 @@ const PlayQuizPage = () => {
                   </p>
                 </div>
 
+                {!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0 && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center">
+                    <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1.5">
+                      <FiLock className="w-3.5 h-3.5" />
+                      Đã hết hạn mức câu hỏi AI. Vui lòng đợi reset hoặc nâng cấp gói để làm bài viết/phát âm.
+                    </p>
+                  </div>
+                )}
+
+                <QuotaIndicator quota={aiQuota} compact={true} className="mx-auto" />
+
                 <form onSubmit={handleStartGame} className="space-y-4 pt-2">
                   <div className="text-left">
                     <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
@@ -706,11 +728,11 @@ const PlayQuizPage = () => {
                               disabled={Boolean(animatingOptionKey)}
                               onClick={() => handleAnswerClick(optKey)}
                               style={{ borderColor: activeBorderColor }}
-                              className={`border-2 ${shapeInfo?.hoverBg || ''} ${microFeedbackClass} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[68px] group`}
+                              className={`border-2 ${shapeInfo?.hoverBg || ''} ${microFeedbackClass} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[72px] md:min-h-[68px] group touch-target`}
                             >
                               <span 
                                 style={{ backgroundColor: activeBgColor }}
-                                className="w-8 h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-sm group-hover:scale-105 transition-transform"
+                                className="w-8 h-8 md:w-8 md:h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-sm group-hover:scale-105 transition-transform flex-shrink-0"
                               >
                                 {isSelectedCorrect ? (
                                   <FiCheck className="text-base" />
@@ -741,6 +763,15 @@ const PlayQuizPage = () => {
                     {/* Writing Input Area */}
                     {effectiveQuestionType === 'writing' && (
                       <div className="flex flex-col flex-1 gap-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                        {!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0 && (
+                          <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl">
+                            <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1.5">
+                              <FiLock className="w-3.5 h-3.5" />
+                              Đã hết hạn mức câu hỏi AI. Không thể chấm điểm bài viết tự động. Vui lòng đợi reset hoặc liên hệ giảng viên chấm thủ công.
+                            </p>
+                          </div>
+                        )}
+
                         <div className="flex flex-col gap-2">
                           <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                             {t('Nhập câu trả lời tự luận của bạn (tối đa 500 ký tự):')}
@@ -748,7 +779,7 @@ const PlayQuizPage = () => {
                           <textarea
                             value={writingAnswer}
                             onChange={(e) => setWritingAnswer(e.target.value.slice(0, 500))}
-                            disabled={aiLoading}
+                            disabled={aiLoading || (!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0)}
                             placeholder={t('Viết câu trả lời hoặc đoạn văn ngắn của bạn bằng tiếng Anh...')}
                             rows={5}
                             className="w-full p-4 border border-slate-200 dark:border-slate-750 dark:bg-slate-900 dark:text-slate-100 rounded-xl outline-none focus:border-smart-indigo transition-all font-semibold resize-none shadow-inner"
@@ -764,8 +795,8 @@ const PlayQuizPage = () => {
                         <div className="pt-4 flex justify-end">
                           <button
                             onClick={handleWritingSubmit}
-                            disabled={aiLoading || !writingAnswer.trim()}
-                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-250 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
+                            disabled={aiLoading || !writingAnswer.trim() || (!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0)}
+                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-250 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2 touch-target min-h-[48px]"
                           >
                             {aiLoading ? (
                               <>
@@ -786,6 +817,15 @@ const PlayQuizPage = () => {
                     {/* Pronunciation / Speaking Voice Recording Area */}
                     {effectiveQuestionType === 'pronunciation' && (
                       <div className="flex flex-col flex-1 gap-6 pt-4 border-t border-slate-100 dark:border-slate-700 items-center justify-between">
+                        {!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0 && (
+                          <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl w-full text-center">
+                            <p className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center justify-center gap-1.5">
+                              <FiLock className="w-3.5 h-3.5" />
+                              Đã hết hạn mức câu hỏi AI. Không thể chấm điểm phát âm tự động. Vui lòng đợi reset hoặc liên hệ giảng viên chấm thủ công.
+                            </p>
+                          </div>
+                        )}
+
                         <div className="text-center w-full max-w-lg bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 shadow-inner">
                           <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-2">
                             {currentQuestion.correctAnswer ? t('Mẫu câu luyện đọc phát âm:') : 'Chủ đề bài nói:'}
@@ -820,9 +860,9 @@ const PlayQuizPage = () => {
                           {!isRecording ? (
                             <button
                               onClick={handleAudioStart}
-                              disabled={aiLoading}
+                              disabled={aiLoading || (!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0)}
                               className="w-20 h-20 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center text-3xl shadow-lg hover:shadow-indigo-500/50 transition-all active:scale-95 cursor-pointer hover:scale-105 duration-300 group"
-                              title="Nhấp để bật Micro và thu âm giọng nói"
+                              title={(!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0) ? 'Hết hạn mức AI - không thể dùng ghi âm' : 'Nhấp để bật Micro và thu âm giọng nói'}
                             >
                               <FiMic className="group-hover:scale-110 transition-transform" />
                             </button>
@@ -844,7 +884,9 @@ const PlayQuizPage = () => {
                           {audioUrl && !isRecording && (
                             <div className="flex flex-col items-center gap-2 mt-2 w-full max-w-xs animate-fade">
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">File ghi âm giọng nói của bạn:</span>
-                              <audio src={audioUrl} controls className="w-full h-9 rounded-lg outline-none shadow-sm" />
+                              <div className="w-full">
+                                <audio src={audioUrl} controls className="w-full h-12 rounded-lg outline-none shadow-sm touch-target" />
+                              </div>
                             </div>
                           )}
                         </div>
@@ -857,15 +899,15 @@ const PlayQuizPage = () => {
                                 setAudioBlob(null);
                               }}
                               disabled={aiLoading}
-                              className="px-5 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer"
+                              className="px-5 py-3.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer touch-target min-h-[48px]"
                             >
                               Thu âm lại
                             </button>
                           )}
                           <button
                             onClick={handleAudioSubmit}
-                            disabled={aiLoading || !audioBlob || isRecording}
-                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-200 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2"
+                            disabled={aiLoading || !audioBlob || isRecording || (!quotaLoading && aiQuota && !aiQuota.isUnlimited && aiQuota.remainingQuestions <= 0)}
+                            className="px-6 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:bg-slate-200 dark:disabled:bg-slate-755 disabled:text-slate-400 dark:disabled:text-slate-500 text-white font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer shadow-md flex items-center gap-2 touch-target min-h-[48px]"
                           >
                             {aiLoading ? (
                               <>

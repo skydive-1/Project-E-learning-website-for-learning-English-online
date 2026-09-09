@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Calendar } from './Calendar';
 import { Popover } from './Popover';
 import { FiCalendar } from 'react-icons/fi';
-import { vi } from 'date-fns/locale';
+import { enUS, vi } from 'date-fns/locale';
+import { useLanguage } from '../../context/LanguageContext';
 import './date-picker.scss';
 
 /**
@@ -34,13 +35,13 @@ export function formatCivilDate(date) {
 /**
  * Display helper: format yyyy-mm-dd to dd/mm/yyyy
  */
-export function formatCivilDateDisplay(dateStr) {
+export function formatCivilDateDisplay(dateStr, language = 'VIE') {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  }
-  return dateStr;
+  if (parts.length !== 3) return dateStr;
+  return language === 'ENG'
+    ? `${parts[1]}/${parts[2]}/${parts[0]}`
+    : `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
 /**
@@ -52,11 +53,13 @@ export const SingleDatePicker = ({
   onChange,
   rangeStart,
   rangeEnd,
-  locale = vi,
+  locale: localeProp,
   placeholder = 'Chọn ngày',
   align = 'start',
   className = ''
 }) => {
+  const { language } = useLanguage();
+  const locale = localeProp || (language === 'ENG' ? enUS : vi);
   const currentDate = parseCivilDate(value);
   const startDateObj = parseCivilDate(rangeStart);
   const endDateObj = parseCivilDate(rangeEnd);
@@ -88,7 +91,7 @@ export const SingleDatePicker = ({
       trigger={({ isOpen }) => (
         <div className={`date-picker-trigger-box ${isOpen ? 'is-open' : ''}`}>
           <span className={value ? 'date-value' : 'date-placeholder'}>
-            {formatCivilDateDisplay(value) || placeholder}
+            {formatCivilDateDisplay(value, language) || placeholder}
           </span>
           <span className="calendar-icon">
             <FiCalendar size={16} />
@@ -131,11 +134,13 @@ export const DateRangePicker = ({
   startDate,
   endDate,
   onChange,
-  locale = vi,
+  locale: localeProp,
   placeholder = 'Chọn khoảng thời gian',
   align = 'start',
   className = ''
 }) => {
+  const { language, t } = useLanguage();
+  const locale = localeProp || (language === 'ENG' ? enUS : vi);
   const fromDate = parseCivilDate(startDate);
   const toDate = parseCivilDate(endDate);
 
@@ -154,10 +159,10 @@ export const DateRangePicker = ({
 
   const getDisplayText = () => {
     if (startDate && endDate) {
-      return `${formatCivilDateDisplay(startDate)} — ${formatCivilDateDisplay(endDate)}`;
+      return `${formatCivilDateDisplay(startDate, language)} — ${formatCivilDateDisplay(endDate, language)}`;
     }
     if (startDate) {
-      return `${formatCivilDateDisplay(startDate)} — chọn ngày kết thúc`;
+      return t(`${formatCivilDateDisplay(startDate, language)} — chọn ngày kết thúc`);
     }
     return placeholder;
   };

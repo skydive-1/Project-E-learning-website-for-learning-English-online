@@ -1,10 +1,35 @@
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 
+// Vietnam timezone offset (UTC+7)
+const VN_TIMEZONE_OFFSET = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
+
+/**
+ * Get current date in Vietnam timezone (UTC+7)
+ * @returns {Date} Date object representing current time in Vietnam
+ */
+const getVietnamNow = () => {
+  const now = new Date();
+  return new Date(now.getTime() + VN_TIMEZONE_OFFSET);
+};
+
+/**
+ * Get date string in YYYY-MM-DD format from Date object (using Vietnam timezone)
+ * @param {Date} d - Date object (assumed to be in Vietnam timezone)
+ * @returns {string} Date string in YYYY-MM-DD format
+ */
+const getVietnamDateStr = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
+};
+
 /**
  * Tính streak học liên tiếp (Daily Streak)
  * - Lấy các ngày có hoạt động (learning_sessions with end_at)
  * - Đếm số ngày liên tiếp tính từ ngày hôm nay trở về trước
+ * - Sử dụng múi giờ Việt Nam (UTC+7)
  */
 const calculateStreak = async (userId) => {
   try {
@@ -25,15 +50,8 @@ const calculateStreak = async (userId) => {
     }).filter(Boolean);
     const daySet = new Set(days);
 
-    const getLocalDateStr = (d) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const date = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${date}`;
-    };
-
     let streak = 0;
-    const now = new Date();
+    const now = getVietnamNow(); // Use Vietnam timezone
     let checkDate = new Date(now);
 
     // 1. Tính ngày Thứ 2 của tuần hiện tại (Thứ 2 -> Chủ nhật) TRƯỚC vòng lặp đếm streak
@@ -41,23 +59,38 @@ const calculateStreak = async (userId) => {
     const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
     const monday = new Date(now);
     monday.setDate(now.getDate() + diffToMonday);
-    const mondayKey = getLocalDateStr(monday);
+    const mondayKey = getVietnamDateStr(monday);
 
-    const todayKey = getLocalDateStr(now);
+    const todayKey = getVietnamDateStr(now);
     const hasToday = daySet.has(todayKey) || daySet.has(now.toISOString().slice(0, 10));
 
+    // Grace period: Allow streak to continue until 3 AM next day Vietnam time
+    // This accommodates late-night learners who study past midnight
+    const gracePeriodEnd = new Date(now);
+    gracePeriodEnd.setHours(3, 0, 0, 0); // 3 AM Vietnam time
+    if (gracePeriodEnd <= now) {
+      // If past 3 AM, move to next day
+      gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 1);
+    }
+    const isWithinGracePeriod = now < gracePeriodEnd;
+
     if (!hasToday) {
-      // Nếu hôm nay chưa học, kiểm tra xem hôm qua có học không (để không bị mất streak trước khi hết ngày)
+      // Nếu hôm nay chưa học, kiểm tra xem hôm qua có học không
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const yesterdayKey = getLocalDateStr(yesterday);
+      const yesterdayKey = getVietnamDateStr(yesterday);
       if (daySet.has(yesterdayKey) || daySet.has(yesterday.toISOString().slice(0, 10))) {
-        checkDate = yesterday;
+        // If within grace period, don't break streak yet
+        if (isWithinGracePeriod) {
+          checkDate = now; // Keep checking from today
+        } else {
+          checkDate = yesterday; // Count from yesterday
+        }
       } else {
         checkDate = null;
       }
+    } else {
+      checkDate = now;
     }
-
-    if (checkDate) {
       while (true) {
         const localKey = getLocalDateStr(checkDate);
         const utcKey = checkDate.toISOString().slice(0, 10);
@@ -85,7 +118,7 @@ const calculateStreak = async (userId) => {
     const weeklyStatus = weekDays.map((day, idx) => {
       const d = new Date(monday);
       d.setDate(monday.getDate() + idx);
-      const lKey = getLocalDateStr(d);
+      const lKey = getVietnamDateStr(d);
       const uKey = d.toISOString().slice(0, 10);
       const isActive = daySet.has(lKey) || daySet.has(uKey);
       return {

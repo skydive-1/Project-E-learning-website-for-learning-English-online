@@ -8,6 +8,7 @@ import {
   generateChatbotQuiz, 
   clearChatHistory 
 } from '../services/chatbot.service';
+import { getAiQuotaStatus } from '../services/quota.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
@@ -18,6 +19,7 @@ import MessageList from './MessageList';
 import EmptyState from './EmptyState';
 import Composer from './Composer';
 import DeleteConfirmModal from './DeleteConfirmModal';
+import QuotaIndicator from './QuotaIndicator';
 
 const AI_QUOTA_ERROR_CODES = new Set([
   'AI_QUESTION_LIMIT_REACHED',
@@ -36,7 +38,8 @@ const ChatBox = ({
   lessonTitle = '',
   currentTime = null, 
   onSeekVideo = null, 
-  onClose = null 
+  onClose = null,
+  onAskInstructor = null
 }) => {
   const { user } = useAuth();
   const { t } = useLanguage();
@@ -48,6 +51,8 @@ const ChatBox = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [quizStates, setQuizStates] = useState({});
+  const [aiQuota, setAiQuota] = useState(null);
+  const [quotaLoading, setQuotaLoading] = useState(true);
 
   // Custom Delete Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -224,19 +229,30 @@ const ChatBox = ({
 
       setIsHistoryLoading(true);
       try {
-        const historyData = await getChatHistory(user.userId, lessonId);
+        // Fetch chat history and quota in parallel
+        const [historyData, quotaData] = await Promise.all([
+          getChatHistory(user.userId, lessonId),
+          getAiQuotaStatus()
+        ]);
+        
         if (isCurrent) {
+          setAiQuota(quotaData);
+          setQuotaLoading(false);
+          
           if (historyData && historyData.length > 0) {
-            const mappedMessages = historyData.map(msg => ({
-              id: `msg-db-${msg.chat_id}`,
-              sender: msg.sender === 'bot' ? 'ai' : 'user',
-              text: msg.message,
-              sources: msg.sources || [],
-              actions: msg.actions || [],
-              timestamp: new Date()
-            }));
+            const mappedMessages = historyData
+              .sort((a, b) => new Date(a.created_at || a.createdAt) - new Date(b.created_at || b.createdAt))
+              .map(msg => ({
+                id: `msg-db-${msg.chat_id}`,
+                sender: msg.sender === 'bot' ? 'ai' : 'user',
+                text: msg.message,
+                sources: msg.sources || [],
+                actions: msg.actions || [],
+                timestamp: new Date(msg.created_at || msg.createdAt)
+              }));
             setMessages(mappedMessages);
           } else {
+            // No history - show welcome message only once
             const welcomeText = (lessonId === 0 || lessonId === '0' || !lessonId)
               ? "Xin chào! Tôi là Trợ lý học tiếng Anh AI của bạn. Tôi có thể hỗ trợ giải thích ngữ pháp, từ vựng, tra cứu khóa học hoặc tạo bài tập ôn luyện. Bạn muốn tìm hiểu gì hôm nay?"
               : "Xin chào! Tôi là Trợ lý AI đồng hành cùng bạn trong bài học này. Bạn có câu hỏi nào về nội dung video, từ vựng hay cấu trúc câu cần giải thích không?";
@@ -269,6 +285,23 @@ const ChatBox = ({
       isCurrent = false;
     };
   }, [user?.userId, lessonId]);
+
+  // Poll quota every 30 seconds when chat is active
+  useEffect(() => {
+    if (!user?.userId) return;
+    
+    const pollQuota = async () => {
+      try {
+        const quotaData = await getAiQuotaStatus();
+        setAiQuota(quotaData);
+      } catch (err) {
+        console.warn('Quota poll failed:', err);
+      }
+    };
+
+    const interval = setInterval(pollQuota, 30000);
+    return () => clearInterval(interval);
+  }, [user?.userId]);
 
   useEffect(() => {
     if (isAutoScrollEnabledRef.current) {
@@ -551,6 +584,8 @@ const ChatBox = ({
         onClose={onClose}
         isLoading={isLoading}
         t={t}
+        quota={aiQuota}
+        quotaLoading={quotaLoading}
       />
 
       {/* 2. Main Conversation Area / Empty State */}
@@ -575,6 +610,7 @@ const ChatBox = ({
           onScrollPosition={handleScrollPosition}
           showScrollBottomBtn={showScrollBottomBtn}
           onScrollToBottom={() => scrollToBottom("smooth")}
+          onAskInstructor={onAskInstructor}
         />
       )}
 
@@ -591,6 +627,7 @@ const ChatBox = ({
         onStopRecord={handleStopAudioRecording}
         onCancelRecord={handleCancelAudioRecording}
         placeholder={Number(lessonId) === 0 ? "Đặt câu hỏi cho Trợ lý AI..." : "Hỏi trợ lý AI về bài học này..."}
+        quota={aiQuota}
       />
 
       {/* 4. Custom Delete Chat Confirmation Modal (Panel Overlay) */}

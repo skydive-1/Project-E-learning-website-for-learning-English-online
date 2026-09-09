@@ -165,7 +165,50 @@ const {
   externalTranslations,
 } = await loadCoveredVietnamesePhrases();
 const allPhrases = new Map();
-collectSourceFiles(sourceRoot).forEach((filePath) => collectVietnamesePhrases(filePath, allPhrases));
+const sourceFiles = collectSourceFiles(sourceRoot);
+sourceFiles.forEach((filePath) => collectVietnamesePhrases(filePath, allPhrases));
+
+const nativeDialogNames = new Set(['alert', 'confirm', 'prompt']);
+const isNativeDialogCall = (node) => {
+  if (node?.type !== 'CallExpression') return false;
+  if (node.callee?.type === 'Identifier') return nativeDialogNames.has(node.callee.name);
+  return node.callee?.type === 'MemberExpression'
+    && node.callee.object?.type === 'Identifier'
+    && node.callee.object.name === 'window'
+    && node.callee.property?.type === 'Identifier'
+    && nativeDialogNames.has(node.callee.property.name);
+};
+
+const isTranslationCall = (node) => node?.type === 'CallExpression'
+  && node.callee?.type === 'Identifier'
+  && node.callee.name === 't';
+
+const collectUnlocalizedNativeDialogs = (filePath) => {
+  const ast = parseSource(filePath);
+  const issues = [];
+
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (isNativeDialogCall(node) && !isTranslationCall(node.arguments?.[0])) {
+      issues.push({
+        file: path.relative(frontendRoot, filePath).replaceAll('\\', '/'),
+        line: node.loc?.start.line || 1,
+        dialog: node.callee?.property?.name || node.callee?.name || 'dialog',
+      });
+    }
+
+    Object.entries(node).forEach(([key, child]) => {
+      if (['loc', 'start', 'end', 'leadingComments', 'trailingComments', 'innerComments'].includes(key)) return;
+      if (Array.isArray(child)) child.forEach(visit);
+      else visit(child);
+    });
+  };
+
+  visit(ast);
+  return issues;
+};
+
+const unlocalizedNativeDialogs = sourceFiles.flatMap(collectUnlocalizedNativeDialogs);
 
 const invalidExternalTranslations = Object.entries(externalTranslations)
   .map(([source, target]) => {
@@ -189,12 +232,13 @@ const uncovered = [...allPhrases.entries()]
   });
 
 export const report = {
-  scannedFiles: collectSourceFiles(sourceRoot).length,
+  scannedFiles: sourceFiles.length,
   uniqueVietnamesePhrases: allPhrases.size,
   coveredPhrases: allPhrases.size - uncovered.length,
   uncoveredPhrases: uncovered.length,
   uncovered,
   invalidExternalTranslations,
+  unlocalizedNativeDialogs,
 };
 
 const isDirectRun = process.argv[1]
@@ -214,11 +258,18 @@ if (isDirectRun) {
     invalidExternalTranslations.forEach(({ source, issues }) => {
       process.stdout.write(`invalid external translation\t${issues.join(', ')}\t${source}\n`);
     });
+    unlocalizedNativeDialogs.forEach(({ file, line, dialog }) => {
+      process.stdout.write(`${file}:${line}\tunlocalized window.${dialog}() message\n`);
+    });
   }
 
   if (
     process.argv.includes('--check')
-    && (uncovered.length > 0 || invalidExternalTranslations.length > 0)
+    && (
+      uncovered.length > 0
+      || invalidExternalTranslations.length > 0
+      || unlocalizedNativeDialogs.length > 0
+    )
   ) {
     process.exitCode = 1;
   }

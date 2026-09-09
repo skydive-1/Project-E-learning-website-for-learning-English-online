@@ -2,10 +2,13 @@ import React from 'react';
 import { FiCheck, FiShare2, FiX } from 'react-icons/fi';
 import { useGamification } from '../../../context/GamificationContext';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
 
 const BadgeUnlockModal = () => {
   const { activeBadgePopup, closeBadgePopup } = useGamification();
   const showToast = useToast();
+  const { language } = useLanguage();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
 
   if (!activeBadgePopup) return null;
 
@@ -77,7 +80,7 @@ const BadgeUnlockModal = () => {
         <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-1 text-[11px] font-mono text-slate-400 tabular-nums">
           <span className="text-slate-500">Mốc đạt:</span>
           <span className="font-semibold text-slate-300">
-            {activeBadgePopup.unlockedAt || new Date().toLocaleDateString('vi-VN')}
+            {activeBadgePopup.unlockedAt || new Date().toLocaleDateString(locale)}
           </span>
         </div>
 

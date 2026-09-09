@@ -81,15 +81,33 @@ const CRITICAL_AUTH_CODES = [
   'UserDeleted'
 ];
 
+const getInitialAuthState = () => {
+  if (typeof window === 'undefined') {
+    return { user: null, authStatus: 'checking', loading: true };
+  }
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return { user: null, authStatus: 'unauthenticated', loading: false };
+  }
+
+  const cachedUser = readCachedUser();
+  if (cachedUser) {
+    return { user: cachedUser, authStatus: 'authenticated', loading: false };
+  }
+
+  return { user: null, authStatus: 'checking', loading: true };
+};
+
 export const AuthProvider = ({ children }) => {
-  // Render the last verified profile immediately while the backend revalidates the JWT.
-  const [user, setUser] = useState(readCachedUser);
-  const [authStatus, setAuthStatus] = useState('checking'); // 'checking' | 'authenticated' | 'unauthenticated' | 'temporarily_unavailable'
-  const [loading, setLoading] = useState(true);
+  const initialState = getInitialAuthState();
+  const [user, setUser] = useState(initialState.user);
+  const [authStatus, setAuthStatus] = useState(initialState.authStatus);
+  const [loading, setLoading] = useState(initialState.loading);
   const [authError, setAuthError] = useState(null);
   const navigate = useNavigate();
 
-  const fetchUserProfile = useCallback(async (retryCount = 0) => {
+  const fetchUserProfile = useCallback(async (retryCount = 0, isBackgroundRefresh = false) => {
     const token = localStorage.getItem('token');
     if (!token) {
       localStorage.removeItem(AUTH_USER_CACHE_KEY);
@@ -100,9 +118,14 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    try {
+    const hasCachedUser = !!user;
+
+    if (!isBackgroundRefresh) {
       setLoading(true);
       setAuthStatus('checking');
+    }
+
+    try {
       const res = await getProfile();
       const userData = res.data || res.user || res;
       cacheUser(userData);
@@ -143,21 +166,30 @@ export const AuthProvider = ({ children }) => {
       // Chỉ retry tối đa 2 lần cho các lỗi tạm thời
       if (isRetryable && retryCount < 2) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        return fetchUserProfile(retryCount + 1);
+        return fetchUserProfile(retryCount + 1, isBackgroundRefresh);
       }
 
       // Với tất cả các lỗi không critical (kể cả 400, 403, 404, 401 không có mã critical, hoặc lỗi mạng sau khi retry hết):
       // KHÔNG xóa JWT trong localStorage, chuyển sang trạng thái temporarily_unavailable
       console.error('⚠️ Không thể xác thực phiên đăng nhập (Giữ nguyên JWT):', error.message);
-      setAuthStatus('temporarily_unavailable');
-      setAuthError(error.message || 'Không thể kết nối tới máy chủ xác thực.');
+      
+      // Nếu là background refresh và có cached user, giữ user và chỉ cập nhật status
+      if (isBackgroundRefresh && hasCachedUser) {
+        setAuthStatus('temporarily_unavailable');
+        setAuthError(error.message || 'Không thể kết nối tới máy chủ xác thực.');
+      } else if (!hasCachedUser) {
+        setAuthStatus('temporarily_unavailable');
+        setAuthError(error.message || 'Không thể kết nối tới máy chủ xác thực.');
+      }
     } finally {
-      setLoading(false);
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    fetchUserProfile();
+    fetchUserProfile(0, false);
 
     // Lắng nghe sự kiện đăng xuất mềm từ API Interceptor khi có 401 nghiêm trọng
     const handleAuthLogout = (e) => {
@@ -175,7 +207,7 @@ export const AuthProvider = ({ children }) => {
     const heartbeatInterval = setInterval(() => {
       const token = localStorage.getItem('token');
       if (token && typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        getProfile().catch(() => {});
+        fetchUserProfile(0, true).catch(() => {});
       }
     }, 3 * 60 * 1000);
 

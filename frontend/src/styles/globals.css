@@ -410,6 +410,51 @@ input[type="search"]::-webkit-search-cancel-button {
   outline: none;
 }
 
+/* ========================================================
+   ACCESSIBILITY: Focus Visible Styles
+   Global focus-visible styles for keyboard navigation
+   ======================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Buttons and links */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Remove default focus styles for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Skip to main content link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.75rem 1.5rem;
+  background: var(--color-primary, #3b82f6);
+  color: white;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  z-index: 10000;
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
 /* Landing hero widget marquee. The track holds TWO copies of the card set,
  * so translating exactly -50% and looping restarts on identical pixels —
  * the seam is invisible as long as every card carries the same 20px

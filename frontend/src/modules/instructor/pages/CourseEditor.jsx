@@ -23,6 +23,7 @@ import {
 } from '../../quizzes/services/quizzes.service';
 import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { useToast } from '../../../context/ToastContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { 
   extractYouTubeVideoId, 
   isYouTubeUrl,
@@ -187,6 +188,8 @@ const getNextYearCivilDate = () => {
 const CourseEditor = () => {
   const navigate = useNavigate();
   const showToast = useToast();
+  const { language, t } = useLanguage();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   const { courseId } = useParams();
   const fileInputRef = useRef({});
   const isEditMode = Boolean(courseId);
@@ -608,7 +611,7 @@ const CourseEditor = () => {
   };
 
   const handleDeleteMaterial = async (sIdx, lIdx, materialId, materialName) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa tài liệu "${materialName || 'này'}" khỏi bài học?`)) {
+    if (!window.confirm(t(`Bạn có chắc chắn muốn xóa tài liệu "${materialName || 'này'}" khỏi bài học?`))) {
       return;
     }
     const lesson = sections[sIdx].lessons[lIdx];
@@ -1040,7 +1043,7 @@ const CourseEditor = () => {
 
   const handleDeleteLessonQuiz = async (sIdx, lIdx) => {
     const lesson = sections[sIdx].lessons[lIdx];
-    if (!window.confirm(`Bạn có chắc muốn xóa toàn bộ câu hỏi trắc nghiệm của bài học "${lesson.title}"?`)) {
+    if (!window.confirm(t(`Bạn có chắc muốn xóa toàn bộ câu hỏi trắc nghiệm của bài học "${lesson.title}"?`))) {
       return;
     }
 
@@ -1881,7 +1884,7 @@ const CourseEditor = () => {
                                           <span className="material-name" title={mat.name}>{mat.name}</span>
                                           <span className="material-details">
                                             {mat.sizeKb ? `${mat.sizeKb} KB` : (mat.sizeBytes ? `${Math.round(mat.sizeBytes / 1024)} KB` : 'Tài liệu học tập')}
-                                            {mat.createdAt ? ` • Đã tải lên ${new Date(mat.createdAt).toLocaleDateString('vi-VN')}` : ''}
+                                            {mat.createdAt ? ` • Đã tải lên ${new Date(mat.createdAt).toLocaleDateString(locale)}` : ''}
                                           </span>
                                         </div>
                                       </div>

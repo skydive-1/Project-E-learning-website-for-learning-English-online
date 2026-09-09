@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { syncClozeGaps, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
 import { generateQuizAiFromPdf } from '../../quizzes/services/quizzes.service';
 import { instructorService } from '../../instructor/services/instructor.service';
+import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
 
 const resolveAudioUrl = (url) => {
@@ -510,6 +511,7 @@ const CreateQuizDialog = ({
   const [pdfError, setPdfError] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const { t } = useLanguage();
   const showToast = useToast();
 
   const handleManualSubmit = (e) => {
@@ -528,10 +530,11 @@ const CreateQuizDialog = ({
 
     if (missingIndices.length > 0) {
       const msg = `Câu ${missingIndices.join(', ')} chưa chọn đáp án đúng. Vui lòng kiểm tra lại.`;
+      const localizedMessage = t(msg);
       if (typeof showToast === 'function') {
-        showToast(msg, 'error');
+        showToast(localizedMessage, 'error');
       } else {
-        alert(msg);
+        window.alert(t(msg));
       }
 
       const firstInvalidCard = document.getElementById(`question-card-${missingIndices[0] - 1}`);

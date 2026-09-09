@@ -8,6 +8,38 @@ const getBaseUrl = () => {
   return 'http://localhost:5000/api';
 };
 
+// Request deduplication cache
+const pendingRequests = new Map();
+
+/**
+ * Get or create a pending request for deduplication
+ * @param {string} key - Request key (method + url + params)
+ * @param {Function} requestFn - Function that returns the axios promise
+ * @returns {Promise} The axios promise
+ */
+const deduplicateRequest = async (key, requestFn) => {
+  if (pendingRequests.has(key)) {
+    return pendingRequests.get(key);
+  }
+  
+  const promise = requestFn().finally(() => {
+    pendingRequests.delete(key);
+  });
+  
+  pendingRequests.set(key, promise);
+  return promise;
+};
+
+/**
+ * Generate cache key for request
+ * @param {Object} config - Axios request config
+ * @returns {string} Cache key
+ */
+const getRequestCacheKey = (config) => {
+  const { method = 'get', url, params, data } = config;
+  return `${method.toUpperCase()}:${url}:${JSON.stringify(params)}:${JSON.stringify(data)}`;
+};
+
 // Khởi tạo instance Axios với baseURL của API backend
 const apiClient = axios.create({
   baseURL: getBaseUrl(),
@@ -16,6 +48,23 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Request deduplication interceptor
+apiClient.interceptors.request.use(
+  (config) => {
+    // Only deduplicate GET requests
+    if (config.method?.toLowerCase() === 'get') {
+      const cacheKey = getRequestCacheKey(config);
+      const originalAdapter = config.adapter || axios.defaults.adapter;
+      
+      config.adapter = async (config) => {
+        return deduplicateRequest(config.url, () => originalAdapter(config));
+      };
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 // Single-flight guard: đảm bảo nhiều request 401 đồng thời hoặc đến trễ chỉ phát 1 sự kiện logout duy nhất
 let isLoggingOut = false;

@@ -3,7 +3,8 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   FiPlay, FiCheckSquare, FiSquare, FiFileText,
   FiArrowLeft, FiChevronDown, FiChevronUp, FiAward,
-  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic
+  FiBookOpen, FiDownload, FiCpu, FiClock, FiMic, FiMessageSquare,
+  FiX, FiChevronRight
 } from 'react-icons/fi';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
@@ -11,6 +12,14 @@ import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import ChatBox from '../../chatbot/components/ChatBox';
+import StudentInstructorChatPanel from '../../discussions/components/StudentInstructorChatPanel';
+import AskInstructorModal from '../../discussions/components/AskInstructorModal';
+import MobileSidebarDrawer from '../components/MobileSidebarDrawer';
+import {
+  discussionApiErrorMessage,
+  getStudentLessonDiscussions,
+  sendStudentMessage
+} from '../../discussions/services/discussions.service';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
@@ -27,7 +36,14 @@ import {
   deletePdfNote
 } from '../services/pdfNotes.service';
 import { withPdfAuthToken } from '../utils/pdfAuthUrl';
-import shaka from 'shaka-player';
+// Shaka Player is dynamically imported only when needed for DASH/DRM videos
+let shakaPlayerModule = null;
+const loadShakaPlayer = async () => {
+  if (!shakaPlayerModule) {
+    shakaPlayerModule = await import('shaka-player');
+  }
+  return shakaPlayerModule.default || shakaPlayerModule;
+};
 import {
   getCourseDetails,
   getLessonById,
@@ -87,24 +103,77 @@ const LessonDetailPage = () => {
   const shakaAttachedToRef = useRef(null); // theo dõi element nào Shaka đang attach vào
   const isScreenRecordingDetectedRef = useRef(false);
   const blurTimeoutRef = useRef(null);
+  const gracePeriodTimeoutRef = useRef(null);
   const lastWarningTimeRef = useRef(0);
   const wasPlayingRef = useRef(false);
   const blackoutReasonRef = useRef('');
+  const isGracePeriodActiveRef = useRef(false);
 
-  const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
+const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
+  const isInstructorOrAdminRole = userRole === 1 || userRole === 2;
+
+  // Persisted state keys
+  const EXPANDED_SECTIONS_KEY = 'lesson_expanded_sections';
+  const ACTIVE_RIGHT_TAB_KEY = 'lesson_active_right_tab';
+
+  // Initialize persisted state
+  const getInitialExpandedSections = () => {
+    try {
+      const saved = localStorage.getItem(EXPANDED_SECTIONS_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const getInitialActiveRightTab = () => {
+    try {
+      const saved = localStorage.getItem(ACTIVE_RIGHT_TAB_KEY);
+      return saved || 'playlist';
+    } catch {
+      return 'playlist';
+    }
+  };
 
   // States
-  const [activeRightTab, setActiveRightTab] = useState("playlist"); // "playlist" or "ai"
-  const [activeLeftTab, setActiveLeftTab] = useState("syllabus"); // "syllabus" or "resources"
-  const [expandedSections, setExpandedSections] = useState({});
+  const [activeRightTab, setActiveRightTab] = useState(getInitialActiveRightTab);
+  const [activeLeftTab, setActiveLeftTab] = useState("syllabus");
+  const [expandedSections, setExpandedSections] = useState(getInitialExpandedSections);
   const [optimisticLessonId, setOptimisticLessonId] = useState(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [ticketPlaybackUrl, setTicketPlaybackUrl] = useState(null);
   const autoRetryCountRef = useRef(0);
+  const [discussions, setDiscussions] = useState([]);
+  const [discussionInstructor, setDiscussionInstructor] = useState(null);
+  const [discussionsLoading, setDiscussionsLoading] = useState(false);
+  const [discussionsError, setDiscussionsError] = useState('');
+  const [discussionRetryToken, setDiscussionRetryToken] = useState(0);
+const [askInstructorContext, setAskInstructorContext] = useState(null);
+
+  // Mobile sidebar drawer state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Countdown timer state
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  // Persist expandedSections to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPANDED_SECTIONS_KEY, JSON.stringify(expandedSections));
+    } catch (e) {
+      console.warn('Failed to persist expanded sections:', e);
+    }
+  }, [expandedSections]);
+
+  // Persist activeRightTab to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_RIGHT_TAB_KEY, activeRightTab);
+    } catch (e) {
+      console.warn('Failed to persist active right tab:', e);
+    }
+  }, [activeRightTab]);
 
   // Video & Screen Recording Protection States
   const [videoLoading, setVideoLoading] = useState(false);
@@ -112,6 +181,8 @@ const LessonDetailPage = () => {
   const [reloadKey, setReloadKey] = useState(0);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
   const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
+  const [showGracePeriodOverlay, setShowGracePeriodOverlay] = useState(false);
+  const [gracePeriodCountdown, setGracePeriodCountdown] = useState(0);
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
   const [subtitleStatus, setSubtitleStatus] = useState('none'); // 'none'|'pending'|'processing'|'ready'|'failed'
@@ -211,7 +282,7 @@ const LessonDetailPage = () => {
    */
   const isCapturingKeysRef = useRef(new Set());
 
-  const triggerZeroLatencyBlackout = (reason) => {
+const triggerZeroLatencyBlackout = (reason) => {
     // Không áp dụng che đen với bài học YouTube mở hoặc tài liệu PDF
     if (
       currentLesson?.type === 'youtube' ||
@@ -220,6 +291,39 @@ const LessonDetailPage = () => {
     ) {
       return;
     }
+
+    // Grace period: Show warning overlay for 3 seconds before blackout
+    // Only for blur/tab-hidden reasons; keyboard capture attempts still instant
+    const isBlurOrTabHidden = reason === 'Tab Hidden' || reason === 'Window Blur';
+
+    if (isBlurOrTabHidden && !isGracePeriodActiveRef.current) {
+      isGracePeriodActiveRef.current = true;
+      setShowGracePeriodOverlay(true);
+      setGracePeriodCountdown(3);
+
+      gracePeriodTimeoutRef.current = setTimeout(() => {
+        setShowGracePeriodOverlay(false);
+        isGracePeriodActiveRef.current = false;
+        // Only blackout if still blurred/hidden
+        if (document.hidden || !document.hasFocus()) {
+          executeBlackout(reason);
+        }
+      }, 3000);
+      return;
+    }
+
+    // Instant blackout for confirmed capture attempts
+    executeBlackout(reason);
+  };
+
+  const executeBlackout = (reason) => {
+    if (gracePeriodTimeoutRef.current) {
+      clearTimeout(gracePeriodTimeoutRef.current);
+      gracePeriodTimeoutRef.current = null;
+    }
+    setShowGracePeriodOverlay(false);
+    isGracePeriodActiveRef.current = false;
+    setGracePeriodCountdown(0);
 
     // 1. Thao tác DOM đồng bộ vi-giây (0ms Synchronous DOM Blackout)
     const shield = document.getElementById('netflix-drm-blackout-shield');
@@ -251,6 +355,14 @@ const LessonDetailPage = () => {
   };
 
   const restoreDrmVideo = () => {
+    if (gracePeriodTimeoutRef.current) {
+      clearTimeout(gracePeriodTimeoutRef.current);
+      gracePeriodTimeoutRef.current = null;
+    }
+    setShowGracePeriodOverlay(false);
+    isGracePeriodActiveRef.current = false;
+    setGracePeriodCountdown(0);
+
     // 1. Khôi phục DOM đồng bộ tức thì (0ms Instant Restore)
     const shield = document.getElementById('netflix-drm-blackout-shield');
     if (shield) shield.style.display = 'none';
@@ -288,10 +400,26 @@ const LessonDetailPage = () => {
           restoreDrmVideo();
         }
       }
-    }, 1000);
+}, 200); // Reduced from 1000ms to 200ms for faster recovery
 
     return () => clearInterval(safetyInterval);
   }, []);
+
+  // Grace period countdown effect
+  useEffect(() => {
+    if (showGracePeriodOverlay && gracePeriodCountdown > 0) {
+      const timer = setInterval(() => {
+        setGracePeriodCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [showGracePeriodOverlay, gracePeriodCountdown]);
 
   // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
   const handleSeekVideo = (seconds) => {
@@ -366,7 +494,7 @@ const LessonDetailPage = () => {
       if (e.type === 'keydown') {
         if (isCaptureAttempt) {
           isCapturingKeysRef.current.add(e.key || 'Capture');
-          // ĐEN MÀN HÌNH ĐỒNG BỘ 0ms
+          // Trigger blackout on confirmed capture attempts (instant)
           triggerZeroLatencyBlackout('Hệ thống bảo vệ bản quyền: Đã phát hiện thao tác chụp màn hình!');
           try {
             e.preventDefault();
@@ -375,10 +503,11 @@ const LessonDetailPage = () => {
           return false;
         }
       } else if (e.type === 'keyup') {
-        isCapturingKeysRef.current.clear();
+        // Only clear on keyup for capture attempts
         if (isCaptureAttempt || isPrtScn) {
-          // Hết nhấn/hết chụp -> NHẢ VIDEO NGAY LẬP TỤC
-          restoreDrmVideo();
+          isCapturingKeysRef.current.clear();
+          // Small delay to ensure capture is complete before restoring
+          setTimeout(() => restoreDrmVideo(), 500);
         }
       }
     };
@@ -448,6 +577,7 @@ const LessonDetailPage = () => {
       const defaultConfig = {
         blockStudent: true,
         blockInstructor: false,
+        blockAdmin: false,
         blockF12: true,
         blockInspect: true,
         blockViewSource: true,
@@ -464,7 +594,8 @@ const LessonDetailPage = () => {
     const config = getSecurityConfig();
     const isStudent = userRole === 3;
     const isInstructor = userRole === 2;
-    const shouldBlock = (isStudent && config.blockStudent) || (isInstructor && config.blockInstructor);
+    const isAdmin = userRole === 1;
+    const shouldBlock = (isStudent && config.blockStudent) || (isInstructor && config.blockInstructor) || (isAdmin && config.blockAdmin);
 
     if (!shouldBlock) return;
 
@@ -516,12 +647,12 @@ const LessonDetailPage = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam === 'ai') {
-      setActiveRightTab('ai');
+    if (tabParam === 'ai' || (tabParam === 'instructor' && userRole === 3)) {
+      setActiveRightTab(tabParam);
     } else if (location.state?.activeTab) {
       setActiveRightTab(location.state.activeTab);
     }
-  }, [location]);
+  }, [location, userRole]);
   // 1. Tải thông tin meta của bài giảng để xác định courseId của bài giảng hiện tại
   const { data: initialLessonData } = useQuery({
     queryKey: ['lesson-meta', lessonId],
@@ -578,6 +709,79 @@ const LessonDetailPage = () => {
   // 3. Xác định targetLessonId thực tế (kết hợp optimistic state để phản hồi ngay lập tức < 50ms)
   const targetLessonId = optimisticLessonId || lessonId || (course?.sections?.[0]?.lessons?.[0]?.id || null);
 
+  useEffect(() => {
+    if (userRole !== 3 || !targetLessonId) {
+      setDiscussions([]);
+      setDiscussionInstructor(null);
+      setDiscussionsError('');
+      setDiscussionsLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setDiscussionsLoading(true);
+    setDiscussionsError('');
+
+    getStudentLessonDiscussions(targetLessonId)
+      .then((data) => {
+        if (cancelled) return;
+        setDiscussions(data.discussions || []);
+        setDiscussionInstructor(data.instructor || null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDiscussions([]);
+        setDiscussionInstructor(null);
+        setDiscussionsError(discussionApiErrorMessage(error, 'Không thể tải cuộc trò chuyện với giảng viên.'));
+      })
+      .finally(() => {
+        if (!cancelled) setDiscussionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetLessonId, userRole, discussionRetryToken]);
+
+  useEffect(() => {
+    if (userRole !== 3 || activeRightTab !== 'instructor' || !targetLessonId) return undefined;
+
+    const interval = setInterval(() => {
+      getStudentLessonDiscussions(targetLessonId)
+        .then((data) => {
+          setDiscussions(data.discussions || []);
+          setDiscussionInstructor(data.instructor || null);
+          setDiscussionsError('');
+        })
+        .catch((error) => {
+          setDiscussionsError(discussionApiErrorMessage(error, 'Không thể đồng bộ tin nhắn mới.'));
+        });
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [activeRightTab, targetLessonId, userRole]);
+
+  const handleAskInstructor = ({ question, aiResponse }) => {
+    if (userRole !== 3) return;
+    setAskInstructorContext({ question, aiResponse });
+  };
+
+  const handleSubmitAskInstructor = async ({ content, attachAiResponse }) => {
+    const updated = await sendStudentMessage({
+      lessonId: targetLessonId,
+      content,
+      aiResponse: attachAiResponse || null,
+      timestampSeconds: Math.floor(videoCurrentTime || 0)
+    });
+
+    setDiscussions((previous) => [
+      updated,
+      ...previous.filter((item) => String(item.id) !== String(updated.id))
+    ]);
+    setActiveRightTab('instructor');
+    showToast('Đã gửi tin nhắn cho giảng viên.', 'success');
+  };
+
   // Đồng bộ optimistic state với URL params khi navigate
   useEffect(() => {
     setOptimisticLessonId(lessonId || null);
@@ -621,16 +825,22 @@ const LessonDetailPage = () => {
   }, [currentLesson?.id]);
 
   // Đồng bộ sidebar tab 2 chiều khi chuyển đổi giữa PDF và Video (TASK-PDF-SMART-NOTES-01-R1)
+  // Only auto-switch if the current tab is invalid for the new lesson type
+  // User's explicit tab choice (saved in localStorage) takes precedence for valid tabs
   useEffect(() => {
     if (!currentLesson?.id) return;
 
+    const validTabsForPdf = ['playlist', 'ai', 'instructor', 'notes'];
+    const validTabsForVideo = ['playlist', 'ai', 'instructor', 'transcript'];
+
     if (isPdfLesson) {
-      if (activeRightTab === 'transcript') {
+      if (!validTabsForPdf.includes(activeRightTab)) {
         setActiveRightTab('ai');
       }
-    } else if (activeRightTab === 'notes') {
-      // Tab ghi chú PDF không hợp lệ khi chuyển sang bài video.
-      setActiveRightTab('playlist');
+    } else {
+      if (!validTabsForVideo.includes(activeRightTab)) {
+        setActiveRightTab('playlist');
+      }
     }
   }, [currentLesson?.id, currentLesson?.type, isPdfLesson, activeRightTab]);
 
@@ -890,58 +1100,8 @@ const LessonDetailPage = () => {
   // Mọi video đều qua ticket; DASH dùng Shaka, MP4 dùng cookie HttpOnly.
   // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Short-Lived 60s Video Ticket & W3C ClearKey DASH DRM)
   useEffect(() => {
-    const rawVideoUrl = currentLesson?.videoUrl;
-    const dashGeneration = ++dashGenerationRef.current;
-    activeDashTicketRef.current = null;
-    renewalPromiseRef.current = null;
-
-    setVideoError(null);
-
-    if (renewalTimerRef.current) {
-      clearTimeout(renewalTimerRef.current);
-      renewalTimerRef.current = null;
-    }
-
-    const isYouTubeLesson = currentLesson?.type === 'youtube' ||
-      (typeof currentLesson?.playbackType === 'string' && currentLesson.playbackType === 'youtube') ||
-      (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0) ||
-      (typeof currentLesson?.contentUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.contentUrl)) ||
-      (typeof rawVideoUrl === 'string' && /youtube\.com|youtu\.be/.test(rawVideoUrl));
-
-    if (!rawVideoUrl || currentLesson?.type === 'pdf' || currentLesson?.type === 'quiz' || currentLesson?.type === 'speaking' || isYouTubeLesson) {
-      setTicketPlaybackUrl(null);
-      setVideoLoading(false);
-      if (shakaPlayerRef.current) {
-        shakaPlayerRef.current.destroy().catch(() => {});
-        shakaPlayerRef.current = null;
-        shakaAttachedToRef.current = null;
-      }
-      return;
-    }
-
-    // Reset URL ngay lập tức khi đổi bài học để tránh hiển thị video cũ (stale video)
-    setTicketPlaybackUrl(null);
-    setVideoLoading(true);
     let active = true;
-
-    const isDash = currentLesson?.playbackType === 'dash' ||
-                   currentLesson?.isDrmProtected === true ||
-                   (typeof rawVideoUrl === 'string' && rawVideoUrl.includes('.mpd'));
-
-    // -------------------------------------------------------------
-    // LUỒNG 1: Video Mã hóa DASH / W3C ClearKey DRM -> Sử dụng Shaka Player
-    // -------------------------------------------------------------
-    if (isDash) {
-      if (!shaka || !shaka.Player || !shaka.Player.isBrowserSupported()) {
-        setVideoLoading(false);
-        setVideoError({
-          code: 4,
-          message: 'Trình duyệt hiện tại không hỗ trợ giải mã DRM DASH qua Shaka Player.'
-        });
-        return () => {
-          active = false;
-        };
-      }
+    const loadVideo = async () => {
 
       const rawLessonId = String(currentLesson.id).replace(/^(quiz|speaking)-/, '');
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -975,7 +1135,7 @@ const LessonDetailPage = () => {
         return promise;
       };
 
-      fetchOrRenewTicket().then(ticket => {
+      fetchOrRenewTicket().then(async (ticket) => {
         if (!active) return;
         if (!ticket) throw new Error('DASH ticket unavailable');
 
@@ -986,6 +1146,7 @@ const LessonDetailPage = () => {
         }
 
         if (!shakaPlayerRef.current && videoRef.current) {
+          const shaka = await loadShakaPlayer();
           const player = new shaka.Player(videoRef.current);
           shakaPlayerRef.current = player;
           shakaAttachedToRef.current = videoRef.current;
@@ -1152,6 +1313,8 @@ const LessonDetailPage = () => {
           isMediaMissing: errCode === 'MEDIA_MISSING_SOURCE' || errCode === 'MEDIA_NOT_UPLOADED'
         });
       });
+
+    loadVideo();
 
     return () => {
       active = false;
@@ -1407,6 +1570,21 @@ const LessonDetailPage = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Mobile Sidebar Toggle Button */}
+              <div className="lg:hidden mb-4">
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="w-full flex items-center justify-between p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm"
+                  style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+                  aria-label="Mở danh sách bài học"
+                >
+                  <div className="flex items-center space-x-2">
+                    <FiBookOpen className="text-smart-indigo text-lg" />
+                    <span className="font-semibold text-sm" style={{ color: 'var(--text-color)' }}>Danh sách bài học</span>
+                  </div>
+                  <FiChevronRight className="text-slate-400" />
+                </button>
+              </div>
 
               {/* Left Area - 65%-70% (xl: 8 cols, lg: 7 cols) */}
               <div className="col-span-1 lg:col-span-7 xl:col-span-8 flex flex-col space-y-6">
@@ -1476,6 +1654,36 @@ const LessonDetailPage = () => {
                         className="absolute inset-0 bg-black z-[9999] select-none cursor-default"
                         onClick={restoreDrmVideo}
                       />
+
+                      {/* Grace Period Overlay - Shows 3s warning before blackout */}
+                      {showGracePeriodOverlay && (
+                        <div
+                          className="absolute inset-0 bg-black/80 z-[9998] flex flex-col items-center justify-center p-4 select-none pointer-events-none"
+                          style={{ backdropFilter: 'blur(4px)' }}
+                        >
+                          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 max-w-md w-full text-center">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
+                            <h3 className="text-lg font-bold text-white mb-2">Bảo vệ nội dung bài học</h3>
+                            <p className="text-sm text-slate-300 mb-4">
+                              Phát hiện bạn có thể đang rời khỏi tab hoặc chuyển cửa sổ. Video sẽ được che đen trong <strong>{gracePeriodCountdown}s</strong> nếu không quay lại.
+                            </p>
+                            <button
+                              onClick={() => {
+                                if (gracePeriodTimeoutRef.current) {
+                                  clearTimeout(gracePeriodTimeoutRef.current);
+                                  gracePeriodTimeoutRef.current = null;
+                                }
+                                setShowGracePeriodOverlay(false);
+                                isGracePeriodActiveRef.current = false;
+                                setGracePeriodCountdown(0);
+                              }}
+                              className="px-6 py-2.5 bg-white/20 hover:bg-white/30 text-white font-medium rounded-xl text-sm transition-all active:scale-95 border border-white/30"
+                            >
+                              Tôi không quay màn hình - Tiếp tục xem
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
                       <div
@@ -1801,6 +2009,34 @@ const LessonDetailPage = () => {
                     <FiCpu className="text-[12px]" />
                     <span>AI Chat</span>
                   </button>
+
+                  {userRole === 3 && (
+                    <button
+                      type="button"
+                      role="tab"
+                      id="right-tab-instructor"
+                      aria-selected={activeRightTab === "instructor"}
+                      aria-controls="right-panel-instructor"
+                      onClick={() => setActiveRightTab("instructor")}
+                      style={{
+                        borderBottomColor: activeRightTab === "instructor" ? "#3b82f6" : "transparent",
+                        color: activeRightTab === "instructor" ? "#3b82f6" : "var(--text-light)",
+                        backgroundColor: activeRightTab === "instructor" ? "var(--card-bg)" : "var(--bg-color)",
+                      }}
+                      className="relative flex-1 py-3 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 border-b-2 transition-all font-extrabold"
+                    >
+                      <FiMessageSquare className="text-[12px]" />
+                      <span>Giảng viên</span>
+                      {discussions.filter((item) => item.unread).length > 0 && (
+                        <span
+                          className="absolute top-1.5 right-2 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] leading-4 text-center"
+                          aria-label={`${discussions.filter((item) => item.unread).length} tin nhắn chưa đọc`}
+                        >
+                          {discussions.filter((item) => item.unread).length}
+                        </span>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {/* Sidebar Content Panel */}
@@ -1952,7 +2188,36 @@ const LessonDetailPage = () => {
                           lessonId={targetLessonId || currentLesson?.id} 
                           lessonTitle={currentLesson?.title || ''}
                           currentTime={videoCurrentTime} 
-                          onSeekVideo={handleSeekVideo} 
+                          onSeekVideo={handleSeekVideo}
+                          onAskInstructor={userRole === 3 ? handleAskInstructor : null}
+                        />
+                      </ErrorBoundary>
+                    </div>
+                  )}
+
+                  {/* Direct student-instructor messaging. Suggested questions intentionally omitted. */}
+                  {userRole === 3 && activeRightTab === "instructor" && (
+                    <div
+                      role="tabpanel"
+                      id="right-panel-instructor"
+                      aria-labelledby="right-tab-instructor"
+                      className="h-full p-2"
+                    >
+                      <ErrorBoundary
+                        title="Không thể mở trò chuyện với giảng viên"
+                        message="Khung trò chuyện đang tạm thời gián đoạn. Bạn vẫn có thể tiếp tục học bài bình thường."
+                      >
+                        <StudentInstructorChatPanel
+                          lessonId={targetLessonId || currentLesson?.id}
+                          instructorName={discussionInstructor?.name || course?.instructor?.name || course?.instructorName || 'Giảng viên khóa học'}
+                          currentTime={videoCurrentTime}
+                          onSeekVideo={handleSeekVideo}
+                          discussions={discussions}
+                          setDiscussions={setDiscussions}
+                          isLoading={discussionsLoading}
+                          error={discussionsError}
+                          onRefresh={() => setDiscussionRetryToken((value) => value + 1)}
+                          userRole={userRole}
                         />
                       </ErrorBoundary>
                     </div>
@@ -1964,6 +2229,27 @@ const LessonDetailPage = () => {
           )}
         </div>
       </main>
+
+<AskInstructorModal
+        isOpen={userRole === 3 && Boolean(askInstructorContext)}
+        onClose={() => setAskInstructorContext(null)}
+        initialQuestion={askInstructorContext?.question || ''}
+        aiResponse={askInstructorContext?.aiResponse || ''}
+        lessonTitle={currentLesson?.title || ''}
+        onSubmit={handleSubmitAskInstructor}
+      />
+
+      {/* Mobile Sidebar Drawer */}
+      <MobileSidebarDrawer
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        course={course}
+        expandedSections={expandedSections}
+        setExpandedSections={setExpandedSections}
+        targetLessonId={targetLessonId}
+        handleSelectLesson={handleSelectLesson}
+        handleToggleComplete={handleToggleComplete}
+      />
     </div>
   );
 };
