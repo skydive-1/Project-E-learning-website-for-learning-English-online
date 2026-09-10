@@ -76,9 +76,6 @@ services:
       context: ./frontend
     container_name: elearning_frontend
     restart: always
-    command: >-
-      sh -c "npm install --no-audit --no-fund &&
-      npm run start -- --host 0.0.0.0 --no-open"
     ports:
       - "3001:3001"
     environment:

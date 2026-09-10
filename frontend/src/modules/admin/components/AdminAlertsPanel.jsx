@@ -9,6 +9,8 @@ import {
   FiInfo,
   FiServer,
   FiActivity,
+  FiCpu,
+  FiShield,
   FiUser,
   FiUploadCloud,
   FiCreditCard
@@ -82,30 +84,6 @@ const AdminAlertsPanel = ({ className = '' }) => {
           }
         }
       }
-
-      // Add simulated alerts for demo purposes
-      newAlerts.push(
-        {
-          id: 'failed-upload-1',
-          type: 'failed_upload',
-          severity: 'high',
-          title: 'Video Upload Failed',
-          message: 'Course "English Grammar Basics" - Lesson 3 video upload failed after 3 retries. Storage quota may be exceeded.',
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          actionUrl: '/instructor/dashboard?tab=courses',
-          actionLabel: 'Retry Upload'
-        },
-        {
-          id: 'payment-failed-1',
-          type: 'payment_failed',
-          severity: 'medium',
-          title: 'Subscription Payment Failed',
-          message: 'User nguyen.van.a@example.com - Monthly subscription payment declined. Card expired.',
-          timestamp: new Date(Date.now() - 7200000).toISOString(),
-          actionUrl: '/admin/dashboard?tab=users',
-          actionLabel: 'View User'
-        }
-      );
 
       setAlerts(newAlerts);
       setIsConnected(true);

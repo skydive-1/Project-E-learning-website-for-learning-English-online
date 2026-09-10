@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
-import viteImagemin from 'vite-plugin-imagemin';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -13,29 +12,6 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    viteImagemin({
-      gifsicle: {
-        optimizationLevel: 3,
-        interlaced: true
-      },
-      optipng: {
-        optimizationLevel: 3
-      },
-      mozjpeg: {
-        quality: 80
-      },
-      pngquant: {
-        quality: [0.7, 0.8],
-        speed: 4
-      },
-      svgo: {
-        plugins: [
-          { name: 'removeViewBox', active: false },
-          { name: 'removeDimensions', active: true },
-          { name: 'removeXMLNS', active: true }
-        ]
-      }
-    }),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,

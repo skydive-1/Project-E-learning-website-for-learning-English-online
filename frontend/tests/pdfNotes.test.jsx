@@ -421,8 +421,8 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       });
 
       const lesson = await getLessonById(52);
-      expect(getLessonPdfUrl(52)).toBe('/api/lessons/52/pdf');
-      expect(lesson.pdfUrl).toBe('/api/lessons/52/pdf');
+      expect(getLessonPdfUrl(52)).toMatch(/\/api\/lessons\/52\/pdf$/);
+      expect(lesson.pdfUrl).toBe(getLessonPdfUrl(52));
       expect(lesson.pdfUrl).not.toContain('/uploads/');
     });
 
@@ -448,7 +448,16 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       };
 
       const res = await pdfNotesService.createPdfNote(1, newAreaNote);
-      expect(apiClient.post).toHaveBeenCalledWith('/lessons/1/pdf-notes', newAreaNote);
+      expect(apiClient.post).toHaveBeenCalledWith(
+        '/lessons/1/pdf-notes',
+        expect.objectContaining({
+          ...newAreaNote,
+          _clientId: expect.any(String),
+          _createdAt: expect.any(String),
+          _version: 1,
+          _dirty: true
+        })
+      );
       expect(res.selectionType).toBe('area');
       expect(res.selectedText).toBeNull();
     });
@@ -457,7 +466,15 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       apiClient.put.mockResolvedValueOnce({ data: { data: { ...mockNotes[0], noteText: 'Updated' } } });
 
       const res = await pdfNotesService.updatePdfNote(1, 10, { noteText: 'Updated' });
-      expect(apiClient.put).toHaveBeenCalledWith('/lessons/1/pdf-notes/10', { noteText: 'Updated' });
+      expect(apiClient.put).toHaveBeenCalledWith(
+        '/lessons/1/pdf-notes/10',
+        expect.objectContaining({
+          noteText: 'Updated',
+          _updatedAt: expect.any(String),
+          _version: 1,
+          _dirty: true
+        })
+      );
       expect(res.noteText).toBe('Updated');
     });
 

@@ -118,7 +118,10 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    const hasCachedUser = !!user;
+    // Read the persisted snapshot instead of closing over `user`. Depending on
+    // `user` here recreates this callback after every successful setUser(),
+    // which retriggers the effect below and starts another profile request.
+    const hasCachedUser = !!readCachedUser();
 
     if (!isBackgroundRefresh) {
       setLoading(true);
@@ -186,7 +189,7 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
       }
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     fetchUserProfile(0, false);

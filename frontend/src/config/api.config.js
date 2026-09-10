@@ -55,10 +55,16 @@ apiClient.interceptors.request.use(
     // Only deduplicate GET requests
     if (config.method?.toLowerCase() === 'get') {
       const cacheKey = getRequestCacheKey(config);
-      const originalAdapter = config.adapter || axios.defaults.adapter;
+      // Axios 1.x stores the default adapter as a list of adapter names
+      // (for example ['xhr', 'http', 'fetch']), not necessarily as a callable
+      // function. Resolve that list through Axios before wrapping the adapter.
+      const originalAdapter = axios.getAdapter(
+        config.adapter || axios.defaults.adapter,
+        config
+      );
       
-      config.adapter = async (config) => {
-        return deduplicateRequest(config.url, () => originalAdapter(config));
+      config.adapter = async (adapterConfig) => {
+        return deduplicateRequest(cacheKey, () => originalAdapter(adapterConfig));
       };
     }
     return config;
