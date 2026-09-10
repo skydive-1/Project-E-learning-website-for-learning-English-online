@@ -1100,14 +1100,51 @@ const triggerZeroLatencyBlackout = (reason) => {
   // Mọi video đều qua ticket; DASH dùng Shaka, MP4 dùng cookie HttpOnly.
   // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Short-Lived 60s Video Ticket & W3C ClearKey DASH DRM)
   useEffect(() => {
+    const rawVideoUrl = currentLesson?.videoUrl;
+    const dashGeneration = ++dashGenerationRef.current;
+    activeDashTicketRef.current = null;
+    renewalPromiseRef.current = null;
+
+    setVideoError(null);
+
+    if (renewalTimerRef.current) {
+      clearTimeout(renewalTimerRef.current);
+      renewalTimerRef.current = null;
+    }
+
+    const isYouTubeLesson = currentLesson?.type === 'youtube' ||
+      currentLesson?.playbackType === 'youtube' ||
+      (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0) ||
+      (typeof currentLesson?.contentUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.contentUrl)) ||
+      (typeof rawVideoUrl === 'string' && /youtube\.com|youtu\.be/.test(rawVideoUrl));
+
+    if (!rawVideoUrl || currentLesson?.type === 'pdf' || currentLesson?.type === 'quiz' || currentLesson?.type === 'speaking' || isYouTubeLesson) {
+      setTicketPlaybackUrl(null);
+      setVideoLoading(false);
+      if (shakaPlayerRef.current) {
+        shakaPlayerRef.current.destroy().catch(() => {});
+        shakaPlayerRef.current = null;
+        shakaAttachedToRef.current = null;
+      }
+      return;
+    }
+
+    // Reset the source immediately when switching lessons so stale media is
+    // never rendered while the next protected URL is being requested.
+    setTicketPlaybackUrl(null);
+    setVideoLoading(true);
     let active = true;
+    let shakaErrorHandler = null;
+    const isDash = currentLesson?.playbackType === 'dash' ||
+      currentLesson?.isDrmProtected === true ||
+      rawVideoUrl.includes('.mpd');
+
     const loadVideo = async () => {
 
       const rawLessonId = String(currentLesson.id).replace(/^(quiz|speaking)-/, '');
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       const allowQueryTicket = import.meta.env.VITE_DASH_TICKET_QUERY_FALLBACK === 'true';
       let authRetryCount = 0;
-      let shakaErrorHandler = null;
 
       // Hàm gia hạn ticket đơn luồng an toàn (Single-Flight Proactive Renewal)
       const fetchOrRenewTicket = async () => {
@@ -1228,6 +1265,19 @@ const triggerZeroLatencyBlackout = (reason) => {
         });
       });
 
+    }
+
+    if (isDash) {
+      loadVideo().catch((error) => {
+        if (!active) return;
+        console.warn('⚠️ [Shaka Setup Error]:', error?.message || error);
+        setVideoLoading(false);
+        setVideoError({
+          code: 4,
+          message: 'Trình duyệt hiện tại không hỗ trợ giải mã DRM DASH qua Shaka Player.'
+        });
+      });
+
       return () => {
         active = false;
         if (renewalTimerRef.current) {
@@ -1313,8 +1363,6 @@ const triggerZeroLatencyBlackout = (reason) => {
           isMediaMissing: errCode === 'MEDIA_MISSING_SOURCE' || errCode === 'MEDIA_NOT_UPLOADED'
         });
       });
-
-    loadVideo();
 
     return () => {
       active = false;
