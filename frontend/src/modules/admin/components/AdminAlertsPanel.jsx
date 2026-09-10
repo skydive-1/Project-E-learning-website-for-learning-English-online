@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  FiBell, 
-  FiAlertTriangle, 
-  FiCheck, 
-  FiX, 
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  FiBell,
+  FiAlertTriangle,
+  FiCheck,
   FiRefreshCw,
   FiExternalLink,
   FiInfo,
@@ -13,102 +12,164 @@ import {
   FiShield,
   FiUser,
   FiUploadCloud,
-  FiCreditCard
+  FiCreditCard,
+  FiBookOpen,
+  FiHelpCircle,
+  FiWifi,
+  FiWifiOff
 } from 'react-icons/fi';
 import { useAuth } from '../../../context/AuthContext';
-import { useToast } from '../../../context/ToastContext';
-import { getGeminiRateLimitStatus, getGeminiUsageTrends } from '../services/adminAnalytics.service';
+import {
+  connectAdminAlertsStream,
+  getAdminAlerts
+} from '../services/adminAlerts.service';
 
-/**
- * AdminAlertsPanel - Real-time alerts for admin dashboard
- * Shows AI quota issues, failed uploads, payment issues, etc.
- */
+const STATUS_STYLES = {
+  live: {
+    label: 'Kết nối trực tiếp',
+    className: 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400'
+  },
+  connecting: {
+    label: 'Đang kết nối',
+    className: 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400'
+  },
+  fallback: {
+    label: 'Tự làm mới',
+    className: 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400'
+  },
+  offline: {
+    label: 'Mất kết nối',
+    className: 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400'
+  }
+};
+
+const formatTime = (timestamp) => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'Không rõ thời gian';
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.max(0, Math.floor(diffMs / 60_000));
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffMins < 1) return 'Vừa xong';
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  return `${diffDays} ngày trước`;
+};
+
 const AdminAlertsPanel = ({ className = '' }) => {
   const { user } = useAuth();
-  const showToast = useToast();
   const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [error, setError] = useState('');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [source, setSource] = useState('PostgreSQL và telemetry runtime của backend');
+  const isLiveRef = useRef(false);
+  const hasLoadedRef = useRef(false);
 
-  // Fetch alerts from backend
-  const fetchAlerts = useCallback(async () => {
+  const applySnapshot = useCallback((snapshot) => {
+    if (!snapshot || !Array.isArray(snapshot.alerts)) return;
+    setAlerts(snapshot.alerts);
+    setLastUpdatedAt(snapshot.generatedAt || new Date().toISOString());
+    setSource(snapshot.source || 'PostgreSQL và telemetry runtime của backend');
+    setError('');
+    setLoading(false);
+    hasLoadedRef.current = true;
+  }, []);
+
+  const fetchAlerts = useCallback(async ({ background = false } = {}) => {
     if (!user?.userId) return;
-    
+
+    if (!background) setRefreshing(true);
+    if (!hasLoadedRef.current) setLoading(true);
+
     try {
-      setLoading(true);
-      // In a real implementation, this would call an admin alerts endpoint
-      // For now, we'll simulate with AI quota and rate limit checks
-      const [rateLimitStatus, usageTrends] = await Promise.allSettled([
-        getGeminiRateLimitStatus({ fresh: true }),
-        getGeminiUsageTrends({ range: '1d', fresh: true })
-      ]);
-
-      const newAlerts = [];
-
-      // Check rate limit discrepancies
-      if (rateLimitStatus.status === 'fulfilled' && rateLimitStatus.value) {
-        const data = rateLimitStatus.value;
-        if (data.discrepancies && data.discrepancies.length > 0) {
-          data.discrepancies.forEach(disc => {
-            newAlerts.push({
-              id: `rate-limit-${disc.dimension}`,
-              type: 'rate_limit',
-              severity: 'high',
-              title: `Rate Limit Discrepancy: ${disc.dimension.toUpperCase()}`,
-              message: `Configured cap (${disc.configured_cap}) may not match actual provider limit. Observed usage: ${disc.observed_usage}`,
-              timestamp: disc.detected_at || new Date().toISOString(),
-              actionUrl: '/admin/dashboard?tab=ai-quota',
-              actionLabel: 'View Settings'
-            });
-          });
-        }
-      }
-
-      // Check for AI quota exhaustion
-      if (usageTrends.status === 'fulfilled' && usageTrends.value) {
-        const trends = usageTrends.value;
-        // Check if recent usage is near limits
-        if (trends.daily && trends.daily.length > 0) {
-          const latest = trends.daily[trends.daily.length - 1];
-          if (latest.total_tokens > 80000) { // Near 100k limit
-            newAlerts.push({
-              id: 'ai-quota-near-limit',
-              type: 'quota_warning',
-              severity: 'medium',
-              title: 'AI Quota Near Daily Limit',
-              message: `Daily token usage at ${(latest.total_tokens / 1000).toFixed(1)}k tokens. Approaching 100k daily limit.`,
-              timestamp: new Date().toISOString(),
-              actionUrl: '/admin/dashboard?tab=ai-quota',
-              actionLabel: 'Manage Quota'
-            });
-          }
-        }
-      }
-
-      setAlerts(newAlerts);
-      setIsConnected(true);
-    } catch (err) {
-      console.error('Failed to fetch alerts:', err);
-      setIsConnected(false);
+      const snapshot = await getAdminAlerts({ fresh: !background });
+      applySnapshot(snapshot);
+      if (!isLiveRef.current) setConnectionStatus('fallback');
+    } catch (fetchError) {
+      console.error('Không thể tải cảnh báo Admin:', fetchError);
+      setError(fetchError?.message || 'Không thể kết nối tới nguồn cảnh báo');
+      if (!hasLoadedRef.current) setConnectionStatus('offline');
+    } finally {
+      setLoading(false);
+      if (!background) setRefreshing(false);
     }
-  }, [user?.userId]);
+  }, [applySnapshot, user?.userId]);
 
-  // Poll for new alerts every 60 seconds
   useEffect(() => {
-    if (!user?.userId) return;
-    
+    if (!user?.userId) return undefined;
+
+    let disposed = false;
+    let stream = null;
+    let reconnectTimer = null;
+    let reconnectAttempts = 0;
+
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return;
+      isLiveRef.current = false;
+      setConnectionStatus(hasLoadedRef.current ? 'fallback' : 'connecting');
+      const delay = Math.min(30_000, 5_000 * (2 ** reconnectAttempts));
+      reconnectAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectStream();
+      }, delay);
+    };
+
+    const connectStream = () => {
+      if (disposed) return;
+      setConnectionStatus('connecting');
+
+      stream = connectAdminAlertsStream({
+        onSnapshot: applySnapshot,
+        onStatus: (status) => {
+          if (disposed || status !== 'live') return;
+          reconnectAttempts = 0;
+          isLiveRef.current = true;
+          setConnectionStatus('live');
+        },
+        onStreamError: (streamError) => {
+          if (disposed) return;
+          setError(streamError?.message || 'Backend tạm thời không thể cập nhật cảnh báo');
+        }
+      });
+
+      stream.done.catch((streamError) => {
+        if (disposed || streamError?.name === 'AbortError') return;
+        console.warn('Luồng cảnh báo Admin bị ngắt:', streamError);
+        scheduleReconnect();
+      });
+    };
+
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 60000);
-    return () => clearInterval(interval);
-  }, [user?.userId, fetchAlerts]);
+    connectStream();
 
-  const dismissAlert = (alertId) => {
-    setAlerts(prev => prev.filter(a => a.id !== alertId));
-  };
+    const fallbackInterval = setInterval(() => {
+      if (!isLiveRef.current && document.visibilityState !== 'hidden') {
+        fetchAlerts({ background: true });
+      }
+    }, 60_000);
 
-  const dismissAllAlerts = () => {
-    setAlerts([]);
-  };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isLiveRef.current) {
+        fetchAlerts({ background: true });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      isLiveRef.current = false;
+      stream?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearInterval(fallbackInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [applySnapshot, fetchAlerts, user?.userId]);
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -120,12 +181,9 @@ const AdminAlertsPanel = ({ className = '' }) => {
   };
 
   const getSeverityIcon = (severity) => {
-    switch (severity) {
-      case 'high': return <FiAlertTriangle className="text-red-500" />;
-      case 'medium': return <FiAlertTriangle className="text-amber-500" />;
-      case 'low': return <FiInfo className="text-blue-500" />;
-      default: return <FiInfo className="text-slate-500" />;
-    }
+    if (severity === 'high') return <FiAlertTriangle className="text-red-500" />;
+    if (severity === 'medium') return <FiAlertTriangle className="text-amber-500" />;
+    return <FiInfo className="text-blue-500" />;
   };
 
   const getTypeIcon = (type) => {
@@ -137,101 +195,85 @@ const AdminAlertsPanel = ({ className = '' }) => {
       case 'security': return <FiShield className="text-red-500" />;
       case 'server': return <FiServer className="text-blue-500" />;
       case 'user': return <FiUser className="text-blue-500" />;
+      case 'course': return <FiBookOpen className="text-indigo-500" />;
+      case 'quiz': return <FiHelpCircle className="text-violet-500" />;
       default: return <FiAlertTriangle className="text-slate-500" />;
     }
   };
 
-  const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Vừa xong';
-    if (diffMins < 60) return `${diffMins} phút trước`;
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    return `${diffDays} ngày trước`;
-  };
-
   if (!user?.userId) return null;
 
+  const status = STATUS_STYLES[connectionStatus] || STATUS_STYLES.offline;
+
   return (
-    <div className={`admin-alerts-panel ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex items-center gap-3">
-          <FiBell className="text-indigo-500" size={24} />
+    <section className={`admin-alerts-panel ${className}`} aria-labelledby="admin-alerts-title">
+      <div className="flex items-start justify-between gap-4 mb-4 pb-4">
+        <div className="flex items-start gap-3">
+          <FiBell className="text-indigo-500 mt-0.5" size={24} />
           <div>
-            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Bảng Cảnh Báo Thời Gian Thực</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Cập nhật tự động mỗi 60 giây
+            <h3 id="admin-alerts-title" className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              Cảnh báo vận hành
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {source} · SSE kiểm tra mỗi 15 giây, dự phòng 60 giây
             </p>
+            {lastUpdatedAt && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Cập nhật lần cuối: {formatTime(lastUpdatedAt)}
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-            isConnected 
-              ? 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400' 
-              : 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400'
-          }`}>
-            {isConnected ? (
-              <>
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                Đang kết nối
-              </>
-            ) : (
-              <>
-                <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                Đã ngắt kết nối
-              </>
-            )}
-          </span>
-          {alerts.length > 0 && (
-            <button
-              onClick={dismissAllAlerts}
-              className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 px-2 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              Xóa tất cả
-            </button>
+
+        <span className={`flex shrink-0 items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.className}`}>
+          {connectionStatus === 'live' ? <FiWifi size={13} /> : connectionStatus === 'offline' ? <FiWifiOff size={13} /> : (
+            <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse" />
           )}
-        </div>
+          {status.label}
+        </span>
       </div>
 
-      {/* Alerts List */}
-      {loading && alerts.length === 0 ? (
-        <div className="flex items-center justify-center py-8 text-slate-500">
-          <FiRefreshCw className="animate-spin mr-2" />
-          Đang tải cảnh báo...
+      {error && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
+          <span>{error}. Hệ thống sẽ tự thử kết nối lại.</span>
+          <button type="button" onClick={() => fetchAlerts()} className="shrink-0 font-semibold underline underline-offset-2">
+            Thử ngay
+          </button>
         </div>
-      ) : alerts.length === 0 ? (
+      )}
+
+      {loading && alerts.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-slate-500" role="status">
+          <FiRefreshCw className="animate-spin mr-2" />
+          Đang đọc cảnh báo từ backend...
+        </div>
+      ) : alerts.length === 0 && !error ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <FiCheck className="text-emerald-500 text-4xl mb-3" />
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Không có cảnh báo nào</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Không phát hiện vấn đề cần xử lý</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-            Hệ thống hoạt động bình thường
+            Kết quả được tổng hợp từ dữ liệu vận hành thực tế của backend
           </p>
         </div>
       ) : (
-        <div className="space-y-3 max-h-96 overflow-y-auto">
+        <div className="space-y-3 max-h-96 overflow-y-auto" aria-live="polite">
           {alerts.map((alert) => (
-            <div
+            <article
               key={alert.id}
               className={`flex gap-3 p-4 rounded-2xl border ${getSeverityColor(alert.severity)} animate-fade-in`}
             >
-              <div className="flex-shrink-0 mt-0.5">
-                {getSeverityIcon(alert.severity)}
-              </div>
+              <div className="flex-shrink-0 mt-0.5">{getSeverityIcon(alert.severity)}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     {getTypeIcon(alert.type)}
                     <h4 className="font-bold text-sm truncate">{alert.title}</h4>
                     <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
-                      alert.severity === 'high' ? 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-300' :
-                      alert.severity === 'medium' ? 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' :
-                      'bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+                      alert.severity === 'high'
+                        ? 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-300'
+                        : alert.severity === 'medium'
+                          ? 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300'
+                          : 'bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
                     }`}>
                       {alert.severity === 'high' ? 'CAO' : alert.severity === 'medium' ? 'TB' : 'THẤP'}
                     </span>
@@ -240,43 +282,37 @@ const AdminAlertsPanel = ({ className = '' }) => {
                     {formatTime(alert.timestamp)}
                   </span>
                 </div>
+
                 <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">{alert.message}</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Nguồn: {alert.source}</p>
+
                 {alert.actionUrl && alert.actionLabel && (
-                  <div className="mt-3 flex items-center gap-2">
-                    <a
-                      href={alert.actionUrl}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors"
-                    >
-                      {alert.actionLabel}
-                      <FiExternalLink size={12} />
-                    </a>
-                    <button
-                      onClick={() => dismissAlert(alert.id)}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                      aria-label="Xóa cảnh báo"
-                    >
-                      <FiX size={14} />
-                    </button>
-                  </div>
+                  <a
+                    href={alert.actionUrl}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors"
+                  >
+                    {alert.actionLabel}
+                    <FiExternalLink size={12} />
+                  </a>
                 )}
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
 
-      {/* Refresh Button */}
-      <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+      <div className="mt-4 pt-4">
         <button
-          onClick={fetchAlerts}
-          disabled={loading}
+          type="button"
+          onClick={() => fetchAlerts()}
+          disabled={refreshing}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors disabled:opacity-50"
         >
-          <FiRefreshCw className={loading ? 'animate-spin' : ''} />
-          {loading ? 'Đang làm mới...' : 'Làm mới cảnh báo'}
+          <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Đang đọc dữ liệu...' : 'Kiểm tra cảnh báo ngay'}
         </button>
       </div>
-    </div>
+    </section>
   );
 };
 
