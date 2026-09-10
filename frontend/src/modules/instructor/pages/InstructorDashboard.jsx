@@ -21,6 +21,7 @@ import { getInstructorAnalytics } from '../services/instructor.service';
 import InstructorInteractionHub from '../../discussions/components/InstructorInteractionHub';
 import { getInstructorInteractionSummary } from '../../discussions/services/discussions.service';
 import { useInstructorRealtime } from '../../../services/realtime.service';
+import InstructorSidebar from '../components/InstructorSidebar';
 
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
@@ -601,94 +602,14 @@ const InstructorDashboard = () => {
       <Header />
       
       <main className="instructor-container">
-        {/* Sidebar */}
-        <div className="instructor-sidebar">
-          <div className="sidebar-brand">
-            <h2>Instructor Hub</h2>
-            {/* SSE Connection Status & Notification Bell */}
-            <div className="sidebar-notifications" style={{ marginTop: '12px', padding: '0 12px' }}>
-              <div 
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px', 
-                  padding: '8px 12px', 
-                  background: sseConnected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                  border: sseConnected ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '8px',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  color: sseConnected ? '#10b981' : '#ef4444'
-                }}
-                title={sseConnected ? 'Real-time kết nối' : 'Mất kết nối real-time'}
-              >
-                <span style={{ 
-                  width: '6px', 
-                  height: '6px', 
-                  borderRadius: '50%', 
-                  background: sseConnected ? '#10b981' : '#ef4444',
-                  animation: sseConnected ? 'pulse 2s infinite' : 'none'
-                }} />
-                <span>{sseConnected ? 'Đang kết nối' : 'Đã ngắt kết nối'}</span>
-              </div>
-              
-              {/* Notification Bell */}
-              {(notifications.length > 0 || interactionPendingCount > 0) && (
-                <div style={{ position: 'relative', marginTop: '8px' }}>
-                  <button
-                    onClick={() => setActiveTab('interaction')}
-                    style={{
-                      position: 'relative',
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 12px',
-                      background: 'rgba(59, 130, 246, 0.1)',
-                      border: '1px solid rgba(59, 130, 246, 0.3)',
-                      borderRadius: '8px',
-                      color: '#3b82f6',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.2s'
-                    }}
-                    title="Có thông báo mới - nhấn để xem"
-                  >
-                    <FiBell style={{ fontSize: '16px', flexShrink: 0 }} />
-                    <span style={{ flex: 1 }}>
-                      {notifications.length > 0 ? `${notifications.length} thông báo mới` : `${interactionPendingCount} tin nhắn chờ xử lý`}
-                    </span>
-                    <FiCheck style={{ fontSize: '12px', opacity: 0.7 }} />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-          <nav className="sidebar-nav">
-            <button className={activeTab === 'courses' ? 'active' : ''} onClick={() => setActiveTab('courses')}>
-              <FiBook /> My Courses
-            </button>
-            <button className={activeTab === 'students' ? 'active' : ''} onClick={() => setActiveTab('students')}>
-              <FiUsers /> Students
-            </button>
-            <button className={activeTab === 'performance' ? 'active' : ''} onClick={() => setActiveTab('performance')}>
-              <FiTrendingUp /> Performance
-            </button>
-            <button className={activeTab === 'quizzes' ? 'active' : ''} onClick={() => setActiveTab('quizzes')}>
-              <FiCheckSquare /> Quizzes
-            </button>
-            <button className={activeTab === 'interaction' ? 'active' : ''} onClick={() => setActiveTab('interaction')}>
-              <FiMessageSquare /> Tương tác
-              {interactionPendingCount > 0 && (
-                <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#fff', fontSize: '10px', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
-                  {interactionPendingCount}
-                </span>
-              )}
-            </button>
-          </nav>
-        </div>
+        {/* Apple-style Instructor Hub Sidebar */}
+        <InstructorSidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          sseConnected={sseConnected}
+          notifications={notifications}
+          interactionPendingCount={interactionPendingCount}
+        />
 
         {/* Content Area */}
         <div className="instructor-content">

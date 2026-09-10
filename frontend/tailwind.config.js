@@ -10,6 +10,7 @@ export default {
       fontFamily: {
         sans: ['Outfit', 'sans-serif'],
         heading: ['Outfit', 'sans-serif'],
+        apple: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', '"SF Pro Display"', '"Inter"', 'sans-serif'],
       },
       colors: {
         'smart-indigo': '#1d4ed8',
