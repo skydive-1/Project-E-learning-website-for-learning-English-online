@@ -126,11 +126,14 @@ import { BrowserRouter } from 'react-router-dom';
 describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)', () => {
   let mockCourseStatus;
   let mockSubtitleStatus;
+  let mockCourseError;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockCourseStatus = 'draft';
     mockSubtitleStatus = 'failed';
+    mockCourseError = null;
+    window.history.pushState({}, '', '/');
     localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwicm9sZUlkIjoyfQ.test');
 
     apiClient.get.mockImplementation((url) => {
@@ -140,6 +143,7 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
         });
       }
       if (url === '/courses/37') {
+        if (mockCourseError) return Promise.reject(mockCourseError);
         return Promise.resolve({
           data: {
             success: true,
@@ -212,6 +216,23 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     apiClient.put.mockResolvedValue({
       data: { success: true }
     });
+  });
+
+  it('shows one terminal state for a stale alert link when the course returns 404', async () => {
+    mockCourseError = { response: { status: 404 } };
+    window.history.pushState({}, '', '/instructor/edit-course/37?issue=stale-upload&uploadId=upload-1');
+
+    render(
+      <BrowserRouter>
+        <CourseEditor />
+      </BrowserRouter>
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Khóa học không còn tồn tại' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Cảnh báo bạn vừa mở đã lỗi thời hoặc khóa học đã được xóa.');
+    expect(screen.queryByText('Mở từ cảnh báo vận hành:')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Xuất bản khóa học|Lưu thay đổi/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Về bảng điều khiển/i })).toBeInTheDocument();
   });
 
   it('shows "Lưu thay đổi" and persists edits while keeping a published course published', async () => {

@@ -50,13 +50,10 @@ const withQuery = (path, params) => {
   return suffix ? `${path}?${suffix}` : path;
 };
 
-const courseIdFromStorageKey = (storageKey) => {
-  const match = String(storageKey || '').match(/(?:^|\/)courses\/(?:[^/]*-)?(\d+)(?:\/|$)/i);
-  return match ? Number(match[1]) : null;
-};
-
 const courseTarget = (row, issue, extra = {}) => {
-  const courseId = asNumber(row.course_id) || courseIdFromStorageKey(row.storage_key || row.object_key);
+  // Chỉ tạo deep-link từ quan hệ đã được PostgreSQL xác thực. ID nằm trong
+  // storage_key chỉ là metadata đặt tên, không chứng minh course còn tồn tại.
+  const courseId = asNumber(row.course_id);
   if (!courseId) return null;
   return withQuery(`/instructor/edit-course/${courseId}`, {
     tab: extra.tab || 'curriculum',
@@ -114,9 +111,11 @@ const collectDatabaseAlerts = async (generatedAt) => {
     pool.query(`
       SELECT p.upload_id, p.instructor_id, p.storage_key, p.status, p.created_at, p.expires_at,
              u.full_name AS instructor_name, target.lesson_id, target.lesson_title,
-             target.course_id, target.course_name
+             COALESCE(target.course_id, upload_course.course_id) AS course_id,
+             COALESCE(target.course_name, upload_course.course_name) AS course_name
       FROM pending_media_uploads p
       LEFT JOIN users u ON u.user_id = p.instructor_id
+      LEFT JOIN courses upload_course ON upload_course.course_id = p.course_id
       LEFT JOIN LATERAL (
         SELECT linked.*
         FROM (
@@ -137,6 +136,11 @@ const collectDatabaseAlerts = async (generatedAt) => {
       ) target ON TRUE
       WHERE p.status IN ('PENDING', 'CLAIMING', 'CLEANING')
         AND (p.expires_at <= NOW() OR p.created_at <= NOW() - INTERVAL '30 minutes')
+        AND NOT EXISTS (
+          SELECT 1 FROM failed_storage_deletions deletion
+          WHERE deletion.pending_upload_id = p.upload_id
+            AND deletion.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
+        )
       ORDER BY p.created_at DESC
       LIMIT 25
     `),
@@ -144,7 +148,9 @@ const collectDatabaseAlerts = async (generatedAt) => {
       SELECT d.deletion_id, p.upload_id AS pending_upload_id, d.storage_key, d.status,
              d.retry_count, d.last_error, d.created_at,
              p.instructor_id, u.full_name AS instructor_name,
-             target.lesson_id, target.lesson_title, target.course_id, target.course_name
+             target.lesson_id, target.lesson_title,
+             COALESCE(target.course_id, pending_course.course_id) AS course_id,
+             COALESCE(target.course_name, pending_course.course_name) AS course_name
       FROM failed_storage_deletions d
       LEFT JOIN LATERAL (
         SELECT pending.*
@@ -156,6 +162,7 @@ const collectDatabaseAlerts = async (generatedAt) => {
         LIMIT 1
       ) p ON TRUE
       LEFT JOIN users u ON u.user_id = p.instructor_id
+      LEFT JOIN courses pending_course ON pending_course.course_id = p.course_id
       LEFT JOIN LATERAL (
         SELECT linked.*
         FROM (
@@ -264,22 +271,35 @@ const collectDatabaseAlerts = async (generatedAt) => {
 
   for (const row of pendingUploadResult.rows) {
     const targetUrl = courseTarget(row, 'stale-upload', { uploadId: row.upload_id });
+    const isOrphaned = !row.lesson_id;
+    const isExpired = row.expires_at && new Date(row.expires_at).getTime() <= new Date(generatedAt).getTime();
     alerts.push(createAlert({
       id: `pending-upload-${row.upload_id}`,
       type: 'failed_upload',
       severity: 'medium',
-      title: 'Upload media bị treo',
-      message: `${row.lesson_title ? `Bài “${row.lesson_title}”` : `Tệp “${row.storage_key}”`} chưa hoàn tất sau 30 phút hoặc đã hết hạn.`,
+      title: isOrphaned && isExpired ? 'Upload hết hạn chưa được dọn' : 'Upload media bị treo',
+      message: row.lesson_title
+        ? `Bài “${row.lesson_title}” chưa hoàn tất upload sau 30 phút hoặc đã hết hạn.`
+        : isExpired
+          ? `Tệp “${row.storage_key}” đã hết hạn và không còn liên kết với bài học nào.`
+          : `Tệp “${row.storage_key}” chưa được liên kết với bài học sau 30 phút.`,
       timestamp: asTimestamp(row.created_at, generatedAt),
       actionUrl: targetUrl || withQuery('/admin/dashboard', { tab: 'users', userId: row.instructor_id, uploadId: row.upload_id }),
       actionLabel: targetUrl ? 'Mở đúng nội dung lỗi' : 'Xem chủ upload',
       source: `PostgreSQL · pending_media_uploads · ${row.upload_id}`,
-      entity: { type: 'pending_upload', id: row.upload_id, courseId: row.course_id, lessonId: row.lesson_id, userId: row.instructor_id, storageKey: row.storage_key }
+      entity: {
+        type: 'pending_upload', id: row.upload_id, courseId: row.course_id,
+        lessonId: row.lesson_id, userId: row.instructor_id, storageKey: row.storage_key,
+        orphaned: isOrphaned, expired: Boolean(isExpired)
+      }
     }));
   }
 
   for (const row of deletionResult.rows) {
     const targetUrl = courseTarget(row, 'storage-deletion-failed', { deletionId: row.deletion_id });
+    const ownerUrl = row.instructor_id
+      ? withQuery('/admin/dashboard', { tab: 'users', userId: row.instructor_id, deletionId: row.deletion_id })
+      : null;
     alerts.push(createAlert({
       id: `storage-deletion-${row.deletion_id}`,
       type: 'server',
@@ -287,8 +307,8 @@ const collectDatabaseAlerts = async (generatedAt) => {
       title: 'Dọn dẹp kho lưu trữ chưa hoàn tất',
       message: `Tệp “${row.storage_key}” xóa thất bại sau ${asNumber(row.retry_count)} lần thử${row.last_error ? `: ${row.last_error}` : '.'}`,
       timestamp: asTimestamp(row.created_at, generatedAt),
-      actionUrl: targetUrl || withQuery('/admin/dashboard', { tab: 'users', userId: row.instructor_id, deletionId: row.deletion_id }),
-      actionLabel: targetUrl ? 'Mở đúng nội dung lỗi' : 'Xem chủ sở hữu',
+      actionUrl: targetUrl || ownerUrl,
+      actionLabel: targetUrl ? 'Mở đúng nội dung lỗi' : ownerUrl ? 'Xem chủ sở hữu' : null,
       source: `PostgreSQL · failed_storage_deletions · #${row.deletion_id}`,
       entity: { type: 'storage_deletion', id: row.deletion_id, courseId: row.course_id, lessonId: row.lesson_id, userId: row.instructor_id, storageKey: row.storage_key }
     }));

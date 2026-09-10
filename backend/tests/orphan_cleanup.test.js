@@ -6,6 +6,7 @@ const supabaseStorage = require('../src/utils/supabaseStorage');
 const orphanCleanupService = require('../src/utils/orphanCleanup.service');
 const coursesService = require('../src/modules/courses/services/courses.service');
 const lessonsService = require('../src/modules/lessons/services/lessons.service');
+const ragIngestionService = require('../src/modules/lessons/services/ragIngestion.service');
 const {
   classifyMediaSource,
   parseSupabaseStorageUrl,
@@ -17,18 +18,21 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
   let origDeleteStorageObject;
   let origQuery;
   let origPool;
+  let origDeleteLessonVectors;
   let deletedFromStorage = [];
 
   before(() => {
     origDeleteStorageObject = supabaseStorage.deleteStorageObject;
     origQuery = db.query;
     origPool = db.pool;
+    origDeleteLessonVectors = ragIngestionService.deleteLessonVectors;
   });
 
   after(() => {
     supabaseStorage.deleteStorageObject = origDeleteStorageObject;
     db.query = origQuery;
     db.pool = origPool;
+    ragIngestionService.deleteLessonVectors = origDeleteLessonVectors;
   });
 
   beforeEach(() => {
@@ -37,6 +41,7 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
       deletedFromStorage.push({ key, bucket });
       return true;
     };
+    ragIngestionService.deleteLessonVectors = async () => ({ deletedCount: 0 });
   });
 
   describe('1. Pure Classifier & Path Traversal Security', () => {
@@ -218,19 +223,27 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
       assert.strictEqual(deletedFromStorage[0].key, 'courses/5/eb5f9f73/video44.mp4');
     });
 
-    it('3.3. deleteCourse xóa cả pending_media_uploads còn sót lại trước khi cascade xóa lessons (tránh admin alert trỏ tới nội dung đã xóa)', async () => {
-      const deletedUploadIds = [];
+    it('3.3. deleteCourse chuyển pending uploads sang CLEANING trước cascade và dọn object sau commit', async () => {
+      const stagedUploadIds = [];
 
       db.query = async (sql, params) => {
         if (sql.includes('SELECT course_id, instructor_id FROM courses')) {
           return { rows: [{ course_id: 20, instructor_id: 2 }] };
         }
+        if (sql.includes('UPDATE pending_media_uploads p') && sql.includes("SET status = 'CLEANING'")) {
+          stagedUploadIds.push('mocked-upload-eb1bc770');
+          return {
+            rows: [{
+              upload_id: 'mocked-upload-eb1bc770',
+              storage_key: 'courses/deleted-course-20/orphan.mp4',
+              storage_bucket: 'videos',
+              storage_provider: 'r2'
+            }],
+            rowCount: 1
+          };
+        }
         if (sql.includes('FROM lessons l') && sql.includes('course_id = $1') && !sql.includes('DELETE')) {
           return { rows: [] }; // Không còn media đã gắn vào lesson (giả lập khóa học chỉ có upload treo)
-        }
-        if (sql.includes('DELETE FROM pending_media_uploads')) {
-          deletedUploadIds.push('mocked-upload-eb1bc770');
-          return { rows: [{ upload_id: 'mocked-upload-eb1bc770' }], rowCount: 1 };
         }
         if (sql.includes('DELETE FROM courses')) {
           return { rows: [{ course_id: params[0] }] };
@@ -250,7 +263,40 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
 
       const deleted = await coursesService.deleteCourse(20);
       assert.strictEqual(deleted, true);
-      assert.strictEqual(deletedUploadIds.length, 1, 'cleanupPendingUploadsForCourse phải được gọi đúng 1 lần, trước DELETE FROM courses');
+      assert.strictEqual(stagedUploadIds.length, 1, 'pending upload phải được khóa logic đúng 1 lần trước DELETE FROM courses');
+      await new Promise(r => setTimeout(r, 50));
+      assert.ok(deletedFromStorage.some((item) => item.key === 'courses/deleted-course-20/orphan.mp4'));
+    });
+
+    it('3.4. deleteCourse rollback và không xóa course khi không staging được pending uploads', async () => {
+      let rolledBack = false;
+      let deletedCourse = false;
+      const client = {
+        query: async (sql) => {
+          const text = String(sql);
+          if (text.includes('SELECT course_id, instructor_id FROM courses')) {
+            return { rows: [{ course_id: 21, instructor_id: 2 }] };
+          }
+          if (text.includes('UPDATE pending_media_uploads p')) {
+            throw new Error('pending upload table unavailable');
+          }
+          if (text.includes('FROM lessons l') && text.includes('course_id = $1')) {
+            return { rows: [] };
+          }
+          if (text.includes('DELETE FROM courses')) deletedCourse = true;
+          if (text === 'ROLLBACK') rolledBack = true;
+          return { rows: [] };
+        },
+        release: () => {}
+      };
+      db.pool = { connect: async () => client };
+
+      await assert.rejects(
+        () => coursesService.deleteCourse(21, 2),
+        /pending upload table unavailable/
+      );
+      assert.strictEqual(rolledBack, true);
+      assert.strictEqual(deletedCourse, false);
     });
   });
 });

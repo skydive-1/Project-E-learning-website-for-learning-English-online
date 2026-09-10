@@ -37,6 +37,7 @@ class OrphanCleanupService {
   async registerPendingUpload({
     uploadId,
     instructorId,
+    courseId = null,
     storageKey,
     storageBucket,
     storageProvider = 'r2',
@@ -49,6 +50,13 @@ class OrphanCleanupService {
       throw new Error('Thiếu thông tin bắt buộc để đăng ký pending upload');
     }
 
+    const parsedCourseId = courseId === null || courseId === undefined || courseId === ''
+      ? null
+      : Number(courseId);
+    if (parsedCourseId !== null && (!Number.isSafeInteger(parsedCourseId) || parsedCourseId <= 0)) {
+      throw new Error('courseId không hợp lệ khi đăng ký pending upload');
+    }
+
     const query = `
       WITH new_asset AS (
         INSERT INTO media_assets (
@@ -59,10 +67,10 @@ class OrphanCleanupService {
         RETURNING media_id
       )
       INSERT INTO pending_media_uploads (
-        upload_id, instructor_id, storage_provider, storage_bucket,
+        upload_id, instructor_id, course_id, storage_provider, storage_bucket,
         storage_key, mime_type, size_bytes, checksum_sha256, status, media_id
       )
-      SELECT $1, $2, $8, $3, $4, $5, $6, $7, 'PENDING', media_id
+      SELECT $1, $2, $11, $8, $3, $4, $5, $6, $7, 'PENDING', media_id
       FROM new_asset
       RETURNING *
     `;
@@ -77,7 +85,8 @@ class OrphanCleanupService {
       checksumSha256,
       storageProvider,
       inferMediaKind(mimeType, storageKey),
-      originalName
+      originalName,
+      parsedCourseId
     ]);
 
     return res.rows[0];
@@ -223,25 +232,26 @@ class OrphanCleanupService {
   }
 
   /**
-   * Xóa các bản ghi pending_media_uploads còn sót lại của một khóa học,
-   * TRƯỚC KHI khóa học đó bị xóa (bảng pending_media_uploads không có
-   * course_id/FK cascade riêng - nó chỉ liên kết gián tiếp qua storage_key
-   * hoặc media_id của lessons/lesson_materials). Nếu không dọn, các dòng
-   * này trở thành "mồ côi": hệ thống cảnh báo vận hành (admin alerts) vẫn
-   * join ra được course_id tại thời điểm khóa học còn tồn tại và sinh ra
-   * link "Mở đúng bài học" trỏ tới nội dung sẽ biến mất ngay khi khóa học
-   * bị xóa, khiến admin bấm vào gặp lỗi 404 khó hiểu.
-   * PHẢI được gọi trong transaction, TRƯỚC câu lệnh DELETE FROM courses
-   * (vì cascade sẽ xóa sections/lessons khiến không còn gì để đối chiếu).
+   * Chuyển pending uploads của course sang CLEANING trước khi xóa course.
+   * Không xóa row ngay: row là durable retry record nếu object storage lỗi
+   * hoặc process dừng giữa COMMIT và bước xóa object.
    */
   async cleanupPendingUploadsForCourse(courseId, client = null) {
     const runner = client || db;
     const query = `
-      DELETE FROM pending_media_uploads
-      WHERE upload_id IN (
-        SELECT p.upload_id
-        FROM pending_media_uploads p
-        WHERE p.storage_key IN (
+      UPDATE pending_media_uploads p
+      SET status = 'CLEANING',
+          cleaning_started_at = CURRENT_TIMESTAMP,
+          expires_at = LEAST(expires_at, CURRENT_TIMESTAMP)
+      WHERE p.status IN ('PENDING', 'CLAIMING', 'CLEANING')
+        AND NOT EXISTS (
+          SELECT 1 FROM failed_storage_deletions d
+          WHERE d.pending_upload_id = p.upload_id
+            AND d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
+        )
+        AND (
+          p.course_id = $1
+          OR p.storage_key IN (
           SELECT l.storage_key FROM lessons l
             JOIN sections s ON l.section_id = s.section_id
             WHERE s.course_id = $1 AND l.storage_key IS NOT NULL
@@ -250,8 +260,8 @@ class OrphanCleanupService {
             JOIN lessons l ON lm.lesson_id = l.lesson_id
             JOIN sections s ON l.section_id = s.section_id
             WHERE s.course_id = $1 AND lm.storage_key IS NOT NULL
-        )
-        OR p.media_id IN (
+          )
+          OR p.media_id IN (
           SELECT l.media_asset_id FROM lessons l
             JOIN sections s ON l.section_id = s.section_id
             WHERE s.course_id = $1 AND l.media_asset_id IS NOT NULL
@@ -260,17 +270,12 @@ class OrphanCleanupService {
             JOIN lessons l ON lm.lesson_id = l.lesson_id
             JOIN sections s ON l.section_id = s.section_id
             WHERE s.course_id = $1 AND lm.media_asset_id IS NOT NULL
+          )
         )
-      )
-      RETURNING upload_id
+      RETURNING upload_id, storage_key, storage_bucket, storage_provider
     `;
-    try {
-      const res = await runner.query(query, [courseId]);
-      return res.rowCount;
-    } catch (error) {
-      console.warn(`[OrphanCleanup] Không dọn được pending_media_uploads cho course ${courseId}:`, error.message);
-      return 0;
-    }
+    const res = await runner.query(query, [courseId]);
+    return res.rows;
   }
 
   /**
@@ -462,6 +467,70 @@ class OrphanCleanupService {
   }
 
   /**
+   * Xử lý các row đã được khóa logic bằng trạng thái CLEANING.
+   * Hàm dùng chung cho worker TTL và luồng xóa khóa học để mọi lỗi xóa
+   * object đều đi qua cùng một durable retry queue.
+   */
+  async cleanupPendingUploadRows(rows = []) {
+    let cleanedCount = 0;
+    const errors = [];
+
+    for (const item of rows) {
+      try {
+        const reference = await this.getReferenceState(item.storage_key);
+        if (!reference.reliable) {
+          await db.query(
+            `UPDATE pending_media_uploads
+             SET status = 'PENDING', cleaning_started_at = NULL,
+                 expires_at = CURRENT_TIMESTAMP + INTERVAL '5 minutes'
+             WHERE upload_id = $1`,
+            [item.upload_id]
+          );
+          errors.push(`Không xác minh được tham chiếu cho ${item.storage_key}`);
+          continue;
+        }
+        if (reference.referenced) {
+          await db.query(
+            `UPDATE pending_media_uploads
+             SET status = 'COMMITTED', cleaning_started_at = NULL
+             WHERE upload_id = $1`,
+            [item.upload_id]
+          );
+          continue;
+        }
+
+        const deleted = await supabaseStorage.deleteStorageObject(
+          item.storage_key,
+          item.storage_bucket,
+          item.storage_provider
+        );
+        if (!deleted) throw new Error('deleteStorageObject returned false');
+
+        await db.query(
+          `UPDATE pending_media_uploads
+           SET status = 'EXPIRED', cleaning_started_at = NULL
+           WHERE upload_id = $1`,
+          [item.upload_id]
+        );
+        await this.markAssetDeleted(item.storage_key, item.storage_bucket, item.storage_provider);
+        cleanedCount++;
+      } catch (error) {
+        errors.push(`Lỗi dọn dẹp ${item.storage_key}: ${error.message}`);
+        console.warn(`⚠️ [Pending Cleanup] Lỗi xóa ${item.storage_key}:`, error.message);
+        await this.recordFailedDeletion(
+          item.storage_key,
+          item.storage_bucket,
+          error.message,
+          item.upload_id,
+          item.storage_provider
+        );
+      }
+    }
+
+    return { cleanedCount, errors };
+  }
+
+  /**
    * Tiến trình dọn dẹp định kỳ các upload tạm hết hạn (TTL Cleanup)
    * Sử dụng Transaction + SELECT ... FOR UPDATE SKIP LOCKED và chuyển sang trạng thái CLEANING
    */
@@ -474,14 +543,19 @@ class OrphanCleanupService {
       const selectQuery = `
         SELECT upload_id, storage_key, storage_bucket, storage_provider
         FROM pending_media_uploads 
-        WHERE (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
-           OR (status = 'CLEANING'
-               AND COALESCE(cleaning_started_at, created_at) < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
-               AND NOT EXISTS (
-                 SELECT 1 FROM failed_storage_deletions d
-                 WHERE d.pending_upload_id = pending_media_uploads.upload_id
-                   AND d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
-               ))
+        WHERE (
+          (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
+          OR (
+            status IN ('CLAIMING', 'CLEANING')
+            AND COALESCE(cleaning_started_at, claimed_at, created_at)
+              < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+          )
+        )
+          AND NOT EXISTS (
+            SELECT 1 FROM failed_storage_deletions d
+            WHERE d.pending_upload_id = pending_media_uploads.upload_id
+              AND d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
+          )
         ORDER BY created_at ASC
         LIMIT $1
         FOR UPDATE SKIP LOCKED
@@ -501,31 +575,8 @@ class OrphanCleanupService {
 
       await client.query('COMMIT');
 
-      // Xóa các file trên storage sau khi đã chuyển trạng thái CLEANING
-      for (const item of res.rows) {
-        try {
-          const reference = await this.getReferenceState(item.storage_key);
-          if (!reference.reliable) {
-            await db.query(`UPDATE pending_media_uploads SET status = 'PENDING', cleaning_started_at = NULL, expires_at = CURRENT_TIMESTAMP + INTERVAL '5 minutes' WHERE upload_id = $1`, [item.upload_id]);
-            continue;
-          }
-          if (reference.referenced) {
-            await db.query(`UPDATE pending_media_uploads SET status = 'COMMITTED' WHERE upload_id = $1`, [item.upload_id]);
-            continue;
-          }
-          const deleted = await supabaseStorage.deleteStorageObject(item.storage_key, item.storage_bucket, item.storage_provider);
-          if (!deleted) throw new Error('deleteStorageObject returned false');
-          await db.query(
-            `UPDATE pending_media_uploads SET status = 'EXPIRED' WHERE upload_id = $1`,
-            [item.upload_id]
-          );
-          await this.markAssetDeleted(item.storage_key, item.storage_bucket, item.storage_provider);
-          cleaned++;
-        } catch (delErr) {
-          console.warn(`⚠️ [TTL Cleanup] Lỗi xóa file hết hạn ${item.storage_key}:`, delErr.message);
-          await this.recordFailedDeletion(item.storage_key, item.storage_bucket, delErr.message, item.upload_id, item.storage_provider);
-        }
-      }
+      const cleanupResult = await this.cleanupPendingUploadRows(res.rows);
+      cleaned += cleanupResult.cleanedCount;
     } catch (e) {
       await client.query('ROLLBACK');
       console.error('🚨 [TTL Cleanup] Lỗi transaction dọn dẹp pending uploads:', e.message);

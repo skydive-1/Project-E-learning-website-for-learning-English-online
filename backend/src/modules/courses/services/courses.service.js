@@ -999,6 +999,7 @@ class CoursesService {
   async deleteCourse(courseId, userId, userRole = 2, canDeleteAnyCourse = false) {
     const client = await db.pool.connect();
     let assetsToCleanup = [];
+    let pendingUploadsToCleanup = [];
 
     try {
       await client.query('BEGIN');
@@ -1031,11 +1032,9 @@ class CoursesService {
       // 2. Thu thập danh sách storage keys trước khi xóa DB trong transaction
       assetsToCleanup = await orphanCleanupService.collectAssetsFromCourse(courseId, client);
 
-      // 2b. Dọn các bản ghi pending_media_uploads còn sót lại của khóa học
-      // này TRƯỚC khi cascade xóa sections/lessons - tránh để lại dữ liệu
-      // "mồ côi" khiến cảnh báo vận hành (admin alerts) sinh link trỏ tới
-      // nội dung đã xóa.
-      await orphanCleanupService.cleanupPendingUploadsForCourse(courseId, client);
+      // 2b. Khóa logic các upload liên quan trước khi cascade xóa quan hệ.
+      // Nếu bước này lỗi thì transaction phải rollback (fail-closed).
+      pendingUploadsToCleanup = await orphanCleanupService.cleanupPendingUploadsForCourse(courseId, client);
 
       // 3. Xóa khóa học trong database (Cascade xóa sections, lessons, materials)
       const result = await client.query('DELETE FROM courses WHERE course_id = $1 RETURNING course_id', [courseId]);
@@ -1043,9 +1042,15 @@ class CoursesService {
 
       await client.query('COMMIT');
 
-      // 4. Dọn dẹp các storage object mồ côi trên Supabase sau khi COMMIT thành công
-      if (deleted && assetsToCleanup.length > 0) {
-        orphanCleanupService.cleanupUnreferencedAssets(assetsToCleanup).catch((err) => {
+      // 4. Dọn storage sau COMMIT. Pending rows là durable retry record;
+      // loại key trùng khỏi danh sách thường để tránh gửi hai lệnh xóa.
+      if (deleted && (pendingUploadsToCleanup.length > 0 || assetsToCleanup.length > 0)) {
+        const pendingKeys = new Set(pendingUploadsToCleanup.map((item) => item.storage_key));
+        const remainingAssets = assetsToCleanup.filter((item) => !pendingKeys.has(item.key));
+        (async () => {
+          await orphanCleanupService.cleanupPendingUploadRows(pendingUploadsToCleanup);
+          await orphanCleanupService.cleanupUnreferencedAssets(remainingAssets);
+        })().catch((err) => {
           console.warn('⚠️ [CoursesService.deleteCourse] Cảnh báo dọn dẹp orphan asset:', err.message);
         });
       }

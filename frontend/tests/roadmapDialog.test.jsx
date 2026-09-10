@@ -1,7 +1,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom';
 import RoadmapPage from '../src/modules/academy/pages/RoadmapPage';
 import apiClient from '../src/config/api.config';
 
@@ -29,7 +29,12 @@ class IntersectionObserverMock {
   disconnect() {}
 }
 
-describe('Roadmap detail dialog', () => {
+const DetailRouteProbe = () => {
+  const { roadmapId } = useParams();
+  return <h1>Trang chi tiết {roadmapId}</h1>;
+};
+
+describe('Roadmap detail navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.IntersectionObserver = IntersectionObserverMock;
@@ -37,10 +42,13 @@ describe('Roadmap detail dialog', () => {
     apiClient.get.mockResolvedValue({ data: { courses: [] } });
   });
 
-  it('renders above the fixed header and closes from the visible X button', async () => {
+  it('opens the full detail route for the selected roadmap', async () => {
     render(
-      <MemoryRouter>
-        <RoadmapPage />
+      <MemoryRouter initialEntries={['/academy']}>
+        <Routes>
+          <Route path="/academy" element={<RoadmapPage />} />
+          <Route path="/academy/:roadmapId" element={<DetailRouteProbe />} />
+        </Routes>
       </MemoryRouter>
     );
 
@@ -50,18 +58,6 @@ describe('Roadmap detail dialog', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /Xem chi tiết lộ trình/i })[0]);
 
-    const dialog = await screen.findByRole('dialog');
-    const overlay = document.querySelector('[data-slot="dialog-overlay"]');
-
-    expect(dialog).toHaveClass('z-[1100]');
-    expect(dialog).toHaveClass('max-h-[calc(100dvh-2rem)]');
-    expect(overlay).toHaveClass('z-[1100]');
-    expect(screen.getByRole('heading', { name: 'Tiếng Anh Cơ Bản' })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Đóng' }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
+    expect(await screen.findByRole('heading', { name: 'Trang chi tiết basic' })).toBeInTheDocument();
   });
 });

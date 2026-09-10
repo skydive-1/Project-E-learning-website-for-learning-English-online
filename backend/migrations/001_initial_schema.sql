@@ -527,13 +527,14 @@ CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, 
 CREATE TABLE IF NOT EXISTS pending_media_uploads (
   upload_id UUID PRIMARY KEY,
   instructor_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  course_id INT REFERENCES courses(course_id) ON DELETE SET NULL,
   storage_provider VARCHAR(50) NOT NULL DEFAULT 'r2',
   storage_bucket VARCHAR(255) NOT NULL,
   storage_key TEXT NOT NULL,
   mime_type VARCHAR(100) NOT NULL,
   size_bytes BIGINT NOT NULL DEFAULT 0,
   checksum_sha256 VARCHAR(64) NOT NULL,
-  status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CLAIMING', 'CLEANING', 'COMMITED', 'EXPIRED')),
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CLAIMING', 'CLEANING', 'COMMITTED', 'EXPIRED')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP + INTERVAL '24 hours'),
   claimed_at TIMESTAMP WITH TIME ZONE,
@@ -543,6 +544,7 @@ CREATE TABLE IF NOT EXISTS pending_media_uploads (
 
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_status_expires ON pending_media_uploads(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_instructor ON pending_media_uploads(instructor_id);
+CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_course ON pending_media_uploads(course_id);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_media_id ON pending_media_uploads(media_id);
 

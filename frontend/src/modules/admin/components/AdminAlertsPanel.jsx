@@ -212,7 +212,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
 
   return (
     <section className={`admin-alerts-panel ${className}`} aria-labelledby="admin-alerts-title">
-      <div className="flex items-start justify-between gap-4 mb-4 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4 pb-4">
         <div className="flex items-start gap-3">
           <FiBell className="text-indigo-500 mt-0.5" size={24} />
           <div>
@@ -232,7 +232,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
 
         <span className={`flex shrink-0 items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.className}`}>
           {connectionStatus === 'live' ? <FiWifi size={13} /> : connectionStatus === 'offline' ? <FiWifiOff size={13} /> : (
-            <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse" />
+            <span className="w-1.5 h-1.5 bg-current rounded-full animate-pulse motion-reduce:animate-none" />
           )}
           {status.label}
         </span>
@@ -241,7 +241,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
       {error && (
         <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
           <span>{error}. Hệ thống sẽ tự thử kết nối lại.</span>
-          <button type="button" onClick={() => fetchAlerts()} className="shrink-0 font-semibold underline underline-offset-2">
+          <button type="button" onClick={() => fetchAlerts()} className="min-h-[44px] shrink-0 px-2 font-semibold underline underline-offset-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500">
             Thử ngay
           </button>
         </div>
@@ -249,7 +249,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
 
       {loading && alerts.length === 0 ? (
         <div className="flex items-center justify-center py-8 text-slate-500" role="status">
-          <FiRefreshCw className="animate-spin mr-2" />
+          <FiRefreshCw className="animate-spin motion-reduce:animate-none mr-2" />
           Đang đọc cảnh báo từ backend...
         </div>
       ) : alerts.length === 0 && !error ? (
@@ -265,12 +265,12 @@ const AdminAlertsPanel = ({ className = '' }) => {
           {alerts.map((alert) => (
             <article
               key={alert.id}
-              className={`flex gap-3 p-4 rounded-2xl border ${getSeverityColor(alert.severity)} animate-fade-in`}
+              className={`flex gap-3 p-4 rounded-2xl border ${getSeverityColor(alert.severity)} animate-fade-in motion-reduce:animate-none`}
             >
               <div className="flex-shrink-0 mt-0.5">{getSeverityIcon(alert.severity)}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
                     {getTypeIcon(alert.type)}
                     <h4 className="font-bold text-sm truncate">{alert.title}</h4>
                     <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
@@ -294,7 +294,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
                 {alert.actionUrl && alert.actionLabel && (
                   <a
                     href={alert.actionUrl}
-                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors"
+                    className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     {alert.actionLabel}
                     <FiExternalLink size={12} />
@@ -311,9 +311,9 @@ const AdminAlertsPanel = ({ className = '' }) => {
           type="button"
           onClick={() => fetchAlerts()}
           disabled={refreshing}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors disabled:opacity-50"
+          className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-950/50 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
-          <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
+          <FiRefreshCw className={refreshing ? 'animate-spin motion-reduce:animate-none' : ''} />
           {refreshing ? 'Đang đọc dữ liệu...' : 'Kiểm tra cảnh báo ngay'}
         </button>
       </div>
