@@ -217,5 +217,40 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
       assert.strictEqual(deletedFromStorage.length, 1);
       assert.strictEqual(deletedFromStorage[0].key, 'courses/5/eb5f9f73/video44.mp4');
     });
+
+    it('3.3. deleteCourse xóa cả pending_media_uploads còn sót lại trước khi cascade xóa lessons (tránh admin alert trỏ tới nội dung đã xóa)', async () => {
+      const deletedUploadIds = [];
+
+      db.query = async (sql, params) => {
+        if (sql.includes('SELECT course_id, instructor_id FROM courses')) {
+          return { rows: [{ course_id: 20, instructor_id: 2 }] };
+        }
+        if (sql.includes('FROM lessons l') && sql.includes('course_id = $1') && !sql.includes('DELETE')) {
+          return { rows: [] }; // Không còn media đã gắn vào lesson (giả lập khóa học chỉ có upload treo)
+        }
+        if (sql.includes('DELETE FROM pending_media_uploads')) {
+          deletedUploadIds.push('mocked-upload-eb1bc770');
+          return { rows: [{ upload_id: 'mocked-upload-eb1bc770' }], rowCount: 1 };
+        }
+        if (sql.includes('DELETE FROM courses')) {
+          return { rows: [{ course_id: params[0] }] };
+        }
+        if (sql.includes('SELECT COUNT(*) FROM lessons')) {
+          return { rows: [{ total_ref: '0' }] };
+        }
+        return { rows: [] };
+      };
+
+      db.pool = {
+        connect: async () => ({
+          query: db.query,
+          release: () => {}
+        })
+      };
+
+      const deleted = await coursesService.deleteCourse(20);
+      assert.strictEqual(deleted, true);
+      assert.strictEqual(deletedUploadIds.length, 1, 'cleanupPendingUploadsForCourse phải được gọi đúng 1 lần, trước DELETE FROM courses');
+    });
   });
 });
