@@ -85,7 +85,7 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
     };
   }, [lessonId]);
 
-  if (!subtitleState) return null;
+  if (!subtitleState || subtitleState.status === 'ready') return null;
 
   const noPublicCaptions = subtitleState.status === 'failed' && subtitleState.code === YOUTUBE_NO_CAPTIONS_CODE;
   const statusContent = noPublicCaptions
@@ -102,13 +102,7 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
           title: 'Tạo phụ đề thất bại',
           detail: subtitleState.message || 'Vui lòng thử lại sau.'
         }
-      : subtitleState.status === 'ready'
-        ? {
-            tone: 'ready',
-            icon: <FiCheckCircle aria-hidden="true" />,
-            title: 'Phụ đề đã sẵn sàng'
-          }
-        : subtitleState.status === 'pending' || subtitleState.status === 'processing'
+    : subtitleState.status === 'pending' || subtitleState.status === 'processing'
           ? {
               tone: 'working',
               icon: <FiLoader className="subtitle-status-spinner" aria-hidden="true" />,
@@ -229,6 +223,10 @@ const CourseEditor = () => {
   const [subjectId, setSubjectId] = useState('');
   const [startDate, setStartDate] = useState(getTodayCivilDate());
   const [endDate, setEndDate] = useState(getNextYearCivilDate());
+  const [courseStatus, setCourseStatus] = useState('draft');
+  const isPublishedCourse = isEditMode && (
+    courseStatus === 1 || courseStatus === '1' || courseStatus === 'published'
+  );
   
   const [sections, setSections] = useState([
     {
@@ -301,6 +299,7 @@ const CourseEditor = () => {
             const course = courseRes.data.course;
             setCourseName(course.course_name || '');
             setSubjectId(String(course.subject_id || ''));
+            setCourseStatus(course.status ?? 'draft');
             if (course.start_date) setStartDate(typeof course.start_date === 'string' ? course.start_date.substring(0, 10) : getTodayCivilDate());
             if (course.end_date) setEndDate(typeof course.end_date === 'string' ? course.end_date.substring(0, 10) : getNextYearCivilDate());
             
@@ -1186,6 +1185,10 @@ const CourseEditor = () => {
     }
 
     setErrorMsg('');
+    if (isPublishedCourse) {
+      executeSubmitCourse(1);
+      return;
+    }
     setPolicyModalOpen(true);
   };
 
@@ -1210,7 +1213,11 @@ const CourseEditor = () => {
 
     setInvalidFieldKey(null);
     setLoading(true);
-    setLoadingState(status === 0 ? 'saving_draft' : 'publishing');
+    setLoadingState(
+      status === 0
+        ? 'saving_draft'
+        : (isPublishedCourse ? 'saving_changes' : 'publishing')
+    );
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -1256,10 +1263,13 @@ const CourseEditor = () => {
         : await apiClient.post('/courses', payload);
 
       if (response.data && response.data.success) {
+        if (status === 1) setCourseStatus('published');
         setSuccessMsg(
           status === 0
             ? 'Đã lưu bản nháp khóa học thành công!'
-            : (isEditMode ? 'Cập nhật & Xuất bản khóa học thành công!' : 'Tạo & Xuất bản khóa học thành công!')
+            : (isPublishedCourse
+                ? 'Đã lưu thay đổi khóa học thành công!'
+                : (isEditMode ? 'Cập nhật & Xuất bản khóa học thành công!' : 'Tạo & Xuất bản khóa học thành công!'))
         );
         setTimeout(() => {
           navigate('/instructor/dashboard');
@@ -1352,19 +1362,24 @@ const CourseEditor = () => {
               <h1>{isEditMode ? 'Chỉnh sửa khóa học' : 'Tạo khóa học mới'}</h1>
             </div>
             <div className="header-actions">
-              <button 
-                className="btn-save-draft" 
-                onClick={() => executeSubmitCourse(0)}
-                disabled={loading}
-              >
-                <FiSave /> Lưu bản nháp
-              </button>
+              {!isPublishedCourse && (
+                <button
+                  className="btn-save-draft"
+                  onClick={() => executeSubmitCourse(0)}
+                  disabled={loading}
+                >
+                  <FiSave /> Lưu bản nháp
+                </button>
+              )}
               <button 
                 className="btn-publish" 
                 onClick={handleInitiatePublish}
                 disabled={loading}
               >
-                {loading ? <FiLoader className="spin" /> : <FiUpload />} Xuất bản khóa học
+                {loading
+                  ? <FiLoader className="spin" />
+                  : (isPublishedCourse ? <FiSave /> : <FiUpload />)}
+                {isPublishedCourse ? 'Lưu thay đổi' : 'Xuất bản khóa học'}
               </button>
             </div>
           </header>

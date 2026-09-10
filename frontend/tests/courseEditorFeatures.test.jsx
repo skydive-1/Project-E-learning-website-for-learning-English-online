@@ -56,6 +56,17 @@ describe('CourseEditorLoadingModal Component (Impeccable Design)', () => {
     expect(screen.getByText('Kiểm tra cấu trúc bài giảng...')).toBeInTheDocument();
   });
 
+  it('renders saving_changes mode when user updates a published course', () => {
+    render(
+      <CourseEditorLoadingModal isOpen={true} mode="saving_changes" />
+    );
+
+    expect(screen.getByText('Cập nhật khóa học')).toBeInTheDocument();
+    expect(screen.getByText('Đang lưu thay đổi khóa học')).toBeInTheDocument();
+    expect(screen.getByText(/giữ khóa học ở trạng thái đã xuất bản/i)).toBeInTheDocument();
+    expect(screen.getByText('Ghi nhận thay đổi vào PostgreSQL')).toBeInTheDocument();
+  });
+
   it('renders publishing mode when user publishes course', () => {
     render(
       <CourseEditorLoadingModal isOpen={true} mode="publishing" />
@@ -113,8 +124,13 @@ import CourseEditor from '../src/modules/instructor/pages/CourseEditor';
 import { BrowserRouter } from 'react-router-dom';
 
 describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)', () => {
+  let mockCourseStatus;
+  let mockSubtitleStatus;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCourseStatus = 'draft';
+    mockSubtitleStatus = 'failed';
     localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwicm9sZUlkIjoyfQ.test');
 
     apiClient.get.mockImplementation((url) => {
@@ -131,7 +147,7 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
               course_id: 37,
               course_name: 'IELTS Intensive 6.5+',
               subject_id: 1,
-              status: 'draft',
+              status: mockCourseStatus,
               sections: [
                 {
                   section_id: 10,
@@ -175,9 +191,11 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
             success: true,
             data: {
               lessonId: 101,
-              status: 'failed',
-              code: 'YOUTUBE_NO_CAPTIONS_AVAILABLE',
-              message: 'Video YouTube này không có phụ đề công khai. Vui lòng bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.',
+              status: mockSubtitleStatus,
+              code: mockSubtitleStatus === 'failed' ? 'YOUTUBE_NO_CAPTIONS_AVAILABLE' : null,
+              message: mockSubtitleStatus === 'failed'
+                ? 'Video YouTube này không có phụ đề công khai. Vui lòng bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.'
+                : null,
               updatedAt: '2026-09-07T00:00:00.000Z'
             }
           }
@@ -189,6 +207,38 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
         });
       }
       return Promise.resolve({ data: {} });
+    });
+
+    apiClient.put.mockResolvedValue({
+      data: { success: true }
+    });
+  });
+
+  it('shows "Lưu thay đổi" and persists edits while keeping a published course published', async () => {
+    mockCourseStatus = 1;
+
+    render(
+      <BrowserRouter>
+        <CourseEditor />
+      </BrowserRouter>
+    );
+
+    const saveChangesButton = await screen.findByRole('button', { name: /Lưu thay đổi/i });
+    expect(screen.queryByRole('button', { name: /Xuất bản khóa học/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Lưu bản nháp/i })).not.toBeInTheDocument();
+
+    const courseNameInput = screen.getByDisplayValue('IELTS Intensive 6.5+');
+    fireEvent.change(courseNameInput, { target: { value: 'IELTS Intensive 7.0+' } });
+    fireEvent.click(saveChangesButton);
+
+    await waitFor(() => {
+      expect(apiClient.put).toHaveBeenCalledWith(
+        '/courses/37',
+        expect.objectContaining({
+          courseName: 'IELTS Intensive 7.0+',
+          status: 1
+        })
+      );
     });
   });
 
@@ -275,6 +325,26 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     expect(
       screen.getByText('Bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.')
     ).toBeInTheDocument();
+  });
+
+  it('does not show the internal ready subtitle status to instructors', async () => {
+    mockSubtitleStatus = 'ready';
+
+    render(
+      <BrowserRouter>
+        <CourseEditor />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Chương trình học/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/Chương trình học/i));
+
+    await waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledWith('/lessons/101/subtitle-status');
+    });
+    expect(screen.queryByText('Phụ đề đã sẵn sàng')).not.toBeInTheDocument();
   });
 
   it('handles local PDF file (chưa upload) using URL.createObjectURL and URL.revokeObjectURL', async () => {

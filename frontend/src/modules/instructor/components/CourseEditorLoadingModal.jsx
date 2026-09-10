@@ -31,6 +31,16 @@ const MODE_CONFIG = {
       { label: 'Đồng bộ trạng thái khóa học an toàn', icon: FiCheckCircle }
     ]
   },
+  saving_changes: {
+    badge: 'Cập nhật khóa học',
+    title: 'Đang lưu thay đổi khóa học',
+    subtitle: 'Đang ghi nhận nội dung giảng viên vừa chỉnh sửa và giữ khóa học ở trạng thái đã xuất bản...',
+    steps: [
+      { label: 'Kiểm tra cấu trúc khóa học...', icon: FiLayers },
+      { label: 'Ghi nhận thay đổi vào PostgreSQL', icon: FiSave },
+      { label: 'Đồng bộ nội dung khóa học đã xuất bản', icon: FiCheckCircle }
+    ]
+  },
   publishing: {
     badge: 'Kích hoạt khóa học',
     title: 'Đang xuất bản khóa học',
