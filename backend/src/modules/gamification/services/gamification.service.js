@@ -91,8 +91,10 @@ const calculateStreak = async (userId) => {
     } else {
       checkDate = now;
     }
+
+    if (checkDate) {
       while (true) {
-        const localKey = getLocalDateStr(checkDate);
+        const localKey = getVietnamDateStr(checkDate);
         const utcKey = checkDate.toISOString().slice(0, 10);
 
         // Nếu checkDate lùi về trước Thứ 2 của tuần hiện tại, dừng ngay không tính tiếp ngày thuộc tuần trước

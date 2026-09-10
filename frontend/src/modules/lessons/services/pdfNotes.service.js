@@ -294,6 +294,7 @@ const removeCachedNote = (lessonId, noteId) => {
       }
     } catch (e) { }
   });
+};
 
 /**
  * Lấy bản nháp ghi chú tạm thời từ LocalStorage
