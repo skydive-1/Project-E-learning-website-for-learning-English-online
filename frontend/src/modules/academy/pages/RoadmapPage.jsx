@@ -2,9 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
+import { Button } from '../../../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../../../components/ui/dialog';
 import { useLanguage } from '../../../context/LanguageContext';
-import { FiArrowRight, FiCheckCircle, FiClock, FiBookOpen, FiX, FiAward, FiTarget, FiLayers } from 'react-icons/fi';
+import apiClient from '../../../config/api.config';
+import { FiArrowRight, FiCheckCircle, FiClock, FiBookOpen, FiAward, FiLayers } from 'react-icons/fi';
 import '../styles/academy.scss';
+
+// coursesCount dưới đây là số dự phòng, chỉ hiển thị khi API /courses chưa
+// phản hồi kịp (loading) hoặc lỗi mạng. Ngay khi có dữ liệu thật, con số
+// hiển thị luôn được ghi đè bằng COUNT khóa học thật theo subject_id
+// (xem hàm fetchRealCourseCounts bên dưới) để không lệch với danh mục
+// khóa học thực tế trong hệ thống.
 
 const roadmapPaths = [
   {
@@ -12,7 +28,6 @@ const roadmapPaths = [
     title: 'Tiếng Anh Cơ Bản',
     description: 'Dành cho người mới bắt đầu hoặc mất gốc. Tập trung vào phát âm chuẩn IPA và ngữ pháp nền tảng.',
     coursesCount: 5,
-    students: '12.5k+',
     time: '3-4 tháng',
     skills: ['Phát âm IPA chuẩn', 'Ngữ pháp cơ bản', 'Từ vựng thông dụng (1,000+ từ)', 'Giao tiếp hàng ngày'],
     image: '/images/hero_illustration.png',
@@ -41,7 +56,6 @@ const roadmapPaths = [
     title: 'Lộ trình TOEIC 700+',
     description: 'Củng cố nền tảng TOEIC thực tế qua trắc nghiệm từ vựng, ngữ pháp theo cấp độ và phòng thi đấu Quiz PIN trực tiếp.',
     coursesCount: 8,
-    students: '8.2k+',
     time: '4-6 tháng',
     skills: ['Trắc nghiệm ngữ pháp & từ vựng TOEIC', 'Luyện phát âm chuẩn phản xạ cùng AI', 'Luyện viết câu & đoạn văn có AI chấm điểm', 'Đấu trí trực tiếp qua phòng Quiz PIN'],
     image: '/images/meeting_group.png',
@@ -70,7 +84,6 @@ const roadmapPaths = [
     title: 'Lộ trình IELTS 6.5+',
     description: 'Nâng cao năng lực tiếng Anh với luyện phát âm AI chấm điểm (Speaking) và luyện viết bài luận có AI phản hồi (Writing).',
     coursesCount: 12,
-    students: '15.1k+',
     time: '6-8 tháng',
     skills: ['Luyện viết có AI chấm điểm và feedback (Writing)', 'Luyện phát âm có AI chấm điểm (Speaking)', 'Trắc nghiệm ngữ pháp/từ vựng theo cấp độ', 'Quiz PIN thi đấu trực tiếp phản xạ'],
     image: '/images/hero_illustration.png',
@@ -96,44 +109,67 @@ const roadmapPaths = [
   }
 ];
 
-const RoadmapCard = ({ path, onSelectDetail, t }) => (
-  <div className="roadmap-path-card scroll-animate">
-    <div className="path-image">
-      <img src={path.image} alt={t(path.title)} />
-    </div>
+const RoadmapCard = ({ path, liveCoursesCount, onSelectDetail, t }) => (
+  <article className="roadmap-path-card scroll-animate">
     <div className="path-content">
       <h2 className="path-title">{t(path.title)}</h2>
       <p className="path-desc">{t(path.description)}</p>
-      
+
       <div className="path-stats">
-        <span><FiBookOpen /> {path.coursesCount} {t('courses')}</span>
-        <span><FiClock /> {t(path.time)}</span>
+        <span>
+          <FiBookOpen aria-hidden="true" /> {liveCoursesCount ?? path.coursesCount} {t('courses')}
+        </span>
+        <span><FiClock aria-hidden="true" /> {t(path.time)}</span>
       </div>
 
-      <div className="path-skills">
-        <h3>{t('Bạn sẽ học được:')}</h3>
-        <ul>
-          {path.skills.map((skill, idx) => (
-            <li key={idx}><FiCheckCircle /> {t(skill)}</li>
-          ))}
-        </ul>
-      </div>
-
-      <button 
-        type="button" 
+      <Button
+        type="button"
+        size="sm"
         onClick={() => onSelectDetail(path)}
         className="btn-view-path"
+        aria-label={`${t('Xem chi tiết lộ trình')}: ${t(path.title)}`}
       >
-        {t('Xem chi tiết lộ trình')} <FiArrowRight />
-      </button>
+        <span>{t('Xem chi tiết')}</span>
+        <FiArrowRight data-icon="inline-end" aria-hidden="true" />
+      </Button>
     </div>
-  </div>
+
+    <div className="path-image" aria-hidden="true">
+      <img src={path.image} alt="" />
+    </div>
+  </article>
 );
 
 const RoadmapPage = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [selectedPath, setSelectedPath] = useState(null);
+  // Số khóa học thật theo subject_id, ví dụ { '1': 9, '2': 6, '4': 5 }.
+  // null = chưa tải xong -> card hiển thị coursesCount tĩnh làm số dự phòng.
+  const [liveCourseCounts, setLiveCourseCounts] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    apiClient.get('/courses')
+      .then((res) => {
+        if (!active) return;
+        const courses = res?.data?.courses || [];
+        const counts = {};
+        for (const course of courses) {
+          const subjectId = String(course.subject_id ?? '');
+          if (!subjectId) continue;
+          counts[subjectId] = (counts[subjectId] || 0) + 1;
+        }
+        setLiveCourseCounts(counts);
+      })
+      .catch(() => {
+        // Giữ nguyên coursesCount tĩnh làm số dự phòng nếu API lỗi -
+        // không để trang lộ trình trắng xóa chỉ vì 1 request phụ thất bại.
+      });
+
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -156,6 +192,11 @@ const RoadmapPage = () => {
     }
   };
 
+  const getCourseCount = (path) => {
+    if (!path.subjectFilter || liveCourseCounts === null) return path.coursesCount;
+    return liveCourseCounts[path.subjectFilter] ?? 0;
+  };
+
   return (
     <div className="academy-page-modern">
       <Header />
@@ -164,40 +205,22 @@ const RoadmapPage = () => {
         <section className="academy-hero-section">
           <div className="container">
             <div className="hero-content scroll-animate">
-              <h1>{t('Lộ trình học thông minh')}</h1>
-              <p>{t('Học theo lộ trình bài bản giúp bạn tiết kiệm 50% thời gian học tập mà vẫn đạt hiệu quả tối ưu.')}</p>
-              <div className="hero-info-cards">
-                <div className="info-item">
-                  <strong>{t('Khởi đầu')}</strong>
-                  <span>{t('Xác định trình độ')}</span>
-                </div>
-                <div className="info-arrow"><FiArrowRight /></div>
-                <div className="info-item">
-                  <strong>{t('Tăng tốc')}</strong>
-                  <span>{t('Học theo lộ trình')}</span>
-                </div>
-                <div className="info-arrow"><FiArrowRight /></div>
-                <div className="info-item">
-                  <strong>{t('Về đích')}</strong>
-                  <span>{t('Làm chủ kỹ năng')}</span>
-                </div>
-              </div>
+              <h1>{t('Lộ trình học')}</h1>
+              <p>{t('Chọn lộ trình phù hợp với mục tiêu và trình độ hiện tại của bạn. Mỗi lộ trình giúp bạn biết nên bắt đầu từ đâu và học gì tiếp theo.')}</p>
             </div>
           </div>
         </section>
 
         <section className="roadmap-paths-section">
           <div className="container">
-            <div className="section-title">
-              <h2>{t('Các lộ trình dành cho bạn')}</h2>
-              <p>{t('Dựa trên mục tiêu sự nghiệp và trình độ hiện tại, hãy chọn cho mình một lộ trình phù hợp nhất.')}</p>
-            </div>
+            <h2 className="sr-only">{t('Các lộ trình gợi ý')}</h2>
 
             <div className="roadmap-grid">
               {roadmapPaths.map(path => (
                 <RoadmapCard 
                   key={path.id} 
                   path={path} 
+                  liveCoursesCount={getCourseCount(path)}
                   onSelectDetail={(targetPath) => setSelectedPath(targetPath)} 
                   t={t}
                 />
@@ -206,20 +229,20 @@ const RoadmapPage = () => {
           </div>
         </section>
 
-        {/* Why Roadmap Section (F8 Style) */}
         <section className="roadmap-benefits-section">
           <div className="container">
-            <div className="benefits-card scroll-animate">
-              <div className="benefit-text">
+            <div className="benefits-layout">
+              <div className="benefit-text scroll-animate">
                 <h2>{t('Tại sao nên học theo lộ trình?')}</h2>
+                <p>{t('Một kế hoạch rõ ràng giúp bạn tập trung vào đúng nội dung ở từng giai đoạn và duy trì tiến độ học tập.')}</p>
                 <ul>
-                  <li><FiCheckCircle /> <strong>{t('Không lạc hướng:')}</strong> {t('Luôn biết mình cần học gì tiếp theo.')}</li>
-                  <li><FiCheckCircle /> <strong>{t('Tiết kiệm thời gian:')}</strong> {t('Tập trung vào những kiến thức thực sự quan trọng.')}</li>
-                  <li><FiCheckCircle /> <strong>{t('Kết quả bền vững:')}</strong> {t('Xây dựng kiến thức từ gốc đến ngọn.')}</li>
+                  <li><FiCheckCircle aria-hidden="true" /> <span><strong>{t('Không lạc hướng:')}</strong> {t('Luôn biết mình cần học gì tiếp theo.')}</span></li>
+                  <li><FiCheckCircle aria-hidden="true" /> <span><strong>{t('Tiết kiệm thời gian:')}</strong> {t('Tập trung vào những kiến thức thực sự quan trọng.')}</span></li>
+                  <li><FiCheckCircle aria-hidden="true" /> <span><strong>{t('Kết quả bền vững:')}</strong> {t('Xây dựng kiến thức từ gốc đến ngọn.')}</span></li>
                 </ul>
               </div>
-              <div className="benefit-image">
-                <img src="/images/hero_illustration.png" alt="Roadmap benefits" />
+              <div className="benefit-image scroll-animate">
+                <img src="/images/hero_illustration.png" alt={t('Học tiếng Anh cùng nhau')} />
               </div>
             </div>
           </div>
@@ -227,79 +250,79 @@ const RoadmapPage = () => {
       </main>
 
       {/* Modal Popup Chi tiết Lộ trình */}
-      {selectedPath && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade">
-          <div className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-700 relative max-h-[90vh] overflow-y-auto no-scrollbar">
-            
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={() => setSelectedPath(null)}
-              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            >
-              <FiX className="text-xl" />
-            </button>
-
-            {/* Header Modal */}
-            <div className="flex items-center space-x-3 mb-4">
-              <span className="p-3 bg-smart-indigo/10 text-smart-indigo rounded-2xl">
-                <FiAward className="text-2xl" />
-              </span>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-xl sm:text-2xl font-bold">{t(selectedPath.title)}</h3>
+      <Dialog
+        open={Boolean(selectedPath)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setSelectedPath(null);
+        }}
+      >
+        {selectedPath && (
+          <DialogContent
+            closeLabel={t('Đóng')}
+            className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-2xl"
+          >
+            <DialogHeader className="shrink-0 gap-4 border-b px-6 pt-6 pr-14 pb-5 text-left sm:px-8 sm:pt-8 sm:pr-16">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <FiAward className="text-2xl" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <DialogTitle className="text-xl leading-tight font-bold sm:text-2xl">
+                    {t(selectedPath.title)}
+                  </DialogTitle>
+                  <DialogDescription className="mt-1 text-xs font-medium">
+                    {getCourseCount(selectedPath)} {t('courses')} • {t(selectedPath.time)}
+                  </DialogDescription>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  {selectedPath.coursesCount} {t('courses')} • {t(selectedPath.time)}
-                </p>
+              </div>
+
+              <p className="text-sm leading-relaxed font-medium text-muted-foreground">
+                {t(selectedPath.description)}
+              </p>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8">
+              <div className="flex flex-col gap-4">
+                <h4 className="flex items-center gap-1.5 text-xs font-bold tracking-wider text-muted-foreground uppercase">
+                  <FiLayers aria-hidden="true" /> {t('Chi tiết các giai đoạn học tập:')}
+                </h4>
+
+                <div className="flex flex-col gap-3">
+                  {selectedPath.phases.map((phase, idx) => (
+                    <div key={idx} className="flex flex-col gap-1 rounded-xl border bg-muted/50 p-4">
+                      <span className="text-[11px] font-bold tracking-wider text-primary uppercase">
+                        {t(phase.step)}
+                      </span>
+                      <h5 className="text-sm font-bold text-foreground">
+                        {t(phase.name)}
+                      </h5>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t(phase.desc)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-6 font-medium">
-              {t(selectedPath.description)}
-            </p>
-
-            {/* Timeline các Giai đoạn */}
-            <div className="space-y-4 mb-8">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <FiLayers className="text-sm" /> {t('Chi tiết các giai đoạn học tập:')}
-              </h4>
-
-              <div className="space-y-3">
-                {selectedPath.phases.map((phase, idx) => (
-                  <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60 rounded-2xl space-y-1">
-                    <span className="text-[11px] font-bold text-smart-indigo dark:text-indigo-400 uppercase tracking-wider">
-                      {t(phase.step)}
-                    </span>
-                    <h5 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                      {t(phase.name)}
-                    </h5>
-                    <p className="text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
-                      {t(phase.desc)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
-              <button
+            <DialogFooter className="m-0 shrink-0 rounded-none border-t bg-popover px-6 py-4 sm:px-8">
+              <Button
                 type="button"
+                size="lg"
                 onClick={() => {
                   const p = selectedPath;
                   setSelectedPath(null);
                   handleExploreCourses(p);
                 }}
-                className="w-full py-3.5 px-5 bg-smart-indigo hover:bg-smart-indigo-hover text-white text-sm font-bold rounded-2xl shadow-md flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                className="w-full font-bold"
               >
                 <span>{t('Khám phá các khóa học ngay')}</span>
-                <FiArrowRight className="text-base" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                <FiArrowRight data-icon="inline-end" aria-hidden="true" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       <Footer />
     </div>
