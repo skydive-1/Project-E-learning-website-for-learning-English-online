@@ -977,12 +977,17 @@ ${JSON.stringify(translationInput)}
       // Chỉ job của đúng source được phép ghi failed; job cũ không
       // được ghi đè trạng thái pending của video mới.
       try {
-        const errorCode = pipelineErr?.code === 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
-          ? 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
-          : null;
-        const errorMessage = errorCode
+        // Trước đây: chỉ lưu lại error_code/error_message khi lỗi khớp
+        // đúng mã YOUTUBE_NO_CAPTIONS_AVAILABLE; MỌI lỗi khác (mất mạng,
+        // YouTube chặn IP server / rate-limit, lỗi dịch Gemini...) đều bị
+        // ghi đè thành null, khiến admin/giảng viên chỉ thấy "Tạo phụ đề
+        // thất bại - Vui lòng thử lại sau" mà không có manh mối gì để
+        // debug. Giờ luôn lưu lại lý do thật (rút gọn nếu cần) cho mọi
+        // loại lỗi, không chỉ riêng 1 trường hợp đã biết trước.
+        const errorCode = String(pipelineErr?.code || 'SUBTITLE_PIPELINE_FAILED').slice(0, 80);
+        const errorMessage = pipelineErr?.code === 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
           ? youtubeTranscript.YOUTUBE_NO_CAPTIONS_MESSAGE
-          : null;
+          : String(pipelineErr?.message || 'Lỗi không xác định trong quá trình tạo phụ đề.').slice(0, 500);
         if (expectedSourceUrl) {
           await db.query(
             `UPDATE lesson_subtitles

@@ -223,6 +223,57 @@ class OrphanCleanupService {
   }
 
   /**
+   * Xóa các bản ghi pending_media_uploads còn sót lại của một khóa học,
+   * TRƯỚC KHI khóa học đó bị xóa (bảng pending_media_uploads không có
+   * course_id/FK cascade riêng - nó chỉ liên kết gián tiếp qua storage_key
+   * hoặc media_id của lessons/lesson_materials). Nếu không dọn, các dòng
+   * này trở thành "mồ côi": hệ thống cảnh báo vận hành (admin alerts) vẫn
+   * join ra được course_id tại thời điểm khóa học còn tồn tại và sinh ra
+   * link "Mở đúng bài học" trỏ tới nội dung sẽ biến mất ngay khi khóa học
+   * bị xóa, khiến admin bấm vào gặp lỗi 404 khó hiểu.
+   * PHẢI được gọi trong transaction, TRƯỚC câu lệnh DELETE FROM courses
+   * (vì cascade sẽ xóa sections/lessons khiến không còn gì để đối chiếu).
+   */
+  async cleanupPendingUploadsForCourse(courseId, client = null) {
+    const runner = client || db;
+    const query = `
+      DELETE FROM pending_media_uploads
+      WHERE upload_id IN (
+        SELECT p.upload_id
+        FROM pending_media_uploads p
+        WHERE p.storage_key IN (
+          SELECT l.storage_key FROM lessons l
+            JOIN sections s ON l.section_id = s.section_id
+            WHERE s.course_id = $1 AND l.storage_key IS NOT NULL
+          UNION
+          SELECT lm.storage_key FROM lesson_materials lm
+            JOIN lessons l ON lm.lesson_id = l.lesson_id
+            JOIN sections s ON l.section_id = s.section_id
+            WHERE s.course_id = $1 AND lm.storage_key IS NOT NULL
+        )
+        OR p.media_id IN (
+          SELECT l.media_asset_id FROM lessons l
+            JOIN sections s ON l.section_id = s.section_id
+            WHERE s.course_id = $1 AND l.media_asset_id IS NOT NULL
+          UNION
+          SELECT lm.media_asset_id FROM lesson_materials lm
+            JOIN lessons l ON lm.lesson_id = l.lesson_id
+            JOIN sections s ON l.section_id = s.section_id
+            WHERE s.course_id = $1 AND lm.media_asset_id IS NOT NULL
+        )
+      )
+      RETURNING upload_id
+    `;
+    try {
+      const res = await runner.query(query, [courseId]);
+      return res.rowCount;
+    } catch (error) {
+      console.warn(`[OrphanCleanup] Không dọn được pending_media_uploads cho course ${courseId}:`, error.message);
+      return 0;
+    }
+  }
+
+  /**
    * Thu thập danh sách storage keys của tất cả bài học thuộc một section
    */
   async collectAssetsFromSection(sectionId, client = null) {

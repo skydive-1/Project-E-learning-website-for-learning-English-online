@@ -1031,6 +1031,12 @@ class CoursesService {
       // 2. Thu thập danh sách storage keys trước khi xóa DB trong transaction
       assetsToCleanup = await orphanCleanupService.collectAssetsFromCourse(courseId, client);
 
+      // 2b. Dọn các bản ghi pending_media_uploads còn sót lại của khóa học
+      // này TRƯỚC khi cascade xóa sections/lessons - tránh để lại dữ liệu
+      // "mồ côi" khiến cảnh báo vận hành (admin alerts) sinh link trỏ tới
+      // nội dung đã xóa.
+      await orphanCleanupService.cleanupPendingUploadsForCourse(courseId, client);
+
       // 3. Xóa khóa học trong database (Cascade xóa sections, lessons, materials)
       const result = await client.query('DELETE FROM courses WHERE course_id = $1 RETURNING course_id', [courseId]);
       const deleted = result.rows.length > 0;
