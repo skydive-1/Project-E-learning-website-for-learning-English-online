@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('./controllers/admin.controller');
+const adminAlertsController = require('./controllers/adminAlerts.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { aiLimiter } = require('../../middleware/rateLimit.middleware');
 
@@ -17,6 +18,10 @@ router.get('/users', adminController.getAllUsers);
 
 // GET /api/admin/analytics - Tiến trình toàn bộ học viên và sức khỏe hệ thống
 router.get('/analytics', adminController.getAnalyticsDashboard);
+
+// Cảnh báo vận hành lấy từ PostgreSQL/backend telemetry, cập nhật qua SSE.
+router.get('/alerts', adminAlertsController.getAlerts);
+router.get('/alerts/stream', adminAlertsController.streamAlerts);
 
 // GET /api/admin/ai-quota - Bảng Quản trị Toàn diện Hạn mức và Tiêu thụ Token AI
 router.get('/ai-quota', adminController.getAiQuotaDashboard);

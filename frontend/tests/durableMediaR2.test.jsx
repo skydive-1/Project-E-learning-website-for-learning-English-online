@@ -59,6 +59,15 @@ vi.mock('../src/modules/chatbot/components/ChatBox', () => ({
   default: () => <div data-testid="mock-ai-chat">AI Chat</div>
 }));
 
+// LessonDetailPage luôn tải metadata phụ đề ở nền. Test này dùng JWT giả nên
+// phải cô lập service, tránh vô tình gọi backend local và phát auth-logout 401.
+vi.mock('../src/modules/lessons/services/subtitles.service', () => ({
+  subtitlesService: {
+    getSubtitles: vi.fn().mockResolvedValue(null),
+    getSubtitleStatus: vi.fn().mockResolvedValue({ status: 'none' })
+  }
+}));
+
 // Mock Auth service
 vi.mock('../src/modules/auth/services/auth.service', () => ({
   getProfile: vi.fn().mockResolvedValue({
