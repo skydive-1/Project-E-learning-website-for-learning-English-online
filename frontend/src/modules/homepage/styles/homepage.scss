@@ -3426,9 +3426,45 @@ html.dark {
   }
 }
 
+@keyframes showcase-info-arrive {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes showcase-number-arrive {
+  from {
+    opacity: 0.35;
+    transform: translate3d(0, 6px, 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes showcase-chart-rise {
+  from {
+    opacity: 0.28;
+    transform: scaleY(0.16);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
 // Product data carousel — chuyển động theo cung cong, dùng dữ liệu thật từ hệ thống.
 .video-reviews-section {
-  padding: 104px 0 132px;
+  padding: 72px 0 96px;
   background-color: var(--bg-color, #ffffff);
   overflow: hidden;
 
@@ -3436,7 +3472,7 @@ html.dark {
     --showcase-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --showcase-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
     max-width: 1040px;
-    margin: 56px auto 0;
+    margin: 0 auto;
   }
 
   .platform-carousel-viewport {
@@ -3618,6 +3654,52 @@ html.dark {
     overflow: hidden;
     background: #ffffff;
     border-radius: 12px;
+  }
+
+  .showcase-animated-number {
+    display: inline-block;
+    min-width: 1ch;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .platform-showcase-panel[data-motion-active='true'] {
+    .showcase-summary-copy,
+    .showcase-streak-value,
+    .showcase-badge-total,
+    .showcase-data-state {
+      animation: showcase-info-arrive 520ms var(--showcase-ease-out) 120ms both;
+    }
+
+    .showcase-metrics > div,
+    .showcase-record-list > li,
+    .showcase-feature-list > li {
+      animation: showcase-info-arrive 520ms var(--showcase-ease-out) both;
+
+      &:nth-child(1) { animation-delay: 180ms; }
+      &:nth-child(2) { animation-delay: 250ms; }
+      &:nth-child(3) { animation-delay: 320ms; }
+    }
+
+    .showcase-animated-number {
+      animation: showcase-number-arrive 650ms var(--showcase-ease-out) 130ms both;
+    }
+
+    .showcase-week > span {
+      transform-origin: center bottom;
+      animation: showcase-chart-rise 620ms var(--showcase-ease-out) both;
+
+      &:nth-child(1) { animation-delay: 190ms; }
+      &:nth-child(2) { animation-delay: 240ms; }
+      &:nth-child(3) { animation-delay: 290ms; }
+      &:nth-child(4) { animation-delay: 340ms; }
+      &:nth-child(5) { animation-delay: 390ms; }
+      &:nth-child(6) { animation-delay: 440ms; }
+      &:nth-child(7) { animation-delay: 490ms; }
+    }
+
+    .showcase-footnote {
+      animation: showcase-info-arrive 420ms var(--showcase-ease-out) 480ms both;
+    }
   }
 
   .showcase-summary-copy {
@@ -3859,95 +3941,6 @@ html.dark {
     }
   }
 
-  .platform-carousel-controls {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-top: 18px;
-  }
-
-  .platform-carousel-tabs {
-    min-width: 0;
-    display: flex;
-    flex: 1;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 2px 2px 7px;
-    scrollbar-width: thin;
-
-    button {
-      min-height: 34px;
-      flex: 0 0 auto;
-      padding: 7px 13px;
-      background: transparent;
-      color: var(--text-secondary, #64748b);
-      border: 1px solid var(--border-color, #e2e8f0);
-      border-radius: 999px;
-      font: inherit;
-      font-size: 0.72rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition:
-        background-color 150ms var(--showcase-ease-out),
-        border-color 150ms var(--showcase-ease-out),
-        color 150ms var(--showcase-ease-out),
-        transform 150ms var(--showcase-ease-out);
-
-      &.is-active {
-        background: var(--primary, #1d4ed8);
-        color: #ffffff;
-        border-color: var(--primary, #1d4ed8);
-      }
-
-      &:active { transform: scale(0.97); }
-
-      &:focus-visible {
-        outline: 3px solid color-mix(in srgb, var(--primary, #1d4ed8) 34%, transparent);
-        outline-offset: 2px;
-      }
-    }
-  }
-
-  .platform-carousel-pause {
-    width: 38px;
-    height: 38px;
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    background: var(--card-bg, #ffffff);
-    color: var(--text-color, #0f172a);
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 50%;
-    cursor: pointer;
-    transition:
-      background-color 150ms var(--showcase-ease-out),
-      border-color 150ms var(--showcase-ease-out),
-      color 150ms var(--showcase-ease-out),
-      transform 150ms var(--showcase-ease-out);
-
-    &:active { transform: scale(0.96); }
-
-    &:focus-visible {
-      outline: 3px solid color-mix(in srgb, var(--primary, #1d4ed8) 34%, transparent);
-      outline-offset: 2px;
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.48;
-    }
-  }
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .video-reviews-section {
-    .platform-carousel-tabs button:not(.is-active):hover,
-    .platform-carousel-pause:not(:disabled):hover {
-      background: var(--primary-light, #e8eefc);
-      color: var(--primary, #1d4ed8);
-      border-color: color-mix(in srgb, var(--primary, #1d4ed8) 34%, var(--border-color, #e2e8f0));
-    }
-  }
 }
 
 @media (max-width: 900px) {
@@ -3969,9 +3962,7 @@ html.dark {
 
 @media (max-width: 640px) {
   .video-reviews-section {
-    padding: 76px 0 96px;
-
-    .platform-carousel-shell { margin-top: 38px; }
+    padding: 48px 0 72px;
 
     .platform-carousel-viewport {
       min-height: 430px;
@@ -4028,12 +4019,6 @@ html.dark {
       padding: 15px;
     }
 
-    .platform-carousel-controls { align-items: flex-start; }
-
-    .platform-carousel-pause {
-      width: 36px;
-      height: 36px;
-    }
   }
 }
 
@@ -4044,12 +4029,21 @@ html.dark {
       transition: opacity 200ms var(--showcase-ease-out);
     }
 
-    .platform-carousel-tabs button,
-    .platform-carousel-pause {
-      transition:
-        background-color 150ms var(--showcase-ease-out),
-        border-color 150ms var(--showcase-ease-out),
-        color 150ms var(--showcase-ease-out);
+    .platform-showcase-panel[data-motion-active='true'] {
+      .showcase-summary-copy,
+      .showcase-streak-value,
+      .showcase-badge-total,
+      .showcase-data-state,
+      .showcase-metrics > div,
+      .showcase-record-list > li,
+      .showcase-feature-list > li,
+      .showcase-animated-number,
+      .showcase-week > span,
+      .showcase-footnote {
+        opacity: 1;
+        transform: none;
+        animation: none;
+      }
     }
   }
 }

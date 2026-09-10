@@ -88,6 +88,8 @@ describe('CourseListPage real-data states', () => {
     expect(screen.queryByText('Không tìm thấy kết quả phù hợp')).not.toBeInTheDocument();
     expect(screen.queryByText('IELTS Masterclass: Target Band 7.5+')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'IELTS Masterclass' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Get the E-Learn app')).not.toBeInTheDocument();
+    expect(screen.queryByText('Schedule, chat, and learn on the go')).not.toBeInTheDocument();
   });
 
   it('không tự bịa rating, lượt đánh giá hoặc học viên cho khóa học thật', async () => {
