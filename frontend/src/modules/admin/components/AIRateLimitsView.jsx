@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCwIcon } from 'lucide-react';
 import {
   FiActivity,
@@ -71,6 +71,8 @@ const makeDraft = (model, saved) => {
 };
 
 const AIRateLimitsView = ({ canManageCaps }) => {
+  const targetModel = new URLSearchParams(window.location.search).get('model');
+  const deepLinkHandledRef = useRef(false);
   const showToast = useToast();
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
@@ -81,6 +83,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   }), [locale]);
 
   const [status, setStatus] = useState(null);
+  const [focusedModel, setFocusedModel] = useState('');
   const [savedCaps, setSavedCaps] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -129,6 +132,27 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     const refreshTimer = window.setInterval(() => fetchData({ background: true }), 15000);
     return () => window.clearInterval(refreshTimer);
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!targetModel || deepLinkHandledRef.current || !(status?.models || []).some((item) => item.model === targetModel)) {
+      return undefined;
+    }
+
+    deepLinkHandledRef.current = true;
+    setFocusedModel(targetModel);
+    const scrollTimer = window.setTimeout(() => {
+      const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById(`ai-model-${encodeURIComponent(targetModel)}`)?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'center'
+      });
+    }, 80);
+    const clearTimer = window.setTimeout(() => setFocusedModel(''), 6000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [status?.models, targetModel]);
 
   const editableModels = useMemo(() => {
     const modelNames = new Set([
@@ -302,7 +326,11 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       ) : (
         <div className="ai-model-grid">
           {status.models.map((item) => (
-            <article className="ai-model-card" key={item.model}>
+            <article
+              id={`ai-model-${encodeURIComponent(item.model)}`}
+              className={`ai-model-card ${focusedModel === item.model ? 'alert-target-model' : ''}`}
+              key={item.model}
+            >
               <div className="ai-model-card__header">
                 <div>
                   <h3>{item.model}</h3>

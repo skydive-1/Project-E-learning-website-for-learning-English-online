@@ -8,7 +8,10 @@ import '../styles/ai-rate-limits.scss';
 
 const AIQuotaControlCenter = ({ canManageCaps = false }) => {
   const { t } = useLanguage();
-  const [activeView, setActiveView] = useState('usage');
+  const [activeView, setActiveView] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('view') === 'rate-limits' || params.has('model') ? 'rate-limits' : 'usage';
+  });
   const tabRefs = useRef({});
 
   const handleTabKeyDown = (event) => {

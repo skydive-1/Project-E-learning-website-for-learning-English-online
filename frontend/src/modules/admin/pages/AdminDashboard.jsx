@@ -37,6 +37,7 @@ const AdminDashboard = () => {
   const { language, t } = useLanguage();
   const queryClient = useQueryClient();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
+  const deepLinkUserId = Number(new URLSearchParams(window.location.search).get('userId')) || null;
   
   const isAdmin = currentUser?.role === 'admin' || currentUser?.roleId === 1 || currentUser?.role_id === 1;
   // Backend là nguồn sự thật về đặc quyền; frontend chỉ dùng cờ này để hiển thị UI.
@@ -90,6 +91,7 @@ const AdminDashboard = () => {
   const [filterRole, setFilterRole] = useState('all');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [errorUsers, setErrorUsers] = useState('');
+  const [focusedUserId, setFocusedUserId] = useState(null);
 
   // State Tạo đề trắc nghiệm
   const [courses, setCourses] = useState([]);
@@ -126,6 +128,27 @@ const AdminDashboard = () => {
       fetchUsers();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'users' || !deepLinkUserId || !users.some((user) => Number(user.user_id) === deepLinkUserId)) {
+      return undefined;
+    }
+
+    setFilterRole('all');
+    setFocusedUserId(deepLinkUserId);
+    const scrollTimer = window.setTimeout(() => {
+      const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById(`admin-user-${deepLinkUserId}`)?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'center'
+      });
+    }, 80);
+    const clearTimer = window.setTimeout(() => setFocusedUserId(null), 6000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [activeTab, deepLinkUserId, users]);
 
   // Fetch danh sách khóa học khi tạo quiz hoặc khi Admin / Super Admin quản lý khóa học.
   useEffect(() => {
@@ -267,7 +290,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
       }
     } catch (err) {
       console.error('Lỗi reset token:', err);
-      showToast(t('Không thể đặt lại lượt hỏi. Vui lòng thử lại.'), 'error');
+      showToast(err.response?.data?.message || t('Không thể đặt lại lượt hỏi. Vui lòng thử lại.'), 'error');
     }
   };
 
@@ -662,7 +685,11 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                     </thead>
                     <tbody>
                       {filteredUsers.map((user) => (
-                        <tr key={user.user_id}>
+                        <tr
+                          key={user.user_id}
+                          id={`admin-user-${user.user_id}`}
+                          className={focusedUserId === Number(user.user_id) ? 'alert-target-row' : ''}
+                        >
                           <td className="font-mono text-xs">#{user.user_id}</td>
                           <td className="font-bold">{user.full_name || '—'}</td>
                           <td>

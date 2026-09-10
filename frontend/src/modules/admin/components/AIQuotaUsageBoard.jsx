@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   FiRefreshCw, 
   FiSearch, 
@@ -25,6 +25,10 @@ import { buildAiQuotaCsv, downloadCsvReport } from '../utils/aiQuotaCsv';
 import '../styles/ai-quota-board.scss';
 
 const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
+  const searchParams = new URLSearchParams(window.location.search);
+  const targetUserId = Number(searchParams.get('userId')) || null;
+  const targetIncidentId = Number(searchParams.get('incidentId')) || null;
+  const deepLinkHandledRef = useRef(false);
   const showToast = useToast();
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
@@ -47,6 +51,7 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   // State lọc và tìm kiếm (Chuẩn giao diện Admin)
   const [filterTab, setFilterTab] = useState('all'); // all, exhausted, critical, normal, unused, student, instructor, admin
   const [searchTerm, setSearchTerm] = useState('');
+  const [focusedUserId, setFocusedUserId] = useState(null);
 
   // State Modal xem lịch sử tương tác AI
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -95,7 +100,7 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
       fetchQuotaData(true);
     } catch (err) {
       console.error('Lỗi reset token:', err);
-      showToast(t('Không thể đặt lại lượt hỏi. Vui lòng thử lại.'), 'error');
+      showToast(err.response?.data?.message || t('Không thể đặt lại lượt hỏi. Vui lòng thử lại.'), 'error');
     }
   };
 
@@ -161,6 +166,30 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
     });
   }, [allUsers, searchTerm, filterTab]);
 
+  useEffect(() => {
+    if (!targetUserId || deepLinkHandledRef.current || !allUsers.some((user) => Number(user.user_id) === targetUserId)) {
+      return undefined;
+    }
+
+    deepLinkHandledRef.current = true;
+    setFilterTab('all');
+    setSearchTerm('');
+    setFocusedUserId(targetUserId);
+
+    const scrollTimer = window.setTimeout(() => {
+      const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById(`ai-quota-user-${targetUserId}`)?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'center'
+      });
+    }, 80);
+    const clearTimer = window.setTimeout(() => setFocusedUserId(null), 6000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [allUsers, targetUserId]);
+
   // Thống kê counts cho các tab
   const counts = useMemo(() => {
     return {
@@ -186,11 +215,14 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   }, [targetUserHistory, dashboardData?.recentAiLogs]);
 
   const visibleRagIncident = useMemo(() => (
-    (dashboardData?.ragIncidents || []).find((incident) => (
+    (targetIncidentId
+      ? (dashboardData?.ragIncidents || []).find((incident) => Number(incident.incidentId) === targetIncidentId)
+      : null
+    ) || (dashboardData?.ragIncidents || []).find((incident) => (
       String(incident.purpose || '').startsWith('rag_')
       && !dismissedIncidentIds.includes(incident.incidentId)
     )) || null
-  ), [dashboardData?.ragIncidents, dismissedIncidentIds]);
+  ), [dashboardData?.ragIncidents, dismissedIncidentIds, targetIncidentId]);
 
   const dismissRagIncident = useCallback(() => {
     if (!visibleRagIncident) return;
@@ -454,7 +486,11 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
                   const isWarning = !isUnlimited && pct >= 50 && pct < 80;
 
                   return (
-                    <tr key={user.user_id}>
+                    <tr
+                      key={user.user_id}
+                      id={`ai-quota-user-${user.user_id}`}
+                      className={focusedUserId === Number(user.user_id) ? 'alert-target-row' : ''}
+                    >
                       {/* ID */}
                       <td className="font-mono text-slate-400 text-xs">
                         #{user.user_id}
