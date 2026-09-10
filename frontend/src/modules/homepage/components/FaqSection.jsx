@@ -34,7 +34,7 @@ const FaqSection = () => {
   };
 
   return (
-    <section className="faq-section">
+    <section id="faq" className="faq-section">
       <div className="container">
         {/* Section Header with Handwritten Annotation */}
         <div className="section-header-annotated scroll-animate">

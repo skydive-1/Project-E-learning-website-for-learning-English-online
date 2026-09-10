@@ -9,7 +9,6 @@ import AudienceFitSection from '../components/AudienceFitSection';
 import KineticDirectionSection from '../components/KineticDirectionSection';
 import VideoReviewsSection from '../components/VideoReviewsSection';
 import FaqSection from '../components/FaqSection';
-import MentorClosingSection from '../components/MentorClosingSection';
 import '../styles/homepage.scss';
 
 const HomePage = () => {
@@ -76,9 +75,6 @@ const HomePage = () => {
 
         {/* 9. PROJECT DEVELOPMENT TEAM MARQUEE (PRESERVED 100%) */}
         <TeamMarquee />
-
-        {/* 10. MENTOR, NEWSLETTER & SKY-BLUE CLOSING */}
-        <MentorClosingSection />
       </main>
 
       {/* 11. FOOTER (PRESERVED 100%) */}

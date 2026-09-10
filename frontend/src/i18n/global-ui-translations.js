@@ -364,4 +364,9 @@ export const globalUiTranslations = {
   'Chủ nhật': 'Sun',
   'Không thể tải dữ liệu phân tích.': 'Unable to load analytics data.',
   'Thử thay đổi từ khóa hoặc bộ lọc trạng thái.': 'Try changing the search term or status filter.',
+  'Xóa đề thi này': 'Delete this quiz',
+  'Bạn có chắc chắn muốn xóa đề thi "{{0}}" không?': 'Are you sure you want to delete the quiz "{{0}}"?',
+  'Bạn có chắc chắn muốn xóa đề thi "{{0}}" không? Hành động này không thể hoàn tác.': 'Are you sure you want to delete the quiz "{{0}}"? This action cannot be undone.',
+  'Câu {{0}} chưa chọn đáp án đúng. Vui lòng kiểm tra lại.': 'Question {{0}} does not have a correct answer selected. Please check it again.',
+  '🎉 Đã tạo/cập nhật bộ đề trắc nghiệm cho bài học thành công!': '🎉 Quiz questions were created or updated successfully!',
 };

@@ -2,6 +2,7 @@ import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/context/LanguageContext"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = {
@@ -105,6 +106,8 @@ function ChartTooltipContent({
   labelKey
 }) {
   const { config } = useChart()
+  const { language } = useLanguage()
+  const locale = language === "ENG" ? "en-US" : "vi-VN"
 
   const tooltipLabel = React.useMemo(() => {
     if (hideLabel || !payload?.length) {
@@ -208,7 +211,7 @@ function ChartTooltipContent({
                       {item.value != null && (
                         <span className="font-mono font-medium text-foreground tabular-nums">
                           {typeof item.value === "number"
-                            ? item.value.toLocaleString()
+                            ? item.value.toLocaleString(locale)
                             : String(item.value)}
                         </span>
                       )}

@@ -446,6 +446,70 @@ const testConnection = async () => {
       console.warn('⚠️ Cảnh báo tạo bảng lesson_comments & comment_upvotes:', migErr.message);
     }
 
+    // 3.2b. Hỏi đáp riêng Học viên - Giảng viên và thông báo khóa học
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS course_discussions (
+          discussion_id BIGSERIAL PRIMARY KEY,
+          course_id INTEGER NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+          lesson_id INTEGER NOT NULL REFERENCES lessons(lesson_id) ON DELETE CASCADE,
+          student_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          title VARCHAR(180) NOT NULL,
+          content TEXT NOT NULL,
+          ai_response TEXT,
+          video_timestamp_seconds INTEGER,
+          status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'answered', 'resolved')),
+          student_unread BOOLEAN NOT NULL DEFAULT FALSE,
+          instructor_unread BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_activity_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT chk_course_discussions_title_nonempty CHECK (length(btrim(title)) > 0),
+          CONSTRAINT chk_course_discussions_content_nonempty CHECK (length(btrim(content)) > 0),
+          CONSTRAINT chk_course_discussions_video_time CHECK (video_timestamp_seconds IS NULL OR video_timestamp_seconds >= 0)
+        );
+        CREATE TABLE IF NOT EXISTS course_discussion_replies (
+          reply_id BIGSERIAL PRIMARY KEY,
+          discussion_id BIGINT NOT NULL REFERENCES course_discussions(discussion_id) ON DELETE CASCADE,
+          author_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          content TEXT NOT NULL,
+          ai_response TEXT,
+          video_timestamp_seconds INTEGER,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT chk_course_discussion_replies_content_nonempty CHECK (length(btrim(content)) > 0),
+          CONSTRAINT chk_course_discussion_replies_video_time CHECK (video_timestamp_seconds IS NULL OR video_timestamp_seconds >= 0)
+        );
+        ALTER TABLE course_discussion_replies
+          ADD COLUMN IF NOT EXISTS ai_response TEXT,
+          ADD COLUMN IF NOT EXISTS video_timestamp_seconds INTEGER;
+        CREATE TABLE IF NOT EXISTS course_announcements (
+          announcement_id BIGSERIAL PRIMARY KEY,
+          course_id INTEGER NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+          instructor_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          title VARCHAR(180) NOT NULL,
+          content TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT chk_course_announcements_title_nonempty CHECK (length(btrim(title)) > 0),
+          CONSTRAINT chk_course_announcements_content_nonempty CHECK (length(btrim(content)) > 0)
+        );
+        CREATE TABLE IF NOT EXISTS course_announcement_reads (
+          announcement_id BIGINT NOT NULL REFERENCES course_announcements(announcement_id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          read_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (announcement_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_course_discussions_student_activity ON course_discussions(student_id, course_id, last_activity_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_course_discussions_instructor_queue ON course_discussions(course_id, status, instructor_unread, last_activity_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_course_discussions_lesson ON course_discussions(lesson_id, last_activity_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_course_discussion_replies_thread ON course_discussion_replies(discussion_id, created_at ASC);
+        CREATE INDEX IF NOT EXISTS idx_course_announcements_course_created ON course_announcements(course_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_course_announcement_reads_user ON course_announcement_reads(user_id, read_at DESC);
+      `);
+    } catch (migErr) {
+      console.warn('⚠️ Cảnh báo tạo bảng course_discussions & course_announcements:', migErr.message);
+    }
+
     // 3.3. Bảng `instructor_policy_agreements`
     try {
       await client.query(`
@@ -689,6 +753,16 @@ const testConnection = async () => {
         CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
         CREATE INDEX IF NOT EXISTS idx_failed_storage_deletions_retry ON failed_storage_deletions(status, next_retry_at);
         CREATE UNIQUE INDEX IF NOT EXISTS uq_failed_storage_deletions_object ON failed_storage_deletions(storage_provider, storage_bucket, storage_key);
+        -- Missing indexes for common queries
+        CREATE INDEX IF NOT EXISTS idx_courses_subject_status_instructor ON courses(subject_id, status, instructor_id);
+        CREATE INDEX IF NOT EXISTS idx_user_progress_user_lesson_completed ON user_progress(user_id, is_completed, lesson_id);
+        CREATE INDEX IF NOT EXISTS idx_course_discussions_unread ON course_discussions(student_id, course_id, student_unread) WHERE student_unread = true;
+        CREATE INDEX IF NOT EXISTS idx_course_discussions_instructor_queue ON course_discussions(course_id, status, instructor_unread, last_activity_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_user_date ON ai_usage_events(user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_ai_usage_events_model_status_date ON ai_usage_events(model, request_status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_sections_course_order ON sections(course_id, order_index);
+        CREATE INDEX IF NOT EXISTS idx_lessons_section_order ON lessons(section_id, order_index);
+        CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_date ON quiz_attempts(user_id, completed_at);
       `);
       console.log('✅ Tự động đồng bộ: Đã tạo và đảm bảo toàn bộ chỉ mục Index hoạt động chính xác');
     } catch (migErr) {

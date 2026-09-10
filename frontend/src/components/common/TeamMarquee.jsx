@@ -52,7 +52,7 @@ const TeamMarquee = ({ className = '' }) => {
   ];
 
   return (
-    <section className={`py-12 relative overflow-hidden bg-transparent ${className}`}>
+    <section id="team" className={`py-12 relative overflow-hidden bg-transparent ${className}`}>
       {/* Subdued, elegant uppercase header */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
         <p className="text-center text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-400 opacity-90">

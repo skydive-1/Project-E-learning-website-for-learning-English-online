@@ -23,6 +23,9 @@ const LanguageHarness = () => {
       <p>Thông tin cá nhân</p>
       <p>Học từ vựng &amp; Đọc sách tiếng Anh</p>
       <p>12 giờ</p>
+      <p data-testid="dynamic-confirm-copy">
+        {t('Bạn có chắc chắn muốn xóa đề thi "Bài kiểm tra A" không? Hành động này không thể hoàn tác.')}
+      </p>
       <input
         aria-label="Tìm kiếm"
         placeholder="Tìm kiếm khóa học..."
@@ -76,6 +79,9 @@ describe('LanguageProvider', () => {
     expect(screen.getByText('Personal information')).toBeInTheDocument();
     expect(screen.getByText('Learn vocabulary & Read English books')).toBeInTheDocument();
     expect(screen.getByText('12 hours')).toBeInTheDocument();
+    expect(screen.getByTestId('dynamic-confirm-copy')).toHaveTextContent(
+      'Are you sure you want to delete the quiz "Bài kiểm tra A"? This action cannot be undone.',
+    );
     expect(screen.getByRole('textbox', { name: 'Search' })).toHaveAttribute('placeholder', 'Search courses...');
     expect(screen.getByRole('textbox')).toHaveAttribute('title', 'Search courses...');
     expect(document.documentElement).toHaveAttribute('lang', 'en');

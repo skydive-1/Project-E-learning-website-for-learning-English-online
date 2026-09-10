@@ -14,6 +14,7 @@ import {
 import type { CalendarCellRenderProps } from "react-aria-components";
 import { CalendarDate, getLocalTimeZone } from "@internationalized/date";
 import { cx } from "@/utils/cx";
+import { useLanguage } from "@/context/LanguageContext";
 
 /**
  * Shared building blocks for the base/date-picker family — `DateRangePicker`
@@ -52,8 +53,8 @@ export function ChevronRight16({ className }: { className?: string }) {
   );
 }
 
-export function formatTriggerDate(date: CalendarDate) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(
+export function formatTriggerDate(date: CalendarDate, locale = "vi-VN") {
+  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric", year: "numeric" }).format(
     date.toDate(getLocalTimeZone()),
   );
 }
@@ -168,6 +169,8 @@ export function MonthPanel({
    *  switcher pill) and only needs the day grid underneath it. */
   hideHeader?: boolean;
 }) {
+  const { language } = useLanguage();
+  const locale = language === "ENG" ? "en-US" : "vi-VN";
   // Works inside either a RangeCalendar (DateRangePicker) or a plain Calendar
   // (DatePicker) — exactly one of these contexts is non-null depending on
   // which root rendered it, and both expose the same `visibleRange` shape.
@@ -177,7 +180,7 @@ export function MonthPanel({
   const isRange = rangeState != null;
   const panelDate = state ? state.visibleRange.start.add({ months: offset }) : null;
   const title = panelDate
-    ? new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(panelDate.toDate(getLocalTimeZone()))
+    ? new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(panelDate.toDate(getLocalTimeZone()))
     : "";
 
   return (

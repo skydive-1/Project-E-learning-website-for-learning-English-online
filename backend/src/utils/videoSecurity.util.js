@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const VIDEO_TICKET_COOKIE = 'video_playback_ticket';
+const PUBLIC_VIDEO_TICKET_COOKIE = 'public_video_playback_ticket';
 const DEFAULT_MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 const activeTicketRequests = new Map();
 
@@ -84,6 +85,16 @@ function getVideoTicketFromRequest(req) {
   return { token: null, transport: queryTicket ? 'disabled-query' : 'missing' };
 }
 
+function getPublicVideoTicketFromRequest(req) {
+  const headerTicket = req.headers['x-public-video-ticket'];
+  if (headerTicket) return { token: String(headerTicket), transport: 'header' };
+
+  const cookieTicket = parseCookies(req.headers.cookie)[PUBLIC_VIDEO_TICKET_COOKIE];
+  if (cookieTicket) return { token: cookieTicket, transport: 'cookie' };
+
+  return { token: null, transport: 'missing' };
+}
+
 function setVideoTicketCookie(req, res, ticket, expiresInSeconds) {
   const secure = process.env.NODE_ENV === 'production' || req.secure === true;
   res.cookie(VIDEO_TICKET_COOKIE, ticket, {
@@ -91,6 +102,17 @@ function setVideoTicketCookie(req, res, ticket, expiresInSeconds) {
     secure,
     sameSite: secure ? 'none' : 'lax',
     path: '/api/lessons',
+    maxAge: expiresInSeconds * 1000
+  });
+}
+
+function setPublicVideoTicketCookie(req, res, ticket, expiresInSeconds) {
+  const secure = process.env.NODE_ENV === 'production' || req.secure === true;
+  res.cookie(PUBLIC_VIDEO_TICKET_COOKIE, ticket, {
+    httpOnly: true,
+    secure,
+    sameSite: secure ? 'none' : 'lax',
+    path: '/api/media/video',
     maxAge: expiresInSeconds * 1000
   });
 }
@@ -211,9 +233,11 @@ function sanitizeLessonMediaForClient(lesson) {
 }
 
 module.exports = {
+  PUBLIC_VIDEO_TICKET_COOKIE,
   VIDEO_TICKET_COOKIE,
   createClientFingerprint,
   getRequestSourceOrigin,
+  getPublicVideoTicketFromRequest,
   getVideoTicketFromRequest,
   isAllowedMediaSource,
   isAutomatedDownloader,
@@ -221,5 +245,6 @@ module.exports = {
   resolveBoundedRange,
   sanitizeLessonMediaForClient,
   setProtectedVideoHeaders,
+  setPublicVideoTicketCookie,
   setVideoTicketCookie
 };

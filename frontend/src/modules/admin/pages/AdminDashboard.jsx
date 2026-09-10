@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
@@ -18,20 +18,25 @@ import {
   FiShield,
   FiTrendingUp,
   FiEdit,
-  FiCpu
+  FiCpu,
+  FiBell
 } from 'react-icons/fi';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { QueryClient, useQueryClient } from '@tanstack/react-query';
 import UserAnalyticsDashboard from '../components/UserAnalyticsDashboard';
 import AIQuotaControlCenter from '../components/AIQuotaControlCenter';
+import AdminAlertsPanel from '../components/AdminAlertsPanel';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const showToast = useToast();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const queryClient = useQueryClient();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   
   const isAdmin = currentUser?.role === 'admin' || currentUser?.roleId === 1 || currentUser?.role_id === 1;
   // Backend là nguồn sự thật về đặc quyền; frontend chỉ dùng cờ này để hiển thị UI.
@@ -176,6 +181,8 @@ const AdminDashboard = () => {
       setCourses((current) => current.filter((course) => course.course_id !== courseId));
       setPendingDeleteCourse(null);
       showToast(`Đã xóa khóa học “${pendingDeleteCourse.course_name}”.`, 'success');
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'analytics'] });
     } catch (err) {
       console.error('Lỗi xóa khóa học:', err);
       showToast(err.response?.data?.message || 'Không thể xóa khóa học. Vui lòng thử lại.', 'error');
@@ -210,8 +217,8 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn chuyển vai trò người dùng này thành "${targetRoleName}"?`)) {
+const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
+    if (!window.confirm(t(`Bạn có chắc chắn muốn chuyển vai trò người dùng này thành "${targetRoleName}"?`))) {
       return;
     }
 
@@ -219,7 +226,8 @@ const AdminDashboard = () => {
       const response = await apiClient.put(`/admin/users/${userId}/role`, { roleId: targetRoleId });
       if (response.data && response.data.success) {
         showToast('Cập nhật vai trò người dùng thành công!', 'success');
-        fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'analytics'] });
       }
     } catch (err) {
       console.error('Lỗi thay đổi role:', err);
@@ -228,7 +236,7 @@ const AdminDashboard = () => {
   };
 
   const handleDeleteUser = async (userId, username) => {
-    if (!window.confirm(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN người dùng "${username}"?\nTất cả tiến trình học tập và lịch sử chat của người dùng này cũng sẽ bị xóa khỏi hệ thống.`)) {
+    if (!window.confirm(t(`⚠️ CẢNH BÁO: Bạn có chắc chắn muốn XÓA VĨNH VIỄN người dùng "${username}"?\nTất cả tiến trình học tập và lịch sử chat của người dùng này cũng sẽ bị xóa khỏi hệ thống.`))) {
       return;
     }
 
@@ -236,7 +244,8 @@ const AdminDashboard = () => {
       const response = await apiClient.delete(`/admin/users/${userId}`);
       if (response.data && response.data.success) {
         showToast('Đã xóa người dùng thành công!', 'success');
-        fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'analytics'] });
       }
     } catch (err) {
       console.error('Lỗi xóa user:', err);
@@ -253,7 +262,8 @@ const AdminDashboard = () => {
       const response = await apiClient.post(`/admin/users/${userId}/reset-token`);
       if (response.data && response.data.success) {
         showToast(t('Đã đặt lại lượt hỏi cho {{name}}.', { name: username }), 'success');
-        fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'ai-quota'] });
       }
     } catch (err) {
       console.error('Lỗi reset token:', err);
@@ -273,7 +283,9 @@ const AdminDashboard = () => {
       const response = await apiClient.post('/admin/users/reset-tokens', { roleId });
       if (response.data && response.data.success) {
         showToast(t('Đã đặt lại lượt hỏi cho tất cả {{role}}.', { role: roleName }), 'success');
-        fetchUsers();
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'ai-quota'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'analytics'] });
       }
     } catch (err) {
       console.error('Lỗi reset token hàng loạt:', err);
@@ -441,7 +453,7 @@ const AdminDashboard = () => {
     }
 
     const topicInput = window.prompt(
-      'Nhập chủ đề hoặc từ khóa tiếng Anh để AI tạo câu hỏi:',
+      t('Nhập chủ đề hoặc từ khóa tiếng Anh để AI tạo câu hỏi:'),
       topicPrompt
     );
 
@@ -571,6 +583,9 @@ const AdminDashboard = () => {
             </button>
           </div>
 
+          {/* Real-time Alerts Panel */}
+          <AdminAlertsPanel className="mb-6" />
+
           {/* Tab Content */}
           <div className={`admin-content ${activeTab === 'analytics' ? 'is-analytics' : ''}`}>
             
@@ -669,7 +684,7 @@ const AdminDashboard = () => {
                             </span>
                           </td>
                           <td className="text-xs text-slate-500">
-                            {user.created_date ? new Date(user.created_date).toLocaleDateString('vi-VN') : '—'}
+                            {user.created_date ? new Date(user.created_date).toLocaleDateString(locale) : '—'}
                           </td>
                           <td>
                             <div className="action-buttons">
@@ -847,7 +862,7 @@ const AdminDashboard = () => {
                               <td data-label="Khóa học">
                                 <div className="course-identity">
                                   <strong>{course.course_name}</strong>
-                                  <span>#{course.course_id} · {Number(course.price || 0).toLocaleString('vi-VN')}₫</span>
+                                  <span>#{course.course_id} · {Number(course.price || 0).toLocaleString(locale)}₫</span>
                                 </div>
                               </td>
                               <td data-label="Giảng viên">{course.instructor_name || 'Chưa phân công'}</td>
@@ -857,7 +872,7 @@ const AdminDashboard = () => {
                                   {isPublished ? 'Đã xuất bản' : 'Bản nháp'}
                                 </span>
                               </td>
-                              <td data-label="Ngày tạo">{course.created_at ? new Date(course.created_at).toLocaleDateString('vi-VN') : '—'}</td>
+                              <td data-label="Ngày tạo">{course.created_at ? new Date(course.created_at).toLocaleDateString(locale) : '—'}</td>
                               <td data-label="Hành động" className="course-table__action-cell" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <button
                                   type="button"

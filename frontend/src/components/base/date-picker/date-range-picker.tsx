@@ -30,6 +30,7 @@ import {
 } from "@/components/base/date-picker/shared";
 import { cx } from "@/utils/cx";
 import { useDismissOnOutsidePress, useTriggerToggle } from "@/utils/use-dismiss-on-outside-press";
+import { useLanguage } from "@/context/LanguageContext";
 
 /**
  * Figma source: Board UI → "Calendar" (node 3871:5738).
@@ -206,6 +207,8 @@ export function DateRangePicker({
   "aria-label": ariaLabel = "Date range",
   placeholder = "Select date range",
 }: DateRangePickerProps) {
+  const { language } = useLanguage();
+  const locale = language === "ENG" ? "en-US" : "vi-VN";
   const isControlled = value !== undefined;
   const [internalValue, setInternalValue] = useState<DateRangeValue | null>(defaultValue);
   const committedValue = isControlled ? (value ?? null) : internalValue;
@@ -236,7 +239,7 @@ export function DateRangePicker({
       <AriaButton ref={triggerRef} isDisabled={isDisabled} className={cx(triggerButtonClassName, className)}>
         <RiCalendarLine className="size-5 shrink-0 text-foreground-icon-primary" aria-hidden />
         <span className="flex items-center justify-center whitespace-nowrap px-1 text-body-medium text-text-primary">
-          {committedValue ? `${formatTriggerDate(committedValue.start)} - ${formatTriggerDate(committedValue.end)}` : placeholder}
+          {committedValue ? `${formatTriggerDate(committedValue.start, locale)} - ${formatTriggerDate(committedValue.end, locale)}` : placeholder}
         </span>
       </AriaButton>
       <Popover ref={popoverRef} offset={4} placement="bottom end" isNonModal className={popoverClassName}>

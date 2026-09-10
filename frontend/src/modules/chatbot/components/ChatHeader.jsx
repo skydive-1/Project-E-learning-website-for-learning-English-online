@@ -1,5 +1,6 @@
 import React from 'react';
 import { FiCpu, FiTrash2, FiX } from 'react-icons/fi';
+import QuotaIndicator from './QuotaIndicator';
 
 /**
  * ChatHeader Component (Udemy AI Assistant direction)
@@ -7,13 +8,16 @@ import { FiCpu, FiTrash2, FiX } from 'react-icons/fi';
  * - Tiêu đề rõ ràng kèm subtitle hướng dẫn ngắn gọn
  * - Đèn trạng thái AI trực quan (Online/Active)
  * - Nút xóa lịch sử và đóng panel tinh tế
+ * - Hiển thị hạn mức AI còn lại
  */
 const ChatHeader = ({ 
   lessonId = 0, 
   onClearChat, 
   onClose,
   isLoading = false,
-  t 
+  t,
+  quota = null,
+  quotaLoading = false
 }) => {
   const isGlobal = Number(lessonId) === 0;
 
@@ -42,8 +46,9 @@ const ChatHeader = ({
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="flex items-center space-x-1 shrink-0 ml-2">
+      {/* Action buttons + Quota Indicator */}
+      <div className="flex items-center space-x-2 shrink-0 ml-2">
+        <QuotaIndicator quota={quota} compact={true} />
         <button
           type="button"
           onClick={onClearChat}

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { FiAlertTriangle, FiClock, FiCpu, FiArrowDown } from 'react-icons/fi';
+import { FiAlertTriangle, FiClock, FiCpu, FiArrowDown, FiUserCheck } from 'react-icons/fi';
 import LessonCard from './LessonCard';
 import AiThinkingState from './AiThinkingState';
 
@@ -21,7 +21,8 @@ const MessageList = ({
   messagesEndRef,
   onScrollPosition,
   showScrollBottomBtn,
-  onScrollToBottom
+  onScrollToBottom,
+  onAskInstructor = null
 }) => {
   const containerRef = useRef(null);
 
@@ -266,6 +267,34 @@ const MessageList = ({
                             onNavigate={onNavigate}
                           />
                         ))}
+                      </div>
+                    )}
+                    {/* Action Hỏi giảng viên cho phản hồi AI đã hoàn tất */}
+                    {!isUser && !msg.isStreaming && !isError && !isQuotaNotice && msg.text?.trim() && onAskInstructor && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const msgIndex = messages.findIndex((m) => m.id === msg.id);
+                            let userPrompt = '';
+                            for (let i = msgIndex - 1; i >= 0; i--) {
+                              if (messages[i].sender === 'user') {
+                                userPrompt = messages[i].text;
+                                break;
+                              }
+                            }
+                            onAskInstructor({
+                              question: userPrompt,
+                              aiResponse: msg.text
+                            });
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-500 hover:text-smart-indigo dark:text-slate-400 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all cursor-pointer"
+                          title="Gửi câu hỏi này đến Giảng viên để được giải thích thêm"
+                          aria-label="Hỏi giảng viên về phản hồi này"
+                        >
+                          <FiUserCheck className="text-xs" />
+                          <span>Hỏi giảng viên</span>
+                        </button>
                       </div>
                     )}
                   </>

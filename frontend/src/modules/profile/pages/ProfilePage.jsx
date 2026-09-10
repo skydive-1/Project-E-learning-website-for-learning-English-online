@@ -10,10 +10,13 @@ import Footer from '../../../components/common/Footer';
 import { updateProfileApi, changePasswordApi, getUserStatsApi } from '../../auth/services/auth.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useGamification } from '../../../context/GamificationContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import '../styles/profile.scss';
 
 const ProfilePage = () => {
   const navigate = useNavigate();
+  const { language, t } = useLanguage();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   const { user: authUser, refreshProfile } = useAuth();
   const {
     badges,
@@ -144,7 +147,7 @@ const ProfilePage = () => {
 
   // Handle profile image click / dummy upload
   const handleAvatarChange = () => {
-    const url = prompt("Nhập link URL ảnh đại diện mới của bạn:", profileData.profilePictureUrl);
+    const url = window.prompt(t('Nhập link URL ảnh đại diện mới của bạn:'), profileData.profilePictureUrl);
     if (url !== null) {
       setProfileData({ ...profileData, profilePictureUrl: url });
       // Call update immediately
@@ -226,7 +229,7 @@ const ProfilePage = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'Chưa xác định';
     const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN', { year: 'numeric', month: 'long', day: 'numeric' });
+    return date.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   return (

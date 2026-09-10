@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiBookOpen, FiUser, FiLogOut, FiLayout, FiSun, FiMoon, FiMenu, FiX, FiActivity } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
@@ -15,13 +15,15 @@ const Header = () => {
   const { language, toggleLanguage, t } = useLanguage();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const mobileMenuRef = useRef(null);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
-      if (!event.target.closest('.user-menu-wrapper')) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
       }
-      if (!event.target.closest('.main-header')) {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
         setIsMobileMenuOpen(false);
       }
     };
@@ -32,6 +34,68 @@ const Header = () => {
       window.removeEventListener('click', handleOutsideClick);
     };
   }, [isDropdownOpen, isMobileMenuOpen]);
+
+  // Keyboard navigation for dropdown
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsDropdownOpen(false);
+      } else if (event.key === 'Tab') {
+        // Trap focus within dropdown
+        const focusableElements = dropdownRef.current?.querySelectorAll(
+          'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusableElements && focusableElements.length > 0) {
+          const firstElement = focusableElements[0];
+          const lastElement = focusableElements[focusableElements.length - 1];
+          
+          if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault();
+            lastElement.focus();
+          } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDropdownOpen]);
+
+  // Keyboard navigation for mobile menu
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+      } else if (event.key === 'Tab') {
+        // Trap focus within mobile menu
+        const focusableElements = mobileMenuRef.current?.querySelectorAll(
+          'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusableElements && focusableElements.length > 0) {
+          const firstElement = focusableElements[0];
+          const lastElement = focusableElements[focusableElements.length - 1];
+          
+          if (event.shiftKey && document.activeElement === firstElement) {
+            event.preventDefault();
+            lastElement.focus();
+          } else if (!event.shiftKey && document.activeElement === lastElement) {
+            event.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
 
   // Lock body scroll when mobile menu is open to prevent background scrolling on small screens
   useEffect(() => {
@@ -74,13 +138,21 @@ const Header = () => {
         {/* Mobile menu backdrop overlay */}
         {isMobileMenuOpen && (
           <div 
+            ref={mobileMenuRef}
             className="mobile-menu-backdrop" 
             onClick={() => setIsMobileMenuOpen(false)} 
             aria-hidden="true"
           />
         )}
 
-        <nav id="main-nav" className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}>
+        <nav 
+          ref={mobileMenuRef}
+          id="main-nav" 
+          className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} 
+          aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}
+          role="navigation"
+          aria-label={t('menu')}
+        >
           <Link
             to="/courses"
             state={{ activeHubTab: 'course' }}
@@ -160,7 +232,10 @@ const Header = () => {
           </button>
 
           {user ? (
-            <div className="user-menu-wrapper">
+            <div 
+              ref={dropdownRef}
+              className="user-menu-wrapper"
+            >
               <div className="avatar-trigger" onClick={toggleDropdown}>
                 {user?.profilePictureUrl || user?.profile_picture_url ? (
                   <img 

@@ -39,7 +39,7 @@ export const fetchCoursesFromApi = async () => {
   }
 };
 
-export const fetchCourses = async () => {
+export const fetchCourses = async (locale = 'vi-VN') => {
   const courses = await fetchCoursesFromApi();
   return courses.map(c => ({
     ...c,
@@ -49,14 +49,15 @@ export const fetchCourses = async () => {
     reviews: null,
     students: null,
     duration: null,
-    price: c.price && Number(c.price) > 0 ? `${Number(c.price).toLocaleString('vi-VN')} ₫` : 'Miễn phí'
+    price: c.price && Number(c.price) > 0 ? `${Number(c.price).toLocaleString(locale)} ₫` : 'Miễn phí'
   }));
 };
 
 const CourseListPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
 
   // Trang Learn luôn mở catalog khóa học trước; Vocab/Quizzes là các sub-tab.
   const [activeHubTab, setActiveHubTab] = useState('course');
@@ -553,7 +554,7 @@ const CourseListPage = () => {
                           <div className="card-footer-meta">
                             <span className="price-badge">
                               {course.price && course.price > 0 
-                                ? `${Number(course.price).toLocaleString('vi-VN')} ₫` 
+                                ? `${Number(course.price).toLocaleString(locale)} ₫`
                                 : 'Miễn phí'}
                             </span>
                             <span className="btn-card-learn">Học ngay →</span>

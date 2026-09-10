@@ -38,11 +38,14 @@ import {
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { getUserHeatmapData, getUserAnalyticsSummary } from '../services/analytics.service';
 
 const AnalyticsDashboardPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
 
   // States
   const [timeRange, setTimeRange] = useState('30days'); // '7days', '30days', 'year'
@@ -216,7 +219,7 @@ const AnalyticsDashboardPage = () => {
                 </button>
                 {lastUpdated && (
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                    🕐 {lastUpdated.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    🕐 {lastUpdated.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 )}
               </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 const motionState = vi.hoisted(() => ({
@@ -27,15 +27,23 @@ vi.mock('motion/react', async () => {
   };
 });
 
+vi.mock('../src/services/protectedVideo.service', () => ({
+  ensurePublicVideoTicket: vi.fn().mockResolvedValue({ success: true, expiresIn: 60 }),
+  getProtectedPublicVideoUrl: (assetId) => `http://localhost:5000/api/media/video/stream/${assetId}`
+}));
+
 import KineticDirectionSection from '../src/modules/homepage/components/KineticDirectionSection';
 
 describe('KineticDirectionSection', () => {
-  it('uses compositor-friendly cropping and transforms for the scroll effect', () => {
+  it('uses compositor-friendly cropping and transforms for the scroll effect', async () => {
     const { container } = render(<KineticDirectionSection />);
 
     const section = container.querySelector('#kinetic-direction');
     const frame = container.querySelector('.apple-kinetic-video-frame');
-    const video = container.querySelector('video[src="/videos/girl_typing.mp4"]');
+    await waitFor(() => {
+      expect(container.querySelector('video')?.src).toContain('/api/media/video/stream/girl-typing');
+    });
+    const video = container.querySelector('video');
 
     expect(section).toBeInTheDocument();
     expect(frame).toHaveStyle({ clipPath: 'inset(0% 0% round 16px)' });
@@ -43,6 +51,9 @@ describe('KineticDirectionSection', () => {
     expect(video.muted).toBe(true);
     expect(video).toHaveAttribute('playsinline');
     expect(video).toHaveAttribute('preload', 'metadata');
+    expect(video).toHaveAttribute('data-idm-prevent-download', 'true');
+    expect(video).toHaveAttribute('controlslist', 'nodownload noremoteplayback');
+    expect(video).toHaveAttribute('crossorigin', 'use-credentials');
 
     expect(motionState.transforms).toContainEqual({
       inputRange: [0, 0.42, 0.94],

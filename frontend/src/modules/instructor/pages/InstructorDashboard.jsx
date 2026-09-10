@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import apiClient from '../../../config/api.config';
 import { 
   FiPlus, FiBook, FiUsers, FiTrendingUp, FiSettings, 
   FiEdit, FiTrash2, FiEye, FiLoader, FiAlertCircle, FiLayers,
   FiSearch, FiMail, FiPhone, FiLock, FiCalendar, FiDollarSign, FiStar,
-  FiCheckSquare, FiVideo, FiFileText, FiMoreVertical
+  FiCheckSquare, FiVideo, FiFileText, FiMoreVertical, FiMessageSquare,
+  FiBell, FiCheck
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
@@ -17,6 +18,9 @@ import { useToast } from '../../../context/ToastContext';
 import { useAuth } from '../../../context/AuthContext';
 import UserAnalyticsDashboard from '../../admin/components/UserAnalyticsDashboard';
 import { getInstructorAnalytics } from '../services/instructor.service';
+import InstructorInteractionHub from '../../discussions/components/InstructorInteractionHub';
+import { getInstructorInteractionSummary } from '../../discussions/services/discussions.service';
+import { useInstructorRealtime } from '../../../services/realtime.service';
 
 const getRoleFromToken = () => {
   const token = localStorage.getItem('token');
@@ -48,15 +52,30 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 const InstructorDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const showToast = useToast();
   const { user: currentUser } = useAuth();
+
+  // Real-time SSE connection for instructor notifications
+  const { 
+    notifications, 
+    pendingCount: realtimePendingCount, 
+    isConnected: sseConnected,
+    markNotificationRead,
+    clearNotifications
+  } = useInstructorRealtime();
 
   const userRoleId = parseInt(currentUser?.roleId || currentUser?.role_id || currentUser?.role || getRoleFromToken(), 10);
   const isAdmin = userRoleId === 1 || Boolean(currentUser?.is_super_admin);
   const currentUserId = parseInt(currentUser?.id || currentUser?.userId || getUserIdFromToken(), 10);
 
-  // Navigation State
-  const [activeTab, setActiveTab] = useState('courses');
+  // Combined pending count (from SSE + initial fetch)
+  const [interactionPendingCount, setInteractionPendingCount] = useState(0);
+
+  // Navigation State (Hỗ trợ deep link ?tab=interaction)
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = searchParams.get('tab') || 'courses';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Auth check
   useEffect(() => {
@@ -64,6 +83,28 @@ const InstructorDashboard = () => {
       navigate('/');
     }
   }, [userRoleId, navigate]);
+
+  useEffect(() => {
+    const tabParam = new URLSearchParams(location.search).get('tab');
+    if (tabParam && ['courses', 'students', 'performance', 'quizzes', 'interaction'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [location.search]);
+
+  // Update pending count from SSE
+  useEffect(() => {
+    setInteractionPendingCount(realtimePendingCount);
+  }, [realtimePendingCount]);
+
+  useEffect(() => {
+    if (userRoleId !== 1 && userRoleId !== 2) return;
+    getInstructorInteractionSummary()
+      .then(summary => {
+        const initialCount = summary.pendingCount || 0;
+        setInteractionPendingCount(prev => Math.max(prev, initialCount));
+      })
+      .catch(() => {});
+  }, [userRoleId]);
 
   // --- TAB 1: MY COURSES STATES ---
   const [courses, setCourses] = useState([]);
@@ -564,6 +605,66 @@ const InstructorDashboard = () => {
         <div className="instructor-sidebar">
           <div className="sidebar-brand">
             <h2>Instructor Hub</h2>
+            {/* SSE Connection Status & Notification Bell */}
+            <div className="sidebar-notifications" style={{ marginTop: '12px', padding: '0 12px' }}>
+              <div 
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  padding: '8px 12px', 
+                  background: sseConnected ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                  border: sseConnected ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: sseConnected ? '#10b981' : '#ef4444'
+                }}
+                title={sseConnected ? 'Real-time kết nối' : 'Mất kết nối real-time'}
+              >
+                <span style={{ 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  background: sseConnected ? '#10b981' : '#ef4444',
+                  animation: sseConnected ? 'pulse 2s infinite' : 'none'
+                }} />
+                <span>{sseConnected ? 'Đang kết nối' : 'Đã ngắt kết nối'}</span>
+              </div>
+              
+              {/* Notification Bell */}
+              {(notifications.length > 0 || interactionPendingCount > 0) && (
+                <div style={{ position: 'relative', marginTop: '8px' }}>
+                  <button
+                    onClick={() => setActiveTab('interaction')}
+                    style={{
+                      position: 'relative',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '8px',
+                      color: '#3b82f6',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.2s'
+                    }}
+                    title="Có thông báo mới - nhấn để xem"
+                  >
+                    <FiBell style={{ fontSize: '16px', flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>
+                      {notifications.length > 0 ? `${notifications.length} thông báo mới` : `${interactionPendingCount} tin nhắn chờ xử lý`}
+                    </span>
+                    <FiCheck style={{ fontSize: '12px', opacity: 0.7 }} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <nav className="sidebar-nav">
             <button className={activeTab === 'courses' ? 'active' : ''} onClick={() => setActiveTab('courses')}>
@@ -578,12 +679,20 @@ const InstructorDashboard = () => {
             <button className={activeTab === 'quizzes' ? 'active' : ''} onClick={() => setActiveTab('quizzes')}>
               <FiCheckSquare /> Quizzes
             </button>
+            <button className={activeTab === 'interaction' ? 'active' : ''} onClick={() => setActiveTab('interaction')}>
+              <FiMessageSquare /> Tương tác
+              {interactionPendingCount > 0 && (
+                <span style={{ marginLeft: 'auto', background: '#f59e0b', color: '#fff', fontSize: '10px', padding: '1px 6px', borderRadius: '10px', fontWeight: '800' }}>
+                  {interactionPendingCount}
+                </span>
+              )}
+            </button>
           </nav>
         </div>
 
         {/* Content Area */}
         <div className="instructor-content">
-          {activeTab !== 'quizzes' && activeTab !== 'performance' && (
+          {activeTab !== 'quizzes' && activeTab !== 'performance' && activeTab !== 'interaction' && (
             <header className="content-header">
               <div className="header-text">
                 {activeTab === 'courses' && (
@@ -1780,6 +1889,14 @@ const InstructorDashboard = () => {
                 </div>
               )}
             </div>
+          )}
+
+          {/* --- 5. INTERACTION TAB CONTENT --- */}
+          {activeTab === 'interaction' && (
+            <InstructorInteractionHub
+              courses={myCourses}
+              onPendingCountChange={setInteractionPendingCount}
+            />
           )}
 
 

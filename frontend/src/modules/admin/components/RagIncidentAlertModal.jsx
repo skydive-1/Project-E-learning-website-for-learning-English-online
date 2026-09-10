@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { FiAlertTriangle, FiCheckCircle, FiExternalLink, FiX } from 'react-icons/fi';
 
 import { useLanguage } from '../../../context/LanguageContext';
+import { cn } from '@/lib/utils';
 
 const PURPOSE_LABELS = {
   rag_ingestion_embedding: 'Nạp transcript vào Pinecone',
@@ -57,7 +58,7 @@ const RagIncidentAlertModal = ({ incident, onClose, onOpenRateLimits }) => {
     }}>
       <section
         ref={dialogRef}
-        className="rag-incident-dialog"
+        className={cn('rag-incident-dialog', !recovered && 'alert-pulse-beacon')}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="rag-incident-title"

@@ -107,7 +107,7 @@ const QuizzesListPage = () => {
   };
 
   const handleDeleteManagedQuiz = async (quizId, title) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa đề thi "${title}" không? Hành động này không thể hoàn tác.`)) {
+    if (!window.confirm(t(`Bạn có chắc chắn muốn xóa đề thi "${title}" không? Hành động này không thể hoàn tác.`))) {
       return;
     }
     try {

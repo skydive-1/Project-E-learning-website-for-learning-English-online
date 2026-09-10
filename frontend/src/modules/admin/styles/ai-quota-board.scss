@@ -166,9 +166,8 @@
   .ai-chart-panel {
     background: transparent;
     border: 0;
-    border-bottom: 1px solid var(--border-color);
-    border-radius: 0;
-    padding: 0 0 20px;
+    padding: 0;
+    margin-bottom: 24px;
 
     .ai-chart-header {
       display: flex;

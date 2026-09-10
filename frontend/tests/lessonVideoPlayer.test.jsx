@@ -66,6 +66,8 @@ describe('LessonVideoPlayer Plyr adapter', () => {
     );
 
     expect(videoRef.current).toBeInstanceOf(HTMLVideoElement);
+    expect(videoRef.current).toHaveAttribute('data-idm-prevent-download', 'true');
+    expect(videoRef.current).toHaveAttribute('controlslist', 'nodownload noremoteplayback');
     expect(videoRef.current.querySelectorAll('track')).toHaveLength(2);
     expect(videoRef.current.querySelector('track[default]')?.label).toBe('Song ngữ (EN – VI)');
 

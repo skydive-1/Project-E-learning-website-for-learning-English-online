@@ -7,10 +7,14 @@ const router = express.Router();
 const instructorController = require('./controllers/instructor.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { aiLimiter } = require('../../middleware/rateLimit.middleware');
+const realtimeController = require('./controllers/realtime.controller');
 
 // Áp dụng bảo mật cho toàn bộ các route trong module này
 router.use(authenticate);
 router.use(authorize([1, 2])); // Chỉ Admin (1) và Instructor (2) mới truy cập được
+
+// SSE Real-time endpoint for instructor dashboard
+router.get('/realtime/stream', realtimeController.stream);
 
 // GET /api/instructor/students - Lấy danh sách học viên đăng ký
 router.get('/students', instructorController.getStudents);

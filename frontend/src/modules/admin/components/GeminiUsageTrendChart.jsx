@@ -4,6 +4,7 @@ import {
   AlertCircle,
   BarChart3,
   ChevronUp,
+  Clock,
   Cloud,
   Database,
   RefreshCw
@@ -187,6 +188,7 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
 
   const selectedMetricLabel = METRIC_OPTIONS.find(([value]) => value === metric)?.[1] || 'Token';
   const sourceLabel = data?.sourceUsed === 'google' ? 'Google Cloud Monitoring' : 'Backend telemetry';
+  const isStale = Boolean(data?.stale || data?.providerStatus === 'stale');
   const sampledLabel = data?.sampledAt
     ? dateTimeFormatter.format(new Date(data.sampledAt))
     : t('Chưa có thời điểm cập nhật');
@@ -221,6 +223,16 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                   : <Database data-icon="inline-start" />}
                 {sourceLabel}
               </Badge>
+              {isStale && (
+                <Badge
+                  variant="outline"
+                  title={t('Dữ liệu từ Google Cloud Monitoring có thể bị trễ >5 phút theo độ trễ tự nhiên của Google')}
+                  className="gap-1.5 border-slate-700/80 bg-slate-800/60 px-2 py-0.5 text-[11px] font-normal text-slate-400"
+                >
+                  <Clock className="size-3 text-slate-400" aria-hidden="true" />
+                  <span>{t('Dữ liệu cũ (>5p)')}</span>
+                </Badge>
+              )}
             </div>
             <p className="mt-1 text-xs text-slate-400">
               {data?.sourceUsed === 'google'
@@ -348,6 +360,7 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                         fill={`var(--color-series_${index})`}
                         radius={index === models.length - 1 ? [3, 3, 0, 0] : 0}
                         maxBarSize={42}
+                        isAnimationActive={false}
                       />
                     ))}
                   </BarChart>

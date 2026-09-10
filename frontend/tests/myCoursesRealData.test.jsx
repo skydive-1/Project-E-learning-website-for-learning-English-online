@@ -57,7 +57,7 @@ describe('MyCoursesPage real-data states', () => {
 
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: 'Bạn chưa đăng ký/xem khóa học nào' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Bạn chưa đăng ký khóa học nào' })).toBeInTheDocument();
     expect(screen.queryByText('IELTS Masterclass: Target Band 7.5+')).not.toBeInTheDocument();
     expect(screen.queryByText(/mock-/i)).not.toBeInTheDocument();
   });
@@ -67,9 +67,9 @@ describe('MyCoursesPage real-data states', () => {
 
     renderPage();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Không thể tải khóa học của bạn, vui lòng thử lại sau'
-    );
+    const errorAlert = await screen.findByRole('alert');
+    expect(errorAlert).toHaveTextContent('Không thể tải khóa học của bạn');
+    expect(errorAlert).toHaveTextContent('Vui lòng kiểm tra kết nối mạng và bấm thử lại.');
 
     fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
     await waitFor(() => {

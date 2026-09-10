@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import viteImagemin from 'vite-plugin-imagemin';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -12,6 +13,29 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    viteImagemin({
+      gifsicle: {
+        optimizationLevel: 3,
+        interlaced: true
+      },
+      optipng: {
+        optimizationLevel: 3
+      },
+      mozjpeg: {
+        quality: 80
+      },
+      pngquant: {
+        quality: [0.7, 0.8],
+        speed: 4
+      },
+      svgo: {
+        plugins: [
+          { name: 'removeViewBox', active: false },
+          { name: 'removeDimensions', active: true },
+          { name: 'removeXMLNS', active: true }
+        ]
+      }
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
@@ -153,13 +177,37 @@ export default defineConfig({
         // hết vào 1 file; (3) các trang không dùng video/chart (vd trang
         // login) tải nhanh hơn vì trình duyệt có thể ưu tiên fetch song
         // song thay vì 1 file JS khổng lồ.
+        //
+        // vendor-react: lõi framework hầu như không đổi giữa các lần deploy
+        // (khác với code app đổi liên tục) -> tách riêng để trình duyệt cache
+        // lâu dài, không phải tải lại mỗi khi có commit mới.
+        // vendor-ui: các thư viện icon/animation dùng ở khắp nơi trong app
+        // (Header, MobileBottomNav, mọi trang) nên vốn đã nằm trong chunk
+        // "index" chính -> tách ra để chunk chính (route code thật sự) nhỏ lại.
         manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query'],
+          'vendor-ui': [
+            'react-icons',
+            'lucide-react',
+            '@remixicon/react',
+            'motion',
+            'canvas-confetti',
+            'class-variance-authority',
+            'clsx',
+            'tailwind-merge'
+          ],
+          'vendor-date': ['date-fns', '@internationalized/date', 'react-day-picker'],
           'vendor-shaka': ['shaka-player'],
           'vendor-charts': ['recharts'],
           'vendor-pdf': ['react-pdf']
         }
       }
-    }
+    },
+    // shaka-player, recharts và react-pdf tự thân đã >500kB dù đã tách chunk
+    // riêng (không còn cách nào chia nhỏ hơn nữa vì đó là 1 thư viện nguyên
+    // khối) -> nâng ngưỡng cảnh báo để Vite không spam warning cho các chunk
+    // đã được cố ý tách và cache riêng theo lý do ở trên.
+    chunkSizeWarningLimit: 900
   },
   test: {
     globals: true,

@@ -33,6 +33,7 @@ import {
 } from 'recharts';
 
 import apiClient from '../../../config/api.config';
+import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
 import { getAdminAnalytics } from '../services/adminAnalytics.service';
 
@@ -74,23 +75,9 @@ const STATUS_FILTER_ITEMS = [
   { id: 'inactive', label: 'Không hoạt động (>30 ngày)' }
 ];
 
-const numberFormatter = new Intl.NumberFormat('vi-VN');
-const compactFormatter = new Intl.NumberFormat('vi-VN', {
-  notation: 'compact',
-  maximumFractionDigits: 1
-});
-const dateFormatter = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' });
-const dateTimeFormatter = new Intl.DateTimeFormat('vi-VN', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit'
-});
-
 const toNumber = (value) => Number(value || 0);
 
-const formatStudyTime = (minutes) => {
+const formatStudyTime = (minutes, numberFormatter) => {
   const value = toNumber(minutes);
   if (value < 60) return `${numberFormatter.format(value)} phút`;
   const hours = Math.floor(value / 60);
@@ -98,7 +85,7 @@ const formatStudyTime = (minutes) => {
   return rest ? `${numberFormatter.format(hours)}h ${rest}p` : `${numberFormatter.format(hours)} giờ`;
 };
 
-const formatRelativeActivity = (learner) => {
+const formatRelativeActivity = (learner, locale, dateFormatter) => {
   if (!learner.last_activity_at) return 'Chưa có hoạt động';
   const now = Date.now();
   const date = new Date(learner.last_activity_at);
@@ -111,10 +98,10 @@ const formatRelativeActivity = (learner) => {
   if (diffMinutes <= 15) return `${diffMinutes} phút trước`;
   if (diffMinutes < 60) return `${diffMinutes} phút trước`;
   if (diffHours < 24 && date.getDate() === new Date(now).getDate()) {
-    return `Hôm nay ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Hôm nay ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
   }
   if (days === 1 || (diffHours < 48 && date.getDate() === new Date(now - 86400000).getDate())) {
-    return `Hôm qua ${date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Hôm qua ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
   }
   if (days < 30) return `${days} ngày trước`;
   return dateFormatter.format(date);
@@ -134,7 +121,7 @@ const getInitials = (learner) => {
 /**
  * Custom Recharts Tooltip matching BoardUI popover style
  */
-const CustomChartTooltip = ({ active, payload, label }) => {
+const CustomChartTooltip = ({ active, payload, label, numberFormatter }) => {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-xl border border-border-button-default bg-background-primary-default p-3 shadow-dropdown">
@@ -193,6 +180,24 @@ const UserAnalyticsDashboard = ({
   title = 'User Analytics & System Health',
   subtitle = null
 }) => {
+  const { language, t } = useLanguage();
+  const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+  const compactFormatter = useMemo(() => new Intl.NumberFormat(locale, {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }), [locale]);
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: '2-digit'
+  }), [locale]);
+  const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }), [locale]);
   const showToast = useToast();
   const [range, setRange] = useState(30);
   const [data, setData] = useState(initialData);
@@ -245,7 +250,7 @@ const UserAnalyticsDashboard = ({
     active_learners: toNumber(item.active_learners),
     completed_lessons: toNumber(item.completed_lessons),
     study_minutes: toNumber(item.study_minutes)
-  })), [data?.trend]);
+  })), [data?.trend, dateFormatter]);
 
   const filteredLearners = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase('vi');
@@ -273,7 +278,7 @@ const UserAnalyticsDashboard = ({
   // Thao tác reset token AI trực tiếp từ bảng
   const handleQuickResetToken = async (learner) => {
     const name = learner.full_name || learner.username;
-    if (!window.confirm(`Bạn có chắc muốn Reset Token AI cho học viên "${name}" về 0?`)) {
+    if (!window.confirm(t(`Bạn có chắc muốn Reset Token AI cho học viên "${name}" về 0?`))) {
       return;
     }
 
@@ -486,7 +491,7 @@ const UserAnalyticsDashboard = ({
           <div className="mt-3 flex flex-col gap-0.5">
             <span className="text-caption-1-medium text-text-secondary">Thời gian học</span>
             <span className="text-title-1-bold text-text-primary tabular-nums">
-              {formatStudyTime(overview.study_minutes)}
+              {formatStudyTime(overview.study_minutes, numberFormatter)}
             </span>
             <small className="text-caption-2-regular text-text-tertiary">ghi nhận thực tế</small>
           </div>
@@ -581,7 +586,7 @@ const UserAnalyticsDashboard = ({
                     tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
                     allowDecimals={false}
                   />
-                  <RechartsTooltip content={<CustomChartTooltip />} />
+                  <RechartsTooltip content={<CustomChartTooltip numberFormatter={numberFormatter} />} />
                   <Bar
                     yAxisId="right"
                     dataKey="completed_lessons"
@@ -834,7 +839,7 @@ const UserAnalyticsDashboard = ({
                         </td>
 
                         <td className="py-3 text-body-medium text-text-primary tabular-nums">
-                          {formatStudyTime(learner.study_minutes)}
+                          {formatStudyTime(learner.study_minutes, numberFormatter)}
                         </td>
 
                         <td className="py-3">
@@ -855,7 +860,7 @@ const UserAnalyticsDashboard = ({
                         <td className="py-3">
                           <TooltipTrigger delay={100}>
                             <span className="text-body-2-medium text-text-secondary">
-                              {formatRelativeActivity(learner)}
+                              {formatRelativeActivity(learner, locale, dateFormatter)}
                             </span>
                             <Tooltip size="md">
                               {learner.last_activity_at
@@ -1005,7 +1010,7 @@ const UserAnalyticsDashboard = ({
 
                   <div className="flex items-center justify-between text-caption-1-medium text-text-secondary">
                     <span>Tiến độ: <strong className="text-text-primary">{progress}%</strong></span>
-                    <span>Học: <strong className="text-text-primary">{formatStudyTime(learner.study_minutes)}</strong></span>
+                    <span>Học: <strong className="text-text-primary">{formatStudyTime(learner.study_minutes, numberFormatter)}</strong></span>
                     <span>Quiz TB: <strong className="text-text-primary">{toNumber(learner.quiz_attempts) ? `${toNumber(learner.average_quiz_score)}%` : '-'}</strong></span>
                   </div>
 
