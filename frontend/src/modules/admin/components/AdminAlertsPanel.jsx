@@ -203,6 +203,11 @@ const AdminAlertsPanel = ({ className = '' }) => {
 
   if (!user?.userId) return null;
 
+  // Vẫn giữ kết nối SSE/polling ở nền nhưng không chiếm chỗ trên dashboard
+  // khi backend đã không trả về cảnh báo nào. Nếu nguồn dữ liệu lỗi, bảng vẫn
+  // xuất hiện để Admin biết trạng thái chưa thể được xác minh.
+  if (alerts.length === 0 && !error) return null;
+
   const status = STATUS_STYLES[connectionStatus] || STATUS_STYLES.offline;
 
   return (
@@ -283,8 +288,8 @@ const AdminAlertsPanel = ({ className = '' }) => {
                   </span>
                 </div>
 
-                <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">{alert.message}</p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Nguồn: {alert.source}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed break-words">{alert.message}</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 break-all">Nguồn: {alert.source}</p>
 
                 {alert.actionUrl && alert.actionLabel && (
                   <a

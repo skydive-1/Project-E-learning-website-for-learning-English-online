@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import apiClient from '../../../config/api.config';
 import { 
   FiArrowLeft, FiSave, FiUpload, FiTrash2, 
@@ -42,6 +42,16 @@ const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
 );
 
 const YOUTUBE_NO_CAPTIONS_CODE = 'YOUTUBE_NO_CAPTIONS_AVAILABLE';
+
+const ALERT_ISSUE_LABELS = {
+  'missing-media-source': 'Tệp nguồn của media này đang bị thiếu.',
+  'media-processing-failed': 'Media của bài học này xử lý thất bại.',
+  'stale-upload': 'Phiên upload của bài học này đang bị treo hoặc đã hết hạn.',
+  'storage-deletion-failed': 'Tệp của bài học này chưa được xóa khỏi kho lưu trữ.',
+  'subtitle-failed': 'Tác vụ tạo phụ đề của bài học này đã thất bại.',
+  'published-without-lessons': 'Khóa học đã xuất bản nhưng chưa có bài học.',
+  'quiz-without-questions': 'Đề quiz này chưa có câu hỏi.'
+};
 
 const YouTubeSubtitleStatus = ({ lessonId }) => {
   const [subtitleState, setSubtitleState] = useState(null);
@@ -191,6 +201,12 @@ const CourseEditor = () => {
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   const { courseId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const targetLessonId = Number(searchParams.get('lessonId')) || null;
+  const targetQuizId = Number(searchParams.get('quizId')) || null;
+  const targetIssue = searchParams.get('issue') || '';
+  const deepLinkHandledRef = useRef(false);
   const fileInputRef = useRef({});
   const isEditMode = Boolean(courseId);
 
@@ -207,6 +223,7 @@ const CourseEditor = () => {
 
   // Main Tabs in Course Creation Hub: 'basic', 'curriculum', 'quizzes'
   const [activeHubTab, setActiveHubTab] = useState('basic');
+  const [focusedTarget, setFocusedTarget] = useState('');
   const [subjects, setSubjects] = useState([]);
   const [courseName, setCourseName] = useState('');
   const [subjectId, setSubjectId] = useState('');
@@ -367,6 +384,42 @@ const CourseEditor = () => {
       fetchCourse();
     }
   }, [courseId, isEditMode]);
+
+  useEffect(() => {
+    if (loading || deepLinkHandledRef.current || (!targetLessonId && !targetQuizId && !targetIssue)) return undefined;
+
+    const lesson = sections.flatMap((section) => section.lessons || []).find((item) => (
+      (targetLessonId && Number(item.id) === targetLessonId)
+      || (targetQuizId && Number(item.quizId) === targetQuizId)
+    ));
+    if ((targetLessonId || targetQuizId) && !lesson) return undefined;
+
+    const destinationTab = requestedTab === 'quizzes' || targetQuizId ? 'quizzes' : 'curriculum';
+    deepLinkHandledRef.current = true;
+    setActiveHubTab(destinationTab);
+    setQuizHubFilter('all');
+    setQuizHubSearch('');
+
+    if (!lesson) return undefined;
+
+    const elementId = destinationTab === 'quizzes'
+      ? `quiz-lesson-${lesson.id}`
+      : `lesson-card-${lesson.id}`;
+    setFocusedTarget(elementId);
+
+    const scrollTimer = window.setTimeout(() => {
+      const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById(elementId)?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'center'
+      });
+    }, 80);
+    const clearTimer = window.setTimeout(() => setFocusedTarget(''), 6000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [loading, requestedTab, sections, targetIssue, targetLessonId, targetQuizId]);
 
   // Fetch subjects
   useEffect(() => {
@@ -1334,6 +1387,13 @@ const CourseEditor = () => {
             </div>
           )}
 
+          {targetIssue && ALERT_ISSUE_LABELS[targetIssue] && (
+            <div className="alert-deep-link-notice" role="status">
+              <FiAlertCircle aria-hidden="true" />
+              <span><strong>Mở từ cảnh báo vận hành:</strong> {ALERT_ISSUE_LABELS[targetIssue]}</span>
+            </div>
+          )}
+
           {/* 1. Basic Course Info Form */}
           {activeHubTab === 'basic' && (
             <div className="course-basic-form" style={{
@@ -1448,7 +1508,11 @@ const CourseEditor = () => {
                       const hasQuiz = Array.isArray(lesson.quizQuestions) && lesson.quizQuestions.length > 0;
 
                       return (
-                        <div key={lesson.id} className="minimalist-lesson-card">
+                        <div
+                          key={lesson.id}
+                          id={`lesson-card-${lesson.id}`}
+                          className={`minimalist-lesson-card ${focusedTarget === `lesson-card-${lesson.id}` ? 'alert-target-focus' : ''}`}
+                        >
                           {/* Row 1: Drag, Type, Title Input, Media Upload Button, Delete Button */}
                           <div className="card-top-row">
                             <div className="drag-handle-wrapper" title="Kéo thả để sắp xếp bài học">
@@ -2036,7 +2100,11 @@ const CourseEditor = () => {
                   filteredQuizzesLessons.map((item) => {
                     const hasQuestions = Array.isArray(item.quizQuestions) && item.quizQuestions.length > 0;
                     return (
-                      <div key={item.id} className="quiz-lesson-row">
+                      <div
+                        key={item.id}
+                        id={`quiz-lesson-${item.id}`}
+                        className={`quiz-lesson-row ${focusedTarget === `quiz-lesson-${item.id}` ? 'alert-target-focus' : ''}`}
+                      >
                         <div className="lesson-info">
                           <div className="tags-row">
                             <span className="section-tag">

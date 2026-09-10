@@ -15,43 +15,34 @@ describe('Admin operational alerts', () => {
     db.pool.query = async (sql) => {
       if (sql.includes("FROM media_assets")) {
         return {
-          rows: [{ status: 'FAILED', issue_count: 2, latest_at: '2026-09-10T01:00:00.000Z' }]
+          rows: [{
+            media_id: 'media-1', status: 'FAILED', object_key: 'courses/demo-7/lesson.mp4',
+            original_filename: 'lesson.mp4', updated_at: '2026-09-10T01:00:00.000Z',
+            lesson_id: 12, lesson_title: 'Listening 1', course_id: 7, course_name: 'IELTS'
+          }]
         };
       }
+      if (sql.includes('FROM failed_storage_deletions')) return { rows: [] };
       if (sql.includes('FROM pending_media_uploads')) {
         return {
-          rows: [{
-            stale_uploads: 1,
-            latest_stale_upload: '2026-09-10T01:01:00.000Z',
-            failed_deletions: 0,
-            latest_failed_deletion: null,
-            permanent_deletions: 0
-          }]
+          rows: [{ upload_id: 'upload-1', instructor_id: 22, storage_key: 'courses/demo-7/upload.mp4', status: 'PENDING', created_at: '2026-09-10T01:01:00.000Z', course_id: 7, lesson_id: 12, lesson_title: 'Listening 1' }]
         };
       }
       if (sql.includes('FROM lesson_subtitles')) {
-        return { rows: [{ failed_count: 1, latest_at: '2026-09-10T01:02:00.000Z' }] };
+        return { rows: [{ subtitle_id: 3, lesson_id: 12, lesson_title: 'Listening 1', course_id: 7, error_code: 'TRANSCRIPT_FAILED', updated_at: '2026-09-10T01:02:00.000Z' }] };
       }
-      if (sql.includes('published_without_lessons')) {
-        return {
-          rows: [{
-            published_without_lessons: 1,
-            latest_empty_course: '2026-09-10T01:03:00.000Z',
-            quizzes_without_questions: 1,
-            latest_empty_quiz: '2026-09-10T01:04:00.000Z'
-          }]
-        };
-      }
+      if (sql.includes('FROM courses c')) return { rows: [{ course_id: 8, course_name: 'Empty course', updated_at: '2026-09-10T01:03:00.000Z' }] };
+      if (sql.includes('FROM quizzes q')) return { rows: [{ quiz_id: 9, course_id: 7, lesson_id: 12, title: 'Empty quiz', updated_at: '2026-09-10T01:04:00.000Z' }] };
       if (sql.includes('FROM user_token_limits')) {
-        return { rows: [{ exhausted_count: 3, latest_at: '2026-09-10T01:05:00.000Z' }] };
+        return { rows: [{ user_id: 25, full_name: 'Test User', remaining_tokens: 0, updated_at: '2026-09-10T01:05:00.000Z' }] };
       }
       if (sql.includes('FROM ai_usage_events')) {
         return {
-          rows: [{ error_count: 2, affected_models: 1, latest_at: '2026-09-10T01:06:00.000Z' }]
+          rows: [{ id: 31, user_id: 25, full_name: 'Test User', purpose: 'chat', model: 'gemini-test', error_code: '429', created_at: '2026-09-10T01:06:00.000Z' }]
         };
       }
       if (sql.includes('FROM ai_provider_incidents')) {
-        return { rows: [{ incident_count: 0, occurrences: 0, latest_at: null }] };
+        return { rows: [] };
       }
       throw new Error(`Unexpected query in admin alerts test: ${sql}`);
     };
@@ -73,15 +64,17 @@ describe('Admin operational alerts', () => {
 
       assert.equal(snapshot.source, 'PostgreSQL và telemetry runtime của backend');
       assert.equal(snapshot.transport.primary, 'sse');
-      assert.ok(ids.has('media-failed'));
-      assert.ok(ids.has('media-stale-uploads'));
-      assert.ok(ids.has('subtitle-generation-failures'));
-      assert.ok(ids.has('published-courses-without-lessons'));
-      assert.ok(ids.has('quizzes-without-questions'));
-      assert.ok(ids.has('users-with-exhausted-token-quota'));
-      assert.ok(ids.has('recent-ai-request-errors'));
+      assert.ok(ids.has('media-media-1'));
+      assert.ok(ids.has('pending-upload-upload-1'));
+      assert.ok(ids.has('subtitle-3'));
+      assert.ok(ids.has('empty-course-8'));
+      assert.ok(ids.has('empty-quiz-9'));
+      assert.ok(ids.has('exhausted-quota-25'));
+      assert.ok(ids.has('ai-request-31'));
       assert.ok(ids.has('ai-rate-limit-gemini-test'));
       assert.ok(snapshot.alerts.every((alert) => alert.source && alert.actionUrl));
+      assert.ok(snapshot.alerts.filter((alert) => !alert.id.startsWith('ai-rate-limit')).every((alert) => alert.entity?.id));
+      assert.equal(snapshot.alerts.find((alert) => alert.id === 'subtitle-3').actionUrl, '/instructor/edit-course/7?tab=curriculum&lessonId=12&issue=subtitle-failed');
       assert.equal(snapshot.summary.total, snapshot.alerts.length);
     } finally {
       db.pool.query = originalQuery;
@@ -96,16 +89,14 @@ describe('Admin operational alerts', () => {
 
     db.pool.query = async (sql) => {
       if (sql.includes("FROM media_assets")) return { rows: [] };
-      if (sql.includes('FROM pending_media_uploads')) {
-        return { rows: [{ stale_uploads: 0, failed_deletions: 0, permanent_deletions: 0 }] };
-      }
-      if (sql.includes('FROM lesson_subtitles')) return { rows: [{ failed_count: 0 }] };
-      if (sql.includes('published_without_lessons')) {
-        return { rows: [{ published_without_lessons: 0, quizzes_without_questions: 0 }] };
-      }
-      if (sql.includes('FROM user_token_limits')) return { rows: [{ exhausted_count: 0 }] };
-      if (sql.includes('FROM ai_usage_events')) return { rows: [{ error_count: 0, affected_models: 0 }] };
-      if (sql.includes('FROM ai_provider_incidents')) return { rows: [{ incident_count: 0, occurrences: 0 }] };
+      if (sql.includes('FROM failed_storage_deletions')) return { rows: [] };
+      if (sql.includes('FROM pending_media_uploads')) return { rows: [] };
+      if (sql.includes('FROM lesson_subtitles')) return { rows: [] };
+      if (sql.includes('FROM courses c')) return { rows: [] };
+      if (sql.includes('FROM quizzes q')) return { rows: [] };
+      if (sql.includes('FROM user_token_limits')) return { rows: [] };
+      if (sql.includes('FROM ai_usage_events')) return { rows: [] };
+      if (sql.includes('FROM ai_provider_incidents')) return { rows: [] };
       throw new Error(`Unexpected query in healthy alerts test: ${sql}`);
     };
     adminService.getRateLimitStatus = async () => ({ models: [], notices: [] });

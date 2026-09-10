@@ -38,6 +38,7 @@ describe('Super Admin ownership boundary', () => {
   const originalGetAllUsers = adminService.getAllUsers;
   const originalUpdateUserRole = adminService.updateUserRole;
   const originalDeleteUser = adminService.deleteUser;
+  const originalResetUserToken = adminService.resetUserToken;
 
   beforeEach(() => {
     process.env.SUPER_ADMIN_EMAILS = 'owner@example.com';
@@ -45,6 +46,7 @@ describe('Super Admin ownership boundary', () => {
     adminService.getAllUsers = originalGetAllUsers;
     adminService.updateUserRole = originalUpdateUserRole;
     adminService.deleteUser = originalDeleteUser;
+    adminService.resetUserToken = originalResetUserToken;
   });
 
   after(() => {
@@ -54,6 +56,7 @@ describe('Super Admin ownership boundary', () => {
     adminService.getAllUsers = originalGetAllUsers;
     adminService.updateUserRole = originalUpdateUserRole;
     adminService.deleteUser = originalDeleteUser;
+    adminService.resetUserToken = originalResetUserToken;
   });
 
   it('requires both the configured email and role_id=1', () => {
@@ -115,5 +118,33 @@ describe('Super Admin ownership boundary', () => {
 
     assert.strictEqual(demote.error.code, 'SUPER_ADMIN_PROTECTED');
     assert.strictEqual(remove.error.code, 'SUPER_ADMIN_PROTECTED');
+  });
+
+  it('allows the Super Admin to reset their own AI quota', async () => {
+    db.query = async () => ({ rows: [owner] });
+    adminService.resetUserToken = async (userId) => ({ user_id: Number(userId), used_tokens: 0 });
+
+    const { res, error } = await invoke(adminController.resetUserToken, {
+      params: { userId: String(owner.user_id) },
+      user: { id: owner.user_id, email: owner.email, roleId: owner.role_id }
+    });
+
+    assert.strictEqual(error, undefined);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.payload.success, true);
+    assert.strictEqual(res.payload.data.used_tokens, 0);
+  });
+
+  it('keeps the Super Admin quota protected from a regular Admin', async () => {
+    db.query = async () => ({ rows: [owner] });
+    adminService.resetUserToken = async () => { throw new Error('service must not be called'); };
+
+    const { error } = await invoke(adminController.resetUserToken, {
+      params: { userId: String(owner.user_id) },
+      user: regularAdmin
+    });
+
+    assert.strictEqual(error.status, 403);
+    assert.strictEqual(error.code, 'SUPER_ADMIN_PROTECTED');
   });
 });

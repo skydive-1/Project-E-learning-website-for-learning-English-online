@@ -2,7 +2,7 @@ const { pool } = require('../../../config/database');
 const adminService = require('./admin.service');
 
 const CACHE_TTL_MS = 10_000;
-const MAX_ALERTS = 50;
+const MAX_ALERTS = 100;
 
 let cachedSnapshot = null;
 let cacheExpiresAt = 0;
@@ -26,7 +26,8 @@ const createAlert = ({
   timestamp,
   actionUrl,
   actionLabel,
-  source
+  source,
+  entity
 }) => ({
   id,
   type,
@@ -36,253 +37,351 @@ const createAlert = ({
   timestamp,
   actionUrl,
   actionLabel,
-  source
+  source,
+  entity
+});
+
+const withQuery = (path, params) => {
+  const query = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && value !== '') query.set(key, String(value));
+  });
+  const suffix = query.toString();
+  return suffix ? `${path}?${suffix}` : path;
+};
+
+const courseIdFromStorageKey = (storageKey) => {
+  const match = String(storageKey || '').match(/(?:^|\/)courses\/(?:[^/]*-)?(\d+)(?:\/|$)/i);
+  return match ? Number(match[1]) : null;
+};
+
+const courseTarget = (row, issue, extra = {}) => {
+  const courseId = asNumber(row.course_id) || courseIdFromStorageKey(row.storage_key || row.object_key);
+  if (!courseId) return null;
+  return withQuery(`/instructor/edit-course/${courseId}`, {
+    tab: extra.tab || 'curriculum',
+    lessonId: row.lesson_id,
+    quizId: row.quiz_id,
+    issue,
+    ...extra
+  });
+};
+
+const userTarget = (userId, extra = {}) => withQuery('/admin/dashboard', {
+  tab: 'ai-quota',
+  userId,
+  ...extra
 });
 
 const collectDatabaseAlerts = async (generatedAt) => {
   const [
     mediaResult,
-    pipelineResult,
+    pendingUploadResult,
+    deletionResult,
     subtitleResult,
-    integrityResult,
+    emptyCourseResult,
+    emptyQuizResult,
     quotaResult,
     aiErrorResult,
     incidentResult
   ] = await Promise.all([
     pool.query(`
-      SELECT status, COUNT(*)::int AS issue_count, MAX(updated_at) AS latest_at
-      FROM media_assets
-      WHERE deleted_at IS NULL AND status IN ('FAILED', 'MISSING_SOURCE')
-      GROUP BY status
+      SELECT ma.media_id, ma.status, ma.object_key, ma.original_filename, ma.created_by, ma.updated_at,
+             target.lesson_id, target.lesson_title, target.course_id, target.course_name
+      FROM media_assets ma
+      LEFT JOIN LATERAL (
+        SELECT linked.*
+        FROM (
+          SELECT l.lesson_id, l.title AS lesson_title, s.course_id, c.course_name
+          FROM lessons l
+          JOIN sections s ON s.section_id = l.section_id
+          JOIN courses c ON c.course_id = s.course_id
+          WHERE l.media_asset_id = ma.media_id OR l.storage_key = ma.object_key
+          UNION ALL
+          SELECT l.lesson_id, l.title AS lesson_title, s.course_id, c.course_name
+          FROM lesson_materials lm
+          JOIN lessons l ON l.lesson_id = lm.lesson_id
+          JOIN sections s ON s.section_id = l.section_id
+          JOIN courses c ON c.course_id = s.course_id
+          WHERE lm.media_asset_id = ma.media_id OR lm.storage_key = ma.object_key
+        ) linked
+        LIMIT 1
+      ) target ON TRUE
+      WHERE ma.deleted_at IS NULL AND ma.status IN ('FAILED', 'MISSING_SOURCE')
+      ORDER BY ma.updated_at DESC
+      LIMIT 25
     `),
     pool.query(`
-      SELECT
-        COUNT(*) FILTER (
-          WHERE status IN ('PENDING', 'CLAIMING', 'CLEANING')
-            AND (expires_at <= NOW() OR created_at <= NOW() - INTERVAL '30 minutes')
-        )::int AS stale_uploads,
-        MAX(created_at) FILTER (
-          WHERE status IN ('PENDING', 'CLAIMING', 'CLEANING')
-            AND (expires_at <= NOW() OR created_at <= NOW() - INTERVAL '30 minutes')
-        ) AS latest_stale_upload,
-        (SELECT COUNT(*)::int
-         FROM failed_storage_deletions
-         WHERE status IN ('PENDING_RETRY', 'FAILED_PERMANENT')) AS failed_deletions,
-        (SELECT MAX(created_at)
-         FROM failed_storage_deletions
-         WHERE status IN ('PENDING_RETRY', 'FAILED_PERMANENT')) AS latest_failed_deletion,
-        (SELECT COUNT(*)::int
-         FROM failed_storage_deletions
-         WHERE status = 'FAILED_PERMANENT') AS permanent_deletions
-      FROM pending_media_uploads
+      SELECT p.upload_id, p.instructor_id, p.storage_key, p.status, p.created_at, p.expires_at,
+             u.full_name AS instructor_name, target.lesson_id, target.lesson_title,
+             target.course_id, target.course_name
+      FROM pending_media_uploads p
+      LEFT JOIN users u ON u.user_id = p.instructor_id
+      LEFT JOIN LATERAL (
+        SELECT linked.*
+        FROM (
+          SELECT l.lesson_id, l.title AS lesson_title, s.course_id, c.course_name
+          FROM lessons l
+          JOIN sections s ON s.section_id = l.section_id
+          JOIN courses c ON c.course_id = s.course_id
+          WHERE l.media_asset_id = p.media_id OR l.storage_key = p.storage_key
+          UNION ALL
+          SELECT l.lesson_id, l.title AS lesson_title, s.course_id, c.course_name
+          FROM lesson_materials lm
+          JOIN lessons l ON l.lesson_id = lm.lesson_id
+          JOIN sections s ON s.section_id = l.section_id
+          JOIN courses c ON c.course_id = s.course_id
+          WHERE lm.media_asset_id = p.media_id OR lm.storage_key = p.storage_key
+        ) linked
+        LIMIT 1
+      ) target ON TRUE
+      WHERE p.status IN ('PENDING', 'CLAIMING', 'CLEANING')
+        AND (p.expires_at <= NOW() OR p.created_at <= NOW() - INTERVAL '30 minutes')
+      ORDER BY p.created_at DESC
+      LIMIT 25
     `),
     pool.query(`
-      SELECT
-        COUNT(*)::int AS failed_count,
-        MAX(ls.updated_at) AS latest_at
+      SELECT d.deletion_id, p.upload_id AS pending_upload_id, d.storage_key, d.status,
+             d.retry_count, d.last_error, d.created_at,
+             p.instructor_id, u.full_name AS instructor_name,
+             target.lesson_id, target.lesson_title, target.course_id, target.course_name
+      FROM failed_storage_deletions d
+      LEFT JOIN LATERAL (
+        SELECT pending.*
+        FROM pending_media_uploads pending
+        WHERE pending.storage_provider = d.storage_provider
+          AND pending.storage_bucket = d.storage_bucket
+          AND pending.storage_key = d.storage_key
+        ORDER BY pending.created_at DESC
+        LIMIT 1
+      ) p ON TRUE
+      LEFT JOIN users u ON u.user_id = p.instructor_id
+      LEFT JOIN LATERAL (
+        SELECT linked.*
+        FROM (
+          SELECT l.lesson_id, l.title AS lesson_title, s.course_id, c.course_name
+          FROM lessons l
+          JOIN sections s ON s.section_id = l.section_id
+          JOIN courses c ON c.course_id = s.course_id
+          WHERE l.storage_key = d.storage_key
+          UNION ALL
+          SELECT l.lesson_id, l.title AS lesson_title, s.course_id, c.course_name
+          FROM lesson_materials lm
+          JOIN lessons l ON l.lesson_id = lm.lesson_id
+          JOIN sections s ON s.section_id = l.section_id
+          JOIN courses c ON c.course_id = s.course_id
+          WHERE lm.storage_key = d.storage_key
+        ) linked
+        LIMIT 1
+      ) target ON TRUE
+      WHERE d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
+      ORDER BY d.created_at DESC
+      LIMIT 25
+    `),
+    pool.query(`
+      SELECT ls.subtitle_id, ls.lesson_id, ls.error_code, ls.error_message, ls.updated_at,
+             l.title AS lesson_title, s.course_id, c.course_name
       FROM lesson_subtitles ls
+      JOIN lessons l ON l.lesson_id = ls.lesson_id
+      JOIN sections s ON s.section_id = l.section_id
+      JOIN courses c ON c.course_id = s.course_id
       WHERE ls.subtitle_status = 'failed'
+      ORDER BY ls.updated_at DESC
+      LIMIT 25
     `),
     pool.query(`
-      SELECT
-        (SELECT COUNT(*)::int
-         FROM courses c
-         WHERE c.status = 'published'
-           AND NOT EXISTS (
-             SELECT 1
-             FROM sections s
-             JOIN lessons l ON l.section_id = s.section_id
-             WHERE s.course_id = c.course_id
-           )) AS published_without_lessons,
-        (SELECT MAX(c.updated_at)
-         FROM courses c
-         WHERE c.status = 'published'
-           AND NOT EXISTS (
-             SELECT 1
-             FROM sections s
-             JOIN lessons l ON l.section_id = s.section_id
-             WHERE s.course_id = c.course_id
-           )) AS latest_empty_course,
-        (SELECT COUNT(*)::int
-         FROM quizzes q
-         WHERE NOT EXISTS (
-           SELECT 1 FROM questions question WHERE question.quiz_id = q.quiz_id
-         )) AS quizzes_without_questions,
-        (SELECT MAX(q.updated_at)
-         FROM quizzes q
-         WHERE NOT EXISTS (
-           SELECT 1 FROM questions question WHERE question.quiz_id = q.quiz_id
-         )) AS latest_empty_quiz
+      SELECT c.course_id, c.course_name, c.updated_at
+      FROM courses c
+      WHERE c.status = 'published'
+        AND NOT EXISTS (
+          SELECT 1 FROM sections s
+          JOIN lessons l ON l.section_id = s.section_id
+          WHERE s.course_id = c.course_id
+        )
+      ORDER BY c.updated_at DESC
+      LIMIT 25
     `),
     pool.query(`
-      SELECT
-        COUNT(*)::int AS exhausted_count,
-        MAX(utl.updated_at) AS latest_at
+      SELECT q.quiz_id, q.course_id, q.lesson_id, q.title, q.updated_at,
+             l.title AS lesson_title, c.course_name
+      FROM quizzes q
+      LEFT JOIN lessons l ON l.lesson_id = q.lesson_id
+      LEFT JOIN courses c ON c.course_id = q.course_id
+      WHERE NOT EXISTS (SELECT 1 FROM questions question WHERE question.quiz_id = q.quiz_id)
+      ORDER BY q.updated_at DESC
+      LIMIT 25
+    `),
+    pool.query(`
+      SELECT utl.user_id, utl.remaining_tokens, utl.updated_at,
+             u.full_name, u.username, u.email
       FROM user_token_limits utl
+      JOIN users u ON u.user_id = utl.user_id
       WHERE utl.remaining_tokens <= 0
+      ORDER BY utl.updated_at DESC
+      LIMIT 25
     `),
     pool.query(`
-      SELECT
-        COUNT(*)::int AS error_count,
-        COUNT(DISTINCT model)::int AS affected_models,
-        MAX(created_at) AS latest_at
-      FROM ai_usage_events
-      WHERE request_status = 'error'
-        AND created_at >= NOW() - INTERVAL '30 minutes'
+      SELECT e.id, e.user_id, e.purpose, e.model, e.error_code, e.created_at,
+             u.full_name, u.username
+      FROM ai_usage_events e
+      LEFT JOIN users u ON u.user_id = e.user_id
+      WHERE e.request_status = 'error'
+        AND e.created_at >= NOW() - INTERVAL '30 minutes'
+      ORDER BY e.created_at DESC
+      LIMIT 25
     `),
     pool.query(`
-      SELECT
-        COUNT(*)::int AS incident_count,
-        SUM(occurrence_count)::int AS occurrences,
-        MAX(last_seen_at) AS latest_at
+      SELECT incident_id, workload, purpose, model, error_code, http_status,
+             message, occurrence_count, last_seen_at
       FROM ai_provider_incidents
       WHERE resolved_at IS NULL
-        AND last_seen_at >= NOW() - INTERVAL '24 hours'
+        AND workload = 'rag'
+        AND LEFT(purpose, 4) = 'rag_'
+        AND last_seen_at >= NOW() - INTERVAL '30 minutes'
+      ORDER BY last_seen_at DESC
+      LIMIT 25
     `)
   ]);
 
   const alerts = [];
 
   for (const row of mediaResult.rows) {
-    const count = asNumber(row.issue_count);
     const missing = row.status === 'MISSING_SOURCE';
+    const targetUrl = courseTarget(row, missing ? 'missing-media-source' : 'media-processing-failed');
     alerts.push(createAlert({
-      id: `media-${String(row.status).toLowerCase()}`,
+      id: `media-${row.media_id}`,
       type: 'failed_upload',
       severity: 'high',
       title: missing ? 'Media bị thiếu tệp nguồn' : 'Media xử lý thất bại',
-      message: `${count} media đang ở trạng thái ${row.status}. Cần kiểm tra nội dung khóa học và kho lưu trữ.`,
-      timestamp: asTimestamp(row.latest_at, generatedAt),
-      actionUrl: '/admin/dashboard?tab=courses',
-      actionLabel: 'Quản lý khóa học',
-      source: 'PostgreSQL · media_assets'
+      message: `${row.lesson_title ? `Bài “${row.lesson_title}”` : (row.original_filename || row.object_key || `Media ${row.media_id}`)} đang ở trạng thái ${row.status}.`,
+      timestamp: asTimestamp(row.updated_at, generatedAt),
+      actionUrl: targetUrl || withQuery('/admin/dashboard', { tab: 'users', userId: row.created_by }),
+      actionLabel: targetUrl ? 'Mở đúng bài học' : 'Xem chủ sở hữu',
+      source: `PostgreSQL · media_assets · ${row.media_id}`,
+      entity: { type: 'media', id: row.media_id, courseId: row.course_id, lessonId: row.lesson_id, storageKey: row.object_key }
     }));
   }
 
-  const pipeline = pipelineResult.rows[0] || {};
-  const staleUploads = asNumber(pipeline.stale_uploads);
-  if (staleUploads > 0) {
+  for (const row of pendingUploadResult.rows) {
+    const targetUrl = courseTarget(row, 'stale-upload', { uploadId: row.upload_id });
     alerts.push(createAlert({
-      id: 'media-stale-uploads',
+      id: `pending-upload-${row.upload_id}`,
       type: 'failed_upload',
       severity: 'medium',
       title: 'Upload media bị treo',
-      message: `${staleUploads} phiên upload chưa hoàn tất sau 30 phút hoặc đã hết hạn.`,
-      timestamp: asTimestamp(pipeline.latest_stale_upload, generatedAt),
-      actionUrl: '/admin/dashboard?tab=courses',
-      actionLabel: 'Kiểm tra khóa học',
-      source: 'PostgreSQL · pending_media_uploads'
+      message: `${row.lesson_title ? `Bài “${row.lesson_title}”` : `Tệp “${row.storage_key}”`} chưa hoàn tất sau 30 phút hoặc đã hết hạn.`,
+      timestamp: asTimestamp(row.created_at, generatedAt),
+      actionUrl: targetUrl || withQuery('/admin/dashboard', { tab: 'users', userId: row.instructor_id, uploadId: row.upload_id }),
+      actionLabel: targetUrl ? 'Mở đúng nội dung lỗi' : 'Xem chủ upload',
+      source: `PostgreSQL · pending_media_uploads · ${row.upload_id}`,
+      entity: { type: 'pending_upload', id: row.upload_id, courseId: row.course_id, lessonId: row.lesson_id, userId: row.instructor_id, storageKey: row.storage_key }
     }));
   }
 
-  const failedDeletions = asNumber(pipeline.failed_deletions);
-  if (failedDeletions > 0) {
-    const permanent = asNumber(pipeline.permanent_deletions);
+  for (const row of deletionResult.rows) {
+    const targetUrl = courseTarget(row, 'storage-deletion-failed', { deletionId: row.deletion_id });
     alerts.push(createAlert({
-      id: 'storage-cleanup-failures',
+      id: `storage-deletion-${row.deletion_id}`,
       type: 'server',
-      severity: permanent > 0 ? 'high' : 'medium',
+      severity: row.status === 'FAILED_PERMANENT' ? 'high' : 'medium',
       title: 'Dọn dẹp kho lưu trữ chưa hoàn tất',
-      message: `${failedDeletions} tệp đang chờ xóa lại${permanent > 0 ? `, trong đó ${permanent} tệp đã lỗi vĩnh viễn` : ''}.`,
-      timestamp: asTimestamp(pipeline.latest_failed_deletion, generatedAt),
-      actionUrl: '/admin/dashboard?tab=courses',
-      actionLabel: 'Xem nội dung',
-      source: 'PostgreSQL · failed_storage_deletions'
+      message: `Tệp “${row.storage_key}” xóa thất bại sau ${asNumber(row.retry_count)} lần thử${row.last_error ? `: ${row.last_error}` : '.'}`,
+      timestamp: asTimestamp(row.created_at, generatedAt),
+      actionUrl: targetUrl || withQuery('/admin/dashboard', { tab: 'users', userId: row.instructor_id, deletionId: row.deletion_id }),
+      actionLabel: targetUrl ? 'Mở đúng nội dung lỗi' : 'Xem chủ sở hữu',
+      source: `PostgreSQL · failed_storage_deletions · #${row.deletion_id}`,
+      entity: { type: 'storage_deletion', id: row.deletion_id, courseId: row.course_id, lessonId: row.lesson_id, userId: row.instructor_id, storageKey: row.storage_key }
     }));
   }
 
-  const subtitles = subtitleResult.rows[0] || {};
-  const failedSubtitles = asNumber(subtitles.failed_count);
-  if (failedSubtitles > 0) {
+  for (const row of subtitleResult.rows) {
     alerts.push(createAlert({
-      id: 'subtitle-generation-failures',
+      id: `subtitle-${row.subtitle_id}`,
       type: 'failed_upload',
       severity: 'medium',
       title: 'Tạo phụ đề thất bại',
-      message: `${failedSubtitles} bài học có tác vụ phụ đề thất bại và cần được tạo lại.`,
-      timestamp: asTimestamp(subtitles.latest_at, generatedAt),
-      actionUrl: '/admin/dashboard?tab=courses',
-      actionLabel: 'Quản lý khóa học',
-      source: 'PostgreSQL · lesson_subtitles'
+      message: `Bài “${row.lesson_title}”${row.error_message ? `: ${row.error_message}` : ' cần được tạo lại phụ đề.'}`,
+      timestamp: asTimestamp(row.updated_at, generatedAt),
+      actionUrl: courseTarget(row, 'subtitle-failed'),
+      actionLabel: 'Mở đúng bài học',
+      source: `PostgreSQL · lesson_subtitles · bài #${row.lesson_id}`,
+      entity: { type: 'subtitle', id: row.subtitle_id, courseId: row.course_id, lessonId: row.lesson_id, errorCode: row.error_code }
     }));
   }
 
-  const integrity = integrityResult.rows[0] || {};
-  const emptyCourses = asNumber(integrity.published_without_lessons);
-  if (emptyCourses > 0) {
+  for (const row of emptyCourseResult.rows) {
     alerts.push(createAlert({
-      id: 'published-courses-without-lessons',
+      id: `empty-course-${row.course_id}`,
       type: 'course',
       severity: 'high',
       title: 'Khóa học đã xuất bản nhưng chưa có bài học',
-      message: `${emptyCourses} khóa học đang hiển thị cho học viên nhưng không có bài học.`,
-      timestamp: asTimestamp(integrity.latest_empty_course, generatedAt),
-      actionUrl: '/admin/dashboard?tab=courses',
-      actionLabel: 'Quản lý khóa học',
-      source: 'PostgreSQL · courses/sections/lessons'
+      message: `Khóa “${row.course_name}” đang hiển thị cho học viên nhưng không có bài học.`,
+      timestamp: asTimestamp(row.updated_at, generatedAt),
+      actionUrl: courseTarget(row, 'published-without-lessons'),
+      actionLabel: 'Mở đúng khóa học',
+      source: `PostgreSQL · courses · #${row.course_id}`,
+      entity: { type: 'course', id: row.course_id, courseId: row.course_id }
     }));
   }
 
-  const emptyQuizzes = asNumber(integrity.quizzes_without_questions);
-  if (emptyQuizzes > 0) {
+  for (const row of emptyQuizResult.rows) {
+    const targetUrl = courseTarget(row, 'quiz-without-questions', { tab: 'quizzes' });
     alerts.push(createAlert({
-      id: 'quizzes-without-questions',
+      id: `empty-quiz-${row.quiz_id}`,
       type: 'quiz',
       severity: 'medium',
       title: 'Đề quiz chưa có câu hỏi',
-      message: `${emptyQuizzes} đề quiz chưa chứa câu hỏi nào.`,
-      timestamp: asTimestamp(integrity.latest_empty_quiz, generatedAt),
-      actionUrl: '/admin/dashboard?tab=quizzes',
-      actionLabel: 'Quản lý quiz',
-      source: 'PostgreSQL · quizzes/questions'
+      message: `Đề “${row.title}” chưa chứa câu hỏi nào.`,
+      timestamp: asTimestamp(row.updated_at, generatedAt),
+      actionUrl: targetUrl || `/quizzes/play/${row.quiz_id}`,
+      actionLabel: targetUrl ? 'Mở đúng quiz' : 'Mở đúng đề quiz',
+      source: `PostgreSQL · quizzes · #${row.quiz_id}`,
+      entity: { type: 'quiz', id: row.quiz_id, courseId: row.course_id, lessonId: row.lesson_id, quizId: row.quiz_id }
     }));
   }
 
-  const quota = quotaResult.rows[0] || {};
-  const exhaustedUsers = asNumber(quota.exhausted_count);
-  if (exhaustedUsers > 0) {
+  for (const row of quotaResult.rows) {
     alerts.push(createAlert({
-      id: 'users-with-exhausted-token-quota',
+      id: `exhausted-quota-${row.user_id}`,
       type: 'quota_warning',
       severity: 'medium',
       title: 'Tài khoản đã hết hạn mức Token AI',
-      message: `${exhaustedUsers} tài khoản đã dùng hết hoặc vượt hạn mức token được Admin cấp.`,
-      timestamp: asTimestamp(quota.latest_at, generatedAt),
-      actionUrl: '/admin/dashboard?tab=ai-quota',
-      actionLabel: 'Quản lý Token AI',
-      source: 'PostgreSQL · user_token_limits'
+      message: `Tài khoản “${row.full_name || row.username || row.email}” đã dùng hết hạn mức token được cấp.`,
+      timestamp: asTimestamp(row.updated_at, generatedAt),
+      actionUrl: userTarget(row.user_id),
+      actionLabel: 'Mở đúng tài khoản',
+      source: `PostgreSQL · user_token_limits · user #${row.user_id}`,
+      entity: { type: 'user_quota', id: row.user_id, userId: row.user_id }
     }));
   }
 
-  const aiErrors = aiErrorResult.rows[0] || {};
-  const recentAiErrors = asNumber(aiErrors.error_count);
-  if (recentAiErrors > 0) {
+  for (const row of aiErrorResult.rows) {
     alerts.push(createAlert({
-      id: 'recent-ai-request-errors',
+      id: `ai-request-${row.id}`,
       type: 'server',
-      severity: recentAiErrors >= 5 ? 'high' : 'medium',
+      severity: 'medium',
       title: 'Yêu cầu AI phát sinh lỗi gần đây',
-      message: `${recentAiErrors} yêu cầu lỗi trên ${asNumber(aiErrors.affected_models)} model trong 30 phút gần nhất.`,
-      timestamp: asTimestamp(aiErrors.latest_at, generatedAt),
-      actionUrl: '/admin/dashboard?tab=ai-quota',
-      actionLabel: 'Xem giám sát AI',
-      source: 'PostgreSQL · ai_usage_events'
+      message: `${row.full_name || row.username || 'Hệ thống'} · ${row.purpose} · ${row.model}${row.error_code ? ` · ${row.error_code}` : ''}.`,
+      timestamp: asTimestamp(row.created_at, generatedAt),
+      actionUrl: userTarget(row.user_id, { eventId: row.id }),
+      actionLabel: row.user_id ? 'Mở đúng tài khoản' : 'Mở đúng sự kiện',
+      source: `PostgreSQL · ai_usage_events · #${row.id}`,
+      entity: { type: 'ai_event', id: row.id, userId: row.user_id, model: row.model }
     }));
   }
 
-  const incidents = incidentResult.rows[0] || {};
-  const incidentCount = asNumber(incidents.incident_count);
-  if (incidentCount > 0) {
+  for (const row of incidentResult.rows) {
     alerts.push(createAlert({
-      id: 'open-ai-provider-incidents',
+      id: `ai-incident-${row.incident_id}`,
       type: 'server',
       severity: 'high',
       title: 'Sự cố nhà cung cấp AI chưa phục hồi',
-      message: `${incidentCount} sự cố đang mở, ghi nhận ${asNumber(incidents.occurrences)} lần trong 24 giờ gần nhất.`,
-      timestamp: asTimestamp(incidents.latest_at, generatedAt),
-      actionUrl: '/admin/dashboard?tab=ai-quota',
-      actionLabel: 'Xem sự cố AI',
-      source: 'PostgreSQL · ai_provider_incidents'
+      message: `${row.model} · ${row.purpose} · ${row.error_code}: ${row.message} (${asNumber(row.occurrence_count)} lần).`,
+      timestamp: asTimestamp(row.last_seen_at, generatedAt),
+      actionUrl: userTarget(null, { incidentId: row.incident_id }),
+      actionLabel: 'Mở đúng sự cố AI',
+      source: `PostgreSQL · ai_provider_incidents · #${row.incident_id}`,
+      entity: { type: 'ai_incident', id: row.incident_id, model: row.model }
     }));
   }
 
@@ -303,8 +402,8 @@ const collectRuntimeAlerts = async (generatedAt) => {
       title: `Hạn mức AI: ${model.model}`,
       message: `Mức sử dụng cao nhất đang ở ${Math.round(model.peakPercent)}% cap do Admin cấu hình.`,
       timestamp: asTimestamp(model.updatedAt, generatedAt),
-      actionUrl: '/admin/dashboard?tab=ai-quota',
-      actionLabel: 'Quản lý Token AI',
+      actionUrl: userTarget(null, { view: 'rate-limits', model: model.model }),
+      actionLabel: 'Mở đúng model',
       source: 'Backend telemetry · ai_usage_events'
     }));
   }
@@ -317,8 +416,8 @@ const collectRuntimeAlerts = async (generatedAt) => {
       title: `Cap ${String(notice.dimension).toUpperCase()} có thể không chính xác`,
       message: `${notice.model}: cap cấu hình ${notice.configuredCap}, usage quan sát ${notice.observedUsage}.`,
       timestamp: asTimestamp(notice.detectedAt, generatedAt),
-      actionUrl: '/admin/dashboard?tab=ai-quota',
-      actionLabel: 'Kiểm tra cap AI',
+      actionUrl: userTarget(null, { view: 'rate-limits', model: notice.model }),
+      actionLabel: 'Mở đúng model',
       source: 'Backend telemetry · ai_rate_limit_discrepancies'
     }));
   }

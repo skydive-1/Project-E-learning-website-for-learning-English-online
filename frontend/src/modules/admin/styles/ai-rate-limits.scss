@@ -339,6 +339,12 @@
     border-radius: 16px;
     background: color-mix(in srgb, var(--card-bg) 88%, transparent);
 
+    &.alert-target-model {
+      border-color: #f59e0b;
+      outline: 3px solid rgba(245, 158, 11, 0.2);
+      outline-offset: 2px;
+    }
+
     &__header {
       display: flex;
       align-items: flex-start;

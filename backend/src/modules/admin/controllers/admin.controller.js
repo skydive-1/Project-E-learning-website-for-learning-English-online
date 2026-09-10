@@ -303,15 +303,19 @@ exports.resetUserToken = async (req, res, next) => {
       throw setForbiddenCode(err, 'FORBIDDEN');
     }
 
-    // RÀNG BUỘC 1: Không thể reset token cho Super Admin
-    if (isSuperAdminUser(targetUser)) {
-      const err = new Error('Tài khoản Super Admin có hạn mức không giới hạn, không cần reset.');
+    const isSuperAdmin = isSuperAdminUser(req.user);
+    const actorUserId = Number(req.user?.id ?? req.user?.user_id);
+    const targetUserId = Number(userId);
+
+    // Super Admin được đặt lại hạn mức của chính mình. Các Admin khác vẫn không
+    // thể tác động vào tài khoản được bảo vệ, kể cả khi biết trực tiếp user_id.
+    if (isSuperAdminUser(targetUser) && (!isSuperAdmin || actorUserId !== targetUserId)) {
+      const err = new Error('Chỉ Super Admin mới có thể đặt lại hạn mức của chính tài khoản Super Admin.');
       err.status = 403;
       throw setForbiddenCode(err, 'SUPER_ADMIN_PROTECTED');
     }
 
-    // RÀNG BUỘC 2: Tài khoản thường (không phải Super Admin) không được phép reset token cho Admin khác
-    const isSuperAdmin = isSuperAdminUser(req.user);
+    // Tài khoản thường (không phải Super Admin) không được phép reset token cho Admin khác
     if (!isSuperAdmin && targetUser.role_id === 1) {
       const err = new Error('Bạn không có quyền reset token cho Admin khác. Chỉ Super Admin mới có quyền này.');
       err.status = 403;

@@ -3,6 +3,33 @@
   50% { opacity: 0.5; }
 }
 
+.alert-deep-link-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.alert-target-focus {
+  border-color: #f59e0b !important;
+  background-color: rgba(245, 158, 11, 0.1) !important;
+  outline: 3px solid rgba(245, 158, 11, 0.2);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-target-focus {
+    scroll-behavior: auto;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -2799,4 +2826,3 @@ html.dark {
     }
   }
 }
-
