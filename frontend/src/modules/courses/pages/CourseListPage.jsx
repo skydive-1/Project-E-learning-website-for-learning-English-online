@@ -15,7 +15,6 @@ import {
   FiVolume2, 
   FiSearch, 
   FiX, 
-  FiAward, 
   FiHelpCircle
 } from 'react-icons/fi';
 import { VOCABULARY_COLLECTIONS } from '../data/vocabularyCollections';
@@ -66,7 +65,6 @@ const CourseListPage = () => {
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [isAddWordModalOpen, setIsAddWordModalOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
-  const [showPromoBanner, setShowPromoBanner] = useState(true);
 
   // User Custom Words & Progress State (Persisted in localStorage)
   const [customWords, setCustomWords] = useState(() => {
@@ -608,26 +606,6 @@ const CourseListPage = () => {
               </button>
             </div>
 
-            {/* Mobile / Quick Practice Promo Card */}
-            {showPromoBanner && (
-              <div className="app-promo-card">
-                <div className="promo-icon-blue">
-                  <FiAward />
-                </div>
-                <div className="promo-text-wrap">
-                  <h4>Get the E-Learn app</h4>
-                  <p>Schedule, chat, and learn on the go</p>
-                </div>
-                <button 
-                  type="button" 
-                  className="btn-close-promo"
-                  onClick={() => setShowPromoBanner(false)}
-                  title="Ẩn thông báo"
-                >
-                  <FiX />
-                </button>
-              </div>
-            )}
           </aside>
 
         </div>

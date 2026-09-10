@@ -86,7 +86,7 @@ const mockShowcaseApi = () => {
 };
 
 describe('Platform showcase carousel', () => {
-  it('uses project data and lets the learner select a panel', async () => {
+  it('uses project data without exposing manual carousel controls', async () => {
     global.IntersectionObserver = IntersectionObserverMock;
     window.IntersectionObserver = IntersectionObserverMock;
     window.matchMedia = vi.fn().mockReturnValue({
@@ -100,23 +100,27 @@ describe('Platform showcase carousel', () => {
     const { container } = renderShowcase();
 
     expect(container.querySelectorAll('.platform-showcase-panel')).toHaveLength(6);
+    expect(screen.queryByText('BÊN TRONG NỀN TẢNG')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nền tảng trông như thế nào khi bạn học')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Trợ lý AI, theo dõi tiến độ và chấm điểm phát âm/)).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('2 khóa học đang hiển thị')).toBeInTheDocument();
       expect(screen.getByText('1 bài quiz công khai')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Kho khóa học' }));
-
-    const activePanel = container.querySelector('.platform-showcase-panel[data-slot="0"]');
-    expect(within(activePanel).getByText('Kho khóa học')).toBeInTheDocument();
-    expect(within(activePanel).getByText('Tiếng Anh nền tảng')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tiếp tục chuyển động' })).toBeInTheDocument();
+    const coursePanel = Array.from(container.querySelectorAll('.platform-showcase-panel'))
+      .find((panel) => within(panel).queryByText('Kho khóa học'));
+    expect(coursePanel).toBeTruthy();
+    expect(within(coursePanel).getByText('Tiếng Anh nền tảng')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Kho khóa học' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tạm dừng chuyển động' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tiếp tục chuyển động' })).not.toBeInTheDocument();
     expect(screen.queryByText('12 ngày liên tiếp')).not.toBeInTheDocument();
     expect(screen.queryByText('82/100')).not.toBeInTheDocument();
   });
 
-  it('keeps rotating when the pointer rests over the showcase', () => {
+  it('loops through every panel and continues into the next cycle', () => {
     vi.useFakeTimers();
     const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
     global.IntersectionObserver = IntersectionObserverMock;
@@ -137,19 +141,28 @@ describe('Platform showcase carousel', () => {
     expect(carousel).toHaveAttribute('data-autoplay', 'true');
     expect(carousel).not.toHaveClass('scroll-animate');
 
-    act(() => vi.advanceTimersByTime(1801));
-    expect(carousel).toHaveClass('is-shifting');
+    const expectedPanelTitles = [
+      'Nhịp học trong tuần',
+      'Huy hiệu học tập',
+      'Luyện tập với AI',
+      'Tổng quan nền tảng',
+      'Kho khóa học',
+      'Kho trắc nghiệm',
+      'Nhịp học trong tuần'
+    ];
 
-    act(() => vi.advanceTimersByTime(801));
+    expectedPanelTitles.forEach((title) => {
+      act(() => vi.advanceTimersByTime(1801));
+      expect(carousel).toHaveClass('is-shifting');
+
+      act(() => vi.advanceTimersByTime(801));
+      const activePanel = container.querySelector('.platform-showcase-panel[data-slot="0"]');
+      expect(within(activePanel).getByText(title)).toBeInTheDocument();
+      expect(activePanel).toHaveAttribute('data-motion-active', 'true');
+    });
+
     const activePanel = container.querySelector('.platform-showcase-panel[data-slot="0"]');
-    expect(within(activePanel).getByText('Nhịp học trong tuần')).toBeInTheDocument();
-
-    act(() => vi.advanceTimersByTime(1801));
-    expect(carousel).toHaveClass('is-shifting');
-
-    act(() => vi.advanceTimersByTime(801));
-    const nextActivePanel = container.querySelector('.platform-showcase-panel[data-slot="0"]');
-    expect(within(nextActivePanel).getByText('Huy hiệu học tập')).toBeInTheDocument();
+    expect(within(activePanel).getByLabelText('4')).toBeInTheDocument();
     expect(carousel).not.toHaveClass('scroll-animate');
 
     unmount();

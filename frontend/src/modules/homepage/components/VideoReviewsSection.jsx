@@ -1,4 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   FiActivity,
@@ -7,8 +14,6 @@ import {
   FiCheckCircle,
   FiHelpCircle,
   FiMic,
-  FiPause,
-  FiPlay,
   FiTrendingUp,
   FiZap
 } from 'react-icons/fi';
@@ -20,6 +25,12 @@ import { useLanguage } from '../../../context/LanguageContext';
 const PANEL_SLOTS = [-2, -1, 0, 1, 2, 3];
 const MOVE_DURATION_MS = 800;
 const HOLD_DURATION_MS = 1800;
+const NUMBER_DURATION_MS = 650;
+const ShowcaseMotionContext = createContext({
+  isMotionActive: false,
+  prefersReducedMotion: false
+});
+const numberFormatter = new Intl.NumberFormat('vi-VN');
 
 const loadPlatformShowcaseData = async () => {
   const [coursesResult, quizzesResult] = await Promise.allSettled([
@@ -44,10 +55,63 @@ const loadPlatformShowcaseData = async () => {
 
 const getItemName = (item) => item?.title || item?.course_name || item?.name || '';
 
-const ProductPanel = ({ icon: Icon, title, subtitle, slot, isActive, children }) => (
+const AnimatedNumber = ({ value }) => {
+  const valueRef = useRef(null);
+  const { isMotionActive, prefersReducedMotion } = useContext(ShowcaseMotionContext);
+  const numericValue = typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, value)
+    : null;
+  const finalText = numericValue === null ? String(value) : numberFormatter.format(numericValue);
+
+  useEffect(() => {
+    const target = valueRef.current;
+    if (!target) return undefined;
+
+    if (numericValue === null || !isMotionActive || prefersReducedMotion) {
+      target.textContent = finalText;
+      return undefined;
+    }
+
+    let animationFrameId;
+    const startedAt = performance.now();
+    target.textContent = numberFormatter.format(0);
+
+    const updateValue = (now) => {
+      const progress = Math.min((now - startedAt) / NUMBER_DURATION_MS, 1);
+      const easedProgress = 1 - ((1 - progress) ** 3);
+      target.textContent = numberFormatter.format(Math.round(numericValue * easedProgress));
+
+      if (progress < 1) {
+        animationFrameId = window.requestAnimationFrame(updateValue);
+      }
+    };
+
+    animationFrameId = window.requestAnimationFrame(updateValue);
+    return () => window.cancelAnimationFrame(animationFrameId);
+  }, [finalText, isMotionActive, numericValue, prefersReducedMotion]);
+
+  return (
+    <span ref={valueRef} className="showcase-animated-number" aria-label={finalText}>
+      {finalText}
+    </span>
+  );
+};
+
+const ProductPanel = ({
+  icon: Icon,
+  title,
+  subtitle,
+  slot,
+  isActive,
+  isMotionActive,
+  prefersReducedMotion,
+  children
+}) => (
   <article
     className="platform-showcase-panel"
     data-slot={slot}
+    data-active={isActive ? 'true' : 'false'}
+    data-motion-active={isMotionActive ? 'true' : 'false'}
     aria-hidden={!isActive}
   >
     <header className="showcase-panel-header">
@@ -59,7 +123,9 @@ const ProductPanel = ({ icon: Icon, title, subtitle, slot, isActive, children })
         <small>{subtitle}</small>
       </span>
     </header>
-    <div className="showcase-panel-body">{children}</div>
+    <ShowcaseMotionContext.Provider value={{ isMotionActive, prefersReducedMotion }}>
+      <div className="showcase-panel-body">{children}</div>
+    </ShowcaseMotionContext.Provider>
   </article>
 );
 
@@ -87,8 +153,6 @@ const VideoReviewsSection = () => {
   const [isDocumentHidden, setIsDocumentHidden] = useState(
     typeof document !== 'undefined' ? document.hidden : false
   );
-  const [isKeyboardFocusInside, setIsKeyboardFocusInside] = useState(false);
-  const [isUserPaused, setIsUserPaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const { data: catalogData, isLoading: isCatalogLoading } = useQuery({
@@ -134,8 +198,6 @@ const VideoReviewsSection = () => {
 
   const shouldAutoPlay = isInView
     && !isDocumentHidden
-    && !isKeyboardFocusInside
-    && !isUserPaused
     && !prefersReducedMotion;
 
   useEffect(() => {
@@ -179,15 +241,15 @@ const VideoReviewsSection = () => {
           <dl className="showcase-metrics">
             <div>
               <dt>{t('Khóa học')}</dt>
-              <dd>{isCatalogLoading ? '—' : (courseCount ?? '—')}</dd>
+              <dd><AnimatedNumber value={isCatalogLoading ? '—' : (courseCount ?? '—')} /></dd>
             </div>
             <div>
               <dt>{t('Quiz công khai')}</dt>
-              <dd>{isCatalogLoading ? '—' : (quizCount ?? '—')}</dd>
+              <dd><AnimatedNumber value={isCatalogLoading ? '—' : (quizCount ?? '—')} /></dd>
             </div>
             <div>
               <dt>{t('Huy hiệu đã mở')}</dt>
-              <dd>{user ? unlockedBadges.length : '—'}</dd>
+              <dd><AnimatedNumber value={user ? unlockedBadges.length : '—'} /></dd>
             </div>
           </dl>
         </>
@@ -253,7 +315,7 @@ const VideoReviewsSection = () => {
         <>
           <div className="showcase-streak-value">
             <FiTrendingUp aria-hidden="true" />
-            <strong>{streak.currentStreak ?? 0}</strong>
+            <strong><AnimatedNumber value={streak.currentStreak ?? 0} /></strong>
             <span>{t('ngày liên tiếp')}</span>
           </div>
           <div className="showcase-week" aria-label={`${activeWeekDays}/7 ${t('ngày hoạt động')}`}>
@@ -266,7 +328,7 @@ const VideoReviewsSection = () => {
             )) : <small>{t('Chưa có dữ liệu hoạt động trong tuần.')}</small>}
           </div>
           <p className="showcase-footnote">
-            {t('Chuỗi dài nhất')}: <strong>{streak.longestStreak ?? streak.currentStreak ?? 0} {t('ngày')}</strong>
+            {t('Chuỗi dài nhất')}: <strong><AnimatedNumber value={streak.longestStreak ?? streak.currentStreak ?? 0} /> {t('ngày')}</strong>
           </p>
         </>
       )
@@ -285,8 +347,8 @@ const VideoReviewsSection = () => {
       ) : (
         <>
           <div className="showcase-badge-total">
-            <strong>{unlockedBadges.length}</strong>
-            <span>/ {badges.length} {t('huy hiệu đã mở')}</span>
+            <strong><AnimatedNumber value={unlockedBadges.length} /></strong>
+            <span>/ <AnimatedNumber value={badges.length} /> {t('huy hiệu đã mở')}</span>
           </div>
           {unlockedBadges.length > 0 ? (
             <ul className="showcase-record-list compact">
@@ -342,43 +404,14 @@ const VideoReviewsSection = () => {
     activeWeekDays
   ]);
 
-  const activePanelId = panels[panelOrder[2]]?.id;
-
-  const selectPanel = (panelIndex) => {
-    if (isShifting) return;
-    const currentPosition = panelOrder.indexOf(panelIndex);
-    if (currentPosition === 2) return;
-
-    const rotation = (currentPosition - 2 + panelOrder.length) % panelOrder.length;
-    setPanelOrder((currentOrder) => [
-      ...currentOrder.slice(rotation),
-      ...currentOrder.slice(0, rotation)
-    ]);
-    setIsUserPaused(true);
-  };
-
   return (
     <section className="video-reviews-section">
       <div className="container">
-        <div className="section-header-annotated scroll-animate">
-          <span className="badge-pill-light">{t('BÊN TRONG NỀN TẢNG')}</span>
-          <h2 className="section-main-heading">
-            {t('Nền tảng trông như thế nào khi bạn học')}
-          </h2>
-          <p className="section-sub-desc">
-            {t('Trợ lý AI, theo dõi tiến độ và chấm điểm phát âm — mọi thứ bạn thấy trong ảnh dưới đây đều là tính năng thật, không phải hình minh họa dựng sẵn.')}
-          </p>
-        </div>
-
         <div
           ref={carouselRef}
           className={`platform-carousel-shell${isShifting ? ' is-shifting' : ''}`}
           style={{ '--showcase-move-duration': `${MOVE_DURATION_MS}ms` }}
           data-autoplay={shouldAutoPlay ? 'true' : 'false'}
-          onFocusCapture={() => setIsKeyboardFocusInside(true)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setIsKeyboardFocusInside(false);
-          }}
           role="region"
           aria-roledescription="carousel"
           aria-label={t('Xem trước các tính năng và dữ liệu nền tảng')}
@@ -398,45 +431,14 @@ const VideoReviewsSection = () => {
                     subtitle={panel.subtitle}
                     slot={slot}
                     isActive={isActive}
+                    isMotionActive={isActive && isInView}
+                    prefersReducedMotion={prefersReducedMotion}
                   >
                     {panel.content}
                   </ProductPanel>
                 );
               })}
             </div>
-          </div>
-
-          <div className="platform-carousel-controls">
-            <div className="platform-carousel-tabs" aria-label={t('Chọn nội dung xem trước')}>
-              {panels.map((panel, panelIndex) => (
-                <button
-                  key={panel.id}
-                  type="button"
-                  className={activePanelId === panel.id ? 'is-active' : ''}
-                  onClick={() => selectPanel(panelIndex)}
-                  aria-pressed={activePanelId === panel.id}
-                >
-                  {panel.title}
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              className="platform-carousel-pause"
-              onClick={() => setIsUserPaused((paused) => !paused)}
-              disabled={prefersReducedMotion}
-              aria-label={prefersReducedMotion
-                ? t('Chuyển động đã được giảm theo cài đặt thiết bị')
-                : isUserPaused
-                  ? t('Tiếp tục chuyển động')
-                  : t('Tạm dừng chuyển động')}
-              title={prefersReducedMotion ? t('Chuyển động đã được giảm theo cài đặt thiết bị') : undefined}
-            >
-              {isUserPaused || prefersReducedMotion
-                ? <FiPlay aria-hidden="true" />
-                : <FiPause aria-hidden="true" />}
-            </button>
           </div>
         </div>
       </div>
