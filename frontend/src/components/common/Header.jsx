@@ -161,7 +161,7 @@ const Header = () => {
             {t('learn')}
           </Link>
           <Link to="/academy" onClick={() => setIsMobileMenuOpen(false)}>{t('roadmap')}</Link>
-          <a href="#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</a>
+          <Link to="/#features" onClick={() => setIsMobileMenuOpen(false)}>{t('features')}</Link>
 
           {/* Mobile-only auth links or user menu */}
           {!user && isMobileMenuOpen && (

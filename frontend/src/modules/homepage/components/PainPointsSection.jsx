@@ -66,7 +66,7 @@ const PainPointsSection = () => {
   const { t } = useLanguage();
 
   return (
-    <section className="pain-points-section">
+    <section id="features" className="pain-points-section">
       <div className="container">
         {/* Annotation & Main Header */}
         <div className="section-header-annotated scroll-animate">

@@ -261,6 +261,8 @@ const CourseEditor = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [invalidFieldKey, setInvalidFieldKey] = useState(null);
+  const [courseLoadFailure, setCourseLoadFailure] = useState(null);
+  const [courseReloadKey, setCourseReloadKey] = useState(0);
 
   // ── Quizzes Dialog State ──────────────────────────────────────────────────
   const [quizDialogTarget, setQuizDialogTarget] = useState(null); // { sIdx, lIdx }
@@ -290,10 +292,20 @@ const CourseEditor = () => {
         try {
           setLoading(true);
           setLoadingState('fetching');
-          const [courseRes, quizzesData] = await Promise.all([
+          const [courseResult, quizzesResult] = await Promise.allSettled([
             apiClient.get(`/courses/${courseId}`),
             fetchQuizzesForCourseManagement(courseId)
           ]);
+          if (courseResult.status === 'rejected') throw courseResult.reason;
+
+          const courseRes = courseResult.value;
+          const quizzesData = quizzesResult.status === 'fulfilled' ? quizzesResult.value : [];
+          if (quizzesResult.status === 'rejected') {
+            console.warn('Không thể tải quiz của khóa học:', quizzesResult.reason);
+          }
+          if (!courseRes.data?.success || !courseRes.data?.course) {
+            throw new Error('Phản hồi chi tiết khóa học không hợp lệ');
+          }
 
           if (courseRes.data && courseRes.data.success) {
             const course = courseRes.data.course;
@@ -372,9 +384,16 @@ const CourseEditor = () => {
               })));
             }
           }
+          setCourseLoadFailure(null);
         } catch (err) {
           console.error('Lỗi khi tải thông tin khóa học:', err);
-          setErrorMsg('Không thể tải chi tiết khóa học từ máy chủ.');
+          const notFound = Number(err?.response?.status) === 404;
+          setCourseLoadFailure({
+            notFound,
+            message: notFound
+              ? 'Cảnh báo bạn vừa mở đã lỗi thời hoặc khóa học đã được xóa.'
+              : 'Không thể tải chi tiết khóa học từ máy chủ.'
+          });
         } finally {
           setLoading(false);
           setLoadingState('idle');
@@ -382,7 +401,7 @@ const CourseEditor = () => {
       };
       fetchCourse();
     }
-  }, [courseId, isEditMode]);
+  }, [courseId, courseReloadKey, isEditMode]);
 
   useEffect(() => {
     if (loading || deepLinkHandledRef.current || (!targetLessonId && !targetQuizId && !targetIssue)) return undefined;
@@ -1310,6 +1329,41 @@ const CourseEditor = () => {
     }
     return true;
   });
+
+  if (isEditMode && courseLoadFailure) {
+    return (
+      <div className="instructor-page">
+        <Header />
+        <main className="instructor-container course-unavailable-shell">
+          <section className="course-unavailable-state" role="alert" aria-labelledby="course-unavailable-title">
+            <span className="course-unavailable-icon" aria-hidden="true"><FiAlertCircle /></span>
+            <p className="course-unavailable-eyebrow">Không thể mở nội dung</p>
+            <h1 id="course-unavailable-title">
+              {courseLoadFailure.notFound ? 'Khóa học không còn tồn tại' : 'Chưa tải được khóa học'}
+            </h1>
+            <p>{courseLoadFailure.message} Không có thay đổi nào được thực hiện trên trang này.</p>
+            <div className="course-unavailable-actions">
+              <button type="button" className="btn-back" onClick={() => navigate('/instructor/dashboard')}>
+                <FiArrowLeft aria-hidden="true" /> Về bảng điều khiển
+              </button>
+              {!courseLoadFailure.notFound && (
+                <button
+                  type="button"
+                  className="btn-publish"
+                  onClick={() => setCourseReloadKey((value) => value + 1)}
+                  disabled={loading}
+                >
+                  <FiRefreshCw className={loading ? 'spin' : ''} aria-hidden="true" />
+                  {loading ? 'Đang tải lại...' : 'Thử tải lại'}
+                </button>
+              )}
+            </div>
+          </section>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="instructor-page">

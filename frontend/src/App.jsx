@@ -17,6 +17,7 @@ const LessonDetailPage = lazy(() => import('./modules/lessons/pages/LessonDetail
 const CourseListPage = lazy(() => import('./modules/courses/pages/CourseListPage'));
 const MyCoursesPage = lazy(() => import('./modules/courses/pages/MyCoursesPage'));
 const RoadmapPage = lazy(() => import('./modules/academy/pages/RoadmapPage'));
+const RoadmapDetailPage = lazy(() => import('./modules/academy/pages/RoadmapDetailPage'));
 const InstructorDashboard = lazy(() => import('./modules/instructor/pages/InstructorDashboard'));
 const CourseEditor = lazy(() => import('./modules/instructor/pages/CourseEditor'));
 const AdminDashboard = lazy(() => import('./modules/admin/pages/AdminDashboard'));
@@ -37,6 +38,7 @@ import { GamificationProvider } from './context/GamificationContext';
 import { ToastProvider } from './context/ToastContext';
 import BadgeUnlockModal from './modules/gamification/components/BadgeUnlockModal';
 import ClickParticleEffect from './components/common/ClickParticleEffect';
+import RouteScrollManager from './components/common/RouteScrollManager';
 
 // Fallback tối giản, không gây layout shift, hiển thị trong lúc chunk của
 // route đang tải (thường chỉ vài chục-vài trăm ms trên mạng bình thường).
@@ -86,6 +88,7 @@ function App() {
           <LanguageProvider>
             <ToastProvider>
               <BrowserRouter>
+                <RouteScrollManager />
                 <AuthTokenRedirectHandler />
                 <AuthProvider>
                   <GamificationProvider>
@@ -95,6 +98,7 @@ function App() {
                     <Route path="/" element={<HomePage />} />
                     <Route path="/courses" element={<CourseListPage />} />
                     <Route path="/academy" element={<RoadmapPage />} />
+                    <Route path="/academy/:roadmapId" element={<RoadmapDetailPage />} />
                     
                     {/* Entertainment Standalone Quizzes */}
                     <Route path="/quizzes" element={<QuizzesListPage />} />

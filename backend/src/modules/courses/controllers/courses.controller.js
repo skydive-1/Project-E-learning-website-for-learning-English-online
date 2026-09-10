@@ -15,6 +15,7 @@ async function registerUploadedObject(req, uploadResult, storageBucket, mimeType
     await orphanCleanupService.registerPendingUpload({
       uploadId: pendingUploadId,
       instructorId: req.user?.id || req.user?.userId,
+      courseId: req.body?.courseId,
       storageKey: uploadResult.storageKey,
       storageBucket: uploadResult.storageBucket || storageBucket,
       storageProvider: uploadResult.storageProvider || 'r2',

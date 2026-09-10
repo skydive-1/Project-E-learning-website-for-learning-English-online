@@ -61,6 +61,8 @@ describe('Durable media lifecycle regressions', () => {
 
     const result = await orphanCleanupService.cleanupExpiredPendingUploads(1);
     assert.equal(result.cleanedCount, 0);
+    const cleanupSelection = clientQueries.find(sql => sql.includes('SELECT upload_id'));
+    assert.match(cleanupSelection, /status IN \('CLAIMING', 'CLEANING'\)/);
     const retry = dbQueries.find(q => q.sql.includes('INSERT INTO failed_storage_deletions'));
     assert.ok(retry);
     assert.equal(retry.params[3], pendingId);

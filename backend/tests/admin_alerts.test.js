@@ -22,12 +22,12 @@ describe('Admin operational alerts', () => {
           }]
         };
       }
-      if (sql.includes('FROM failed_storage_deletions')) return { rows: [] };
-      if (sql.includes('FROM pending_media_uploads')) {
+      if (/FROM pending_media_uploads p\s*\n/.test(sql)) {
         return {
-          rows: [{ upload_id: 'upload-1', instructor_id: 22, storage_key: 'courses/demo-7/upload.mp4', status: 'PENDING', created_at: '2026-09-10T01:01:00.000Z', course_id: 7, lesson_id: 12, lesson_title: 'Listening 1' }]
+          rows: [{ upload_id: 'upload-1', instructor_id: 22, storage_key: 'courses/demo-7/upload.mp4', status: 'PENDING', created_at: '2026-09-10T01:01:00.000Z', expires_at: '2026-09-10T01:30:00.000Z', course_id: null, lesson_id: null, lesson_title: null }]
         };
       }
+      if (/FROM failed_storage_deletions d\s*\n/.test(sql)) return { rows: [] };
       if (sql.includes('FROM lesson_subtitles')) {
         return { rows: [{ subtitle_id: 3, lesson_id: 12, lesson_title: 'Listening 1', course_id: 7, error_code: 'TRANSCRIPT_FAILED', updated_at: '2026-09-10T01:02:00.000Z' }] };
       }
@@ -73,8 +73,13 @@ describe('Admin operational alerts', () => {
       assert.ok(ids.has('ai-request-31'));
       assert.ok(ids.has('ai-rate-limit-gemini-test'));
       assert.ok(snapshot.alerts.every((alert) => alert.source && alert.actionUrl));
-      assert.ok(snapshot.alerts.filter((alert) => !alert.id.startsWith('ai-rate-limit')).every((alert) => alert.entity?.id));
+      const alertsWithoutEntityId = snapshot.alerts
+        .filter((alert) => !alert.id.startsWith('ai-rate-limit') && !alert.entity?.id)
+        .map((alert) => alert.id);
+      assert.deepEqual(alertsWithoutEntityId, []);
       assert.equal(snapshot.alerts.find((alert) => alert.id === 'subtitle-3').actionUrl, '/instructor/edit-course/7?tab=curriculum&lessonId=12&issue=subtitle-failed');
+      assert.equal(snapshot.alerts.find((alert) => alert.id === 'pending-upload-upload-1').actionUrl, '/admin/dashboard?tab=users&userId=22&uploadId=upload-1');
+      assert.equal(snapshot.alerts.find((alert) => alert.id === 'pending-upload-upload-1').entity.courseId, null);
       assert.equal(snapshot.summary.total, snapshot.alerts.length);
     } finally {
       db.pool.query = originalQuery;
@@ -89,8 +94,8 @@ describe('Admin operational alerts', () => {
 
     db.pool.query = async (sql) => {
       if (sql.includes("FROM media_assets")) return { rows: [] };
-      if (sql.includes('FROM failed_storage_deletions')) return { rows: [] };
-      if (sql.includes('FROM pending_media_uploads')) return { rows: [] };
+      if (/FROM pending_media_uploads p\s*\n/.test(sql)) return { rows: [] };
+      if (/FROM failed_storage_deletions d\s*\n/.test(sql)) return { rows: [] };
       if (sql.includes('FROM lesson_subtitles')) return { rows: [] };
       if (sql.includes('FROM courses c')) return { rows: [] };
       if (sql.includes('FROM quizzes q')) return { rows: [] };

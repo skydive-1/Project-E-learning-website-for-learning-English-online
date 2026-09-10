@@ -481,6 +481,7 @@ CREATE INDEX IF NOT EXISTS idx_pdf_notes_user_lesson_page ON pdf_notes(user_id, 
 CREATE TABLE IF NOT EXISTS pending_media_uploads (
   upload_id UUID PRIMARY KEY,
   instructor_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  course_id INT REFERENCES courses(course_id) ON DELETE SET NULL,
   storage_provider VARCHAR(50) NOT NULL DEFAULT 'r2',
   storage_bucket VARCHAR(255) NOT NULL,
   storage_key TEXT NOT NULL,
@@ -496,6 +497,7 @@ CREATE TABLE IF NOT EXISTS pending_media_uploads (
 );
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_status_expires ON pending_media_uploads(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_instructor ON pending_media_uploads(instructor_id);
+CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_course ON pending_media_uploads(course_id);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
 
 -- 21. Bảng Hàng đợi Thử lại Xóa Storage Thất bại (failed_storage_deletions) - TASK-DURABLE-MEDIA-R2.1
