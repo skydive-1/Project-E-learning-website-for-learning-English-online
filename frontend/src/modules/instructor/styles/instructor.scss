@@ -1003,6 +1003,38 @@ $border-light: var(--border-color, #e2e8f0);
             opacity: 0.9;
           }
 
+          .subtitle-status-retry-btn {
+            flex: 0 0 auto;
+            align-self: flex-start;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            padding: 4px 8px;
+            font-size: 10.5px;
+            font-weight: 600;
+            color: inherit;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid currentColor;
+            border-radius: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s ease;
+
+            svg {
+              font-size: 11px;
+            }
+
+            &:hover:not(:disabled) {
+              background: rgba(255, 255, 255, 0.16);
+            }
+
+            &:disabled {
+              opacity: 0.6;
+              cursor: not-allowed;
+            }
+          }
+
           &.is-ready {
             color: #047857;
             background: rgba(16, 185, 129, 0.08);

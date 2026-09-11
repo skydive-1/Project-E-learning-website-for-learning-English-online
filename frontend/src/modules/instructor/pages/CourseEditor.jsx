@@ -55,6 +55,8 @@ const ALERT_ISSUE_LABELS = {
 
 const YouTubeSubtitleStatus = ({ lessonId }) => {
   const [subtitleState, setSubtitleState] = useState(null);
+  const [retrying, setRetrying] = useState(false);
+  const loadStatusRef = useRef(null);
 
   useEffect(() => {
     if (!lessonId) return undefined;
@@ -78,12 +80,29 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
       }
     };
 
+    loadStatusRef.current = loadStatus;
     loadStatus();
     return () => {
       cancelled = true;
       if (pollTimer) window.clearTimeout(pollTimer);
     };
   }, [lessonId]);
+
+  const handleRetry = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await subtitlesService.generateSubtitles(lessonId);
+      // Pipeline chạy nền (fire-and-forget) nên chuyển ngay sang trạng thái
+      // "đang xử lý" thay vì chờ response, rồi để vòng poll tự cập nhật.
+      setSubtitleState((prev) => ({ ...(prev || {}), status: 'processing', message: null, code: null }));
+      loadStatusRef.current?.();
+    } catch (error) {
+      console.warn(`[CourseEditor] Không thể kích hoạt lại tạo phụ đề cho bài học ${lessonId}:`, error?.message);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   if (!subtitleState || subtitleState.status === 'ready') return null;
 
@@ -125,6 +144,17 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
         <strong>{statusContent.title}</strong>
         {statusContent.detail && <small>{statusContent.detail}</small>}
       </span>
+      {subtitleState.status === 'failed' && (
+        <button
+          type="button"
+          className="subtitle-status-retry-btn"
+          onClick={handleRetry}
+          disabled={retrying}
+        >
+          <FiFileText aria-hidden="true" />
+          {retrying ? 'Đang gửi yêu cầu...' : 'Tạo lại phụ đề'}
+        </button>
+      )}
     </div>
   );
 };
