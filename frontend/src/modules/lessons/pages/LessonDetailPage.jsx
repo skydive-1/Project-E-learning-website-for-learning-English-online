@@ -184,6 +184,11 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   const [videoError, setVideoError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
+  // Theo dõi xem video đã bắt đầu phát lần đầu chưa — dùng để phân biệt
+  // "initial load" với "buffering bình thường" (waiting event). Sau khi video
+  // phát lần đầu (onPlay/onPlaying/onCanPlay), spinner sẽ không hiển thị lại
+  // khi mạng tạm thời chậm (buffering).
+  const videoHasStartedRef = useRef(false);
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
   const [subtitleStatus, setSubtitleStatus] = useState('none'); // 'none'|'pending'|'processing'|'ready'|'failed'
@@ -1046,25 +1051,40 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   };
 
   const handleRetryVideo = () => {
+    videoHasStartedRef.current = false;
     setVideoError(null);
     setVideoLoading(true);
     setReloadKey(prev => prev + 1);
   };
 
-  // 🛡️ Watchdog Timer: Chống đứng loading vô hạn nếu kết nối mạng chậm hoặc trình duyệt bị treo khi buffering
+  // 🛡️ Watchdog Timer: Chống đứng loading vô hạn chỉ trong giai đoạn INITIAL LOAD.
+  // Không còn phụ thuộc vào videoLoading state (tránh bị reset mỗi lần buffering).
+  // Timer chỉ khởi động khi lesson thay đổi (reloadKey) và tắt ngay khi video
+  // phát lần đầu (videoHasStartedRef.current = true qua onCanPlay/onPlay).
+  const watchdogStartTimeRef = useRef(null);
   useEffect(() => {
-    if (!videoLoading) return;
+    videoHasStartedRef.current = false;
+    watchdogStartTimeRef.current = Date.now();
+
     const watchdogTimer = setTimeout(() => {
-      if (videoLoading && !videoError) {
+      // Chỉ kích hoạt nếu video chưa bao giờ bắt đầu phát
+      if (!videoHasStartedRef.current && !videoError) {
+        console.warn('⚠️ [Watchdog] Video initial load timeout after 20s — forcing error state.');
         setVideoLoading(false);
         setVideoError({
           code: 'TIMEOUT',
-          message: 'Video tải chậm hơn dự kiến do kết nối mạng không ổn định hoặc sự cố giải mã luồng phát.'
+          message: 'Video tải quá chậm (>20 giây). Vui lòng kiểm tra kết nối mạng hoặc tải lại trang.'
         });
       }
-    }, 15000);
-    return () => clearTimeout(watchdogTimer);
-  }, [videoLoading, videoError]);
+    }, 20000);
+
+    return () => {
+      clearTimeout(watchdogTimer);
+      watchdogStartTimeRef.current = null;
+    };
+  // Chỉ reset khi bài học thay đổi hoặc người dùng bấm retry (reloadKey)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLesson?.id, reloadKey]);
 
   // Single-flight DASH ticket renewal refs
   const activeDashTicketRef = useRef(null);
@@ -1783,14 +1803,13 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                   onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
                                   onContextMenu={(e) => e.preventDefault()}
                                   onDragStart={(e) => e.preventDefault()}
-                                  onPlay={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
-                                  onPlaying={() => { setVideoLoading(false); setIsVideoPlaying(true); }}
+                                  onPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoPlaying(true); }}
+                                  onPlaying={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoPlaying(true); }}
                                   onPause={() => setIsVideoPlaying(false)}
                                   onEnded={() => setIsVideoPlaying(false)}
-                                  onLoadedData={() => setVideoLoading(false)}
+                                  onLoadedData={() => { videoHasStartedRef.current = true; setVideoLoading(false); }}
                                   onLoadedMetadata={() => setVideoLoading(false)}
-                                  onCanPlay={() => setVideoLoading(false)}
-                                  onWaiting={() => setVideoLoading(true)}
+                                  onCanPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); }}
                                   onError={handleVideoError}
                                   className="size-full object-contain pointer-events-auto cursor-pointer"
                                   data-no-download="true"
