@@ -180,99 +180,117 @@ async function proxyPrivateStorageVideo(req, res, lesson, storageKey) {
   return upstreamStream.pipe(res);
 }
 
+function parseDashContentRange(value) {
+  const match = /^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i.exec(String(value || '').trim());
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const total = match[3] === '*' ? null : Number(match[3]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start) return null;
+  if (total !== null && (!Number.isSafeInteger(total) || total <= end)) return null;
+  return { start, end, total, length: end - start + 1 };
+}
+
 async function proxyPrivateDashSegment(req, res, lesson, segmentKey, fallbackContentType, timing = null) {
   const range = resolveBoundedRange(req.headers.range, null);
-  // Nếu range không hợp lệ (ví dụ: Shaka không gửi Range header), vẫn fetch toàn bộ segment
-  const rangeHeader = range.valid ? range.header : null;
+  if (!range.valid) return sendRangeNotSatisfiable(res, null);
 
-  // AbortController để hủy fetch R2 ngay khi client ngắt kết nối.
-  // Điều này ngăn undici HTTP/2 parser cố ghi vào stream đã đóng,
-  // tránh lỗi AssertionError [ERR_ASSERTION]: assert(!this.paused).
   const abortController = new AbortController();
   const onClientClose = () => {
-    if (!abortController.signal.aborted) abortController.abort();
+    if (!res.writableEnded && !abortController.signal.aborted) abortController.abort();
   };
   res.once('close', onClientClose);
 
   const r2StartedAt = timing ? Date.now() : null;
-  let upstream;
+  const maxAttempts = 2;
+  let lastFailure = 'UNKNOWN';
+
   try {
-    upstream = await supabaseStorage.fetchPrivateObject(
-      segmentKey,
-      lesson.storage_bucket || 'videos',
-      rangeHeader,
-      lesson.storage_provider || 'r2',
-      { signal: abortController.signal }
-    );
-  } catch (err) {
-    res.off('close', onClientClose);
-    // AbortError nghĩa là client đã ngắt kết nối — không cần log, không cần response
-    if (err?.name === 'AbortError' || abortController.signal.aborted) return;
-    throw err;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      let upstream;
+      try {
+        upstream = await supabaseStorage.fetchPrivateObject(
+          segmentKey,
+          lesson.storage_bucket || 'videos',
+          range.header,
+          lesson.storage_provider || 'r2',
+          { signal: abortController.signal }
+        );
+      } catch (error) {
+        if (abortController.signal.aborted || error?.name === 'AbortError') return;
+        lastFailure = error?.code || error?.name || 'R2_FETCH_FAILED';
+        if (attempt < maxAttempts) continue;
+        break;
+      }
+
+      if (!upstream || upstream.status === 404) {
+        return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
+      }
+      if (upstream.status === 416) {
+        const upstreamRange = upstream.headers?.get?.('content-range');
+        if (upstreamRange) res.setHeader('Content-Range', upstreamRange);
+        return res.status(416).end();
+      }
+
+      // Không giả mạo 200 thành 206: Content-Range không khớp có thể khiến
+      // Railway/HTTP2 đóng response với ERR_HTTP2_PROTOCOL_ERROR.
+      if (upstream.status !== 206 || !upstream.body) {
+        lastFailure = `UNEXPECTED_STATUS_${upstream?.status || 'EMPTY'}`;
+        upstream?.body?.cancel?.().catch(() => {});
+        if (attempt < maxAttempts) continue;
+        break;
+      }
+
+      const contentRangeValue = upstream.headers.get('content-range');
+      const contentRange = parseDashContentRange(contentRangeValue);
+      if (!contentRange || contentRange.start !== range.start || contentRange.end > range.end) {
+        lastFailure = 'INVALID_CONTENT_RANGE';
+        upstream.body.cancel?.().catch(() => {});
+        if (attempt < maxAttempts) continue;
+        break;
+      }
+
+      let payload;
+      try {
+        payload = Buffer.from(await upstream.arrayBuffer());
+      } catch (error) {
+        if (abortController.signal.aborted || error?.name === 'AbortError') return;
+        lastFailure = error?.code || error?.name || 'INCOMPLETE_R2_BODY';
+        if (attempt < maxAttempts) continue;
+        break;
+      }
+
+      if (payload.length !== contentRange.length) {
+        lastFailure = `BODY_LENGTH_MISMATCH_${payload.length}_${contentRange.length}`;
+        if (attempt < maxAttempts) continue;
+        break;
+      }
+      if (abortController.signal.aborted || res.destroyed) return;
+
+      setProtectedVideoHeaders(res);
+      res.status(206);
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || fallbackContentType);
+      res.setHeader('Content-Range', contentRangeValue);
+      res.setHeader('Content-Length', String(payload.length));
+      res.setHeader('Accept-Ranges', 'bytes');
+      return res.end(payload);
+    }
   } finally {
+    res.off('close', onClientClose);
     if (timing) timing.r2FetchMs = Date.now() - r2StartedAt;
   }
 
-  // Cleanup abort listener nếu fetch đã hoàn thành bình thường
-  res.off('close', onClientClose);
-
-  if (!upstream || upstream.status === 404) {
-    return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
-  }
-  if (upstream.status === 416) return res.status(416).end();
-
-  // Chấp nhận cả 206 (partial content) và 200 (full object).
-  const isSuccess = (upstream.status === 206 || upstream.status === 200) && upstream.body;
-  if (!isSuccess) {
-    upstream?.body?.cancel?.().catch(() => {});
-    console.error(`[DASH Segment] Unexpected R2 status ${upstream?.status} for ${segmentKey}`);
-    return res.status(502).json({ success: false, code: 'STORAGE_RANGE_UNSUPPORTED', message: 'Storage không hỗ trợ DASH Range.' });
-  }
-
-  const responseStatus = upstream.status === 206 ? 206 : (rangeHeader ? 206 : 200);
-  res.status(responseStatus);
-  res.setHeader('Content-Type', upstream.headers.get('content-type') || fallbackContentType);
-  const contentRange = upstream.headers.get('content-range');
-  const contentLength = upstream.headers.get('content-length');
-  if (responseStatus === 206) {
-    if (contentRange) {
-      res.setHeader('Content-Range', contentRange);
-    } else if (contentLength && rangeHeader) {
-      const cl = Number(contentLength);
-      const start = range.valid ? range.start : 0;
-      const end = cl > 0 ? start + cl - 1 : start;
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${cl}`);
-    }
-  }
-  if (contentLength) res.setHeader('Content-Length', contentLength);
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  res.setHeader('Content-Disposition', 'inline');
-
-  const stream = Readable.fromWeb(upstream.body);
-
-  // Khi client ngắt kết nối: huỷ stream từ R2 và cancel upstream body.
-  // Cần cancel cả upstream.body để ngăn undici tiếp tục đọc từ HTTP/2 socket.
-  res.once('close', () => {
-    if (!res.writableEnded) stream.destroy();
-    upstream.body?.cancel?.().catch(() => {});
+  console.error('[DASH Segment] R2 range response failed validation', {
+    segment: path.posix.basename(segmentKey),
+    range: range.header,
+    reason: lastFailure
   });
-
-  // Bắt lỗi stream (kể cả ERR_ASSERTION từ undici) và log nhẹ — không crash process.
-  stream.once('error', (err) => {
-    const isExpectedDisconnect = err?.code === 'ERR_STREAM_DESTROYED'
-      || err?.code === 'ECONNRESET'
-      || err?.name === 'AbortError'
-      || err?.code === 'ERR_ASSERTION'; // undici assertion khi client disconnect
-    if (!isExpectedDisconnect) {
-      console.error('[DASH Segment Stream Error]:', err?.message || err);
-    }
-    if (!res.destroyed) res.destroy();
-    upstream.body?.cancel?.().catch(() => {});
+  if (res.headersSent || res.destroyed) return;
+  return res.status(502).json({
+    success: false,
+    code: 'DASH_STORAGE_UNAVAILABLE',
+    message: 'Không thể đọc đầy đủ đoạn video từ hệ thống lưu trữ.'
   });
-
-  return stream.pipe(res);
 }
 
 
