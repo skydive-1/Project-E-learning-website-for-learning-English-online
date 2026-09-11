@@ -1,4 +1,8 @@
 const adminAlertsService = require('../services/adminAlerts.service');
+const {
+  notifyOperationalAlertsChanged,
+  subscribeOperationalAlertsChanged
+} = require('../../../utils/operationalAlertEvents');
 
 const STREAM_REFRESH_MS = 15_000;
 const HEARTBEAT_MS = 10_000;
@@ -45,26 +49,33 @@ exports.streamAlerts = async (req, res) => {
 
   let closed = false;
   let refreshInProgress = false;
+  let refreshQueued = false;
   let lastSignature = null;
   let refreshInterval = null;
   let heartbeatInterval = null;
+  let unsubscribeAlertsChanged = null;
 
   const close = () => {
     if (closed) return;
     closed = true;
     if (refreshInterval) clearInterval(refreshInterval);
     if (heartbeatInterval) clearInterval(heartbeatInterval);
+    if (unsubscribeAlertsChanged) unsubscribeAlertsChanged();
   };
 
   req.on('close', close);
   res.on('close', close);
 
-  const publishSnapshot = async (force = false) => {
-    if (closed || refreshInProgress) return;
+  const publishSnapshot = async ({ force = false, fresh = false } = {}) => {
+    if (closed) return;
+    if (refreshInProgress) {
+      if (fresh) refreshQueued = true;
+      return;
+    }
     refreshInProgress = true;
 
     try {
-      const snapshot = await adminAlertsService.getAdminAlertsSnapshot();
+      const snapshot = await adminAlertsService.getAdminAlertsSnapshot({ fresh });
       const signature = JSON.stringify(snapshot.alerts.map((alert) => ({
         id: alert.id,
         severity: alert.severity,
@@ -83,6 +94,10 @@ exports.streamAlerts = async (req, res) => {
       });
     } finally {
       refreshInProgress = false;
+      if (refreshQueued && !closed) {
+        refreshQueued = false;
+        queueMicrotask(() => publishSnapshot({ fresh: true }));
+      }
     }
   };
 
@@ -90,12 +105,16 @@ exports.streamAlerts = async (req, res) => {
     timestamp: new Date().toISOString(),
     refreshIntervalMs: STREAM_REFRESH_MS
   });
-  await publishSnapshot(true);
+  unsubscribeAlertsChanged = subscribeOperationalAlertsChanged(() => {
+    publishSnapshot({ fresh: true });
+  });
+
+  await publishSnapshot({ force: true, fresh: true });
 
   if (closed) return;
 
   refreshInterval = setInterval(() => {
-    publishSnapshot(false);
+    publishSnapshot();
   }, STREAM_REFRESH_MS);
 
   heartbeatInterval = setInterval(() => {
@@ -110,6 +129,7 @@ exports.cleanupAlerts = async (req, res, next) => {
     const failedRes = await orphanCleanupService.processFailedStorageDeletions(100);
     adminAlertsService.resetCache();
     const freshSnapshot = await adminAlertsService.getAdminAlertsSnapshot({ fresh: true });
+    notifyOperationalAlertsChanged('manual-alert-cleanup');
 
     return res.status(200).json({
       success: true,
@@ -124,4 +144,3 @@ exports.cleanupAlerts = async (req, res, next) => {
     next(error);
   }
 };
-

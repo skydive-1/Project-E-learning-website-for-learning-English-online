@@ -10,6 +10,7 @@ const {
 } = require('../src/utils/ai-clients');
 const db = require('../src/config/database');
 const adminService = require('../src/modules/admin/services/admin.service');
+const { subscribeOperationalAlertsChanged } = require('../src/utils/operationalAlertEvents');
 
 describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
   let dbQueries = [];
@@ -272,6 +273,34 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
       assert.match(dbQueries[0].text, /request_status = 'error'/i);
       assert.deepEqual(dbQueries[0].params, [271, 'RESOURCE_EXHAUSTED']);
     } finally {
+      db.query = originalQuery;
+    }
+  });
+
+  test('notifies live Admin alerts immediately after an AI error or recovery is persisted', async () => {
+    const observedSources = [];
+    const unsubscribe = subscribeOperationalAlertsChanged(({ source }) => {
+      observedSources.push(source);
+    });
+    db.query = async (text, params) => {
+      dbQueries.push({ text, params });
+      return { rows: [] };
+    };
+
+    try {
+      await failAiUsageEvent({ eventId: 401, error: Object.assign(new Error('temporary'), { code: '503' }) });
+      await recordAiUsage({
+        eventId: 402,
+        userId: null,
+        purpose: 'chat',
+        model: 'gemini-3.7-flash',
+        usageMetadata: null
+      });
+
+      assert.deepEqual(observedSources, ['ai-usage-error', 'ai-usage-success']);
+      assert.equal(dbQueries.length, 2);
+    } finally {
+      unsubscribe();
       db.query = originalQuery;
     }
   });

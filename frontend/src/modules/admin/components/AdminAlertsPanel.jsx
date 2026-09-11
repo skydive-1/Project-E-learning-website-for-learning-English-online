@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FiBell,
   FiAlertTriangle,
-  FiCheck,
   FiRefreshCw,
   FiExternalLink,
   FiInfo,
@@ -17,9 +16,7 @@ import {
   FiHelpCircle,
   FiWifi,
   FiWifiOff,
-  FiTrash2,
-  FiCheckCircle,
-  FiX
+  FiTrash2
 } from 'react-icons/fi';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
@@ -67,19 +64,15 @@ const AdminAlertsPanel = ({ className = '' }) => {
   const { user } = useAuth();
   const showToast = useToast();
   const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [error, setError] = useState('');
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [source, setSource] = useState('PostgreSQL và telemetry runtime của backend');
-  const [recentlyResolved, setRecentlyResolved] = useState([]);
-  const [allFixedCelebration, setAllFixedCelebration] = useState(false);
   const isLiveRef = useRef(false);
   const hasLoadedRef = useRef(false);
   const previousAlertsRef = useRef([]);
-  const celebrationTimerRef = useRef(null);
 
   const applySnapshot = useCallback((snapshot) => {
     if (!snapshot || !Array.isArray(snapshot.alerts)) return;
@@ -93,28 +86,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
         if (newlyFixed.length === 1) {
           showToast(`Đã khắc phục xong: "${newlyFixed[0].title}"!`, 'success', { duration: 5000 });
         } else {
-          showToast(`Đã tự động dọn dẹp & khắc phục thành công ${newlyFixed.length} cảnh báo vận hành!`, 'success', { duration: 6000 });
-        }
-
-        const now = Date.now();
-        const resolvedItems = newlyFixed.map((item) => ({
-          ...item,
-          resolvedAt: now,
-          autoDeleteAt: now + 6000
-        }));
-
-        setRecentlyResolved((curr) => {
-          const existingIds = new Set(curr.map((c) => c.id));
-          const additions = resolvedItems.filter((r) => !existingIds.has(r.id));
-          return [...additions, ...curr].slice(0, 10);
-        });
-
-        if (snapshot.alerts.length === 0) {
-          setAllFixedCelebration(true);
-          if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
-          celebrationTimerRef.current = setTimeout(() => {
-            setAllFixedCelebration(false);
-          }, 8000);
+          showToast(`Đã xác nhận ${newlyFixed.length} cảnh báo vận hành được khắc phục!`, 'success', { duration: 5000 });
         }
       }
     }
@@ -124,28 +96,13 @@ const AdminAlertsPanel = ({ className = '' }) => {
     setLastUpdatedAt(snapshot.generatedAt || new Date().toISOString());
     setSource(snapshot.source || 'PostgreSQL và telemetry runtime của backend');
     setError('');
-    setLoading(false);
     hasLoadedRef.current = true;
   }, [showToast]);
-
-  const dismissResolved = (id) => {
-    setRecentlyResolved((curr) => curr.filter((item) => item.id !== id));
-  };
-
-  useEffect(() => {
-    if (recentlyResolved.length === 0) return undefined;
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setRecentlyResolved((curr) => curr.filter((item) => item.autoDeleteAt > now));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [recentlyResolved.length]);
 
   const fetchAlerts = useCallback(async ({ background = false } = {}) => {
     if (!user?.userId) return;
 
     if (!background) setRefreshing(true);
-    if (!hasLoadedRef.current) setLoading(true);
 
     try {
       const snapshot = await getAdminAlerts({ fresh: !background });
@@ -156,7 +113,6 @@ const AdminAlertsPanel = ({ className = '' }) => {
       setError(fetchError?.message || 'Không thể kết nối tới nguồn cảnh báo');
       if (!hasLoadedRef.current) setConnectionStatus('offline');
     } finally {
-      setLoading(false);
       if (!background) setRefreshing(false);
     }
   }, [applySnapshot, user?.userId]);
@@ -246,7 +202,6 @@ const AdminAlertsPanel = ({ className = '' }) => {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       clearInterval(fallbackInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
     };
   }, [applySnapshot, fetchAlerts, user?.userId]);
 
@@ -282,8 +237,8 @@ const AdminAlertsPanel = ({ className = '' }) => {
 
   if (!user?.userId) return null;
 
-  // Giữ kết nối nền nhưng không chiếm chỗ khi không có cảnh báo nào và không có mục vừa sửa
-  if (alerts.length === 0 && recentlyResolved.length === 0 && !allFixedCelebration && !error) return null;
+  // Component vẫn giữ kết nối nền; snapshot sạch sẽ ẩn toàn bộ khu vực ngay lập tức.
+  if (alerts.length === 0 && !error) return null;
 
   const status = STATUS_STYLES[connectionStatus] || STATUS_STYLES.offline;
 
@@ -297,7 +252,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
               Cảnh báo vận hành
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {source} · SSE kiểm tra mỗi 15 giây, worker dọn dẹp tự động 60 giây
+              {source} · cập nhật tức thời qua SSE, quét đối soát mỗi 15 giây
             </p>
             {lastUpdatedAt && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
@@ -324,67 +279,7 @@ const AdminAlertsPanel = ({ className = '' }) => {
         </div>
       )}
 
-      {/* Thông báo chúc mừng khi toàn bộ cảnh báo đã được giải quyết sạch sẽ */}
-      {allFixedCelebration && alerts.length === 0 && (
-        <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 mb-3 animate-fade-in">
-          <FiCheckCircle className="text-emerald-500 text-2xl shrink-0" />
-          <div>
-            <h4 className="font-bold text-sm">Hệ thống đã sạch sẽ!</h4>
-            <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-              Toàn bộ lỗi trên cảnh báo đã được fix và tự động xóa sạch rác. Bảng sẽ tự động thu gọn.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Danh sách các cảnh báo vừa được sửa - hiển thị trạng thái đã fix và đếm lùi tự xóa */}
-      {recentlyResolved.length > 0 && (
-        <div className="space-y-2 mb-3">
-          {recentlyResolved.map((item) => (
-            <div
-              key={`resolved-${item.id}`}
-              className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-sm animate-fade-in transition-all"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <FiCheckCircle className="text-emerald-500 shrink-0 text-base" />
-                <div className="truncate">
-                  <span className="font-bold mr-1.5">[Đã fix]</span>
-                  <span className="font-medium">{item.title}:</span>
-                  <span className="ml-1 text-xs opacity-90">{item.message}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 ml-2">
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded-full font-medium">
-                  Tự động xóa...
-                </span>
-                <button
-                  type="button"
-                  onClick={() => dismissResolved(item.id)}
-                  className="p-1 hover:bg-emerald-200 dark:hover:bg-emerald-900/70 rounded-full transition-colors"
-                  title="Đóng ngay"
-                >
-                  <FiX size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {loading && alerts.length === 0 && recentlyResolved.length === 0 ? (
-        <div className="flex items-center justify-center py-8 text-slate-500" role="status">
-          <FiRefreshCw className="animate-spin motion-reduce:animate-none mr-2" />
-          Đang đọc cảnh báo từ backend...
-        </div>
-      ) : alerts.length === 0 && !error ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <FiCheck className="text-emerald-500 text-4xl mb-2" />
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Không phát hiện vấn đề cần xử lý</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-            Toàn bộ tài nguyên và chỉ số vận hành đang trong trạng thái tối ưu
-          </p>
-        </div>
-      ) : (
+      {alerts.length > 0 && (
         <div className="space-y-3 max-h-96 overflow-y-auto" aria-live="polite">
           {alerts.map((alert) => (
             <article
@@ -460,4 +355,3 @@ const AdminAlertsPanel = ({ className = '' }) => {
 };
 
 export default AdminAlertsPanel;
-

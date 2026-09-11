@@ -6,6 +6,7 @@ const db = require('../src/config/database');
 const adminService = require('../src/modules/admin/services/admin.service');
 const adminAlertsService = require('../src/modules/admin/services/adminAlerts.service');
 const adminAlertsController = require('../src/modules/admin/controllers/adminAlerts.controller');
+const { notifyOperationalAlertsChanged } = require('../src/utils/operationalAlertEvents');
 
 describe('Admin operational alerts', () => {
   test('builds actionable alerts only from observed backend data', async () => {
@@ -37,6 +38,9 @@ describe('Admin operational alerts', () => {
         return { rows: [{ user_id: 25, full_name: 'Test User', remaining_tokens: 0, updated_at: '2026-09-10T01:05:00.000Z' }] };
       }
       if (sql.includes('FROM ai_usage_events')) {
+        assert.match(sql, /DISTINCT ON \(e\.user_id, e\.purpose\)/);
+        assert.match(sql, /e\.request_status IN \('success', 'error'\)/);
+        assert.match(sql, /WHERE e\.request_status = 'error'/);
         return {
           rows: [{ id: 31, user_id: 25, full_name: 'Test User', purpose: 'chat', model: 'gemini-test', error_code: '429', created_at: '2026-09-10T01:06:00.000Z' }]
         };
@@ -143,12 +147,17 @@ describe('Admin operational alerts', () => {
     }
   });
 
-  test('SSE controller sends connected and alerts events, then cleans up on close', async () => {
+  test('SSE controller pushes a fresh snapshot immediately when operational state changes', async () => {
     const originalGetSnapshot = adminAlertsService.getAdminAlertsSnapshot;
-    adminAlertsService.getAdminAlertsSnapshot = async () => ({
-      alerts: [{ id: 'test-alert', severity: 'medium', message: 'Observed issue', timestamp: '2026-09-10T00:00:00.000Z' }],
-      generatedAt: '2026-09-10T00:00:00.000Z'
-    });
+    let activeAlerts = [{ id: 'test-alert', severity: 'medium', message: 'Observed issue', timestamp: '2026-09-10T00:00:00.000Z' }];
+    const snapshotOptions = [];
+    adminAlertsService.getAdminAlertsSnapshot = async (options = {}) => {
+      snapshotOptions.push(options);
+      return {
+        alerts: activeAlerts,
+        generatedAt: '2026-09-10T00:00:00.000Z'
+      };
+    };
 
     const req = new EventEmitter();
     const res = new EventEmitter();
@@ -165,6 +174,9 @@ describe('Admin operational alerts', () => {
 
     try {
       await adminAlertsController.streamAlerts(req, res);
+      activeAlerts = [];
+      notifyOperationalAlertsChanged('test-recovered');
+      await new Promise((resolve) => setImmediate(resolve));
       req.emit('close');
 
       const output = chunks.join('');
@@ -172,6 +184,9 @@ describe('Admin operational alerts', () => {
       assert.match(output, /event: connected/);
       assert.match(output, /event: alerts/);
       assert.match(output, /test-alert/);
+      assert.match(output, /"alerts":\[\]/);
+      assert.equal(snapshotOptions.length, 2);
+      assert.ok(snapshotOptions.every((options) => options.fresh === true));
     } finally {
       req.emit('close');
       adminAlertsService.getAdminAlertsSnapshot = originalGetSnapshot;

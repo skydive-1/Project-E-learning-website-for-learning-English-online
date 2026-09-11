@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   getAdminAlerts: vi.fn(),
@@ -101,7 +101,7 @@ describe('AdminAlertsPanel', () => {
     expect(screen.queryByText('Không phát hiện vấn đề cần xử lý')).not.toBeInTheDocument();
   });
 
-  it('notifies and displays fixed state with auto-dismiss when alerts are resolved', async () => {
+  it('removes a resolved alert and hides the whole panel immediately', async () => {
     let streamCallback;
     mocks.connectAdminAlertsStream.mockImplementation(({ onStatus, onSnapshot }) => {
       streamCallback = onSnapshot;
@@ -123,7 +123,7 @@ describe('AdminAlertsPanel', () => {
 
     // Mô phỏng snapshot tiếp theo khi lỗi đã được Admin fix (danh sách alerts rỗng)
     const fixedSnapshot = { ...snapshot, alerts: [] };
-    await waitFor(() => {
+    act(() => {
       streamCallback(fixedSnapshot);
     });
 
@@ -133,9 +133,8 @@ describe('AdminAlertsPanel', () => {
         'success',
         expect.any(Object)
       );
-      expect(screen.getByText(/\[Đã fix\]/)).toBeInTheDocument();
-      expect(screen.getByText(/Tự động xóa/)).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Cảnh báo vận hành' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Tạo phụ đề thất bại')).not.toBeInTheDocument();
     });
   });
 });
-
