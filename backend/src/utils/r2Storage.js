@@ -1,5 +1,6 @@
 const fs = require('fs');
 const crypto = require('crypto');
+const { Readable } = require('stream');
 const {
   S3Client,
   HeadBucketCommand,
@@ -291,11 +292,73 @@ async function generateSignedUrl(filePath, bucketName, expiresIn = 900, storageP
   }
 }
 
-async function fetchPrivateObject(filePath, bucketName, rangeHeader = null, storageProvider = 'r2', { signal } = {}) {
-  const signedUrl = await generateSignedUrl(filePath, bucketName, 90, storageProvider);
-  if (!signedUrl) return null;
-  const headers = rangeHeader ? { Range: rangeHeader } : {};
-  return fetch(signedUrl, { method: 'GET', headers, redirect: 'error', ...(signal ? { signal } : {}) });
+function toWebReadable(body) {
+  if (!body) return null;
+  if (typeof body.transformToWebStream === 'function') return body.transformToWebStream();
+  if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) return body;
+  if (Readable.isReadable(body)) return Readable.toWeb(body);
+  return body;
+}
+
+function buildR2Response(output) {
+  const headers = new Headers();
+  const values = {
+    'accept-ranges': output.AcceptRanges,
+    'cache-control': output.CacheControl,
+    'content-length': output.ContentLength,
+    'content-range': output.ContentRange,
+    'content-type': output.ContentType,
+    etag: output.ETag,
+    'last-modified': output.LastModified?.toUTCString?.()
+  };
+  for (const [name, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null && value !== '') headers.set(name, String(value));
+  }
+
+  return new Response(toWebReadable(output.Body), {
+    status: output.ContentRange ? 206 : 200,
+    headers
+  });
+}
+
+async function fetchPrivateObject(
+  filePath,
+  bucketName,
+  rangeHeader = null,
+  storageProvider = 'r2',
+  { signal, client } = {}
+) {
+  if (storageProvider === 'supabase') {
+    const signedUrl = await generateSignedUrl(filePath, bucketName, 90, storageProvider);
+    if (!signedUrl) return null;
+    const headers = rangeHeader ? { Range: rangeHeader } : {};
+    return fetch(signedUrl, { method: 'GET', headers, redirect: 'error', ...(signal ? { signal } : {}) });
+  }
+
+  const commandInput = {
+    Bucket: resolveBucket(),
+    Key: cleanObjectKey(filePath),
+    ...(rangeHeader ? { Range: rangeHeader } : {})
+  };
+
+  try {
+    const output = await (client || getClient()).send(
+      new GetObjectCommand(commandInput),
+      signal ? { abortSignal: signal } : undefined
+    );
+    return buildR2Response(output);
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError') throw error;
+    const status = Number(error?.$metadata?.httpStatusCode);
+    if (status === 404 || status === 416) {
+      const contentRange = error?.$response?.headers?.['content-range'];
+      return new Response(null, {
+        status,
+        headers: contentRange ? { 'Content-Range': contentRange } : undefined
+      });
+    }
+    throw error;
+  }
 }
 
 module.exports = {

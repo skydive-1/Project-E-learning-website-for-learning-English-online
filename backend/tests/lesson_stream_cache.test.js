@@ -8,7 +8,16 @@ const supabaseStorage = require('../src/utils/supabaseStorage');
 const lessonStreamCache = require('../src/utils/lessonStreamCache');
 const lessonsController = require('../src/modules/lessons/controllers/lessons.controller');
 
-const TEST_LESSON_IDS = ['cache-hit', 'cache-expired', 'cache-invalidated', 'dash-stream', 'dash-timing'];
+const TEST_LESSON_IDS = [
+  'cache-hit',
+  'cache-expired',
+  'cache-invalidated',
+  'dash-stream',
+  'dash-retry',
+  'dash-invalid-status',
+  'dash-invalid-range',
+  'dash-timing'
+];
 
 function restoreEnv(name, value) {
   if (value === undefined) delete process.env[name];
@@ -36,9 +45,11 @@ class MockDashResponse extends Writable {
     this.statusCode = 200;
     this.headers = {};
     this.payload = null;
+    this.chunks = [];
   }
 
-  _write(_chunk, _encoding, callback) {
+  _write(chunk, _encoding, callback) {
+    this.chunks.push(Buffer.from(chunk));
     callback();
   }
 
@@ -52,6 +63,12 @@ class MockDashResponse extends Writable {
     return this;
   }
 
+  writeHead(code, headers = {}) {
+    this.statusCode = code;
+    for (const [name, value] of Object.entries(headers)) this.setHeader(name, value);
+    return this;
+  }
+
   json(payload) {
     this.payload = payload;
     this.end();
@@ -59,10 +76,10 @@ class MockDashResponse extends Writable {
   }
 }
 
-async function requestDashSegment(lessonId, segmentFile) {
+async function requestDashSegment(lessonId, segmentFile, range = 'bytes=0-3') {
   const req = {
     params: { lessonId, segmentFile },
-    headers: { range: 'bytes=0-3' }
+    headers: { range }
   };
   const res = new MockDashResponse();
   const finished = once(res, 'finish');
@@ -80,6 +97,7 @@ describe('Lesson metadata cache dành riêng cho DASH streaming', () => {
   let originalGetLessonById;
   let originalFetchPrivateObject;
   let originalConsoleInfo;
+  let originalConsoleError;
   let originalDateNow;
   let originalTtl;
   let originalDebugTiming;
@@ -88,6 +106,7 @@ describe('Lesson metadata cache dành riêng cho DASH streaming', () => {
     originalGetLessonById = coursesService.getLessonById;
     originalFetchPrivateObject = supabaseStorage.fetchPrivateObject;
     originalConsoleInfo = console.info;
+    originalConsoleError = console.error;
     originalDateNow = Date.now;
     originalTtl = process.env.LESSON_STREAM_CACHE_TTL_MS;
     originalDebugTiming = process.env.DEBUG_DASH_TIMING;
@@ -102,6 +121,7 @@ describe('Lesson metadata cache dành riêng cho DASH streaming', () => {
     coursesService.getLessonById = originalGetLessonById;
     supabaseStorage.fetchPrivateObject = originalFetchPrivateObject;
     console.info = originalConsoleInfo;
+    console.error = originalConsoleError;
     Date.now = originalDateNow;
     restoreEnv('LESSON_STREAM_CACHE_TTL_MS', originalTtl);
     restoreEnv('DEBUG_DASH_TIMING', originalDebugTiming);
@@ -203,6 +223,64 @@ describe('Lesson metadata cache dành riêng cho DASH streaming', () => {
     assert.equal(dbCalls, 1);
     assert.equal(r2Calls, 2);
     assert.equal(timingLogs, 0, 'DEBUG_DASH_TIMING=false không được ghi timing log');
+  });
+
+  test('audio/video DASH chỉ trả 206 sau khi body khớp hoàn toàn với Content-Range', async () => {
+    let r2Calls = 0;
+    coursesService.getLessonById = async lessonId => createStreamingLesson(lessonId);
+    supabaseStorage.fetchPrivateObject = async () => {
+      r2Calls += 1;
+      const body = r2Calls === 1 ? Buffer.alloc(2, 1) : Buffer.alloc(4, 2);
+      return new Response(body, {
+        status: 206,
+        headers: {
+          'content-type': 'video/mp4',
+          'content-length': String(body.length),
+          'content-range': 'bytes 0-3/20'
+        }
+      });
+    };
+
+    const response = await requestDashSegment('dash-retry', 'audio.mp4');
+
+    assert.equal(r2Calls, 2, 'body thiếu byte phải được tải lại trước khi gửi cho trình duyệt');
+    assert.equal(response.statusCode, 206);
+    assert.equal(response.headers['content-range'], 'bytes 0-3/20');
+    assert.equal(response.headers['content-length'], '4');
+    assert.equal(Buffer.concat(response.chunks).length, 4);
+  });
+
+  test('không giả mạo response 200 của storage thành Partial Content 206', async () => {
+    let r2Calls = 0;
+    coursesService.getLessonById = async lessonId => createStreamingLesson(lessonId);
+    supabaseStorage.fetchPrivateObject = async () => {
+      r2Calls += 1;
+      return new Response(Buffer.alloc(4), {
+        status: 200,
+        headers: { 'content-type': 'video/mp4', 'content-length': '4' }
+      });
+    };
+    console.error = () => {};
+
+    const response = await requestDashSegment('dash-invalid-status', 'video.mp4');
+
+    assert.equal(r2Calls, 2);
+    assert.equal(response.statusCode, 502);
+    assert.equal(response.payload.code, 'DASH_STORAGE_UNAVAILABLE');
+  });
+
+  test('từ chối multi-range trước khi gọi R2', async () => {
+    let r2Calls = 0;
+    coursesService.getLessonById = async lessonId => createStreamingLesson(lessonId);
+    supabaseStorage.fetchPrivateObject = async () => {
+      r2Calls += 1;
+      return null;
+    };
+
+    const response = await requestDashSegment('dash-invalid-range', 'video.mp4', 'bytes=0-3,8-11');
+
+    assert.equal(r2Calls, 0);
+    assert.equal(response.statusCode, 416);
   });
 
   test('DEBUG_DASH_TIMING=true ghi hit/miss và đủ ba khoảng thời gian', async () => {
