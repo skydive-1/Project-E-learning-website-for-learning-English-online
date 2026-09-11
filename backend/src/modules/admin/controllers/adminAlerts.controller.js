@@ -129,6 +129,15 @@ exports.cleanupAlerts = async (req, res, next) => {
     const expiredRes = await orphanCleanupService.cleanupExpiredPendingUploads(100);
     const failedRes = await orphanCleanupService.processFailedStorageDeletions(100);
 
+    // Tự động quét và dọn dẹp tệp mồ côi trên Cloudflare R2
+    let r2ReconcileRes = null;
+    try {
+      const r2ReconciliationService = require('../../../utils/r2Reconciliation.service');
+      r2ReconcileRes = await r2ReconciliationService.reconcile({ dryRun: false, autoDelete: true });
+    } catch (r2Err) {
+      console.warn('[CleanupAlerts] Quét dọn R2 tự động gặp lỗi (non-fatal):', r2Err.message);
+    }
+
     // Tự động đánh dấu giải quyết các sự cố AI cũ (> 3 phút) khi Admin dọn rác
     try {
       await pool.query(`
@@ -145,12 +154,16 @@ exports.cleanupAlerts = async (req, res, next) => {
     const freshSnapshot = await adminAlertsService.getAdminAlertsSnapshot({ fresh: true });
     notifyOperationalAlertsChanged('manual-alert-cleanup');
 
+    const r2Message = r2ReconcileRes?.deletedCount ? ` và xóa ${r2ReconcileRes.deletedCount} tệp rác trên R2 (${r2ReconcileRes.freedMb} MB)` : '';
+
     return res.status(200).json({
       success: true,
-      message: `Dọn dẹp rác cảnh báo thành công. Đã giải phóng ${expiredRes.cleanedCount} tệp tải lên tạm và xử lý ${failedRes.processedCount} mục lưu trữ.`,
+      message: `Dọn dẹp rác cảnh báo thành công. Đã giải phóng ${expiredRes.cleanedCount} tệp tải lên tạm, xử lý ${failedRes.processedCount} mục lưu trữ${r2Message}.`,
       data: {
         cleanedPendingCount: expiredRes.cleanedCount,
         processedFailedCount: failedRes.processedCount,
+        r2DeletedCount: r2ReconcileRes?.deletedCount || 0,
+        r2FreedMb: r2ReconcileRes?.freedMb || 0,
         snapshot: freshSnapshot
       }
     });

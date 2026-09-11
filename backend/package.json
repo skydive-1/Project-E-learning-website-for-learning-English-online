@@ -16,7 +16,9 @@
     "media:archive-local:r2": "node scripts/archive_local_media_to_r2.js",
     "media:organize:r2": "node scripts/reorganize_r2_by_course.js",
     "db:export-prod": "node tools/data/export-production-data.js",
-    "admin-alerts:cleanup": "node tools/data-fixes/cleanup-stale-operational-alerts.js"
+    "admin-alerts:cleanup": "node tools/data-fixes/cleanup-stale-operational-alerts.js",
+    "cleanup:r2": "node scripts/clean_r2_orphans.js",
+    "check:r2": "node scripts/check_r2_orphans.js"
   },
   "keywords": [],
   "author": "",

@@ -224,11 +224,7 @@ class OrphanCleanupService {
         WHERE s.course_id = $1 AND m.storage_key IS NOT NULL
       `;
     const res = await runner.query(query, [courseId]);
-    return res.rows.map(r => ({
-        key: r.storage_key,
-        bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
-        provider: r.storage_provider || 'r2'
-      }));
+    return this.expandMediaAssets(res.rows);
   }
 
   /**
@@ -300,11 +296,7 @@ class OrphanCleanupService {
         WHERE l.section_id = $1 AND m.storage_key IS NOT NULL
       `;
     const res = await runner.query(query, [sectionId]);
-    return res.rows.map(r => ({
-        key: r.storage_key,
-        bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
-        provider: r.storage_provider || 'r2'
-      }));
+    return this.expandMediaAssets(res.rows);
   }
 
   /**
@@ -328,11 +320,36 @@ class OrphanCleanupService {
         WHERE m.lesson_id = $1 AND m.storage_key IS NOT NULL
       `;
     const res = await runner.query(query, [lessonId]);
-    return res.rows.map(r => ({
-        key: r.storage_key,
-        bucket: r.storage_bucket || (r.storage_key.endsWith('.pdf') ? 'documents' : 'videos'),
-        provider: r.storage_provider || 'r2'
-      }));
+    return this.expandMediaAssets(res.rows);
+  }
+
+  /**
+   * Mở rộng thu thập các tệp đa phương tiện đi kèm (audio.mp4, video.mp4, source.mp4)
+   * khi tệp chính là manifest.mpd của Shaka Packager
+   */
+  expandMediaAssets(rows = []) {
+    const assets = [];
+    const seenKeys = new Set();
+    for (const r of rows) {
+      const key = r.storage_key;
+      if (!key || seenKeys.has(key)) continue;
+      const bucket = r.storage_bucket || (key.endsWith('.pdf') ? 'documents' : 'videos');
+      const provider = r.storage_provider || 'r2';
+      assets.push({ key, bucket, provider });
+      seenKeys.add(key);
+
+      if (key.endsWith('/manifest.mpd') || key.endsWith('manifest.mpd')) {
+        const folder = key.substring(0, key.lastIndexOf('/'));
+        for (const sibling of ['audio.mp4', 'video.mp4', 'source.mp4']) {
+          const siblingKey = `${folder}/${sibling}`;
+          if (!seenKeys.has(siblingKey)) {
+            assets.push({ key: siblingKey, bucket, provider });
+            seenKeys.add(siblingKey);
+          }
+        }
+      }
+    }
+    return assets;
   }
 
   /**
@@ -342,11 +359,15 @@ class OrphanCleanupService {
   async getReferenceState(storageKey) {
     if (!storageKey) return { referenced: false, reliable: true };
     try {
+      let manifestKey = storageKey;
+      if (/\/(audio|video|source)\.mp4$/i.test(storageKey)) {
+        manifestKey = storageKey.replace(/\/(audio|video|source)\.mp4$/i, '/manifest.mpd');
+      }
       const res = await db.query(`
         SELECT 
-          (SELECT COUNT(*) FROM lessons WHERE storage_key = $1) +
-          (SELECT COUNT(*) FROM lesson_materials WHERE storage_key = $1) AS total_ref
-      `, [storageKey]);
+          (SELECT COUNT(*) FROM lessons WHERE storage_key = $1 OR storage_key = $2) +
+          (SELECT COUNT(*) FROM lesson_materials WHERE storage_key = $1 OR storage_key = $2) AS total_ref
+      `, [storageKey, manifestKey]);
 
       const count = parseInt(res.rows[0]?.total_ref || 0, 10);
       return { referenced: count > 0, reliable: true };
