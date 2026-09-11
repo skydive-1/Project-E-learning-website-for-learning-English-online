@@ -529,6 +529,10 @@ async function generateAndSaveSuggestedQuestions(lessonId, cues = null) {
     const transcriptText = buildTranscriptText(transcriptCues);
     if (!transcriptText || transcriptText.length <= 30) {
       console.log(`[SuggestedQuestions] Không gọi Gemini vì lessonId=${parsedLessonId} chưa có transcript sử dụng được.`);
+      try {
+        const subtitlesService = require('./subtitles.service');
+        subtitlesService.queueAutoGeneration(parsedLessonId);
+      } catch (_) {}
       return markGenerationUsage([], false, false);
     }
 

@@ -107,6 +107,7 @@ function setVideoTicketCookie(req, res, ticket, expiresInSeconds) {
     httpOnly: true,
     secure,
     sameSite: secure ? 'none' : 'lax',
+    partitioned: secure,
     path: '/api/lessons',
     maxAge: expiresInSeconds * 1000
   });
@@ -118,6 +119,7 @@ function setPublicVideoTicketCookie(req, res, ticket, expiresInSeconds) {
     httpOnly: true,
     secure,
     sameSite: secure ? 'none' : 'lax',
+    partitioned: secure,
     path: '/api/media/video',
     maxAge: expiresInSeconds * 1000
   });
@@ -143,7 +145,7 @@ function registerTicketRequest(req, res, decodedTicket) {
   if (!ticketId) return true;
 
   const configured = Number.parseInt(process.env.VIDEO_MAX_PARALLEL_REQUESTS, 10);
-  const maxParallel = Number.isFinite(configured) && configured > 0 ? configured : 3;
+  const maxParallel = Number.isFinite(configured) && configured > 0 ? configured : 8;
   const now = Date.now();
 
   for (const [key, state] of activeTicketRequests) {
