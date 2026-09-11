@@ -48,6 +48,56 @@ const REDACTED_PATHS = [
   'cookie'
 ];
 
+const SENSITIVE_ENV_KEY_PATTERN = /(?:secret|password|passwd|token|api[_-]?key|database_url|redis(?:_tls)?_url|private[_-]?key)/i;
+
+const FREE_TEXT_SECRET_PATTERNS = [
+  {
+    pattern: /\b(Bearer)\s+[A-Za-z0-9._~+\/-]+=*/gi,
+    replacement: '$1 [REDACTED]'
+  },
+  {
+    pattern: /((?:password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|secret|authorization|cookie|jwt_secret|database_url)\s*(?:=|:)\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+    replacement: '$1[REDACTED]'
+  },
+  {
+    pattern: /\b((?:postgres(?:ql)?|redis|rediss):\/\/[^:\s/@]+:)([^@\s/]+)(@)/gi,
+    replacement: '$1[REDACTED]$3'
+  }
+];
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Pino's path redaction cannot inspect free-form strings. Sanitize messages and
+ * stacks before logging so credentials embedded in provider/database errors do
+ * not bypass the structured-field redact list.
+ */
+function sanitizeLogText(value) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+
+  let sanitized = value;
+  const sensitiveEnvValues = Object.entries(process.env)
+    .filter(([key, envValue]) => (
+      SENSITIVE_ENV_KEY_PATTERN.test(key)
+      && typeof envValue === 'string'
+      && envValue.length >= 6
+    ))
+    .map(([, envValue]) => envValue)
+    .sort((a, b) => b.length - a.length);
+
+  for (const envValue of sensitiveEnvValues) {
+    sanitized = sanitized.replace(new RegExp(escapeRegExp(envValue), 'g'), '[REDACTED]');
+  }
+
+  for (const { pattern, replacement } of FREE_TEXT_SECRET_PATTERNS) {
+    sanitized = sanitized.replace(pattern, replacement);
+  }
+
+  return sanitized;
+}
+
 function buildLogger(options = {}) {
   const isTest = process.env.NODE_ENV === 'test';
   const level = options.level || process.env.LOG_LEVEL || (isTest ? 'warn' : 'info');
@@ -100,6 +150,7 @@ const logger = buildLogger();
 module.exports = {
   logger,
   buildLogger,
+  sanitizeLogText,
   REDACTED_PATHS,
   LOGS_DIR
 };

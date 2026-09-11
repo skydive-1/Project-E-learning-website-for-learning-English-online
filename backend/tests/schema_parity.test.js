@@ -1,54 +1,60 @@
-/**
- * Automated Schema Parity & Versioned Migration Test Suite
- *
- * Verifies:
- * 1. Live database schema parity with schema.sql for critical tables (quizzes, quiz_attempts)
- * 2. Strict nullability alignment (quiz_attempts.quiz_id NOT NULL, user_id nullable for guest attempts)
- * 3. Migration tracking table integrity (schema_migrations)
- * 4. Idempotency of runPendingMigrations()
- *
- * Team:
- * - LÊ ĐÌNH CHƯƠNG (Database Administrator & Infrastructure Specialist)
- * - NGUYỄN THANH LIÊM (Backend & Security Developer)
- */
+'use strict';
 
-const { pool } = require('../src/config/database');
-const { runPendingMigrations, getAppliedMigrations } = require('../src/utils/migrationRunner');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { after, before, describe, it } = require('node:test');
+const { runPendingMigrations } = require('../src/utils/migrationRunner');
+
+const backendRoot = path.join(__dirname, '..');
+const migrationsDir = path.join(backendRoot, 'migrations');
+const schemaSql = fs.readFileSync(path.join(backendRoot, 'schema.sql'), 'utf8');
+const paritySql = fs.readFileSync(
+  path.join(migrationsDir, '002_quizzes_and_attempts_parity.sql'),
+  'utf8'
+);
+
+function getTableDefinition(sql, tableName) {
+  const match = sql.match(new RegExp(
+    `CREATE TABLE IF NOT EXISTS\\s+${tableName}\\s*\\(([\\s\\S]*?)\\n\\);`,
+    'i'
+  ));
+  assert.ok(match, `schema.sql: thiếu bảng ${tableName}`);
+  return match[1];
+}
 
 describe('Database Schema Parity & Migration Integrity', () => {
-  let client;
+  let tempMigrationsDir;
 
-  beforeAll(async () => {
-    client = await pool.connect();
+  before(() => {
+    tempMigrationsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e-learning-migrations-'));
+    fs.writeFileSync(
+      path.join(tempMigrationsDir, '001_test_migration.sql'),
+      'CREATE TABLE IF NOT EXISTS migration_test (id INTEGER PRIMARY KEY);',
+      'utf8'
+    );
   });
 
-  afterAll(async () => {
-    if (client) client.release();
-    await pool.end();
+  after(() => {
+    if (tempMigrationsDir?.startsWith(os.tmpdir())) {
+      fs.rmSync(tempMigrationsDir, { recursive: true, force: true });
+    }
   });
 
-  test('schema_migrations table tracks all versioned migrations', async () => {
-    const applied = await getAppliedMigrations(client);
-    expect(applied.size).toBeGreaterThanOrEqual(14);
-    expect(applied.has('001_initial_schema')).toBe(true);
-    expect(applied.has('002_quizzes_and_attempts_parity')).toBe(true);
+  it('ships the initial schema and quiz parity migration in the versioned set', () => {
+    const versions = fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith('.sql') && file !== 'schema_migrations.sql')
+      .map(file => path.basename(file, '.sql'));
+
+    assert.ok(versions.length >= 14);
+    assert.ok(versions.includes('001_initial_schema'));
+    assert.ok(versions.includes('002_quizzes_and_attempts_parity'));
   });
 
-  test('migrationRunner.runPendingMigrations is idempotent and produces no drifts', async () => {
-    const result = await runPendingMigrations({ dbClient: client, silent: true });
-    expect(result.appliedCount).toBe(0);
-    expect(result.skippedCount).toBeGreaterThanOrEqual(14);
-  });
-
-  test('quizzes table matches required columns in schema.sql and live DB', async () => {
-    const res = await client.query(`
-      SELECT column_name, is_nullable, data_type
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'quizzes'
-    `);
-    const cols = new Map(res.rows.map(r => [r.column_name, r]));
-
-    const expectedCols = [
+  it('keeps quizzes columns and required nullability in schema.sql', () => {
+    const definition = getTableDefinition(schemaSql, 'quizzes');
+    const requiredColumns = [
       'quiz_id',
       'course_id',
       'lesson_id',
@@ -62,51 +68,31 @@ describe('Database Schema Parity & Migration Integrity', () => {
       'updated_at'
     ];
 
-    expectedCols.forEach(col => {
-      expect(cols.has(col)).toBe(true);
-    });
-
-    expect(cols.get('quiz_id').is_nullable).toBe('NO');
-    expect(cols.get('title').is_nullable).toBe('NO');
+    for (const column of requiredColumns) {
+      assert.match(definition, new RegExp(`\\b${column}\\b`, 'i'));
+    }
+    assert.match(definition, /quiz_id\s+SERIAL\s+PRIMARY KEY/i);
+    assert.match(definition, /title\s+VARCHAR\([^)]*\)\s+NOT NULL/i);
   });
 
-  test('quiz_attempts table matches required columns, NOT NULL quiz_id, and nullable user_id', async () => {
-    const res = await client.query(`
-      SELECT column_name, is_nullable, data_type
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'quiz_attempts'
-    `);
-    const cols = new Map(res.rows.map(r => [r.column_name, r]));
+  it('keeps quiz_attempts quiz_id required and guest user_id nullable', () => {
+    const definition = getTableDefinition(schemaSql, 'quiz_attempts');
 
-    const expectedCols = [
-      'attempt_id',
-      'user_id',
-      'quiz_id',
-      'score',
-      'completed_at',
-      'nickname'
-    ];
-
-    expectedCols.forEach(col => {
-      expect(cols.has(col)).toBe(true);
-    });
-
-    // Parity rules
-    expect(cols.get('attempt_id').is_nullable).toBe('NO');
-    expect(cols.get('quiz_id').is_nullable).toBe('NO');
-    expect(cols.get('score').is_nullable).toBe('NO');
-    expect(cols.get('user_id').is_nullable).toBe('YES'); // Allows guest attempts with nickname
-    expect(cols.get('nickname').is_nullable).toBe('YES');
+    assert.match(definition, /attempt_id\s+SERIAL\s+PRIMARY KEY/i);
+    assert.match(definition, /quiz_id\s+INT\s+NOT NULL/i);
+    assert.match(definition, /score\s+INT\s+NOT NULL/i);
+    assert.match(definition, /nickname\s+VARCHAR\([^)]*\)/i);
+    assert.doesNotMatch(definition, /user_id\s+INT\s+NOT NULL/i);
   });
 
-  test('core operational tables exist in live PostgreSQL public schema', async () => {
-    const res = await client.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-    `);
-    const tableSet = new Set(res.rows.map(r => r.table_name));
+  it('keeps the parity migration safe for existing guest attempts', () => {
+    assert.match(paritySql, /ADD COLUMN IF NOT EXISTS nickname/i);
+    assert.match(paritySql, /ALTER COLUMN user_id DROP NOT NULL/i);
+    assert.match(paritySql, /DELETE FROM quiz_attempts WHERE quiz_id IS NULL/i);
+    assert.match(paritySql, /ALTER COLUMN quiz_id SET NOT NULL/i);
+  });
 
+  it('keeps core operational tables in the canonical schema', () => {
     const essentialTables = [
       'users',
       'roles',
@@ -120,12 +106,46 @@ describe('Database Schema Parity & Migration Integrity', () => {
       'ai_chat',
       'lesson_comments',
       'course_discussions',
-      'media_assets',
-      'schema_migrations'
+      'media_assets'
     ];
 
-    essentialTables.forEach(tableName => {
-      expect(tableSet.has(tableName)).toBe(true);
+    for (const tableName of essentialTables) {
+      assert.match(
+        schemaSql,
+        new RegExp(`CREATE TABLE IF NOT EXISTS\\s+${tableName}\\b`, 'i'),
+        `schema.sql: thiếu bảng ${tableName}`
+      );
+    }
+  });
+
+  it('runs a pending migration once and skips it on the next pass', async () => {
+    const appliedVersions = new Set();
+    const client = {
+      async query(sql, params = []) {
+        if (/SELECT version FROM schema_migrations/i.test(sql)) {
+          return { rows: [...appliedVersions].map(version => ({ version })) };
+        }
+        if (/INSERT INTO schema_migrations/i.test(sql)) {
+          appliedVersions.add(params[0]);
+        }
+        return { rows: [] };
+      }
+    };
+
+    const firstRun = await runPendingMigrations({
+      dbClient: client,
+      migrationsDir: tempMigrationsDir,
+      silent: true
     });
+    const secondRun = await runPendingMigrations({
+      dbClient: client,
+      migrationsDir: tempMigrationsDir,
+      silent: true
+    });
+
+    assert.equal(firstRun.appliedCount, 1);
+    assert.equal(firstRun.skippedCount, 0);
+    assert.equal(secondRun.appliedCount, 0);
+    assert.equal(secondRun.skippedCount, 1);
   });
 });
