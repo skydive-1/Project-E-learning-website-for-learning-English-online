@@ -262,6 +262,8 @@ class SubtitlesService {
         cues = EXCLUDED.cues,
         subtitle_status = EXCLUDED.subtitle_status,
         source_content_url = COALESCE(EXCLUDED.source_content_url, lesson_subtitles.source_content_url),
+        error_code = NULL,
+        error_message = NULL,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;
     `;
@@ -279,6 +281,8 @@ class SubtitlesService {
           bilingual_vtt = $5,
           cues = $6::jsonb,
           subtitle_status = 'ready',
+          error_code = NULL,
+          error_message = NULL,
           updated_at = CURRENT_TIMESTAMP
       WHERE lesson_id = $1 AND source_content_url = $2
       RETURNING *;
@@ -558,9 +562,9 @@ Quy tắc:
     });
   }
 
-  createYoutubeTranslationBatches(cues, maxCharacters = 12000) {
+  createYoutubeTranslationBatches(cues, maxCharacters = 6000, maxCues = 50) {
     const totalCharacters = cues.reduce((sum, cue) => sum + cue.en.length, 0);
-    if (cues.length <= 1 || totalCharacters <= maxCharacters) return [cues];
+    if (cues.length <= 1 || (totalCharacters <= maxCharacters && cues.length <= maxCues)) return [cues];
 
     const targetCharacters = Math.ceil(totalCharacters / 2);
     let runningCharacters = 0;
@@ -580,9 +584,170 @@ Quy tắc:
     const left = cues.slice(0, splitIndex);
     const right = cues.slice(splitIndex);
     return [
-      ...this.createYoutubeTranslationBatches(left, maxCharacters),
-      ...this.createYoutubeTranslationBatches(right, maxCharacters)
+      ...this.createYoutubeTranslationBatches(left, maxCharacters, maxCues),
+      ...this.createYoutubeTranslationBatches(right, maxCharacters, maxCues)
     ].filter(batch => batch.length > 0);
+  }
+
+  createYoutubeTranslationError(message, cause = null) {
+    const error = new Error(message);
+    error.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
+    if (cause) error.cause = cause;
+    return error;
+  }
+
+  parseYoutubeTranslationResponse(responseText, batch) {
+    const cleanJson = String(responseText || '')
+      .replace(/^```json\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanJson);
+    } catch (error) {
+      throw this.createYoutubeTranslationError(
+        `Gemini trả về JSON dịch phụ đề YouTube không hợp lệ: ${error.message}`,
+        error
+      );
+    }
+
+    const translations = Array.isArray(parsed?.translations) ? parsed.translations : [];
+    if (translations.length !== batch.length) {
+      throw this.createYoutubeTranslationError(
+        `Gemini trả về ${translations.length}/${batch.length} bản dịch trong batch.`
+      );
+    }
+
+    const expectedIds = new Set(batch.map(cue => cue.id));
+    const translationById = new Map();
+    for (const item of translations) {
+      const id = Number(item?.id);
+      const vi = String(item?.vi || '').trim();
+      if (!Number.isInteger(id) || !expectedIds.has(id) || !vi || translationById.has(id)) {
+        throw this.createYoutubeTranslationError(
+          'Gemini trả về danh sách dịch phụ đề YouTube bị thiếu, thừa hoặc trùng ID.'
+        );
+      }
+      translationById.set(id, vi);
+    }
+
+    return batch.map(cue => {
+      const vi = translationById.get(cue.id);
+      if (!vi) {
+        throw this.createYoutubeTranslationError(`Gemini không trả bản dịch cho cue YouTube id=${cue.id}.`);
+      }
+      return { ...cue, vi };
+    });
+  }
+
+  async requestYoutubeTranslationBatch(batch) {
+    const translationInput = batch.map(cue => ({ id: cue.id, en: cue.en }));
+    const expectedIds = batch.map(cue => cue.id);
+    const prompt = `
+Bạn là biên dịch viên phụ đề cho nền tảng học tiếng Anh.
+Hãy dịch chính xác từng câu tiếng Anh sau sang tiếng Việt tự nhiên, rõ nghĩa và phù hợp ngữ cảnh giảng dạy.
+
+Yêu cầu bắt buộc:
+- Chỉ trả về JSON hợp lệ, không markdown và không giải thích.
+- Giữ nguyên mỗi id; không bỏ, thêm, gộp hoặc tách câu.
+- Chỉ dịch nội dung. Không thay đổi thứ tự.
+- Cấu trúc đầu ra: {"translations":[{"id":1,"vi":"Bản dịch tiếng Việt"}]}
+
+Dữ liệu:
+${JSON.stringify(translationInput)}
+`;
+
+    const response = await geminiModel.generateContent({
+      model: GEMINI_MODELS.subtitle,
+      purpose: 'subtitle_translation_youtube',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: Math.min(
+          8192,
+          Math.max(1024, Math.ceil(batch.reduce((sum, cue) => sum + cue.en.length, 0) * 1.5))
+        ),
+        responseMimeType: 'application/json',
+        responseJsonSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['translations'],
+          properties: {
+            translations: {
+              type: 'array',
+              minItems: batch.length,
+              maxItems: batch.length,
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['id', 'vi'],
+                properties: {
+                  id: { type: 'integer', enum: expectedIds },
+                  vi: { type: 'string', minLength: 1 }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const responseText = response?.response?.text?.() || response?.text?.() || '';
+    return this.parseYoutubeTranslationResponse(responseText, batch);
+  }
+
+  async translateSingleYoutubeCueAsText(cue) {
+    const response = await geminiModel.generateContent({
+      model: GEMINI_MODELS.subtitle,
+      purpose: 'subtitle_translation_youtube_recovery',
+      contents: [{
+        role: 'user',
+        parts: [{
+          text: `Dịch câu tiếng Anh sau sang tiếng Việt tự nhiên. Chỉ trả về đúng bản dịch, không JSON, không markdown, không giải thích:\n${cue.en}`
+        }]
+      }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 1024,
+        responseMimeType: 'text/plain'
+      }
+    });
+
+    let vi = String(response?.response?.text?.() || response?.text?.() || '').trim();
+    if (vi.startsWith('```') && vi.endsWith('```')) {
+      vi = vi.replace(/^```(?:text)?\s*/i, '').replace(/```$/i, '').trim();
+    }
+    try {
+      const parsed = JSON.parse(vi);
+      if (typeof parsed === 'string') vi = parsed.trim();
+    } catch (_) {}
+    if (!vi) {
+      throw this.createYoutubeTranslationError(`Gemini không thể dịch cue YouTube id=${cue.id}.`);
+    }
+    return { ...cue, vi };
+  }
+
+  async translateYoutubeBatchResilient(batch) {
+    try {
+      return await this.requestYoutubeTranslationBatch(batch);
+    } catch (error) {
+      if (error?.code !== 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID') throw error;
+
+      if (batch.length === 1) {
+        console.warn(`[YouTube Subtitles] JSON lỗi ở cue id=${batch[0].id}; chuyển sang recovery dạng text.`);
+        return [await this.translateSingleYoutubeCueAsText(batch[0])];
+      }
+
+      const midpoint = Math.ceil(batch.length / 2);
+      console.warn(
+        `[YouTube Subtitles] Batch ${batch[0].id}-${batch[batch.length - 1].id} không hợp lệ; `
+        + `tự chia đôi để phục hồi mà không chạy lại các batch đã thành công.`
+      );
+      const left = await this.translateYoutubeBatchResilient(batch.slice(0, midpoint));
+      const right = await this.translateYoutubeBatchResilient(batch.slice(midpoint));
+      return [...left, ...right];
+    }
   }
 
   async translateYoutubeTranscriptWithGemini(transcriptSegments) {
@@ -605,64 +770,8 @@ Quy tắc:
     const batches = this.createYoutubeTranslationBatches(sourceCues);
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       const batch = batches[batchIndex];
-      const translationInput = batch.map(cue => ({ id: cue.id, en: cue.en }));
-      const prompt = `
-Bạn là biên dịch viên phụ đề cho nền tảng học tiếng Anh.
-Hãy dịch chính xác từng câu tiếng Anh sau sang tiếng Việt tự nhiên, rõ nghĩa và phù hợp ngữ cảnh giảng dạy.
-
-Yêu cầu bắt buộc:
-- Chỉ trả về JSON hợp lệ, không markdown và không giải thích.
-- Giữ nguyên mỗi id; không bỏ, thêm, gộp hoặc tách câu.
-- Chỉ dịch nội dung. Không thay đổi thứ tự.
-- Cấu trúc đầu ra: {"translations":[{"id":1,"vi":"Bản dịch tiếng Việt"}]}
-
-Dữ liệu:
-${JSON.stringify(translationInput)}
-`;
-
-      const response = await geminiModel.generateContent({
-        model: GEMINI_MODELS.subtitle,
-        purpose: 'subtitle_translation_youtube',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 65536,
-          responseMimeType: 'application/json'
-        }
-      });
-
-      const responseText = response?.response?.text?.() || response?.text?.() || '';
-      const cleanJson = responseText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-      let parsed;
-      try {
-        parsed = JSON.parse(cleanJson);
-      } catch (error) {
-        const translationError = new Error(`Gemini trả về JSON dịch phụ đề YouTube không hợp lệ: ${error.message}`);
-        translationError.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
-        throw translationError;
-      }
-
-      const translations = Array.isArray(parsed?.translations) ? parsed.translations : [];
-      const translationById = new Map();
-      for (const item of translations) {
-        const id = Number(item?.id);
-        const vi = String(item?.vi || '').trim();
-        if (!Number.isInteger(id) || !vi || translationById.has(id)) {
-          const translationError = new Error('Gemini trả về danh sách dịch phụ đề YouTube bị thiếu hoặc trùng ID.');
-          translationError.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
-          throw translationError;
-        }
-        translationById.set(id, vi);
-      }
-
-      for (const cue of batch) {
-        const vi = translationById.get(cue.id);
-        if (!vi) {
-          const translationError = new Error(`Gemini không trả bản dịch cho cue YouTube id=${cue.id}.`);
-          translationError.code = 'YOUTUBE_SUBTITLE_TRANSLATION_INVALID';
-          throw translationError;
-        }
-        translatedCues.push({ ...cue, vi });
-      }
+      const translatedBatch = await this.translateYoutubeBatchResilient(batch);
+      translatedCues.push(...translatedBatch);
     }
 
     return translatedCues;
@@ -978,9 +1087,16 @@ ${JSON.stringify(translationInput)}
       // giữ row pending để scheduler chạy source mới.
       if (!savedResult) return null;
 
-      // Chỉ báo pipeline thành công sau khi transcript đã được đồng bộ vào Vector DB.
+      // PostgreSQL là nguồn dữ liệu phụ đề chính. Lỗi Pinecone/embedding không được
+      // đổi một bộ phụ đề đã lưu thành "failed"; RAG có quota và vòng đời retry riêng.
       const { ingestLessonTranscript } = require('./ragIngestion.service');
-      await ingestLessonTranscript(lessonId, generatedCues);
+      try {
+        await ingestLessonTranscript(lessonId, generatedCues);
+      } catch (ragError) {
+        console.warn(
+          `[Subtitles RAG] Phụ đề lessonId=${lessonId} đã sẵn sàng nhưng chưa nạp được RAG: ${ragError.message}`
+        );
+      }
 
       return savedResult;
     } catch (pipelineErr) {

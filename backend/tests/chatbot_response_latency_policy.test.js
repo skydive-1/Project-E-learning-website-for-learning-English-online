@@ -60,17 +60,28 @@ test('routes simple global questions to Flash-Lite and deep requests to Gemini 3
 });
 
 test('AI request normalization preserves the selected model and latency controls', () => {
+  const responseJsonSchema = {
+    type: 'object',
+    required: ['translations'],
+    properties: { translations: { type: 'array' } }
+  };
   const normalized = normalizeRequest({
     model: 'gemini-3.5-flash-lite',
     contents: 'Short global chat prompt',
     generationConfig: {
       maxOutputTokens: 768,
+      temperature: 0,
+      responseMimeType: 'application/json',
+      responseJsonSchema,
       thinkingConfig: { thinkingLevel: 'MINIMAL', includeThoughts: false }
     }
   });
 
   assert.equal(normalized.model, 'gemini-3.5-flash-lite');
   assert.equal(normalized.config.maxOutputTokens, 768);
+  assert.equal(normalized.config.temperature, 0);
+  assert.equal(normalized.config.responseMimeType, 'application/json');
+  assert.strictEqual(normalized.config.responseJsonSchema, responseJsonSchema);
   assert.deepEqual(normalized.config.thinkingConfig, {
     thinkingLevel: 'MINIMAL',
     includeThoughts: false

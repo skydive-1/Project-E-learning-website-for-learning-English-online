@@ -127,6 +127,18 @@ describe('🎓 3. Courses Service Metadata & Publish Validation', () => {
     assert.strictEqual(videoMeta.storageProvider, 'r2');
     assert.strictEqual(videoMeta.storageKey, 'courses/10/vid.mp4');
     assert.strictEqual(videoMeta.mediaStatus, 'READY');
+
+    // YouTube URL phải được chuẩn hóa và không mang metadata của private storage.
+    const youtubeMeta = coursesService._resolveMediaMetadata({
+      type: 'youtube',
+      contentUrl: 'https://www.youtube.com/watch?v=KiNV60Ce7kE&t=283shttps://www.youtube.com/watch?v=KiNV60Ce7kE&t=283s',
+      storageKey: 'https://www.youtube.com/watch?v=KiNV60Ce7kE&t=283s'
+    });
+    assert.strictEqual(youtubeMeta.contentType, 'youtube');
+    assert.strictEqual(youtubeMeta.contentUrl, 'https://www.youtube.com/watch?v=KiNV60Ce7kE');
+    assert.strictEqual(youtubeMeta.storageProvider, 'youtube');
+    assert.strictEqual(youtubeMeta.storageKey, null);
+    assert.strictEqual(youtubeMeta.mediaStatus, 'READY');
   });
 
   test('Publish Validation: Chặn xuất bản nếu bài học media có status MISSING_SOURCE hoặc PENDING_AUDIT', () => {

@@ -1,7 +1,11 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { extractYouTubeVideoId, isYouTubeUrl } from '../src/modules/lessons/services/lessons.service';
+import {
+  extractYouTubeVideoId,
+  isYouTubeUrl,
+  normalizeYouTubeUrl
+} from '../src/modules/lessons/services/lessons.service';
 import LessonYouTubePlayer from '../src/modules/lessons/components/LessonYouTubePlayer';
 import { isMediaReadyForPublish } from '../src/modules/instructor/pages/CourseEditor';
 
@@ -36,6 +40,13 @@ describe('YouTube Educational Lesson Support', () => {
       expect(isYouTubeUrl('https://vimeo.com/123456')).toBe(false);
       expect(extractYouTubeVideoId('')).toBeNull();
       expect(isYouTubeUrl('')).toBe(false);
+    });
+
+    it('canonicalizes a duplicated pasted URL to one stable watch URL', () => {
+      const duplicated = 'https://www.youtube.com/watch?v=KiNV60Ce7kE&t=283shttps://www.youtube.com/watch?v=KiNV60Ce7kE&t=283s';
+      expect(normalizeYouTubeUrl(duplicated)).toBe(
+        'https://www.youtube.com/watch?v=KiNV60Ce7kE'
+      );
     });
   });
 
@@ -95,6 +106,26 @@ describe('YouTube Educational Lesson Support', () => {
 
       render(<LessonYouTubePlayer lesson={lesson} />);
       expect(screen.getByText('Chưa có liên kết YouTube hợp lệ')).toBeDefined();
+    });
+
+    it('replaces the iframe when the URL changes for the same lesson', () => {
+      const lesson = {
+        id: '101',
+        title: 'YouTube lesson',
+        type: 'youtube',
+        youtubeUrl: 'https://www.youtube.com/watch?v=aPpvAYp0xDc'
+      };
+      const { rerender } = render(<LessonYouTubePlayer lesson={lesson} />);
+
+      rerender(
+        <LessonYouTubePlayer
+          lesson={{ ...lesson, youtubeUrl: 'https://www.youtube.com/watch?v=KiNV60Ce7kE' }}
+        />
+      );
+
+      expect(screen.getByTitle('YouTube lesson').getAttribute('src')).toContain(
+        'youtube-nocookie.com/embed/KiNV60Ce7kE'
+      );
     });
   });
 });

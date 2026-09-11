@@ -356,6 +356,51 @@ const authenticateVideoToken = (req, res, next) => {
 };
 
 /**
+ * Xác thực vé SSE ngắn hạn. Native EventSource không hỗ trợ Authorization
+ * header, vì vậy chỉ endpoint realtime này được phép nhận `?ticket=`.
+ * Session JWT dài hạn trong `?token=` vẫn bị từ chối ở mọi route.
+ */
+const authenticateInstructorRealtimeTicket = async (req, res, next) => {
+  try {
+    const ticket = typeof req.query?.ticket === 'string' ? req.query.ticket.trim() : '';
+    if (!ticket) {
+      return res.status(401).json({
+        success: false,
+        code: 'REALTIME_TICKET_REQUIRED',
+        message: 'Thiếu vé kết nối realtime.'
+      });
+    }
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        code: 'AUTH_CONFIG_ERROR',
+        message: 'Lỗi cấu hình hệ thống xác thực máy chủ'
+      });
+    }
+
+    const decoded = jwt.verify(ticket, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (decoded.type !== 'instructor_realtime_ticket') {
+      return res.status(403).json({
+        success: false,
+        code: 'REALTIME_TICKET_INVALID',
+        message: 'Mã xác thực không đúng loại vé realtime.'
+      });
+    }
+
+    // Nạp lại user từ DB để tài khoản bị xóa/đổi quyền không thể tiếp tục mở SSE.
+    req.user = await verifyTokenAndLoadUser(ticket);
+    return next();
+  } catch (error) {
+    const expired = error?.name === 'TokenExpiredError';
+    return res.status(401).json({
+      success: false,
+      code: expired ? 'REALTIME_TICKET_EXPIRED' : (error?.code || 'REALTIME_TICKET_INVALID'),
+      message: expired ? 'Vé realtime đã hết hạn.' : 'Vé realtime không hợp lệ.'
+    });
+  }
+};
+
+/**
  * Xác thực vé ngắn hạn dành riêng cho video giao diện công khai.
  * Cookie này tách khỏi vé bài học để các video ở Footer/Home không ghi đè
  * quyền phát video bài giảng đang mở.
@@ -445,6 +490,7 @@ const authenticatePublicVideoToken = (req, res, next) => {
 
 module.exports = {
   authenticate,
+  authenticateInstructorRealtimeTicket,
   authenticatePublicVideoToken,
   optionalAuthenticate,
   authorize,

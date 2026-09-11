@@ -23,13 +23,12 @@ const MobileBottomNav = () => {
 
   // Ẩn Bottom Navigation khi đang học bài trong Lesson Detail để nhường toàn bộ không gian cho Video và AI Assistant
   const isLessonPage = location.pathname.startsWith('/lessons');
-  if (isLessonPage) {
-    return null;
-  }
 
   // Fetch unread counts for badges
   useEffect(() => {
-    if (!user?.userId) return;
+    // Hook phải luôn được gọi ở mọi render. Chỉ bỏ qua phần side effect khi
+    // thanh điều hướng đang bị ẩn hoặc người dùng chưa đăng nhập.
+    if (isLessonPage || !user?.userId) return undefined;
 
     const fetchUnreadCounts = async () => {
       try {
@@ -50,7 +49,11 @@ const MobileBottomNav = () => {
     fetchUnreadCounts();
     const interval = setInterval(fetchUnreadCounts, 60000); // Poll every minute
     return () => clearInterval(interval);
-  }, [user?.userId]);
+  }, [isLessonPage, user?.userId]);
+
+  if (isLessonPage) {
+    return null;
+  }
 
   const loggedInNavItems = [
     {

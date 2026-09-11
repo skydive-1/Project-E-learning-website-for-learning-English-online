@@ -5,6 +5,12 @@ const { getSubtitles } = require('youtube-caption-extractor');
 const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const YOUTUBE_NO_CAPTIONS_MESSAGE =
   'Video YouTube này không có phụ đề công khai. Vui lòng bật auto-caption trên YouTube hoặc tải phụ đề thủ công cho bài học.';
+const YOUTUBE_TRANSCRIPT_RATE_LIMIT_MESSAGE =
+  'YouTube đang giới hạn tạm thời yêu cầu lấy phụ đề. Hệ thống không kết luận video thiếu phụ đề; vui lòng thử lại sau.';
+const YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE =
+  'YouTube tạm thời từ chối máy chủ lấy phụ đề công khai. Video vẫn có thể phát; vui lòng thử tạo phụ đề lại sau.';
+const YOUTUBE_VIDEO_UNAVAILABLE_MESSAGE =
+  'Video YouTube không khả dụng công khai, bị giới hạn khu vực hoặc yêu cầu đăng nhập. Vui lòng kiểm tra quyền xem video.';
 
 const YOUTUBE_HOSTS = new Set([
   'youtube.com',
@@ -52,22 +58,20 @@ function extractYoutubeVideoId(value) {
   return YOUTUBE_VIDEO_ID_PATTERN.test(candidate || '') ? candidate : null;
 }
 
-function isUnavailableCaptionError(error) {
+function normalizeYoutubeUrl(value) {
+  const videoId = extractYoutubeVideoId(value);
+  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : '';
+}
+
+function classifyYoutubeTranscriptError(error) {
   const message = String(error?.message || error || '').toLowerCase();
-  return [
-    'no caption',
-    'caption fetch failed: 403',
-    'caption fetch failed: 404',
-    'caption fetch failed: 429',
-    'video not playable',
-    'video unavailable',
-    'private',
-    'login_required',
-    'sign in to confirm',
-    'not a bot',
-    'blocked',
-    'region'
-  ].some(marker => message.includes(marker));
+  if (/\b429\b|too many requests|rate.?limit/.test(message)) return 'rate_limited';
+  if (/\b403\b|sign in to confirm|not a bot|bot check|blocked|forbidden/.test(message)) return 'access_blocked';
+  if (/\b404\b|video not playable|video unavailable|private|login_required|region|members-only|age.?restricted/.test(message)) {
+    return 'video_unavailable';
+  }
+  if (/no caption|no subtitle|no caption tracks? available/.test(message)) return 'no_captions';
+  return 'unknown';
 }
 
 async function fetchYoutubeTranscript(videoId) {
@@ -106,10 +110,35 @@ async function fetchYoutubeTranscript(videoId) {
     return segments;
   } catch (error) {
     if (error?.code === 'YOUTUBE_NO_CAPTIONS_AVAILABLE') throw error;
-    if (isUnavailableCaptionError(error)) {
+    const classification = classifyYoutubeTranscriptError(error);
+    if (classification === 'no_captions') {
       throw createYoutubeTranscriptError(
         'YOUTUBE_NO_CAPTIONS_AVAILABLE',
         YOUTUBE_NO_CAPTIONS_MESSAGE,
+        422,
+        error
+      );
+    }
+    if (classification === 'rate_limited') {
+      throw createYoutubeTranscriptError(
+        'YOUTUBE_TRANSCRIPT_RATE_LIMITED',
+        YOUTUBE_TRANSCRIPT_RATE_LIMIT_MESSAGE,
+        503,
+        error
+      );
+    }
+    if (classification === 'access_blocked') {
+      throw createYoutubeTranscriptError(
+        'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED',
+        YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE,
+        503,
+        error
+      );
+    }
+    if (classification === 'video_unavailable') {
+      throw createYoutubeTranscriptError(
+        'YOUTUBE_VIDEO_UNAVAILABLE',
+        YOUTUBE_VIDEO_UNAVAILABLE_MESSAGE,
         422,
         error
       );
@@ -125,6 +154,11 @@ async function fetchYoutubeTranscript(videoId) {
 
 module.exports = {
   YOUTUBE_NO_CAPTIONS_MESSAGE,
+  YOUTUBE_TRANSCRIPT_RATE_LIMIT_MESSAGE,
+  YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE,
+  YOUTUBE_VIDEO_UNAVAILABLE_MESSAGE,
   extractYoutubeVideoId,
-  fetchYoutubeTranscript
+  normalizeYoutubeUrl,
+  fetchYoutubeTranscript,
+  classifyYoutubeTranscriptError
 };

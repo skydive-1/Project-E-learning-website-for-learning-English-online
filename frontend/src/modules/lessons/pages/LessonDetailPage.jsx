@@ -25,6 +25,12 @@ import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import LessonVideoPlayer from '../components/LessonVideoPlayer';
 import LessonYouTubePlayer from '../components/LessonYouTubePlayer';
+import {
+  getVisibilityBlackoutPolicy,
+  getWindowBlurBlackoutPolicy,
+  pauseLessonPlayback,
+  resumeLessonPlayback
+} from '../utils/videoVisibilityProtection';
 const PdfStudyViewer = React.lazy(() => import('../components/PdfStudyViewer'));
 const PdfNotesPanel = React.lazy(() => import('../components/PdfNotesPanel'));
 import useStudyTimeTracker from '../hooks/useStudyTimeTracker';
@@ -102,12 +108,10 @@ const LessonDetailPage = () => {
   const shakaPlayerRef = useRef(null);
   const shakaAttachedToRef = useRef(null); // theo dõi element nào Shaka đang attach vào
   const isScreenRecordingDetectedRef = useRef(false);
-  const blurTimeoutRef = useRef(null);
-  const gracePeriodTimeoutRef = useRef(null);
-  const lastWarningTimeRef = useRef(0);
-  const wasPlayingRef = useRef(false);
   const blackoutReasonRef = useRef('');
-  const isGracePeriodActiveRef = useRef(false);
+  const preservePlaybackWhileHiddenRef = useRef(false);
+  const resumePlaybackAfterTabRef = useRef(false);
+  const currentLessonRef = useRef(null);
 
 const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
@@ -180,9 +184,6 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   const [videoError, setVideoError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [isScreenRecordingDetected, setIsScreenRecordingDetected] = useState(false);
-  const [recordingDetectedMessage, setRecordingDetectedMessage] = useState('');
-  const [showGracePeriodOverlay, setShowGracePeriodOverlay] = useState(false);
-  const [gracePeriodCountdown, setGracePeriodCountdown] = useState(0);
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
   const [subtitleStatus, setSubtitleStatus] = useState('none'); // 'none'|'pending'|'processing'|'ready'|'failed'
@@ -222,10 +223,6 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     setNativeCaptionTracks(tracks);
     return () => tracks.forEach((track) => URL.revokeObjectURL(track.src));
   }, [subtitleData]);
-
-  // Refs for DRM and Video Control
-  const blackoutLockUntilRef = useRef(0);
-  const restoreTimeoutRef = useRef(null);
 
   // ⚡ Dynamic Forensic Watermark: Tự động đổi vị trí ngẫu nhiên mỗi 28s để chống cắt/làm mờ góc video
   useEffect(() => {
@@ -282,68 +279,30 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
    */
   const isCapturingKeysRef = useRef(new Set());
 
-const triggerZeroLatencyBlackout = (reason) => {
-    // Không áp dụng che đen với bài học YouTube mở hoặc tài liệu PDF
-    if (
-      currentLesson?.type === 'youtube' ||
-      currentLesson?.type === 'pdf' ||
-      (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0)
-    ) {
-      return;
-    }
+  const triggerZeroLatencyBlackout = (reason, { pausePlayback = false } = {}) => {
+    // Chỉ bảo vệ nội dung video. Tài liệu PDF giữ nguyên hành vi hiện tại.
+    if (currentLessonRef.current?.type === 'pdf') return;
 
-    // Grace period: Show warning overlay for 3 seconds before blackout
-    // Only for blur/tab-hidden reasons; keyboard capture attempts still instant
-    const isBlurOrTabHidden = reason === 'Tab Hidden' || reason === 'Window Blur';
-
-    if (isBlurOrTabHidden && !isGracePeriodActiveRef.current) {
-      isGracePeriodActiveRef.current = true;
-      setShowGracePeriodOverlay(true);
-      setGracePeriodCountdown(3);
-
-      gracePeriodTimeoutRef.current = setTimeout(() => {
-        setShowGracePeriodOverlay(false);
-        isGracePeriodActiveRef.current = false;
-        // Only blackout if still blurred/hidden
-        if (document.hidden || !document.hasFocus()) {
-          executeBlackout(reason);
-        }
-      }, 3000);
-      return;
-    }
-
-    // Instant blackout for confirmed capture attempts
-    executeBlackout(reason);
+    executeBlackout(reason, { pausePlayback });
   };
 
-  const executeBlackout = (reason) => {
-    if (gracePeriodTimeoutRef.current) {
-      clearTimeout(gracePeriodTimeoutRef.current);
-      gracePeriodTimeoutRef.current = null;
-    }
-    setShowGracePeriodOverlay(false);
-    isGracePeriodActiveRef.current = false;
-    setGracePeriodCountdown(0);
-
-    // 1. Thao tác DOM đồng bộ vi-giây (0ms Synchronous DOM Blackout)
+  const executeBlackout = (reason, { pausePlayback = false } = {}) => {
+    // Phủ đen đồng bộ nhưng luôn giữ media bên dưới được mount. Nhờ vậy
+    // Alt+Tab/phím Windows không làm gián đoạn MP4 hoặc YouTube đang phát.
     const shield = document.getElementById('netflix-drm-blackout-shield');
     if (shield) shield.style.display = 'block';
-    const wrapper = document.getElementById('lesson-media-wrapper');
-    if (wrapper) wrapper.style.display = 'none';
 
-    // 2. Ẩn và tạm dừng phần tử video
-    if (videoRef.current) {
-      try {
-        videoRef.current.style.opacity = '0';
-        videoRef.current.style.visibility = 'hidden';
-        if (!videoRef.current.paused) {
-          wasPlayingRef.current = true;
-          videoRef.current.pause();
-        }
-      } catch (err) { }
+    if (pausePlayback) {
+      const shouldResume = pauseLessonPlayback({
+        videoElement: videoRef.current,
+        containerElement: containerRef.current
+      });
+      if (reason === 'Tab Hidden') {
+        resumePlaybackAfterTabRef.current = shouldResume;
+      }
     }
 
-    // 3. Xóa bộ nhớ đệm Clipboard ngay lập tức để triệt tiêu ảnh chụp
+    // Xóa clipboard nếu trình duyệt cho phép khi phát hiện thao tác chụp.
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText('').catch(() => {});
     }
@@ -351,40 +310,24 @@ const triggerZeroLatencyBlackout = (reason) => {
     setIsScreenRecordingDetected(true);
     isScreenRecordingDetectedRef.current = true;
     blackoutReasonRef.current = reason || '';
-    setRecordingDetectedMessage(reason || '');
   };
 
   const restoreDrmVideo = () => {
-    if (gracePeriodTimeoutRef.current) {
-      clearTimeout(gracePeriodTimeoutRef.current);
-      gracePeriodTimeoutRef.current = null;
-    }
-    setShowGracePeriodOverlay(false);
-    isGracePeriodActiveRef.current = false;
-    setGracePeriodCountdown(0);
-
-    // 1. Khôi phục DOM đồng bộ tức thì (0ms Instant Restore)
+    // Gỡ lớp đen và chỉ phát lại nếu chính thao tác đổi tab đã pause video.
     const shield = document.getElementById('netflix-drm-blackout-shield');
     if (shield) shield.style.display = 'none';
-    const wrapper = document.getElementById('lesson-media-wrapper');
-    if (wrapper) wrapper.style.display = 'block';
+
+    if (resumePlaybackAfterTabRef.current) {
+      resumePlaybackAfterTabRef.current = false;
+      resumeLessonPlayback({
+        videoElement: videoRef.current,
+        containerElement: containerRef.current
+      });
+    }
 
     setIsScreenRecordingDetected(false);
     isScreenRecordingDetectedRef.current = false;
     blackoutReasonRef.current = '';
-    setRecordingDetectedMessage('');
-
-    if (videoRef.current) {
-      try {
-        videoRef.current.style.opacity = '1';
-        videoRef.current.style.visibility = 'visible';
-        // Tự động phát tiếp nếu trước khi che đen video đang phát
-        if (wasPlayingRef.current) {
-          videoRef.current.play().catch(() => {});
-          wasPlayingRef.current = false;
-        }
-      } catch (_) {}
-    }
   };
 
   // Van an toàn (Safety Valve): Tự động giải phóng màn hình đen nếu tab đã active và có focus trở lại
@@ -404,22 +347,6 @@ const triggerZeroLatencyBlackout = (reason) => {
 
     return () => clearInterval(safetyInterval);
   }, []);
-
-  // Grace period countdown effect
-  useEffect(() => {
-    if (showGracePeriodOverlay && gracePeriodCountdown > 0) {
-      const timer = setInterval(() => {
-        setGracePeriodCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [showGracePeriodOverlay, gracePeriodCountdown]);
 
   // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
   const handleSeekVideo = (seconds) => {
@@ -492,10 +419,19 @@ const triggerZeroLatencyBlackout = (reason) => {
       const isCaptureAttempt = isPrtScn || isSnippingTool || isNvidia || isXbox;
 
       if (e.type === 'keydown') {
+        // Phím Windows/Command tự nó chỉ che đen; không dừng playback.
+        if ((e.key === 'Meta' || e.key === 'OS' || codeUpper === 'METALEFT' || codeUpper === 'METARIGHT') && !isCaptureAttempt) {
+          preservePlaybackWhileHiddenRef.current = true;
+          triggerZeroLatencyBlackout('Window Blur', getWindowBlurBlackoutPolicy());
+        }
+
         if (isCaptureAttempt) {
           isCapturingKeysRef.current.add(e.key || 'Capture');
           // Trigger blackout on confirmed capture attempts (instant)
-          triggerZeroLatencyBlackout('Hệ thống bảo vệ bản quyền: Đã phát hiện thao tác chụp màn hình!');
+          triggerZeroLatencyBlackout(
+            'Hệ thống bảo vệ bản quyền: Đã phát hiện thao tác chụp màn hình!',
+            { pausePlayback: true }
+          );
           try {
             e.preventDefault();
             e.stopPropagation();
@@ -512,22 +448,35 @@ const triggerZeroLatencyBlackout = (reason) => {
       }
     };
 
-    // Khi Snipping Tool mở ra hoặc mất focus cửa sổ -> Đen ngay tức thì
+    // Alt+Tab/phím Windows: che đen nhưng giữ nguyên playback.
     const handleWindowBlur = () => {
-      triggerZeroLatencyBlackout('Window Blur');
+      preservePlaybackWhileHiddenRef.current = isAltPressed || isMetaPressed;
+      triggerZeroLatencyBlackout('Window Blur', getWindowBlurBlackoutPolicy());
     };
 
-    // Khi người dùng quay trở lại cửa sổ hoặc đóng Snipping Tool -> Nhả video tức thì
+    // Quay lại cửa sổ: chỉ gỡ lớp đen, không tự động play lại video đã pause.
     const handleWindowFocus = () => {
+      isAltPressed = false;
+      isMetaPressed = false;
+      preservePlaybackWhileHiddenRef.current = false;
       isCapturingKeysRef.current.clear();
-      restoreDrmVideo();
+      if (!document.hidden) {
+        restoreDrmVideo();
+      }
     };
 
-    // Khi tab trình duyệt bị ẩn hoặc chuyển tab
+    // Đổi tab trình duyệt: che đen và pause. Nếu tab bị ẩn do Alt+Tab/Windows,
+    // trạng thái modifier được giữ lại để playback tiếp tục chạy bên dưới.
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        triggerZeroLatencyBlackout('Tab Hidden');
-      } else {
+        const policy = getVisibilityBlackoutPolicy({
+          altPressed: isAltPressed,
+          metaPressed: isMetaPressed,
+          preservePlayback: preservePlaybackWhileHiddenRef.current
+        });
+        triggerZeroLatencyBlackout('Tab Hidden', policy);
+      } else if (document.hasFocus()) {
+        preservePlaybackWhileHiddenRef.current = false;
         isCapturingKeysRef.current.clear();
         restoreDrmVideo();
       }
@@ -553,10 +502,10 @@ const triggerZeroLatencyBlackout = (reason) => {
     if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
       const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
       const protectedGetDisplayMedia = function (...args) {
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
-        triggerZeroLatencyBlackout('Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!');
+        triggerZeroLatencyBlackout(
+          'Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!',
+          { pausePlayback: true }
+        );
         return originalGetDisplayMedia.apply(this, args);
       };
       navigator.mediaDevices.getDisplayMedia = protectedGetDisplayMedia;
@@ -657,7 +606,11 @@ const triggerZeroLatencyBlackout = (reason) => {
   const { data: initialLessonData } = useQuery({
     queryKey: ['lesson-meta', lessonId],
     queryFn: () => getLessonById(lessonId),
-    enabled: !!lessonId
+    enabled: !!lessonId,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always'
   });
 
   const searchParams = new URLSearchParams(location.search);
@@ -670,7 +623,10 @@ const triggerZeroLatencyBlackout = (reason) => {
   const { data: course, isLoading: courseLoading } = useQuery({
     queryKey: ['course', courseIdToLoad],
     queryFn: () => getCourseDetails(courseIdToLoad),
-    enabled: courseIdToLoad !== null
+    enabled: courseIdToLoad !== null,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always'
   });
 
   const startDate = course?.startDate ? new Date(course.startDate) : null;
@@ -792,12 +748,16 @@ const triggerZeroLatencyBlackout = (reason) => {
     queryKey: ['lesson-detail', targetLessonId],
     queryFn: () => getLessonById(targetLessonId),
     enabled: !!targetLessonId,
-    staleTime: 1000 * 60 * 15
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always'
   });
+  currentLessonRef.current = currentLesson || null;
 
   // Kiểm tra tính sẵn sàng thực sự của chi tiết bài học (Chống Race Condition out-of-order responses)
   const isDetailResolved = !lessonLoading && !!currentLesson && String(currentLesson.id) === String(targetLessonId);
-  const isLessonLoading = !isDetailResolved || lessonLoading || (lessonFetching && String(currentLesson?.id) !== String(targetLessonId));
+  const isLessonLoading = !isDetailResolved || lessonLoading || lessonFetching;
 
   const isLoading = (lessonId && !initialLessonData) || courseLoading;
 
@@ -1699,44 +1659,12 @@ const triggerZeroLatencyBlackout = (reason) => {
                       <div
                         id="netflix-drm-blackout-shield"
                         style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
-                        className="absolute inset-0 bg-black z-[9999] select-none cursor-default"
-                        onClick={restoreDrmVideo}
+                        className="absolute inset-0 bg-black z-[9999] select-none pointer-events-auto"
                       />
 
-                      {/* Grace Period Overlay - Shows 3s warning before blackout */}
-                      {showGracePeriodOverlay && (
-                        <div
-                          className="absolute inset-0 bg-black/80 z-[9998] flex flex-col items-center justify-center p-4 select-none pointer-events-none"
-                          style={{ backdropFilter: 'blur(4px)' }}
-                        >
-                          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 max-w-md w-full text-center">
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
-                            <h3 className="text-lg font-bold text-white mb-2">Bảo vệ nội dung bài học</h3>
-                            <p className="text-sm text-slate-300 mb-4">
-                              Phát hiện bạn có thể đang rời khỏi tab hoặc chuyển cửa sổ. Video sẽ được che đen trong <strong>{gracePeriodCountdown}s</strong> nếu không quay lại.
-                            </p>
-                            <button
-                              onClick={() => {
-                                if (gracePeriodTimeoutRef.current) {
-                                  clearTimeout(gracePeriodTimeoutRef.current);
-                                  gracePeriodTimeoutRef.current = null;
-                                }
-                                setShowGracePeriodOverlay(false);
-                                isGracePeriodActiveRef.current = false;
-                                setGracePeriodCountdown(0);
-                              }}
-                              className="px-6 py-2.5 bg-white/20 hover:bg-white/30 text-white font-medium rounded-xl text-sm transition-all active:scale-95 border border-white/30"
-                            >
-                              Tôi không quay màn hình - Tiếp tục xem
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Media Wrapper Element for 0ms Instant Synchronous Blackout Removal */}
+                      {/* Media remains mounted beneath the pure-black shield. */}
                       <div
                         id="lesson-media-wrapper"
-                        style={{ display: isScreenRecordingDetected ? 'none' : 'block' }}
                         className="w-full h-full relative"
                       >
                         {currentLesson?.type === 'pdf' ? (

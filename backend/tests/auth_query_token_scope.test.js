@@ -17,9 +17,14 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 
 const db = require('../src/config/database');
-const { authenticate } = require('../src/middleware/auth.middleware');
+const {
+  authenticate,
+  authenticateInstructorRealtimeTicket
+} = require('../src/middleware/auth.middleware');
 const { authenticatePdfAccess } = require('../src/middleware/pdfAccess.middleware');
 const lessonsRoutes = require('../src/modules/lessons/lessons.routes');
+const instructorRoutes = require('../src/modules/instructor/instructor.routes');
+const realtimeController = require('../src/modules/instructor/controllers/realtime.controller');
 
 describe('=== Auth Query Token Scope & PDF Access Test Suite ===', () => {
   let server;
@@ -171,7 +176,66 @@ describe('=== Auth Query Token Scope & PDF Access Test Suite ===', () => {
     assert.strictEqual(data.code, 'TOKEN_INVALID');
   });
 
-  it('6. should confirm router has registered POST /:lessonId/generate-subtitles route', () => {
+  it('6. issues a short-lived instructor realtime ticket without reusing the session token', () => {
+    let responseBody;
+    realtimeController.createTicket(
+      { user: { id: mockUsers[1].user_id, email: mockUsers[1].email } },
+      {
+        status(code) {
+          assert.strictEqual(code, 200);
+          return this;
+        },
+        json(body) {
+          responseBody = body;
+          return body;
+        }
+      },
+      error => { throw error; }
+    );
+
+    const decoded = jwt.verify(responseBody.data.ticket, process.env.JWT_SECRET);
+    assert.strictEqual(decoded.id, 2);
+    assert.strictEqual(decoded.type, 'instructor_realtime_ticket');
+    assert.ok(decoded.exp - decoded.iat <= 60);
+  });
+
+  it('7. accepts only the dedicated realtime ticket through the scoped query parameter', async () => {
+    const ticket = jwt.sign({
+      id: 2,
+      email: 'instructor@example.com',
+      type: 'instructor_realtime_ticket'
+    }, process.env.JWT_SECRET, { expiresIn: '60s' });
+    const req = { query: { ticket } };
+    let nextCalled = false;
+
+    await authenticateInstructorRealtimeTicket(req, {
+      status() { return this; },
+      json(body) { throw new Error(`Unexpected auth rejection: ${body.code}`); }
+    }, () => { nextCalled = true; });
+
+    assert.strictEqual(nextCalled, true);
+    assert.strictEqual(req.user.id, 2);
+    assert.strictEqual(req.user.roleId, 2);
+
+    const sessionToken = jwt.sign(
+      { id: 2, email: 'instructor@example.com', roleId: 2 },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    let rejection;
+    await authenticateInstructorRealtimeTicket(
+      { query: { ticket: sessionToken } },
+      {
+        status(code) { rejection = { code }; return this; },
+        json(body) { rejection.body = body; return body; }
+      },
+      () => { throw new Error('Session token must not open an SSE stream'); }
+    );
+    assert.strictEqual(rejection.code, 403);
+    assert.strictEqual(rejection.body.code, 'REALTIME_TICKET_INVALID');
+  });
+
+  it('8. should confirm protected subtitle and realtime ticket routes are registered', () => {
     // Kiểm tra router lessons.routes có tồn tại route generate-subtitles
     const routes = lessonsRoutes.stack
       .filter((layer) => layer.route)
@@ -196,5 +260,20 @@ describe('=== Auth Query Token Scope & PDF Access Test Suite ===', () => {
     assert.ok(pdfDownloadRoute, 'GET /:lessonId/pdf/download must be registered');
     assert.ok(matPreviewRoute, 'GET /:lessonId/materials/:materialId/preview must be registered');
     assert.ok(matDownloadRoute, 'GET /:lessonId/materials/:materialId/download must be registered');
+
+    const instructorRouteList = instructorRoutes.stack
+      .filter((layer) => layer.route)
+      .map((layer) => ({
+        path: layer.route.path,
+        methods: Object.keys(layer.route.methods)
+      }));
+    assert.ok(
+      instructorRouteList.some(route => route.path === '/realtime/stream' && route.methods.includes('get')),
+      'GET /realtime/stream must be registered'
+    );
+    assert.ok(
+      instructorRouteList.some(route => route.path === '/realtime/ticket' && route.methods.includes('post')),
+      'POST /realtime/ticket must be registered'
+    );
   });
 });

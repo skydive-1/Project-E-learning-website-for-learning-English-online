@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import apiClient from '../config/api.config';
 
 /**
  * Real-time SSE Service for Instructor Dashboard
@@ -8,121 +9,197 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 class RealtimeService {
   constructor() {
     this.eventSource = null;
+    this.reconnectTimer = null;
     this.listeners = new Map();
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
     this.reconnectDelay = 1000;
     this.isConnected = false;
     this.userId = null;
+    this.connectionVersion = 0;
+    this.shouldReconnect = false;
   }
 
   /**
    * Connect to SSE endpoint
    * @param {number} userId - Current user ID
-   * @param {string} token - Auth token
    */
-  connect(userId, token) {
-    if (this.eventSource && this.userId === userId) {
-      return Promise.resolve();
+  async connect(userId) {
+    const normalizedUserId = Number(userId);
+    if (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0) {
+      throw new Error('Không xác định được người dùng cho kết nối realtime.');
     }
 
-    this.userId = userId;
-    this.close();
+    if (
+      this.eventSource
+      && this.userId === normalizedUserId
+      && this.eventSource.readyState !== EventSource.CLOSED
+    ) {
+      return true;
+    }
 
-    return new Promise((resolve, reject) => {
-      try {
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        const sseUrl = `${baseUrl}/instructor/realtime/stream?token=${encodeURIComponent(token)}`;
-        
-        this.eventSource = new EventSource(sseUrl);
+    this.stopTransport();
+    this.userId = normalizedUserId;
+    this.reconnectAttempts = 0;
+    this.shouldReconnect = true;
+    this.connectionVersion += 1;
+    return this.openConnection(normalizedUserId, this.connectionVersion);
+  }
 
-        this.eventSource.onopen = () => {
-          this.isConnected = true;
-          this.reconnectAttempts = 0;
-          this.emit('connected', {});
-          resolve();
-        };
-
-        this.eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.handleMessage(data);
-          } catch (err) {
-            console.warn('Failed to parse SSE message:', err);
-          }
-        };
-
-        this.eventSource.addEventListener('notification', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.emit('notification', data);
-          } catch (err) {
-            console.warn('Failed to parse notification:', err);
-          }
-        });
-
-        this.eventSource.addEventListener('course_update', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.emit('course_update', data);
-          } catch (err) {
-            console.warn('Failed to parse course_update:', err);
-          }
-        });
-
-        this.eventSource.addEventListener('student_enrollment', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.emit('student_enrollment', data);
-          } catch (err) {
-            console.warn('Failed to parse student_enrollment:', err);
-          }
-        });
-
-        this.eventSource.addEventListener('discussion_update', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.emit('discussion_update', data);
-          } catch (err) {
-            console.warn('Failed to parse discussion_update:', err);
-          }
-        });
-
-        this.eventSource.addEventListener('quiz_submission', (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.emit('quiz_submission', data);
-          } catch (err) {
-            console.warn('Failed to parse quiz_submission:', err);
-          }
-        });
-
-        this.eventSource.addEventListener('heartbeat', (event) => {
-          this.emit('heartbeat', {});
-        });
-
-        this.eventSource.onerror = (err) => {
-          console.error('SSE connection error:', err);
-          this.isConnected = false;
-          this.emit('error', err);
-          
-          if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-            console.log(`Attempting SSE reconnection in ${delay}ms (attempt ${this.reconnectAttempts})`);
-            
-            setTimeout(() => {
-              this.connect(userId, token).catch(() => {});
-            }, delay);
-          } else {
-            this.emit('max_retries_reached', {});
-            reject(new Error('Max reconnection attempts reached'));
-          }
-        };
-      } catch (err) {
-        reject(err);
+  async openConnection(userId, version) {
+    try {
+      // Lấy ticket qua Axios để session token chỉ đi trong Authorization header.
+      const ticketResponse = await apiClient.post('/instructor/realtime/ticket');
+      const ticket = ticketResponse.data?.data?.ticket;
+      if (!ticket) {
+        const error = new Error('Máy chủ không trả về vé kết nối realtime hợp lệ.');
+        error.code = 'REALTIME_TICKET_INVALID';
+        throw error;
       }
-    });
+      if (!this.shouldReconnect || version !== this.connectionVersion || this.userId !== userId) {
+        return false;
+      }
+
+      const baseUrl = String(apiClient.defaults.baseURL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+        .replace(/\/+$/, '');
+      const sseUrl = `${baseUrl}/instructor/realtime/stream?ticket=${encodeURIComponent(ticket)}`;
+      const eventSource = new EventSource(sseUrl);
+      this.eventSource = eventSource;
+
+      eventSource.onopen = () => {
+        if (version !== this.connectionVersion) return;
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        this.emit('connected', {});
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleMessage(data);
+        } catch (err) {
+          console.warn('Failed to parse SSE message:', err);
+        }
+      };
+
+      eventSource.addEventListener('notification', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.emit('notification', data);
+        } catch (err) {
+          console.warn('Failed to parse notification:', err);
+        }
+      });
+
+      eventSource.addEventListener('course_update', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.emit('course_update', data);
+        } catch (err) {
+          console.warn('Failed to parse course_update:', err);
+        }
+      });
+
+      eventSource.addEventListener('student_enrollment', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.emit('student_enrollment', data);
+        } catch (err) {
+          console.warn('Failed to parse student_enrollment:', err);
+        }
+      });
+
+      eventSource.addEventListener('discussion_update', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.emit('discussion_update', data);
+        } catch (err) {
+          console.warn('Failed to parse discussion_update:', err);
+        }
+      });
+
+      eventSource.addEventListener('quiz_submission', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.emit('quiz_submission', data);
+        } catch (err) {
+          console.warn('Failed to parse quiz_submission:', err);
+        }
+      });
+
+      eventSource.addEventListener('heartbeat', () => {
+        this.emit('heartbeat', {});
+      });
+
+      eventSource.onerror = (err) => {
+        if (version !== this.connectionVersion || eventSource !== this.eventSource) return;
+        console.error('SSE connection error:', err);
+        this.isConnected = false;
+        this.emit('error', err);
+        this.stopEventSource();
+        this.scheduleReconnect(userId, version);
+      };
+
+      return true;
+    } catch (error) {
+      // Bỏ qua kết quả của request cũ sau khi component đã unmount hoặc có
+      // một kết nối mới hơn. Điều này thường xảy ra trong React Strict Mode.
+      if (
+        version !== this.connectionVersion
+        || this.userId !== userId
+        || !this.shouldReconnect
+      ) {
+        return false;
+      }
+      this.isConnected = false;
+      if (this.isAuthFailure(error)) {
+        this.shouldReconnect = false;
+        this.emit('auth_error', error);
+        throw error;
+      }
+      this.emit('error', error);
+      this.scheduleReconnect(userId, version);
+      throw error;
+    }
+  }
+
+  isAuthFailure(error) {
+    const status = Number(error?.response?.status || error?.status || 0);
+    const code = String(error?.response?.data?.code || error?.code || '');
+    return status === 401 || status === 403 || /AUTH|TOKEN|FORBIDDEN/.test(code);
+  }
+
+  scheduleReconnect(userId, version) {
+    if (!this.shouldReconnect || version !== this.connectionVersion || this.reconnectTimer) return;
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.shouldReconnect = false;
+      this.emit('max_retries_reached', {});
+      return;
+    }
+
+    this.reconnectAttempts += 1;
+    const delay = Math.min(30000, this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1));
+    console.log(`Attempting SSE reconnection in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.openConnection(userId, version).catch(() => {});
+    }, delay);
+  }
+
+  stopEventSource() {
+    if (!this.eventSource) return;
+    this.eventSource.onerror = null;
+    this.eventSource.close();
+    this.eventSource = null;
+  }
+
+  stopTransport() {
+    this.stopEventSource();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.isConnected = false;
   }
 
   handleMessage(data) {
@@ -159,13 +236,12 @@ class RealtimeService {
   }
 
   close() {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-    this.isConnected = false;
+    this.shouldReconnect = false;
+    this.connectionVersion += 1;
+    this.stopTransport();
     this.listeners.clear();
     this.userId = null;
+    this.reconnectAttempts = 0;
   }
 
   getStatus() {
@@ -179,7 +255,10 @@ function getUserIdFromToken() {
   const token = localStorage.getItem('token');
   if (!token) return null;
   try {
-    const payloadBase64 = token.split('.')[1];
+    const rawPayload = token.split('.')[1];
+    if (!rawPayload) return null;
+    const payloadBase64 = rawPayload.replace(/-/g, '+').replace(/_/g, '/')
+      .padEnd(Math.ceil(rawPayload.length / 4) * 4, '=');
     const payloadJson = atob(payloadBase64);
     const payload = JSON.parse(payloadJson);
     return parseInt(payload.id || payload.userId, 10);
@@ -226,8 +305,9 @@ export const useInstructorRealtime = () => {
     const unsubConnected = realtimeService.subscribe('connected', () => setIsConnected(true));
     const unsubError = realtimeService.subscribe('error', () => setIsConnected(false));
     const unsubMaxRetries = realtimeService.subscribe('max_retries_reached', () => setIsConnected(false));
+    const unsubAuthError = realtimeService.subscribe('auth_error', () => setIsConnected(false));
 
-    realtimeService.connect(userId, token).catch(err => {
+    realtimeService.connect(userId).catch(err => {
       console.error('Failed to connect instructor realtime:', err);
     });
 
@@ -240,6 +320,8 @@ export const useInstructorRealtime = () => {
       unsubConnected();
       unsubError();
       unsubMaxRetries();
+      unsubAuthError();
+      realtimeService.close();
     };
   }, [token, userId]);
 
@@ -261,3 +343,4 @@ export const useInstructorRealtime = () => {
 };
 
 export { getUserIdFromToken };
+export { RealtimeService };
