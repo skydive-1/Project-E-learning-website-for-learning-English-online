@@ -558,9 +558,9 @@ Quy tắc:
     });
   }
 
-  createYoutubeTranslationBatches(cues) {
+  createYoutubeTranslationBatches(cues, maxCharacters = 12000) {
     const totalCharacters = cues.reduce((sum, cue) => sum + cue.en.length, 0);
-    if (cues.length <= 1 || totalCharacters <= 12000) return [cues];
+    if (cues.length <= 1 || totalCharacters <= maxCharacters) return [cues];
 
     const targetCharacters = Math.ceil(totalCharacters / 2);
     let runningCharacters = 0;
@@ -572,7 +572,17 @@ Quy tắc:
         break;
       }
     }
-    return [cues.slice(0, splitIndex), cues.slice(splitIndex)].filter(batch => batch.length > 0);
+
+    // Trước đây chỉ bisect ĐÚNG 1 LẦN, nên video/transcript rất dài vẫn có thể
+    // để lại 1 nửa vượt ngưỡng — khiến Gemini phải dịch 1 batch quá lớn, dễ bị
+    // cắt output giữa chừng (JSON hỏng, thiếu/trùng id). Giờ đệ quy chia tiếp
+    // cho tới khi mọi batch đều nằm dưới ngưỡng ký tự an toàn.
+    const left = cues.slice(0, splitIndex);
+    const right = cues.slice(splitIndex);
+    return [
+      ...this.createYoutubeTranslationBatches(left, maxCharacters),
+      ...this.createYoutubeTranslationBatches(right, maxCharacters)
+    ].filter(batch => batch.length > 0);
   }
 
   async translateYoutubeTranscriptWithGemini(transcriptSegments) {
