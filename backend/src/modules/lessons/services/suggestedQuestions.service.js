@@ -18,6 +18,7 @@ const { geminiModel } = require('../../../utils/ai-clients');
 
 const QUESTION_COUNT = 4;
 const MAX_QUESTION_LENGTH = 92;
+const suggestedQuestionGenerationJobs = new Map();
 
 const LEGACY_QUESTION_PATTERNS = [
   /muc dich va noi dung chinh cua bai/,
@@ -80,11 +81,34 @@ const GROUNDING_STOP_WORDS = new Set([
   'course', 'video', 'and', 'but', 'or', 'if', 'because', 'as', 'until', 'while'
 ]);
 
-function markGenerationUsage(questions, generatedByAi = false, contentAvailable = null) {
+function markGenerationUsage(questions, generatedByAi = false, contentAvailable = null, refreshing = false) {
   const result = Array.isArray(questions) ? questions : [];
   Object.defineProperty(result, 'generatedByAi', { value: generatedByAi, enumerable: false });
   Object.defineProperty(result, 'contentAvailable', { value: contentAvailable, enumerable: false });
+  Object.defineProperty(result, 'refreshing', { value: refreshing, enumerable: false });
   return result;
+}
+
+function queueSuggestedQuestionGeneration(lessonId, cues = null) {
+  const jobKey = String(parseInt(lessonId, 10));
+  if (suggestedQuestionGenerationJobs.has(jobKey)) {
+    return suggestedQuestionGenerationJobs.get(jobKey);
+  }
+
+  const job = Promise.resolve()
+    .then(() => generateAndSaveSuggestedQuestions(lessonId, cues))
+    .catch((error) => {
+      console.warn(`[SuggestedQuestions] Làm mới nền thất bại cho lessonId=${lessonId}:`, error.message);
+      return [];
+    })
+    .finally(() => {
+      if (suggestedQuestionGenerationJobs.get(jobKey) === job) {
+        suggestedQuestionGenerationJobs.delete(jobKey);
+      }
+    });
+
+  suggestedQuestionGenerationJobs.set(jobKey, job);
+  return job;
 }
 
 function normalizeForMatch(value = '') {
@@ -384,28 +408,23 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
     let transcriptCues = cues || [];
     let transcriptText = buildTranscriptText(transcriptCues);
 
-    // Tự động nhận diện và bóc băng tức thời nếu là video YouTube mà chưa có transcript trong CSDL
+    // Không giữ request của học viên để chờ bóc băng. Pipeline phụ đề chạy nền,
+    // còn endpoint trả trạng thái chưa sẵn sàng ngay lập tức.
     if (!transcriptText && content_type === 'video' && content_url) {
       const { extractYoutubeVideoId } = require('../../../utils/youtubeTranscript.util');
       const isYouTube = Boolean(extractYoutubeVideoId(content_url));
-      if (isYouTube) {
-        console.log(`[SuggestedQuestions] 🎯 Phát hiện video YouTube chưa bóc băng cho lessonId=${parsedLessonId}, tự động bóc băng ngay...`);
+      if (subtitle_status !== 'pending' && subtitle_status !== 'processing') {
         try {
           const subtitlesService = require('./subtitles.service');
-          const subResult = await subtitlesService.generateSubtitlesWithGemini(parsedLessonId);
-          if (subResult?.cues && subResult.cues.length > 0) {
-            transcriptCues = subResult.cues;
-            transcriptText = buildTranscriptText(transcriptCues);
-          }
-        } catch (ytErr) {
-          console.warn(`[SuggestedQuestions] Không thể tự động lấy phụ đề YouTube cho lessonId=${parsedLessonId}:`, ytErr.message);
+          const preparation = isYouTube
+            ? subtitlesService.generateSubtitlesWithGemini(parsedLessonId)
+            : subtitlesService.queueAutoGeneration(parsedLessonId);
+          Promise.resolve(preparation).catch((error) => {
+            console.warn(`[SuggestedQuestions] Chuẩn bị transcript nền thất bại cho lessonId=${parsedLessonId}:`, error.message);
+          });
+        } catch (_) {
+          // Pipeline nền là best-effort; phản hồi nhanh cho học viên vẫn được ưu tiên.
         }
-      } else if (subtitle_status !== 'pending' && subtitle_status !== 'processing') {
-        // Tự động xếp hàng sinh phụ đề cho video tải lên nếu chưa được xếp hàng
-        try {
-          const subtitlesService = require('./subtitles.service');
-          subtitlesService.queueAutoGeneration(parsedLessonId).catch(() => {});
-        } catch (_) {}
       }
     }
 
@@ -417,7 +436,7 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
       return markGenerationUsage([], false, false);
     }
 
-    if (!forceRefresh && dbQuestions) {
+    if (dbQuestions) {
       let questions = dbQuestions;
       if (typeof questions === 'string') {
         try { questions = JSON.parse(questions); } catch (_) {}
@@ -431,15 +450,33 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
       if (!isLegacy) {
         const normalizedItems = normalizeSuggestedItems(questions, transcriptText);
         if (normalizedItems.length === QUESTION_COUNT) {
-          return markGenerationUsage(normalizedItems.map(item => item.question), false, true);
+          if (forceRefresh) queueSuggestedQuestionGeneration(parsedLessonId, transcriptCues);
+          return markGenerationUsage(
+            normalizedItems.map(item => item.question),
+            false,
+            true,
+            forceRefresh
+          );
         }
       } else {
         console.log(`[SuggestedQuestions] 🔄 Phát hiện câu hỏi generic cũ trong DB cho lessonId=${parsedLessonId}, tự động làm mới...`);
       }
     }
 
-    // Nếu forceRefresh, hoặc questions là dạng generic cũ, hoặc chưa có câu hỏi -> tạo mới và lưu DB
-    return generateAndSaveSuggestedQuestions(parsedLessonId, transcriptCues);
+    // Đường nhanh: trả câu hỏi deterministic bám transcript ngay sau một DB read.
+    // Gemini chỉ nâng cấp và lưu bộ câu hỏi ở nền, không chặn màn hình bài học.
+    const fallbackQuestions = getFallbackSuggestedQuestions(
+      lesson_title,
+      course_name,
+      transcriptText,
+      section_title
+    );
+    if (fallbackQuestions.length === QUESTION_COUNT) {
+      queueSuggestedQuestionGeneration(parsedLessonId, transcriptCues);
+      return markGenerationUsage(fallbackQuestions, false, true, true);
+    }
+
+    return markGenerationUsage([], false, true, false);
   } catch (err) {
     console.warn(`[SuggestedQuestions Warning] Lỗi đọc DB lessonId=${lessonId}:`, err.message);
     return markGenerationUsage(getFallbackSuggestedQuestions());
@@ -529,10 +566,14 @@ QUY TẮC BẮT BUỘC 100% (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
 
     // 4. Gọi Gemini với Timeout 45s
     let generatedItems = null;
+    let generationTimeout = null;
     try {
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Suggested Questions Generation Timeout (45000ms)')), 45000)
-      );
+      const timeoutPromise = new Promise((_, reject) => {
+        generationTimeout = setTimeout(
+          () => reject(new Error('Suggested Questions Generation Timeout (45000ms)')),
+          45000
+        );
+      });
 
       const aiResponse = await Promise.race([
         geminiModel.generateContent({
@@ -554,6 +595,8 @@ QUY TẮC BẮT BUỘC 100% (VI PHẠM LÀ LỖI NGHIÊM TRỌNG):
       }
     } catch (aiErr) {
       console.warn(`[SuggestedQuestions Warning] Gemini gặp lỗi/timeout cho lessonId=${parsedLessonId}:`, aiErr.message);
+    } finally {
+      if (generationTimeout) clearTimeout(generationTimeout);
     }
 
     // Nếu AI trả về ít hơn 4 câu hỏi hợp lệ:
@@ -692,6 +735,7 @@ module.exports = {
   getFallbackSuggestedQuestions,
   getSuggestedQuestionsByLessonId,
   generateAndSaveSuggestedQuestions,
+  queueSuggestedQuestionGeneration,
   generateQuestionsFromMaterialIfNeeded,
   saveQuestionsToDb,
   extractGroundedTerms,

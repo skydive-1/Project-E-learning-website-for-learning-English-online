@@ -23,9 +23,10 @@ router.post('/generate-quiz', authenticate, aiLimiter, checkQuestionLimit, chatb
 
 // API Kiểm tra ví Token AI còn lại
 router.get('/token-balance/:userId', authenticate, chatbotController.getTokenBalance);
+router.get('/quota-status', authenticate, chatbotController.getQuotaStatus);
 
 // API Lấy 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
-router.get('/suggested-questions/:lessonId', authenticate, aiLimiter, checkQuestionLimit, chatbotController.getSuggestedQuestions);
+router.get('/suggested-questions/:lessonId', authenticate, aiLimiter, chatbotController.getSuggestedQuestions);
 
 
 // API Lịch sử Chat (Yêu cầu xác thực JWT)
