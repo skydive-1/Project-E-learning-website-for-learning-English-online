@@ -1,4 +1,5 @@
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { createDistributedRateLimitStore } = require('../config/redis');
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
@@ -61,23 +62,27 @@ const createRateLimiter = ({
   keyGenerator,
   skip,
   skipSuccessfulRequests = false
-}) => rateLimit({
-  windowMs,
-  limit,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  passOnStoreError: false,
-  skipSuccessfulRequests,
-  keyGenerator,
-  skip: (req, res) => isRateLimitDisabled() || Boolean(skip?.(req, res)),
-  identifier: name,
-  handler: (req, res, next, options) => res.status(options.statusCode).json({
-    success: false,
-    code: 'RATE_LIMIT_EXCEEDED',
-    message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.',
-    retryAfter: res.getHeader('Retry-After') || null
-  })
-});
+}) => {
+  const store = createDistributedRateLimitStore(name);
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    passOnStoreError: false,
+    skipSuccessfulRequests,
+    keyGenerator,
+    skip: (req, res) => isRateLimitDisabled() || Boolean(skip?.(req, res)),
+    identifier: name,
+    ...(store ? { store } : {}),
+    handler: (req, res, next, options) => res.status(options.statusCode).json({
+      success: false,
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.',
+      retryAfter: res.getHeader('Retry-After') || null
+    })
+  });
+};
 
 // Broad protection for every HTTP endpoint, including health checks, Swagger
 // and static uploads. The high ceiling avoids interrupting legitimate media use.

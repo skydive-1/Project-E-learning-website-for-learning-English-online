@@ -137,6 +137,8 @@ app.use('/api/discussions', discussionsRoutes);
 app.use('/api/drm', drmRoutes);
 
 // Setup Swagger UI
+
+// Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ===== 7. GLOBAL ERROR HANDLER =====
@@ -145,10 +147,14 @@ app.use(errorHandler);
 
 // ===== 8. START SERVER =====
 const { testConnection } = require('./config/database');
+const { initRedis } = require('./config/redis');
 const { startMediaCleanupWorker } = require('./utils/mediaCleanup.worker');
 const subtitlesService = require('./modules/lessons/services/subtitles.service');
 
 const server = app.listen(PORT, async () => {
+  // Khởi tạo Redis cho shared rate limiting (fallback memory nếu không có Redis)
+  await initRedis();
+
   // Kiểm tra kết nối Database khi khởi chạy
   const databaseReady = await testConnection();
   if (!databaseReady && process.env.NODE_ENV === 'production') {
