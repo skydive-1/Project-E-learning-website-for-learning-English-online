@@ -291,11 +291,11 @@ async function generateSignedUrl(filePath, bucketName, expiresIn = 900, storageP
   }
 }
 
-async function fetchPrivateObject(filePath, bucketName, rangeHeader = null, storageProvider = 'r2') {
+async function fetchPrivateObject(filePath, bucketName, rangeHeader = null, storageProvider = 'r2', { signal } = {}) {
   const signedUrl = await generateSignedUrl(filePath, bucketName, 90, storageProvider);
   if (!signedUrl) return null;
   const headers = rangeHeader ? { Range: rangeHeader } : {};
-  return fetch(signedUrl, { method: 'GET', headers, redirect: 'error' });
+  return fetch(signedUrl, { method: 'GET', headers, redirect: 'error', ...(signal ? { signal } : {}) });
 }
 
 module.exports = {

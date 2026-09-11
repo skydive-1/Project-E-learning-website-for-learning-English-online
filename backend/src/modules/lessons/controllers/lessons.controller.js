@@ -182,43 +182,100 @@ async function proxyPrivateStorageVideo(req, res, lesson, storageKey) {
 
 async function proxyPrivateDashSegment(req, res, lesson, segmentKey, fallbackContentType, timing = null) {
   const range = resolveBoundedRange(req.headers.range, null);
-  if (!range.valid) return sendRangeNotSatisfiable(res, null);
+  // Nếu range không hợp lệ (ví dụ: Shaka không gửi Range header), vẫn fetch toàn bộ segment
+  const rangeHeader = range.valid ? range.header : null;
+
+  // AbortController để hủy fetch R2 ngay khi client ngắt kết nối.
+  // Điều này ngăn undici HTTP/2 parser cố ghi vào stream đã đóng,
+  // tránh lỗi AssertionError [ERR_ASSERTION]: assert(!this.paused).
+  const abortController = new AbortController();
+  const onClientClose = () => {
+    if (!abortController.signal.aborted) abortController.abort();
+  };
+  res.once('close', onClientClose);
+
   const r2StartedAt = timing ? Date.now() : null;
   let upstream;
   try {
     upstream = await supabaseStorage.fetchPrivateObject(
       segmentKey,
       lesson.storage_bucket || 'videos',
-      range.header,
-      lesson.storage_provider || 'r2'
+      rangeHeader,
+      lesson.storage_provider || 'r2',
+      { signal: abortController.signal }
     );
+  } catch (err) {
+    res.off('close', onClientClose);
+    // AbortError nghĩa là client đã ngắt kết nối — không cần log, không cần response
+    if (err?.name === 'AbortError' || abortController.signal.aborted) return;
+    throw err;
   } finally {
     if (timing) timing.r2FetchMs = Date.now() - r2StartedAt;
   }
+
+  // Cleanup abort listener nếu fetch đã hoàn thành bình thường
+  res.off('close', onClientClose);
+
   if (!upstream || upstream.status === 404) {
     return res.status(404).json({ success: false, code: 'DASH_SEGMENT_NOT_FOUND', message: 'Segment không tồn tại' });
   }
   if (upstream.status === 416) return res.status(416).end();
-  if (upstream.status !== 206 || !upstream.body) {
+
+  // Chấp nhận cả 206 (partial content) và 200 (full object).
+  const isSuccess = (upstream.status === 206 || upstream.status === 200) && upstream.body;
+  if (!isSuccess) {
     upstream?.body?.cancel?.().catch(() => {});
+    console.error(`[DASH Segment] Unexpected R2 status ${upstream?.status} for ${segmentKey}`);
     return res.status(502).json({ success: false, code: 'STORAGE_RANGE_UNSUPPORTED', message: 'Storage không hỗ trợ DASH Range.' });
   }
 
-  res.status(206);
+  const responseStatus = upstream.status === 206 ? 206 : (rangeHeader ? 206 : 200);
+  res.status(responseStatus);
   res.setHeader('Content-Type', upstream.headers.get('content-type') || fallbackContentType);
   const contentRange = upstream.headers.get('content-range');
   const contentLength = upstream.headers.get('content-length');
-  if (contentRange) res.setHeader('Content-Range', contentRange);
+  if (responseStatus === 206) {
+    if (contentRange) {
+      res.setHeader('Content-Range', contentRange);
+    } else if (contentLength && rangeHeader) {
+      const cl = Number(contentLength);
+      const start = range.valid ? range.start : 0;
+      const end = cl > 0 ? start + cl - 1 : start;
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${cl}`);
+    }
+  }
   if (contentLength) res.setHeader('Content-Length', contentLength);
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Content-Disposition', 'inline');
+
   const stream = Readable.fromWeb(upstream.body);
-  res.once('close', () => { if (!res.writableEnded) stream.destroy(); });
-  stream.once('error', error => { if (!res.destroyed) res.destroy(error); });
+
+  // Khi client ngắt kết nối: huỷ stream từ R2 và cancel upstream body.
+  // Cần cancel cả upstream.body để ngăn undici tiếp tục đọc từ HTTP/2 socket.
+  res.once('close', () => {
+    if (!res.writableEnded) stream.destroy();
+    upstream.body?.cancel?.().catch(() => {});
+  });
+
+  // Bắt lỗi stream (kể cả ERR_ASSERTION từ undici) và log nhẹ — không crash process.
+  stream.once('error', (err) => {
+    const isExpectedDisconnect = err?.code === 'ERR_STREAM_DESTROYED'
+      || err?.code === 'ECONNRESET'
+      || err?.name === 'AbortError'
+      || err?.code === 'ERR_ASSERTION'; // undici assertion khi client disconnect
+    if (!isExpectedDisconnect) {
+      console.error('[DASH Segment Stream Error]:', err?.message || err);
+    }
+    if (!res.destroyed) res.destroy();
+    upstream.body?.cancel?.().catch(() => {});
+  });
+
   return stream.pipe(res);
 }
+
+
 
 async function resolveReadyDashLesson(req, res, timing = null) {
   const lesson = await lessonStreamCache.getCachedLessonForStreaming(

@@ -1220,7 +1220,11 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
           shakaErrorHandler = (event) => {
             const detail = event?.detail || event;
             const serialized = JSON.stringify(detail || {});
+            const shakaCode = detail?.code;
+            const shakaSeverity = detail?.severity; // 1=RECOVERABLE, 2=CRITICAL
             const isAuthError = /\b(401|403)\b/.test(serialized);
+
+            // Lỗi xác thực: lấy ticket mới rồi retry
             if (isAuthError && authRetryCount < 1 && active) {
               authRetryCount++;
               fetchOrRenewTicket().then(newTicket => {
@@ -1230,14 +1234,29 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
               }).catch(() => {});
               return;
             }
+
+            // Lỗi mạng thoáng qua (NETWORK_HTTP_ERROR=1002, NETWORK_FAILED=1001, BAD_HTTP_STATUS=1003):
+            // Shaka đã tự retry theo retryParameters ở trên. Nếu vẫn fail sau tất cả attempts
+            // thì severity sẽ là CRITICAL (2). Chỉ khi đó mới hiện lỗi cho user.
+            const isNetworkError = shakaCode === 1001 || shakaCode === 1002 || shakaCode === 1003;
+            const isCritical = shakaSeverity === 2;
+
+            if (isNetworkError && !isCritical && active) {
+              // Severity=RECOVERABLE: Shaka vẫn đang retry nội bộ, chờ kết quả
+              console.warn(`⚠️ [Shaka] Transient network error (code=${shakaCode}), Shaka retrying internally...`);
+              return;
+            }
+
             if (!active) return;
-            console.warn('⚠️ [Shaka Streaming Error]:', detail);
+            console.warn('⚠️ [Shaka Streaming Error]:', { code: shakaCode, severity: shakaSeverity, detail });
             setVideoLoading(false);
             setVideoError({
               code: detail?.code || 4,
               message: isAuthError
                 ? 'Không có quyền truy cập luồng video hoặc DRM license bị từ chối.'
-                : 'Không thể giải mã hoặc phát luồng video DRM DASH.'
+                : isNetworkError
+                  ? 'Không thể tải luồng video do lỗi mạng. Vui lòng kiểm tra kết nối internet và thử lại.'
+                  : 'Không thể giải mã hoặc phát luồng video DRM DASH.'
             });
           };
           player.addEventListener?.('error', shakaErrorHandler);
@@ -1245,7 +1264,30 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
         const licenseUrl = `${API_BASE_URL}/drm/license/${rawLessonId}`;
         shakaPlayerRef.current?.configure({
-          drm: { servers: { 'org.w3.clearkey': licenseUrl } }
+          drm: { servers: { 'org.w3.clearkey': licenseUrl } },
+          streaming: {
+            // Retry aggressively cho segment requests — backend/R2 đôi khi trả lỗi thoáng qua
+            retryParameters: {
+              maxAttempts: 5,         // Shaka sẽ tự retry tối đa 5 lần
+              baseDelay: 1000,        // Delay ban đầu 1 giây
+              backoffFactor: 1.5,     // Tăng dần: 1s, 1.5s, 2.25s, ...
+              fuzzFactor: 0.3,        // Jitter ±30% để tránh request storm
+              timeout: 30000          // Timeout mỗi attempt: 30s
+            },
+            // Giảm buffer tối thiểu để bắt đầu phát sớm hơn
+            rebufferingGoal: 2,
+            bufferingGoal: 10,
+            bufferBehind: 30
+          },
+          manifest: {
+            retryParameters: {
+              maxAttempts: 3,
+              baseDelay: 500,
+              backoffFactor: 2,
+              fuzzFactor: 0.3,
+              timeout: 15000
+            }
+          }
         });
 
         // Điểm cuối DASH có bảo vệ
