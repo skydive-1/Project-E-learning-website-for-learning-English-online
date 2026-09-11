@@ -658,6 +658,12 @@ const testConnection = async () => {
           resolved_at TIMESTAMP WITH TIME ZONE,
           pending_upload_id UUID REFERENCES pending_media_uploads(upload_id) ON DELETE SET NULL
         );
+
+        -- Bảng failed_storage_deletions có thể đã tồn tại từ trước khi cột
+        -- pending_upload_id được thêm vào schema. CREATE TABLE IF NOT EXISTS
+        -- ở trên sẽ không tự thêm cột cho bảng đã tồn tại, nên cần tự vá ở đây.
+        ALTER TABLE failed_storage_deletions
+          ADD COLUMN IF NOT EXISTS pending_upload_id UUID REFERENCES pending_media_uploads(upload_id) ON DELETE SET NULL;
       `);
     } catch (migErr) {
       console.warn('⚠️ Cảnh báo tạo bảng pending_media_uploads & failed_storage_deletions:', migErr.message);
