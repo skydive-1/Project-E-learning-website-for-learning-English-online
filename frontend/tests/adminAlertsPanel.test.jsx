@@ -4,16 +4,23 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   getAdminAlerts: vi.fn(),
-  connectAdminAlertsStream: vi.fn()
+  connectAdminAlertsStream: vi.fn(),
+  cleanupAdminAlerts: vi.fn(),
+  showToast: vi.fn()
 }));
 
 vi.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({ user: { userId: 4, roleId: 1 } })
 }));
 
+vi.mock('../src/context/ToastContext', () => ({
+  useToast: () => mocks.showToast
+}));
+
 vi.mock('../src/modules/admin/services/adminAlerts.service', () => ({
   getAdminAlerts: mocks.getAdminAlerts,
-  connectAdminAlertsStream: mocks.connectAdminAlertsStream
+  connectAdminAlertsStream: mocks.connectAdminAlertsStream,
+  cleanupAdminAlerts: mocks.cleanupAdminAlerts
 }));
 
 import AdminAlertsPanel from '../src/modules/admin/components/AdminAlertsPanel';
@@ -93,4 +100,42 @@ describe('AdminAlertsPanel', () => {
     expect(screen.queryByRole('heading', { name: 'Cảnh báo vận hành' })).not.toBeInTheDocument();
     expect(screen.queryByText('Không phát hiện vấn đề cần xử lý')).not.toBeInTheDocument();
   });
+
+  it('notifies and displays fixed state with auto-dismiss when alerts are resolved', async () => {
+    let streamCallback;
+    mocks.connectAdminAlertsStream.mockImplementation(({ onStatus, onSnapshot }) => {
+      streamCallback = onSnapshot;
+      queueMicrotask(() => {
+        onStatus('live');
+        onSnapshot(snapshot);
+      });
+      return {
+        done: new Promise(() => {}),
+        close: vi.fn()
+      };
+    });
+
+    render(<AdminAlertsPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Tạo phụ đề thất bại')).toBeInTheDocument();
+    });
+
+    // Mô phỏng snapshot tiếp theo khi lỗi đã được Admin fix (danh sách alerts rỗng)
+    const fixedSnapshot = { ...snapshot, alerts: [] };
+    await waitFor(() => {
+      streamCallback(fixedSnapshot);
+    });
+
+    await waitFor(() => {
+      expect(mocks.showToast).toHaveBeenCalledWith(
+        expect.stringContaining('Đã khắc phục xong'),
+        'success',
+        expect.any(Object)
+      );
+      expect(screen.getByText(/\[Đã fix\]/)).toBeInTheDocument();
+      expect(screen.getByText(/Tự động xóa/)).toBeInTheDocument();
+    });
+  });
 });
+

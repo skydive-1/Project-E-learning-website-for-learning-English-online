@@ -1,8 +1,8 @@
 const orphanCleanupService = require('./orphanCleanup.service');
 
 function startMediaCleanupWorker(options = {}) {
-  if (String(process.env.ENABLE_MEDIA_CLEANUP_WORKER || '').toLowerCase() !== 'true') return null;
-  const intervalMs = Number(options.intervalMs || process.env.MEDIA_CLEANUP_INTERVAL_MS || 300000);
+  if (String(process.env.ENABLE_MEDIA_CLEANUP_WORKER || 'true').toLowerCase() === 'false') return null;
+  const intervalMs = Number(options.intervalMs || process.env.MEDIA_CLEANUP_INTERVAL_MS || 60000);
   let running = false;
   const run = async () => {
     if (running) return;
