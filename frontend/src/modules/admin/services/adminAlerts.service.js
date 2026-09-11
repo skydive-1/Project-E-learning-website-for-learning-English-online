@@ -115,3 +115,9 @@ export const connectAdminAlertsStream = ({
     close: () => controller.abort()
   };
 };
+
+export const cleanupAdminAlerts = async () => {
+  const response = await apiClient.post('/admin/alerts/cleanup');
+  return response.data;
+};
+

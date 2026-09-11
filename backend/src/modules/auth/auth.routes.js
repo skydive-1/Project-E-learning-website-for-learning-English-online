@@ -113,10 +113,12 @@ router.put('/profile', authenticate, validate(updateProfileSchema), authControll
 router.post('/google', authLimiter, authController.googleLogin);
 router.post('/google/confirm-role', authLimiter, authController.googleConfirmRole);
 
-// Password Reset Endpoints
+// Password Reset & OAuth Exchange Endpoints
 router.post('/forgot-password', passwordResetLimiter, authController.forgotPassword);
 router.post('/reset-password', passwordResetLimiter, authController.resetPassword);
+router.post('/exchange', authLimiter, authController.exchangeToken);
 
 router.get('/stats', authenticate, authController.getUserStats);
 
 module.exports = router;
+

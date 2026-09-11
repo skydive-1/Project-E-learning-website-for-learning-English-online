@@ -68,15 +68,64 @@ const queryClient = new QueryClient({
   }
 });
 
-const AuthTokenRedirectHandler = () => {
+// SecureAuthRedirectHandler: parse callback, exchange with backend, remove URL tokens safely
+const SecureAuthRedirectHandler = () => {
   const navigate = useNavigate();
+
   React.useEffect(() => {
-    const hash = window.location.hash;
-    const search = window.location.search;
-    if ((hash.includes('access_token=') || hash.includes('type=recovery') || search.includes('type=recovery')) && window.location.pathname !== '/reset-password') {
-      navigate(`/reset-password${hash || search}`, { replace: true });
-    }
+    const { hash, search, pathname } = window.location;
+    const raw = (hash && hash.startsWith('#') ? hash.slice(1) : '') || (search && search.startsWith('?') ? search.slice(1) : '');
+    if (!raw) return;
+
+    const params = Object.fromEntries(new URLSearchParams(raw));
+    const isCallback = params.type === 'recovery' || Boolean(params.access_token) || Boolean(params.code);
+    if (!isCallback) return;
+
+    (async () => {
+      try {
+        const body = {
+          type: params.type,
+          code: params.code,
+          state: params.state,
+          provider: params.provider
+        };
+        if (params.access_token) body.access_token = params.access_token;
+
+        // Gọi endpoint exchange an toàn
+        try {
+          await fetch('/api/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            credentials: 'include'
+          });
+        } catch {
+          // Fail-soft: không chặn người dùng nếu mạng tạm thời gián đoạn
+        }
+
+        // Xóa hoàn toàn hash và query khỏi URL thanh địa chỉ để tránh rò rỉ token qua History/Referrers
+        window.history.replaceState({}, document.title, pathname);
+
+        // Điều hướng an toàn, truyền token qua React Router memory state thay vì URL
+        if (params.type === 'recovery' || params.access_token) {
+          navigate('/reset-password', {
+            replace: true,
+            state: {
+              accessToken: params.access_token || '',
+              type: params.type || 'recovery'
+            }
+          });
+        } else {
+          navigate('/', { replace: true });
+        }
+      } catch (err) {
+        window.history.replaceState({}, document.title, pathname);
+        console.error('Auth redirect handler error:', err);
+        navigate('/', { replace: true });
+      }
+    })();
   }, [navigate]);
+
   return null;
 };
 
@@ -89,7 +138,7 @@ function App() {
             <ToastProvider>
               <BrowserRouter>
                 <RouteScrollManager />
-                <AuthTokenRedirectHandler />
+                <SecureAuthRedirectHandler />
                 <AuthProvider>
                   <GamificationProvider>
                   <Suspense fallback={<RouteLoadingFallback />}>

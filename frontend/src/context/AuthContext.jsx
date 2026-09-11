@@ -150,8 +150,9 @@ export const AuthProvider = ({ children }) => {
         console.warn('❌ Token không hợp lệ hoặc đã hết hạn. Đăng xuất local.');
         clearStoredAuth();
         setUser(null);
-        setAuthStatus('unauthenticated');
-        setAuthError(null);
+        const isExpired = errorCode === 'TOKEN_EXPIRED' || errorCode === 'TokenExpiredError';
+        setAuthStatus(isExpired ? 'expired' : 'unauthenticated');
+        setAuthError(isExpired ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.' : null);
         setLoading(false);
         return;
       }
@@ -220,12 +221,18 @@ export const AuthProvider = ({ children }) => {
     };
   }, [fetchUserProfile, navigate]);
 
-  // Phương thức đăng nhập
+  // Phương thức đăng nhập (tự động đưa về trang đích next nếu có)
   const login = async (token) => {
     resetAuthLogoutGuard();
     localStorage.setItem('token', token);
     await fetchUserProfile();
-    navigate('/');
+    const searchParams = new URLSearchParams(window.location.search);
+    const nextUrl = searchParams.get('next');
+    if (nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//')) {
+      navigate(nextUrl, { replace: true });
+    } else {
+      navigate('/', { replace: true });
+    }
   };
 
   // Phương thức đăng xuất chủ động của người dùng

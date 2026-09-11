@@ -160,8 +160,10 @@ const server = app.listen(PORT, async () => {
     .then(count => {
       if (count > 0) console.log(`[Auto-Subtitle] Đã khôi phục ${count} job sau khi server khởi động`);
     })
-    .catch(error => console.warn(`[Auto-Subtitle] Không thể khôi phục job: ${error.message}`));
   const mediaCleanupWorker = startMediaCleanupWorker();
+  if (mediaCleanupWorker) {
+    console.log('🧹 [MediaCleanupWorker]: Tiến trình tự động dọn dẹp rác mồ côi đã khởi động');
+  }
   const shutdown = () => {
     mediaCleanupWorker?.stop();
     server.close(() => process.exit(0));

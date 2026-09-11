@@ -22,6 +22,7 @@ router.get('/analytics', adminController.getAnalyticsDashboard);
 // Cảnh báo vận hành lấy từ PostgreSQL/backend telemetry, cập nhật qua SSE.
 router.get('/alerts', adminAlertsController.getAlerts);
 router.get('/alerts/stream', adminAlertsController.streamAlerts);
+router.post('/alerts/cleanup', adminAlertsController.cleanupAlerts);
 
 // GET /api/admin/ai-quota - Bảng Quản trị Toàn diện Hạn mức và Tiêu thụ Token AI
 router.get('/ai-quota', adminController.getAiQuotaDashboard);

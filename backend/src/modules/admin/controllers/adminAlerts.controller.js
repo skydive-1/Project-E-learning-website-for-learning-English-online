@@ -102,3 +102,26 @@ exports.streamAlerts = async (req, res) => {
     writeEvent(res, 'heartbeat', { timestamp: new Date().toISOString() });
   }, HEARTBEAT_MS);
 };
+
+exports.cleanupAlerts = async (req, res, next) => {
+  try {
+    const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+    const expiredRes = await orphanCleanupService.cleanupExpiredPendingUploads(100);
+    const failedRes = await orphanCleanupService.processFailedStorageDeletions(100);
+    adminAlertsService.resetCache();
+    const freshSnapshot = await adminAlertsService.getAdminAlertsSnapshot({ fresh: true });
+
+    return res.status(200).json({
+      success: true,
+      message: `Dọn dẹp rác cảnh báo thành công. Đã giải phóng ${expiredRes.cleanedCount} tệp tải lên tạm và xử lý ${failedRes.processedCount} mục lưu trữ.`,
+      data: {
+        cleanedPendingCount: expiredRes.cleanedCount,
+        processedFailedCount: failedRes.processedCount,
+        snapshot: freshSnapshot
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

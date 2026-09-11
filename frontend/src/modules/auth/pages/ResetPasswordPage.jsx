@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import { FiLock, FiEye, FiEyeOff, FiArrowLeft } from 'react-icons/fi';
 import { resetPasswordApi } from '../services/auth.service';
 
 const ResetPasswordPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const outletContext = useOutletContext();
   const setAuthInteractiveState = outletContext?.setAuthInteractiveState;
 
@@ -19,21 +20,29 @@ const ResetPasswordPage = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    // Trích xuất access_token từ URL hash (ví dụ: #access_token=...) hoặc query parameters
+    // 1. Ưu tiên lấy access_token từ React Router memory state (được truyền an toàn, không lộ URL)
+    const stateToken = location.state?.accessToken || location.state?.token;
+
+    // 2. Fallback trích xuất từ URL hash hoặc query parameters nếu truy cập trực tiếp
     const hashParams = new URLSearchParams(window.location.hash.replace('#', '?'));
     const queryParams = new URLSearchParams(window.location.search);
+    const urlToken = hashParams.get('access_token') || queryParams.get('access_token');
     
-    const token = hashParams.get('access_token') || queryParams.get('access_token');
+    const token = stateToken || urlToken;
     
     if (token) {
       setAccessToken(token);
+      // Xóa URL hash/query nếu còn sót để bảo vệ an toàn
+      if (window.location.hash || window.location.search) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     } else {
       setMessage({
         type: 'error',
         text: 'Không tìm thấy mã xác thực khôi phục mật khẩu. Liên kết này có thể đã hết hạn hoặc không hợp lệ.'
       });
     }
-  }, []);
+  }, [location.state]);
 
   useEffect(() => {
     if (setAuthInteractiveState) {
