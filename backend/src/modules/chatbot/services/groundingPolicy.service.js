@@ -37,6 +37,7 @@ function getPromptGroundingRules(groundingRequired) {
   return [
     '- Chỉ được dùng thông tin có trong NGỮ CẢNH ĐÃ XÁC MINH bên dưới.',
     '- Không bổ sung kiến thức bên ngoài, không suy đoán và không tạo tên bài học, số liệu, ví dụ hoặc kết luận mà ngữ cảnh không hỗ trợ.',
+    '- Không tự viết hoặc suy đoán mốc thời gian trong câu trả lời. Giao diện sẽ hiển thị mốc video đã được hệ thống xác minh từ transcript.',
     '- Nếu ngữ cảnh không đủ để trả lời, hãy nói rõ rằng chưa tìm thấy nội dung đủ tin cậy trong bài học hoặc khóa học.',
     '- Mọi nhận định về bài học hoặc khóa học phải truy ngược được về ngữ cảnh đã cung cấp.'
   ].join('\n');

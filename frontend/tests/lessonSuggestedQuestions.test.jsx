@@ -46,7 +46,7 @@ describe('Lesson suggested questions', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: groundedQuestions[0] }));
-    expect(onSelectPrompt).toHaveBeenCalledWith(groundedQuestions[0], null);
+    expect(onSelectPrompt).toHaveBeenCalledWith(groundedQuestions[0], 'SUGGESTED_QUESTION');
   });
 
   it('surfaces invalid server suggestions instead of substituting client sample prompts', async () => {

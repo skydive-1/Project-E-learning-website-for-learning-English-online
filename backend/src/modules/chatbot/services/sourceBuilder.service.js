@@ -218,6 +218,10 @@ async function buildVerifiedSources({
 
     const validatedTs = validateTimestamp(rawStart, rawEnd);
     const formattedStart = validatedTs ? formatTimestamp(validatedTs.startTime) : null;
+    const formattedEnd = validatedTs?.endTime !== null ? formatTimestamp(validatedTs.endTime) : null;
+    const formattedRange = formattedEnd && formattedEnd !== formattedStart
+      ? `${formattedStart}–${formattedEnd}`
+      : formattedStart;
 
     let badgeText = 'Bài học liên quan';
     if (intent === INTENTS.RECOMMEND_LESSON) {
@@ -225,8 +229,8 @@ async function buildVerifiedSources({
     } else if (intent === INTENTS.NAVIGATE_TO_LESSON) {
       badgeText = 'Bài học đích';
     } else if (intent === INTENTS.CURRENT_LESSON_QA) {
-      badgeText = formattedStart 
-        ? `Nội dung bài học hiện tại (${formattedStart})` 
+      badgeText = formattedRange
+        ? `Đoạn video trả lời (${formattedRange})`
         : 'Nội dung bài học hiện tại';
     }
 
@@ -247,6 +251,7 @@ async function buildVerifiedSources({
       sourceObj.startTime = validatedTs.startTime;
       if (validatedTs.endTime !== null) sourceObj.endTime = validatedTs.endTime;
       sourceObj.formattedTime = formattedStart;
+      if (formattedEnd) sourceObj.formattedEndTime = formattedEnd;
     }
 
     sources.push(sourceObj);
@@ -258,7 +263,9 @@ async function buildVerifiedSources({
         courseId: auth.courseId,
         lessonTitle: auth.lessonTitle,
         startTime: validatedTs.startTime,
+        endTime: validatedTs.endTime,
         formattedTime: formattedStart,
+        formattedEndTime: formattedEnd,
         route: `/lessons/${auth.lessonId}?seek=${validatedTs.startTime}`
       });
     } else {

@@ -1,8 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { translateSuggestedQuestion } from '../src/modules/chatbot/utils/suggestedQuestionsTranslator';
 import MessageList from '../src/modules/chatbot/components/MessageList';
+import LessonCard from '../src/modules/chatbot/components/LessonCard';
 
 describe('Chatbot Features & Fixes', () => {
   describe('translateSuggestedQuestion', () => {
@@ -84,6 +86,35 @@ describe('Chatbot Features & Fixes', () => {
       );
 
       expect(screen.queryByRole('button', { name: /Cuộn xuống tin nhắn mới nhất/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('verified video citation', () => {
+    it('shows the transcript range and seeks the current lesson video', () => {
+      const onSeekVideo = vi.fn();
+      render(
+        <MemoryRouter>
+          <LessonCard
+            source={{
+              lessonId: 41,
+              lessonTitle: 'Từ vựng về gia đình',
+              sectionTitle: 'Chương 1',
+              badgeText: 'Đoạn video trả lời (00:31–00:37)',
+              startTime: 31,
+              endTime: 37,
+              formattedTime: '00:31',
+              formattedEndTime: '00:37'
+            }}
+            action={{ type: 'SEEK_VIDEO', lessonId: 41, startTime: 31, endTime: 37 }}
+            currentLessonId={41}
+            onSeekVideo={onSeekVideo}
+          />
+        </MemoryRouter>
+      );
+
+      expect(screen.getByText('00:31–00:37')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button'));
+      expect(onSeekVideo).toHaveBeenCalledWith(31);
     });
   });
 });
