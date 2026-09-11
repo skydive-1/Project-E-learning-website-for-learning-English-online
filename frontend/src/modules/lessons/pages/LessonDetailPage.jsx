@@ -189,6 +189,10 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   // phát lần đầu (onPlay/onPlaying/onCanPlay), spinner sẽ không hiển thị lại
   // khi mạng tạm thời chậm (buffering).
   const videoHasStartedRef = useRef(false);
+  // isVideoBuffering: true khi mạng tạm thời chậm (sự kiện `waiting`) SAU khi
+  // video đã phát lần đầu. Hiển thị thanh buffer mỏng ở đỉnh video thay vì
+  // spinner toàn màn hình — đúng chuẩn UX YouTube/Netflix.
+  const [isVideoBuffering, setIsVideoBuffering] = useState(false);
   // Smart AI Subtitles & Interactive Bilingual Transcript States
   const [subtitleData, setSubtitleData] = useState(null);
   const [subtitleStatus, setSubtitleStatus] = useState('none'); // 'none'|'pending'|'processing'|'ready'|'failed'
@@ -1779,10 +1783,29 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                               </div>
                             ) : (
                               <>
-                                {videoLoading && (
+                                {/* Spinner toàn màn hình: CHỈ hiện khi initial load (chưa bao giờ phát) */}
+                                {videoLoading && !videoHasStartedRef.current && (
                                   <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4 pointer-events-none">
                                     <div className="w-10 h-10 border-4 border-slate-700 border-t-teal-400 rounded-full animate-spin"></div>
                                     <span className="text-xs font-semibold text-teal-300 tracking-wider">Đang tải video...</span>
+                                  </div>
+                                )}
+
+                                {/* Thanh buffer mỏng kiểu YouTube: hiện khi buffering giữa chừng */}
+                                {isVideoBuffering && videoHasStartedRef.current && (
+                                  <div
+                                    className="absolute top-0 left-0 right-0 z-20 pointer-events-none overflow-hidden"
+                                    style={{ height: '3px' }}
+                                    aria-hidden="true"
+                                  >
+                                    <div
+                                      style={{
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, #14b8a6, #6366f1, #14b8a6)',
+                                        backgroundSize: '200% 100%',
+                                        animation: 'video-buffer-shimmer 1.4s ease-in-out infinite'
+                                      }}
+                                    />
                                   </div>
                                 )}
 
@@ -1803,13 +1826,20 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                   onTimeUpdate={(e) => setVideoCurrentTime(e.target.currentTime)}
                                   onContextMenu={(e) => e.preventDefault()}
                                   onDragStart={(e) => e.preventDefault()}
-                                  onPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoPlaying(true); }}
-                                  onPlaying={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoPlaying(true); }}
-                                  onPause={() => setIsVideoPlaying(false)}
-                                  onEnded={() => setIsVideoPlaying(false)}
+                                  onPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoBuffering(false); setIsVideoPlaying(true); }}
+                                  onPlaying={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoBuffering(false); setIsVideoPlaying(true); }}
+                                  onPause={() => { setIsVideoBuffering(false); setIsVideoPlaying(false); }}
+                                  onEnded={() => { setIsVideoBuffering(false); setIsVideoPlaying(false); }}
                                   onLoadedData={() => { videoHasStartedRef.current = true; setVideoLoading(false); }}
                                   onLoadedMetadata={() => setVideoLoading(false)}
-                                  onCanPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); }}
+                                  onCanPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoBuffering(false); }}
+                                  onWaiting={() => {
+                                    if (videoHasStartedRef.current) {
+                                      // Buffering giữa chừng: chỉ hiện thanh mỏng, không che video
+                                      setIsVideoBuffering(true);
+                                    }
+                                    // Nếu chưa bắt đầu phát lần đầu → không làm gì (watchdog xử lý)
+                                  }}
                                   onError={handleVideoError}
                                   className="size-full object-contain pointer-events-auto cursor-pointer"
                                   data-no-download="true"

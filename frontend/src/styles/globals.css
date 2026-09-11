@@ -1616,4 +1616,17 @@ textarea:focus-visible,
   }
 }
 
+/* ─── Video Buffer Progress Bar (YouTube-style) ─────────────────────────── */
+/* Thanh buffer mỏng 3px ở đỉnh video — xuất hiện khi mạng chậm/buffering   */
+/* giữa chừng, KHÔNG che nội dung video đang phát.                           */
+@keyframes video-buffer-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
 
+@media (prefers-reduced-motion: reduce) {
+  [style*="video-buffer-shimmer"] {
+    animation: none !important;
+    background: #14b8a6 !important;
+  }
+}
