@@ -518,8 +518,24 @@ function normalizeRequest(request) {
     }
 
     const srcConfig = request.generationConfig || request.config || {};
-    if (srcConfig.responseMimeType) config.responseMimeType = srcConfig.responseMimeType;
-    if (srcConfig.maxOutputTokens !== undefined) config.maxOutputTokens = srcConfig.maxOutputTokens;
+    // Chỉ chuyển tiếp các thuộc tính GenerateContentConfig đã được SDK hỗ trợ.
+    // Trước đây adapter làm rơi responseJsonSchema/temperature, vì vậy dù service
+    // yêu cầu JSON thì Gemini vẫn có thể trả JSON tự do và làm hỏng cả batch.
+    const passthroughConfigKeys = [
+      'responseMimeType',
+      'responseSchema',
+      'responseJsonSchema',
+      'temperature',
+      'topP',
+      'topK',
+      'candidateCount',
+      'maxOutputTokens',
+      'stopSequences',
+      'seed'
+    ];
+    for (const key of passthroughConfigKeys) {
+      if (srcConfig[key] !== undefined) config[key] = srcConfig[key];
+    }
     if (srcConfig.thinkingConfig && typeof srcConfig.thinkingConfig === 'object') {
       config.thinkingConfig = { ...srcConfig.thinkingConfig };
     }

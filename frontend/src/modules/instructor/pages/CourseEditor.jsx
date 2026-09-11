@@ -27,6 +27,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { 
   extractYouTubeVideoId, 
   isYouTubeUrl,
+  normalizeYouTubeUrl,
   getLessonMaterials,
   uploadLessonMaterial,
   deleteLessonMaterial
@@ -91,14 +92,15 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
   const handleRetry = async () => {
     if (retrying) return;
     setRetrying(true);
+    setSubtitleState((prev) => ({ ...(prev || {}), status: 'processing', message: null, code: null }));
     try {
       await subtitlesService.generateSubtitles(lessonId);
-      // Pipeline chạy nền (fire-and-forget) nên chuyển ngay sang trạng thái
-      // "đang xử lý" thay vì chờ response, rồi để vòng poll tự cập nhật.
-      setSubtitleState((prev) => ({ ...(prev || {}), status: 'processing', message: null, code: null }));
-      loadStatusRef.current?.();
+      setSubtitleState((prev) => ({ ...(prev || {}), status: 'ready', message: null, code: null }));
     } catch (error) {
       console.warn(`[CourseEditor] Không thể kích hoạt lại tạo phụ đề cho bài học ${lessonId}:`, error?.message);
+      const message = error?.response?.data?.message || error?.message || 'Không thể tạo lại phụ đề lúc này.';
+      setSubtitleState((prev) => ({ ...(prev || {}), status: 'failed', message }));
+      loadStatusRef.current?.();
     } finally {
       setRetrying(false);
     }
@@ -1280,29 +1282,35 @@ const CourseEditor = () => {
         id: sec.id,
         title: sec.title,
         orderIndex: sIdx + 1,
-        lessons: sec.lessons.map((les, lIdx) => ({
-          id: les.id,
-          title: les.title,
-          contentType: les.type,
-          contentUrl: les.type === 'youtube' ? (les.youtubeUrl || les.contentUrl) : les.contentUrl,
-          storageProvider: les.type === 'youtube' ? 'youtube' : (les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'r2') : null)),
-          storageBucket: les.type === 'youtube' ? 'youtube' : (les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null)),
-          storageKey: les.type === 'youtube' ? (les.youtubeUrl || les.contentUrl) : (les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null)),
-          mimeType: les.type === 'youtube' ? 'video/youtube' : (les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null))),
-          sizeBytes: les.sizeBytes || 0,
-          checksumSha256: les.checksumSha256 || null,
-          mediaStatus: les.type === 'youtube' ? 'READY' : (les.mediaStatus || (les.contentUrl ? 'PENDING_AUDIT' : null)),
-          pendingUploadId: les.pendingUploadId || null,
-          orderIndex: lIdx + 1,
-          speakingSentences: les.speakingSentences || '',
-          speakingQuestions: les.speakingQuestions || '',
-          quizTitle: les.quizTitle || `Trắc nghiệm: ${les.title}`,
-          quizDescription: les.quizDescription || `Bài kiểm tra cho bài học: ${les.title}`,
-          quizDifficulty: les.quizDifficulty || 'Medium',
-          quizTimeLimit: les.quizTimeLimit || 15,
-          quizQuestions: normalizeQuestionsList(les.quizQuestions || []),
-          quizDeleted: les.quizDeleted === true
-        }))
+        lessons: sec.lessons.map((les, lIdx) => {
+          const youtubeUrl = les.type === 'youtube'
+            ? normalizeYouTubeUrl(les.youtubeUrl || les.contentUrl)
+            : '';
+
+          return {
+            id: les.id,
+            title: les.title,
+            contentType: les.type,
+            contentUrl: les.type === 'youtube' ? youtubeUrl : les.contentUrl,
+            storageProvider: les.type === 'youtube' ? 'youtube' : (les.storageProvider || (les.contentUrl ? (isAllowedExternalMediaUrl(les.contentUrl) ? 'external' : 'r2') : null)),
+            storageBucket: les.type === 'youtube' ? null : (les.storageBucket || (les.contentUrl && !les.contentUrl.startsWith('http') ? (les.type === 'pdf' ? 'documents' : 'videos') : null)),
+            storageKey: les.type === 'youtube' ? null : (les.storageKey || (les.contentUrl && !les.contentUrl.startsWith('http') ? les.contentUrl : null)),
+            mimeType: les.type === 'youtube' ? 'video/youtube' : (les.mimeType || (les.type === 'pdf' ? 'application/pdf' : (les.type === 'video' ? 'video/mp4' : null))),
+            sizeBytes: les.type === 'youtube' ? 0 : (les.sizeBytes || 0),
+            checksumSha256: les.type === 'youtube' ? null : (les.checksumSha256 || null),
+            mediaStatus: les.type === 'youtube' ? 'READY' : (les.mediaStatus || (les.contentUrl ? 'PENDING_AUDIT' : null)),
+            pendingUploadId: les.type === 'youtube' ? null : (les.pendingUploadId || null),
+            orderIndex: lIdx + 1,
+            speakingSentences: les.speakingSentences || '',
+            speakingQuestions: les.speakingQuestions || '',
+            quizTitle: les.quizTitle || `Trắc nghiệm: ${les.title}`,
+            quizDescription: les.quizDescription || `Bài kiểm tra cho bài học: ${les.title}`,
+            quizDifficulty: les.quizDifficulty || 'Medium',
+            quizTimeLimit: les.quizTimeLimit || 15,
+            quizQuestions: normalizeQuestionsList(les.quizQuestions || []),
+            quizDeleted: les.quizDeleted === true
+          };
+        })
       }))
     };
 
@@ -1661,6 +1669,12 @@ const CourseEditor = () => {
                                       type="url"
                                       value={lesson.youtubeUrl ?? (isYouTubeUrl(lesson.contentUrl) ? lesson.contentUrl : '')}
                                       onChange={(e) => handleLessonChange(sIdx, lIdx, 'youtubeUrl', e.target.value)}
+                                      onBlur={(e) => {
+                                        const normalizedUrl = normalizeYouTubeUrl(e.target.value);
+                                        if (normalizedUrl) {
+                                          handleLessonChange(sIdx, lIdx, 'youtubeUrl', normalizedUrl);
+                                        }
+                                      }}
                                       placeholder="https://www.youtube.com/watch?v=..."
                                       style={{
                                         background: 'transparent',

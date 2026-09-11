@@ -10,6 +10,7 @@ const db = require('../../../config/database');
  * Map of connected clients: userId -> { response, lastHeartbeat, events }
  */
 const connectedClients = new Map();
+const REALTIME_TICKET_TTL_SECONDS = 60;
 
 /**
  * Send event to specific user
@@ -53,6 +54,47 @@ function broadcast(event, data, excludeUserId = null) {
   });
   return sent;
 }
+
+/**
+ * Cấp vé ngắn hạn cho native EventSource. Request này đi qua authenticate()
+ * bằng Authorization header; chỉ vé 60 giây mới xuất hiện trong URL SSE.
+ */
+exports.createTicket = (req, res, next) => {
+  try {
+    const userId = Number(req.user?.id || req.user?.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      const error = new Error('Không xác định được tài khoản cho kết nối realtime.');
+      error.status = 401;
+      error.code = 'AUTH_REQUIRED';
+      throw error;
+    }
+    if (!process.env.JWT_SECRET) {
+      const error = new Error('Lỗi cấu hình hệ thống xác thực máy chủ.');
+      error.status = 500;
+      error.code = 'AUTH_CONFIG_ERROR';
+      throw error;
+    }
+
+    const ticket = jwt.sign({
+      id: userId,
+      email: req.user.email,
+      type: 'instructor_realtime_ticket'
+    }, process.env.JWT_SECRET, {
+      algorithm: 'HS256',
+      expiresIn: REALTIME_TICKET_TTL_SECONDS
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ticket,
+        expiresIn: REALTIME_TICKET_TTL_SECONDS
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
 
 /**
  * SSE Stream endpoint handler
@@ -103,14 +145,19 @@ exports.stream = async (req, res, next) => {
     // Cleanup on disconnect
     req.on('close', () => {
       clearInterval(heartbeatInterval);
-      connectedClients.delete(userId);
+      // Một tab cũ đóng không được xóa kết nối mới hơn của cùng giảng viên.
+      if (connectedClients.get(userId) === clientData) {
+        connectedClients.delete(userId);
+      }
       console.log(`[SSE] Instructor ${userId} disconnected. Total clients: ${connectedClients.size}`);
     });
 
     // Keep connection alive (prevent timeout)
     req.on('error', (err) => {
       clearInterval(heartbeatInterval);
-      connectedClients.delete(userId);
+      if (connectedClients.get(userId) === clientData) {
+        connectedClients.delete(userId);
+      }
       console.error(`[SSE] Error for instructor ${userId}:`, err);
     });
 

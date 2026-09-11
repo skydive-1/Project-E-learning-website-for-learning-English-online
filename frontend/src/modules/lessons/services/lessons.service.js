@@ -32,6 +32,15 @@ export const extractYouTubeVideoId = (url = '') => {
 
 export const isYouTubeUrl = (url = '') => Boolean(extractYouTubeVideoId(url));
 
+/**
+ * Chỉ lưu URL canonical theo video ID. Việc này loại bỏ query tracking,
+ * timestamp và cả trường hợp người dùng vô tình dán cùng một URL hai lần.
+ */
+export const normalizeYouTubeUrl = (url = '') => {
+  const videoId = extractYouTubeVideoId(String(url || '').trim());
+  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : '';
+};
+
 
 // Hàm giải mã JWT token để lấy userId
 export const getUserIdFromToken = () => {

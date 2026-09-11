@@ -5,16 +5,29 @@
 const express = require('express');
 const router = express.Router();
 const instructorController = require('./controllers/instructor.controller');
-const { authenticate, authorize } = require('../../middleware/auth.middleware');
+const {
+  authenticate,
+  authenticateInstructorRealtimeTicket,
+  authorize
+} = require('../../middleware/auth.middleware');
 const { aiLimiter } = require('../../middleware/rateLimit.middleware');
 const realtimeController = require('./controllers/realtime.controller');
 
-// Áp dụng bảo mật cho toàn bộ các route trong module này
+// Native EventSource không gửi được Authorization header. Stream chỉ nhận vé
+// ngắn hạn chuyên biệt, tuyệt đối không nhận session token dài hạn từ query.
+router.get(
+  '/realtime/stream',
+  authenticateInstructorRealtimeTicket,
+  authorize([1, 2]),
+  realtimeController.stream
+);
+
+// Áp dụng bảo mật session cho các route HTTP còn lại trong module này.
 router.use(authenticate);
 router.use(authorize([1, 2])); // Chỉ Admin (1) và Instructor (2) mới truy cập được
 
-// SSE Real-time endpoint for instructor dashboard
-router.get('/realtime/stream', realtimeController.stream);
+// Cấp vé SSE 60 giây qua request có Bearer header bình thường.
+router.post('/realtime/ticket', realtimeController.createTicket);
 
 // GET /api/instructor/students - Lấy danh sách học viên đăng ký
 router.get('/students', instructorController.getStudents);

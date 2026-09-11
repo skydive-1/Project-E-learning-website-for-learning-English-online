@@ -263,6 +263,36 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     });
   });
 
+  it('saves one canonical YouTube URL when pasted input contains a duplicate URL', async () => {
+    mockCourseStatus = 1;
+    render(
+      <BrowserRouter>
+        <CourseEditor />
+      </BrowserRouter>
+    );
+
+    fireEvent.click(await screen.findByText(/Chương trình học/i));
+    const youtubeInput = await screen.findByDisplayValue('https://www.youtube.com/watch?v=KINV60CeJkc');
+    fireEvent.change(youtubeInput, {
+      target: {
+        value: 'https://www.youtube.com/watch?v=KiNV60Ce7kE&t=283shttps://www.youtube.com/watch?v=KiNV60Ce7kE&t=283s'
+      }
+    });
+    fireEvent.blur(youtubeInput);
+    fireEvent.click(screen.getByRole('button', { name: /Lưu thay đổi/i }));
+
+    await waitFor(() => {
+      const payload = apiClient.put.mock.calls.at(-1)?.[1];
+      expect(payload.sections[0].lessons[0]).toMatchObject({
+        contentType: 'youtube',
+        contentUrl: 'https://www.youtube.com/watch?v=KiNV60Ce7kE',
+        storageProvider: 'youtube',
+        storageBucket: null,
+        storageKey: null
+      });
+    });
+  });
+
   it('replaces "Thêm bài tập speaking" with "Tài liệu PDF" in the curriculum lesson toolbar', async () => {
     render(
       <BrowserRouter>

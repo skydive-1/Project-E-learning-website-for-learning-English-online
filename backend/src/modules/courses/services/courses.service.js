@@ -4,6 +4,10 @@ const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
 const lessonStreamCache = require('../../../utils/lessonStreamCache');
 const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
+const {
+  extractYoutubeVideoId,
+  normalizeYoutubeUrl
+} = require('../../../utils/youtubeTranscript.util');
 
 class CoursesService {
   /**
@@ -124,8 +128,11 @@ class CoursesService {
    */
   _resolveMediaMetadata(les) {
     const rawType = (les.contentType || les.content_type || les.type || 'video').toLowerCase();
-    const contentType = rawType === 'youtube' ? 'video' : rawType;
-    const contentUrl = les.contentUrl || les.content_url || les.youtubeUrl || les.youtube_url || '';
+    const rawContentUrl = String(les.contentUrl || les.content_url || les.youtubeUrl || les.youtube_url || '').trim();
+    const youtubeVideoId = extractYoutubeVideoId(rawContentUrl);
+    const isYoutube = rawType === 'youtube' || Boolean(youtubeVideoId);
+    const contentType = isYoutube ? 'youtube' : rawType;
+    const contentUrl = youtubeVideoId ? normalizeYoutubeUrl(rawContentUrl) : rawContentUrl;
     const isNonMedia = ['quiz', 'text', 'speaking'].includes(contentType) || (!contentUrl && !les.storageKey && !les.storage_key);
 
     if (isNonMedia) {
@@ -140,6 +147,21 @@ class CoursesService {
         checksumSha256: null,
         mediaStatus: null,
         isNonMedia: true
+      };
+    }
+
+    if (isYoutube) {
+      return {
+        contentType: 'youtube',
+        contentUrl,
+        storageProvider: 'youtube',
+        storageBucket: null,
+        storageKey: null,
+        mimeType: 'video/youtube',
+        sizeBytes: 0,
+        checksumSha256: null,
+        mediaStatus: youtubeVideoId ? 'READY' : 'INVALID',
+        isNonMedia: false
       };
     }
 
@@ -325,7 +347,14 @@ class CoursesService {
       err.status = 400; err.code = 'INVALID_COURSE_STRUCTURE'; throw err;
     }
     for (const lesson of result.rows) {
-      if (['quiz', 'text', 'speaking', 'youtube'].includes(String(lesson.content_type).toLowerCase())) continue;
+      if (String(lesson.content_type).toLowerCase() === 'youtube') {
+        if (!extractYoutubeVideoId(lesson.content_url || '')) {
+          const err = new Error(`Bài học "${lesson.title || lesson.lesson_id}" có đường link YouTube không hợp lệ.`);
+          err.status = 400; err.code = 'INVALID_YOUTUBE_URL'; throw err;
+        }
+        continue;
+      }
+      if (['quiz', 'text', 'speaking'].includes(String(lesson.content_type).toLowerCase())) continue;
       const validExternal = ['external', 'youtube'].includes(lesson.storage_provider) && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
       const validInternal = ['r2', 'supabase'].includes(lesson.storage_provider) && lesson.storage_bucket && lesson.storage_key &&
         lesson.mime_type && lesson.media_status === 'READY';
@@ -354,6 +383,13 @@ class CoursesService {
         for (const les of sec.lessons) {
           const meta = this._resolveMediaMetadata(les);
           if (meta.isNonMedia) continue;
+
+          if (meta.contentType === 'youtube' && meta.mediaStatus !== 'READY') {
+            const err = new Error(`Bài học "${les.title || 'Chưa đặt tên'}" có đường link YouTube không hợp lệ.`);
+            err.status = 400;
+            err.code = 'INVALID_YOUTUBE_URL';
+            throw err;
+          }
 
           // Nếu là media nội bộ (video/pdf), bắt buộc phải có storageKey và trạng thái READY
           if (['r2', 'supabase'].includes(meta.storageProvider)) {
@@ -554,7 +590,7 @@ class CoursesService {
 
     const lessonId = lessonResult.rows[0].lesson_id;
     await this._syncLessonQuiz(client, courseId, lessonId, lessonData);
-    if (meta.contentType === 'video' && meta.contentUrl) subtitleLessonIds.push(lessonId);
+    if (['video', 'youtube'].includes(meta.contentType) && meta.contentUrl) subtitleLessonIds.push(lessonId);
   }
 
   async getLessonById(lessonId) {
@@ -880,7 +916,12 @@ class CoursesService {
                   );
                 } else {
                   // B. Cập nhật bài học media thông thường
-                  if (oldLesson && oldLesson.storage_key && meta.storageKey && oldLesson.storage_key !== meta.storageKey) {
+                  if (
+                    oldLesson
+                    && oldLesson.storage_key
+                    && ['r2', 'supabase'].includes(oldLesson.storage_provider)
+                    && oldLesson.storage_key !== meta.storageKey
+                  ) {
                     assetsToCleanup.push({ key: oldLesson.storage_key, bucket: oldLesson.storage_bucket });
                   }
 
@@ -899,8 +940,8 @@ class CoursesService {
                     ]
                   );
 
-                  if (meta.contentType === 'video' && meta.contentUrl
-                    && (oldLesson?.content_type !== 'video' || oldLesson?.content_url !== meta.contentUrl)) {
+                  if (['video', 'youtube'].includes(meta.contentType) && meta.contentUrl
+                    && (oldLesson?.content_type !== meta.contentType || oldLesson?.content_url !== meta.contentUrl)) {
                     subtitleLessonIds.push(lesId);
                   }
                 }
@@ -919,7 +960,7 @@ class CoursesService {
                   ]
                 );
                 lesId = insertLesRes.rows[0].lesson_id;
-                if (meta.contentType === 'video' && meta.contentUrl) subtitleLessonIds.push(lesId);
+                if (['video', 'youtube'].includes(meta.contentType) && meta.contentUrl) subtitleLessonIds.push(lesId);
               }
               currentLessonIds.push(lesId);
               await this._syncLessonQuiz(client, courseId, lesId, les);

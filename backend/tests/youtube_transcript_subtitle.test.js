@@ -68,6 +68,99 @@ describe('YouTube transcript subtitle pipeline', () => {
       null
     );
     assert.equal(youtubeTranscript.extractYoutubeVideoId('dQw4w9WgXcQ'), null);
+    assert.equal(
+      youtubeTranscript.normalizeYoutubeUrl(
+        'https://www.youtube.com/watch?v=KiNV60Ce7kE&t=283shttps://www.youtube.com/watch?v=KiNV60Ce7kE&t=283s'
+      ),
+      'https://www.youtube.com/watch?v=KiNV60Ce7kE'
+    );
+  });
+
+  test('distinguishes a real missing-caption result from temporary YouTube blocking', () => {
+    assert.equal(
+      youtubeTranscript.classifyYoutubeTranscriptError(new Error('No caption tracks available')),
+      'no_captions'
+    );
+    assert.equal(
+      youtubeTranscript.classifyYoutubeTranscriptError(new Error('Caption fetch failed: 429')),
+      'rate_limited'
+    );
+    assert.equal(
+      youtubeTranscript.classifyYoutubeTranscriptError(new Error('Sign in to confirm you are not a bot')),
+      'access_blocked'
+    );
+    assert.equal(
+      youtubeTranscript.classifyYoutubeTranscriptError(new Error('Video unavailable in your region')),
+      'video_unavailable'
+    );
+  });
+
+  test('caps YouTube translation batches by character count and cue count', () => {
+    const cues = Array.from({ length: 120 }, (_, index) => ({ id: index + 1, en: 'short line' }));
+    const batches = subtitlesService.createYoutubeTranslationBatches(cues, 6000, 50);
+
+    assert.ok(batches.length > 1);
+    assert.equal(batches.flat().length, cues.length);
+    assert.ok(batches.every(batch => batch.length <= 50));
+    assert.deepEqual(batches.flat().map(cue => cue.id), cues.map(cue => cue.id));
+  });
+
+  test('uses structured JSON and recovers a malformed Gemini batch by splitting only that batch', async () => {
+    const requests = [];
+    geminiModel.generateContent = async request => {
+      requests.push(request);
+      if (requests.length === 1) {
+        return { response: { text: () => '{"translations":[' } };
+      }
+
+      const ids = request.generationConfig.responseJsonSchema.properties.translations.items.properties.id.enum;
+      return {
+        response: {
+          text: () => JSON.stringify({
+            translations: ids.map(id => ({ id, vi: `Bản dịch ${id}` }))
+          })
+        }
+      };
+    };
+
+    const result = await subtitlesService.translateYoutubeTranscriptWithGemini([
+      { start: 0, duration: 1, text: 'Line one.' },
+      { start: 1, duration: 1, text: 'Line two.' },
+      { start: 2, duration: 1, text: 'Line three.' },
+      { start: 3, duration: 1, text: 'Line four.' }
+    ]);
+
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].generationConfig.temperature, 0);
+    assert.equal(requests[0].generationConfig.responseMimeType, 'application/json');
+    assert.deepEqual(
+      requests[0].generationConfig.responseJsonSchema.properties.translations.items.properties.id.enum,
+      [1, 2, 3, 4]
+    );
+    assert.deepEqual(result.map(cue => cue.vi), [
+      'Bản dịch 1',
+      'Bản dịch 2',
+      'Bản dịch 3',
+      'Bản dịch 4'
+    ]);
+  });
+
+  test('recovers a malformed single-cue JSON response with a plain-text translation', async () => {
+    let calls = 0;
+    geminiModel.generateContent = async request => {
+      calls += 1;
+      if (calls === 1) return { response: { text: () => '{invalid json' } };
+      assert.equal(request.purpose, 'subtitle_translation_youtube_recovery');
+      assert.equal(request.generationConfig.responseMimeType, 'text/plain');
+      return { response: { text: () => 'Xin chào cả lớp.' } };
+    };
+
+    const result = await subtitlesService.translateYoutubeTranscriptWithGemini([
+      { start: 0, duration: 2, text: 'Hello class.' }
+    ]);
+
+    assert.equal(calls, 2);
+    assert.equal(result[0].vi, 'Xin chào cả lớp.');
   });
 
   test('creates bilingual cues, saves ready subtitles, and ingests RAG once without media processing', async () => {
@@ -142,6 +235,41 @@ describe('YouTube transcript subtitle pipeline', () => {
     assert.equal(ingestionCalls, 1);
     assert.strictEqual(ingestedCues, savedPayload.payload.cues);
     assert.equal(result.subtitle_status, 'ready');
+  });
+
+  test('keeps saved subtitles ready when optional RAG ingestion is temporarily unavailable', async () => {
+    db.query = async sql => {
+      if (String(sql).includes('FROM lessons WHERE lesson_id')) return { rows: [youtubeLesson] };
+      return { rows: [] };
+    };
+    youtubeTranscript.fetchYoutubeTranscript = async () => [
+      { start: 0, duration: 2, text: 'Welcome.' }
+    ];
+    geminiModel.generateContent = async () => ({
+      response: {
+        text: () => JSON.stringify({ translations: [{ id: 1, vi: 'Chào mừng.' }] })
+      }
+    });
+
+    const statusWrites = [];
+    subtitlesService.setSubtitleStatus = async (lessonId, status) => {
+      statusWrites.push({ lessonId, status });
+    };
+    subtitlesService.saveSubtitles = async (lessonId, payload) => ({
+      subtitle_id: 100,
+      lesson_id: lessonId,
+      ...payload
+    });
+    ragIngestion.ingestLessonTranscript = async () => {
+      const error = new Error('Pinecone quota is temporarily unavailable');
+      error.code = 'RESOURCE_EXHAUSTED';
+      throw error;
+    };
+
+    const result = await subtitlesService._generateSubtitlesWithGemini(321);
+
+    assert.equal(result.subtitle_status, 'ready');
+    assert.deepEqual(statusWrites, [{ lessonId: 321, status: 'processing' }]);
   });
 
   test('stores the dedicated failed status when public captions are unavailable', async () => {
