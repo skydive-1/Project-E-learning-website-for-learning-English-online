@@ -61,7 +61,10 @@ const createRateLimiter = ({
   limit,
   keyGenerator,
   skip,
-  skipSuccessfulRequests = false
+  skipSuccessfulRequests = false,
+  // Default stays fail-closed (false) for security-sensitive limiters (auth, uploads...).
+  // Individual limiters (e.g. streamingLimiter) can opt into fail-open.
+  passOnStoreError = false
 }) => {
   const store = createDistributedRateLimitStore(name);
   return rateLimit({
@@ -69,7 +72,7 @@ const createRateLimiter = ({
     limit,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    passOnStoreError: false,
+    passOnStoreError,
     skipSuccessfulRequests,
     keyGenerator,
     skip: (req, res) => isRateLimitDisabled() || Boolean(skip?.(req, res)),
@@ -166,7 +169,12 @@ const streamingLimiter = createRateLimiter({
   name: 'media-stream',
   windowMs: readPositiveInteger('RATE_LIMIT_STREAM_WINDOW_MS', FIFTEEN_MINUTES),
   limit: readPositiveInteger('RATE_LIMIT_STREAM_MAX', 2000),
-  keyGenerator: clientKey
+  keyGenerator: clientKey,
+  // Video/DASH segments fire many rapid requests per playback session. A transient
+  // Redis hiccup must never turn into a hard 500 mid-stream (Shaka Player stalls with
+  // no clear error). Fail OPEN here: if the shared store errors, let the segment
+  // through unlimited rather than breaking playback for every viewer at once.
+  passOnStoreError: true
 });
 
 const configureTrustProxy = (app) => {
