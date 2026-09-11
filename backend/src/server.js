@@ -80,6 +80,11 @@ app.use(cors({
       return callback(null, true);
     }
 
+    // Tự động cho phép các domain preview / production Vercel thuộc dự án này
+    if (/^https:\/\/.*project-e-learning-website.*\.vercel\.app$/i.test(cleanOrigin)) {
+      return callback(null, true);
+    }
+
     return callback(null, false);
   },
   credentials: true
