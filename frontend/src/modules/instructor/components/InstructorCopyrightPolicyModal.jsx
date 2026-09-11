@@ -274,7 +274,7 @@ const InstructorCopyrightPolicyModal = ({
                   Nhằm bảo vệ tối đa thành quả lao động trí tuệ của Giảng viên, E-Learn Academy triển khai đồng bộ các giải pháp công nghệ bảo vệ kỹ thuật số tiên tiến:
                 </p>
                 <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                  <li><strong>Dynamic Watermarking:</strong> Hiển thị mờ định danh Học viên (User ID, Email, IP và Thời gian phát) ngẫu nhiên trên màn hình phát video nhằm ngăn chặn và điều tra hành vi quay lén màn hình.</li>
+                  <li><strong>Forensic Dynamic Watermarking:</strong> Hiển thị mờ định danh Học viên (User ID, Email, IP và Thời gian phát) ngẫu nhiên trên màn hình phát video phục vụ truy vết pháp lý và răn đe phát tán, trích xuất trái phép.</li>
                   <li><strong>Mã hóa phân đoạn luồng truyền thông HLS (AES-128):</strong> Ngăn chặn các tiện ích mở rộng và phần mềm tự động trích xuất file video gốc (.mp4).</li>
                   <li><strong>Vô hiệu hóa sao chép văn bản (Content Shield):</strong> Khóa các thao tác copy nội dung bộ câu hỏi đề thi và tài liệu học tập độc quyền trên giao diện người học.</li>
                 </ul>

@@ -224,7 +224,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     return () => tracks.forEach((track) => URL.revokeObjectURL(track.src));
   }, [subtitleData]);
 
-  // ⚡ Dynamic Forensic Watermark: Tự động đổi vị trí ngẫu nhiên mỗi 28s để chống cắt/làm mờ góc video
+  // ⚡ Dynamic Forensic Watermark: Tự động đổi vị trí ngẫu nhiên mỗi 28s định danh người xem phục vụ truy vết pháp lý và răn đe
   useEffect(() => {
     const interval = setInterval(() => {
       setWatermarkPosIndex(prev => {
@@ -383,7 +383,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     }
   }, [location.search, lessonId]);
 
-  // Hệ thống Tự động Bắt Sự Kiện Chống Chụp / Quay Màn hình Chuẩn Apple (Phản hồi tức thì 0ms trên cả Blur & Phím chụp)
+  // Hệ thống phát hiện phím tắt chụp/chia sẻ màn hình ở tầng trình duyệt phục vụ răn đe bản quyền (Browser Deterrence & Blackout)
   useEffect(() => {
     let isAltPressed = false;
     let isMetaPressed = false;
@@ -429,7 +429,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
           isCapturingKeysRef.current.add(e.key || 'Capture');
           // Trigger blackout on confirmed capture attempts (instant)
           triggerZeroLatencyBlackout(
-            'Hệ thống bảo vệ bản quyền: Đã phát hiện thao tác chụp màn hình!',
+            'Hệ thống bảo vệ bản quyền: Phát hiện thao tác chụp màn hình (hành vi được định danh bởi Forensic Watermark)',
             { pausePlayback: true }
           );
           try {
@@ -503,7 +503,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
       const protectedGetDisplayMedia = function (...args) {
         triggerZeroLatencyBlackout(
-          'Hệ thống phát hiện trình duyệt đang chia sẻ hoặc quay màn hình (OBS / Screen Extension)!',
+          'Hệ thống phát hiện trình duyệt đang chia sẻ màn hình qua getDisplayMedia!',
           { pausePlayback: true }
         );
         return originalGetDisplayMedia.apply(this, args);
@@ -1655,7 +1655,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                       onContextMenu={(e) => e.preventDefault()}
                       onDragStart={(e) => e.preventDefault()}
                     >
-                      {/* Netflix DRM Pure Pitch Black Surface Layer (#000000 Pitch Black Box - Đen thẩm tuyệt đối, không icon, không chữ) */}
+                      {/* Blackout Surface Layer (#000000 Pitch Black Box - Che mờ video khi phát hiện chia sẻ màn hình ở tầng trình duyệt) */}
                       <div
                         id="netflix-drm-blackout-shield"
                         style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}

@@ -103,10 +103,9 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 - Thư mục migration không có migration có phiên bản tương ứng cho hai thay đổi này. Nhiều boot migration bắt lỗi rồi chỉ cảnh báo và tiếp tục, nên một lần deploy lỗi có thể để schema ở trạng thái dở dang.
 - Cách sửa: tạo migration có version, chạy trong transaction, cập nhật `schema.sql`, thêm bài test so sánh catalog với schema mong đợi, rồi bỏ DDL best-effort khỏi startup. Đây là lỗi cấu trúc chưa nên vá tự động khi chưa chốt quy tắc nullability của `quiz_id`.
 
-### 2.2. Chống quay màn hình không thể đáp ứng lời hứa “ngăn chặn”
+### 2.2. Forensic Watermark và cơ chế răn đe (Deterrence & Forensic Tracking)
 
-- Watermark và các cảnh báo trình duyệt có nối vào player, nhưng chính code ghi nhận không thể phát hiện OBS, quay ở cấp hệ điều hành hoặc camera ngoài: `frontend/src/modules/lessons/pages/LessonDetailPage.jsx:204`.
-- Cách sửa tài liệu: mô tả đúng là biện pháp răn đe và truy vết. Nếu cần DRM mạnh hơn, dùng Widevine/FairPlay/PlayReady theo nền tảng; vẫn không nên tuyên bố chặn tuyệt đối việc ghi hình.
+- Đã chuẩn hóa toàn bộ tài liệu, UI và code: mô tả chính xác Forensic Watermark và các cảnh báo tầng trình duyệt là biện pháp *định danh người xem phục vụ truy vết pháp lý và răn đe phát tán*, không tuyên bố "ngăn chặn tuyệt đối 100%" việc ghi hình bằng thiết bị phần cứng ngoại vi hoặc phần mềm quay cấp OS.
 
 ### 2.3. Profile còn hiển thị số liệu mẫu cố định
 

@@ -558,7 +558,7 @@ async function runLiveVerification() {
     record(
       'Phòng thủ lỗi 3: Chặn phát video khi dùng vé xem giả mạo hoặc sai bài học',
       forgedTicketStreamRes.status === 401 || forgedTicketStreamRes.status === 403,
-      `HTTP ${forgedTicketStreamRes.status} (Ticket Contract bảo vệ bản quyền video tuyệt đối)`
+      `HTTP ${forgedTicketStreamRes.status} (Ticket Contract kiểm soát chặt chẽ quyền phát luồng video)`
     );
 
     // 4.4 Dọn dẹp khóa học kiểm thử khỏi cơ sở dữ liệu

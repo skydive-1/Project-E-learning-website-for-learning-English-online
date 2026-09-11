@@ -578,7 +578,7 @@ ${rows}
 3. **Bảo Vệ Phân Quyền (RBAC Guards):** 
    - Học viên chưa đăng nhập cố tình truy cập \`/profile\` $\\rightarrow$ Chuyển hướng về \`/login\`.
    - Học viên (Role 3) cố tình truy cập \`/admin/dashboard\` $\\rightarrow$ Chuyển hướng an toàn về trang chủ \`/\`.
-4. **Bảo Vệ Bản Quyền Video (DRM & Anti-Download):** Không có nút tải video trực tiếp trên giao diện bài học. Watermark động hiển thị mờ luân phiên vị trí để chống quay lén.
+4. **Bảo Vệ Bản Quyền Video (DRM & Anti-Download):** Không có nút tải video trực tiếp trên giao diện bài học. Forensic Watermark động hiển thị luân phiên vị trí phục vụ truy vết pháp lý và răn đe phát tán.
 5. **Chế Độ Giao Diện & Đa Ngôn Ngữ:** Hỗ trợ chuyển đổi Dark/Light mode và Song ngữ (VI / EN) mượt mà.
 
 ---
