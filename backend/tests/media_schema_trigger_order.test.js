@@ -23,9 +23,18 @@ const assertSafeTriggerOrder = (source, sourceName) => {
   assert.ok(materialsAlter < materialsCreate, `${sourceName}: phải tạo lại trigger lesson_materials sau ALTER TYPE`);
 };
 
-test('startup schema synchronization drops media triggers before altering referenced columns', () => {
+test('startup schema synchronization delegates to the versioned migration runner', () => {
   const source = fs.readFileSync(path.join(projectRoot, 'src/config/database.js'), 'utf8');
-  assertSafeTriggerOrder(source, 'database.js');
+  assert.match(
+    source,
+    /const\s+\{\s*runPendingMigrations\s*\}\s*=\s*require\(['"]\.\.\/utils\/migrationRunner['"]\)/,
+    'database.js: thiếu versioned migration runner'
+  );
+  assert.match(
+    source,
+    /await\s+runPendingMigrations\(\{\s*dbClient:\s*client\s*\}\)/,
+    'database.js: migration runner phải dùng cùng startup database client'
+  );
 });
 
 test('standalone R2 migration is safe to rerun when media triggers already exist', () => {

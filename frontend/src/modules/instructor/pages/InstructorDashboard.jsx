@@ -698,7 +698,7 @@ const InstructorDashboard = () => {
                     <tbody>
                       {myCourses.map(course => (
                         <tr key={course.course_id}>
-                          <td>
+                          <td data-label="Khóa học">
                             <div className="course-info-cell">
                               <div className="course-thumb-mini">
                                 <img src={course.thumbnail_url || "/images/hero_illustration.png"} alt="" />
@@ -709,16 +709,16 @@ const InstructorDashboard = () => {
                               </div>
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Môn học">
                             <span style={{ fontWeight: '600', color: 'var(--text-light, #475569)' }}>{course.subject_name}</span>
                           </td>
-                          <td>
+                          <td data-label="Chương trình">
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px', color: 'var(--text-muted, #64748b)' }}>
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiLayers /> {course.sections_count} chương</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiBook /> {course.lessons_count} bài học</span>
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Trạng thái">
                             <span className={`status-badge ${course.status === 1 ? 'published' : 'draft'}`} style={{
                               background: course.status === 1 ? '#ecfdf5' : '#f1f5f9',
                               color: course.status === 1 ? '#059669' : '#64748b'
@@ -726,7 +726,7 @@ const InstructorDashboard = () => {
                               {course.status === 1 ? 'Published' : 'Draft'}
                             </span>
                           </td>
-                          <td className="actions-cell">
+                          <td className="actions-cell" data-label="Thao tác">
                             <button className="action-btn" title="Edit" onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}><FiEdit /></button>
                             <button className="action-btn" title="View" onClick={() => navigate(`/lessons?courseId=${course.course_id}`)}><FiEye /></button>
                             <button className="action-btn delete" title="Delete" onClick={() => handleDeleteCourse(course.course_id)}><FiTrash2 /></button>
@@ -798,7 +798,7 @@ const InstructorDashboard = () => {
                     <tbody>
                       {filteredStudents.map(student => (
                         <tr key={`${student.userId}-${student.courseId}`}>
-                          <td>
+                          <td data-label="Học viên">
                             <div className="student-info-cell">
                               <div 
                                 className="student-avatar" 
@@ -818,7 +818,7 @@ const InstructorDashboard = () => {
                               </div>
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Liên hệ">
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '13px' }}>
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-light, #475569)' }}>
                                 <FiMail style={{ flexShrink: 0 }} /> {student.email}
@@ -830,17 +830,17 @@ const InstructorDashboard = () => {
                               )}
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Giới tính">
                             <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>
                               {student.gender === 'Male' ? 'Nam' : student.gender === 'Female' ? 'Nữ' : 'Khác'}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Khóa học">
                             <span style={{ fontWeight: '600', color: 'var(--primary, #3b82f6)', display: 'block', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={student.courseName}>
                               {student.courseName}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Tiến độ">
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <div className="progress-bar-container">
                                 <div className="progress-bar-fill" style={{ transform: `scaleX(${student.progress / 100})`, transformOrigin: 'left' }}></div>
@@ -850,7 +850,7 @@ const InstructorDashboard = () => {
                               </span>
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Ngày đăng ký">
                             <span style={{ color: 'var(--text-muted, #64748b)', fontSize: '13px' }}>
                               {new Date(student.joinDate).toLocaleDateString('vi-VN')}
                             </span>
@@ -1193,8 +1193,7 @@ const InstructorDashboard = () => {
                           width: item.questionCount > 0 ? '100%' : '0%',
                           height: '100%',
                           backgroundColor: item.questionCount > 0 ? '#10b981' : '#cbd5e1',
-                          borderRadius: '3px',
-                          transition: 'width 0.3s ease'
+                          borderRadius: '3px'
                         }}></div>
                       </div>
 

@@ -497,6 +497,7 @@ Quy tắc:
 - Mốc thời gian (start, end) tính bằng giây, khớp chính xác theo từng câu giọng nói của giảng viên trong audio.
 - en: Phiên âm chính xác từng từ tiếng Anh của người nói (không tóm tắt, không lược bớt).
 - vi: Bản dịch tiếng Việt tự nhiên, chuẩn nghĩa sư phạm cho người học.
+- Bắt buộc ghi nhận mọi âm thanh người nói: Ngay cả khi audio ngắn, câu chào hỏi, câu luyện phát âm hoặc thán từ (ví dụ "Hello", "Mm-hmm", "Yes", "OK"), vẫn phải tạo ít nhất một cue tương ứng, không được trả về mảng cues rỗng nếu có giọng nói trong tệp.
 - QUAN TRọNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 `;
 
@@ -511,7 +512,7 @@ Quy tắc:
             { text: prompt },
             {
               inlineData: {
-                mimeType: 'audio/mp3',
+                mimeType: path.extname(audioFilePath).toLowerCase() === '.wav' ? 'audio/wav' : 'audio/mp3',
                 data: base64Audio
               }
             }
@@ -524,7 +525,7 @@ Quy tắc:
       }
     });
 
-    const responseText = response?.response?.text() || '';
+    const responseText = (typeof response?.text === 'function' ? response.text() : response?.text) || response?.response?.text?.() || response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const cleanJson = responseText.replace(/^```json\s*/, '').replace(/```$/, '').trim();
 
     let cues = [];

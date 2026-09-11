@@ -99,24 +99,23 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // endpoint stream có vé; các loại tài liệu không phải video vẫn dùng static route.
 app.use('/uploads', blockDirectVideoAccess);
 
+
 // Serve static files (uploads)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Apply the API-wide policy before every /api endpoint, including /api/health.
 app.use('/api', apiLimiter);
 
-// ===== 5. HEALTH CHECK ENDPOINTS =====
-const healthHandler = (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'E-learning backend is running',
-    timestamp: new Date().toISOString()
-  });
-};
-
-app.get('/', healthHandler);
-app.get('/health', healthHandler);
-app.get('/api/health', healthHandler);
+// ===== 5. HEALTH CHECK ENDPOINTS (Liveness & Readiness Probes) =====
+const healthRoutes = require('./modules/health/health.routes');
+app.use('/health', healthRoutes);
+app.use('/api/health', healthRoutes);
+app.get('/', (req, res) => res.json({
+  status: 'OK',
+  message: 'E-learning backend is running',
+  probes: { live: '/health/live', ready: '/health/ready' },
+  timestamp: new Date().toISOString()
+}));
 
 // ===== 6. MOUNT MODULES (ROUTES) =====
 // Cấu trúc: /api/<module-name>
@@ -137,6 +136,8 @@ app.use('/api/discussions', discussionsRoutes);
 app.use('/api/drm', drmRoutes);
 
 // Setup Swagger UI
+
+// Setup Swagger UI
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // ===== 7. GLOBAL ERROR HANDLER =====
@@ -145,10 +146,14 @@ app.use(errorHandler);
 
 // ===== 8. START SERVER =====
 const { testConnection } = require('./config/database');
+const { initRedis } = require('./config/redis');
 const { startMediaCleanupWorker } = require('./utils/mediaCleanup.worker');
 const subtitlesService = require('./modules/lessons/services/subtitles.service');
 
 const server = app.listen(PORT, async () => {
+  // Khởi tạo Redis cho shared rate limiting (fallback memory nếu không có Redis)
+  await initRedis();
+
   // Kiểm tra kết nối Database khi khởi chạy
   const databaseReady = await testConnection();
   if (!databaseReady && process.env.NODE_ENV === 'production') {
@@ -206,6 +211,8 @@ const server = app.listen(PORT, async () => {
   console.log('   - POST   /api/chatbot/ask');
   console.log('   - GET    /api/progress/:userId');
   console.log('   - GET    /api/drm/license');
+  console.log('   - GET    /health/live');
+  console.log('   - GET    /health/ready');
   console.log('   - GET    /api/health');
 });
 

@@ -5,6 +5,8 @@
  * - Xử lý chuẩn xác mã lỗi Multer: LIMIT_FILE_SIZE -> HTTP 413 AUDIO_TOO_LARGE
  */
 
+const { logger } = require('../config/logger');
+
 const errorHandler = (err, req, res, next) => {
   let status = err.status || 500;
   let code = err.code || null;
@@ -52,8 +54,7 @@ const errorHandler = (err, req, res, next) => {
     else code = 'INTERNAL_ERROR';
   }
 
-  console.error(JSON.stringify({
-    level: 'error',
+  logger.error({
     event: 'request_error',
     requestId: req.requestId || null,
     status,
@@ -61,9 +62,8 @@ const errorHandler = (err, req, res, next) => {
     message,
     method: req.method,
     path: req.path,
-    stack: err.stack || null,
-    timestamp: new Date().toISOString()
-  }));
+    stack: err.stack || null
+  }, err.message || 'Request Error Encountered');
 
   const responseBody = {
     success: false,

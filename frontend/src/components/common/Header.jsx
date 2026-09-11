@@ -15,8 +15,20 @@ const Header = () => {
   const { language, toggleLanguage, t } = useLanguage();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia('(max-width: 992px)').matches);
   const dropdownRef = useRef(null);
   const mobileMenuRef = useRef(null);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 992px)');
+    const handleViewportChange = (event) => {
+      setIsMobileViewport(event.matches);
+      if (!event.matches) setIsMobileMenuOpen(false);
+    };
+
+    mediaQuery.addEventListener('change', handleViewportChange);
+    return () => mediaQuery.removeEventListener('change', handleViewportChange);
+  }, []);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -138,7 +150,6 @@ const Header = () => {
         {/* Mobile menu backdrop overlay */}
         {isMobileMenuOpen && (
           <div 
-            ref={mobileMenuRef}
             className="mobile-menu-backdrop" 
             onClick={() => setIsMobileMenuOpen(false)} 
             aria-hidden="true"
@@ -149,7 +160,8 @@ const Header = () => {
           ref={mobileMenuRef}
           id="main-nav" 
           className={`nav-menu ${isMobileMenuOpen ? 'open' : ''}`} 
-          aria-hidden={!isMobileMenuOpen && window.innerWidth <= 768}
+          aria-hidden={isMobileViewport && !isMobileMenuOpen}
+          inert={isMobileViewport && !isMobileMenuOpen ? true : undefined}
           role="navigation"
           aria-label={t('menu')}
         >

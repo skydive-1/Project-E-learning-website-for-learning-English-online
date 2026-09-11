@@ -15,6 +15,7 @@ import { globalUiTranslations } from '../i18n/global-ui-translations';
 const translations = {
   VIE: {
     // Header & Nav
+    home: "Trang chủ",
     learn: "Học tập",
     courses: "Khóa học",
     roadmap: "Lộ trình",
@@ -107,6 +108,7 @@ const translations = {
   },
   ENG: {
     // Header & Nav
+    home: "Home",
     learn: "Learn",
     courses: "Courses",
     roadmap: "Roadmap",

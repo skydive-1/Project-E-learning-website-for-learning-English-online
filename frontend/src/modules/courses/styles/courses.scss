@@ -1457,7 +1457,6 @@ $slate-950: #020617;
             height: 100%;
             background: $brand-primary;
             border-radius: 10px;
-            transition: width 0.25s ease;
           }
         }
       }
@@ -1475,7 +1474,7 @@ $slate-950: #020617;
           width: 100%;
           height: 100%;
           text-align: center;
-          transition: transform 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
           transform-style: preserve-3d;
         }
 
@@ -2100,6 +2099,191 @@ $slate-950: #020617;
             color: $brand-primary;
           }
         }
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Responsive learning workspace — focused lesson consumption on every device
+// ============================================================================
+.lesson-page {
+  min-height: 100dvh;
+
+  .lesson-shell,
+  .lesson-primary,
+  .lesson-support-panel {
+    min-width: 0;
+  }
+
+  .lesson-context-bar {
+    gap: 1rem;
+  }
+
+  .lesson-content-tabs,
+  .lesson-support-tabs {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+
+  .lesson-content-tabs::-webkit-scrollbar,
+  .lesson-support-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lesson-content-tabs > button,
+  .lesson-support-tabs > button {
+    min-height: 2.75rem;
+    white-space: nowrap;
+  }
+}
+
+.lesson-drawer__panel {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.lesson-drawer-item {
+  min-height: 3.25rem;
+
+  &:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.3);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .lesson-page {
+    .lesson-main {
+      padding-top: calc(var(--app-header-height, 5rem) + 0.75rem);
+    }
+
+    .lesson-mobile-launcher {
+      position: sticky;
+      top: calc(var(--app-header-height, 5rem) + 0.5rem);
+      z-index: 18;
+      margin-bottom: 0.75rem;
+
+      > button {
+        min-height: 3rem;
+        background: color-mix(in srgb, var(--card-bg, #fff) 94%, transparent) !important;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+      }
+    }
+
+    .lesson-support-panel {
+      height: min(72dvh, 42rem) !important;
+      min-height: 30rem;
+    }
+
+    .lesson-support-tabs {
+      justify-content: flex-start;
+
+      > button {
+        flex: 0 0 auto;
+        min-width: 7.25rem;
+        padding-inline: 1rem;
+      }
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .learning-hub-page {
+    padding-top: var(--app-header-height, 5rem);
+
+    .hub-container {
+      padding: 1rem 0.75rem calc(1.5rem + var(--app-bottom-nav-height, 4.25rem));
+    }
+
+    .hub-left-nav {
+      position: sticky;
+      top: var(--app-header-height, 5rem);
+      z-index: 16;
+      margin-inline: -0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: color-mix(in srgb, var(--bg-color, #fff) 94%, transparent);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+
+      .subnav-item {
+        width: auto;
+        min-width: max-content;
+        min-height: 2.75rem;
+      }
+    }
+  }
+
+  .lesson-page {
+    .lesson-main {
+      padding-bottom: 1rem;
+    }
+
+    .lesson-shell {
+      padding-inline: 0.75rem;
+    }
+
+    .lesson-context-bar {
+      align-items: stretch;
+      flex-direction: column;
+      margin-bottom: 0.75rem;
+
+      > button {
+        min-height: 2.75rem;
+        align-self: flex-start;
+      }
+
+      > div {
+        width: 100%;
+        justify-content: space-between;
+        padding-inline: 0.75rem;
+      }
+    }
+
+    .lesson-workspace {
+      gap: 1rem;
+    }
+
+    .lesson-primary {
+      gap: 1rem;
+
+      > div {
+        border-radius: 0.75rem;
+      }
+    }
+
+    .lesson-content-tabs {
+      margin-inline: -0.25rem;
+      padding-inline: 0.25rem;
+      gap: 1.25rem;
+
+      > button {
+        flex: 0 0 auto;
+      }
+    }
+
+    .lesson-support-panel {
+      height: min(76dvh, 38rem) !important;
+      min-height: 28rem;
+      border-radius: 0.75rem;
+    }
+  }
+
+  .lesson-drawer__panel {
+    width: min(92vw, 24rem) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .lesson-page {
+    .lesson-context-bar > div {
+      gap: 0.5rem;
+
+      > span:nth-of-type(1),
+      > div {
+        display: none;
       }
     }
   }

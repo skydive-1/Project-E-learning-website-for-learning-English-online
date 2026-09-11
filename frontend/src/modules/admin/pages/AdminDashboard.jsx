@@ -689,13 +689,13 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                           id={`admin-user-${user.user_id}`}
                           className={focusedUserId === Number(user.user_id) ? 'alert-target-row' : ''}
                         >
-                          <td className="font-mono text-xs">#{user.user_id}</td>
-                          <td className="font-bold">{user.full_name || '—'}</td>
-                          <td>
+                          <td data-label="ID" className="font-mono text-xs">#{user.user_id}</td>
+                          <td data-label="Tên hiển thị" className="font-bold">{user.full_name || '—'}</td>
+                          <td data-label="Tài khoản">
                             <div className="text-sm font-semibold">{user.email}</div>
                             <div className="text-xs text-slate-400">@{user.username}</div>
                           </td>
-                          <td>
+                          <td data-label="Vai trò">
                             <span className={`role-badge ${
                               user.role_id === 1 ? 'role-admin' : 
                               user.role_id === 2 ? 'role-instructor' : 'role-student'
@@ -709,10 +709,10 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                                     : t('student'))}
                             </span>
                           </td>
-                          <td className="text-xs text-slate-500">
+                          <td data-label="Ngày tạo" className="text-xs text-slate-500">
                             {user.created_date ? new Date(user.created_date).toLocaleDateString(locale) : '—'}
                           </td>
-                          <td>
+                          <td data-label="Hành động">
                             <div className="action-buttons">
                               {(!user.is_super_admin && (user.role_id !== 1 || isSuperAdmin) && user.user_id !== currentUser?.userId) ? (
                                 <>
@@ -904,19 +904,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                                   type="button"
                                   onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}
                                   title="Chỉnh sửa khóa học"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '5px 10px',
-                                    borderRadius: '6px',
-                                    fontSize: '12px',
-                                    fontWeight: '600',
-                                    background: 'rgba(37, 99, 235, 0.08)',
-                                    color: '#2563eb',
-                                    border: '1px solid rgba(37, 99, 235, 0.25)',
-                                    cursor: 'pointer'
-                                  }}
+                                  className="course-edit-button"
                                 >
                                   <FiEdit aria-hidden="true" />
                                   Sửa
