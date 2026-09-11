@@ -151,7 +151,7 @@ export const AuthProvider = ({ children }) => {
         clearStoredAuth();
         setUser(null);
         const isExpired = errorCode === 'TOKEN_EXPIRED' || errorCode === 'TokenExpiredError';
-        setAuthStatus(isExpired ? 'expired' : 'unauthenticated');
+        setAuthStatus('unauthenticated');
         setAuthError(isExpired ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.' : null);
         setLoading(false);
         return;
