@@ -32,6 +32,13 @@ const LessonCard = ({
     : (action?.startTime !== undefined && action?.startTime !== null ? Number(action.startTime) : null);
 
   const formattedTime = source.formattedTime || action?.formattedTime || (startTime !== null ? formatSecondsToMMSS(startTime) : null);
+  const endTime = source.endTime !== undefined && source.endTime !== null
+    ? Number(source.endTime)
+    : (action?.endTime !== undefined && action?.endTime !== null ? Number(action.endTime) : null);
+  const formattedEndTime = source.formattedEndTime || action?.formattedEndTime || (endTime !== null ? formatSecondsToMMSS(endTime) : null);
+  const formattedRange = formattedEndTime && formattedEndTime !== formattedTime
+    ? `${formattedTime}–${formattedEndTime}`
+    : formattedTime;
 
   const isCurrentLesson = currentLessonId && Number(currentLessonId) === Number(lessonId);
 
@@ -79,10 +86,10 @@ const LessonCard = ({
           )}
         </div>
 
-        {formattedTime && (
-          <span className="ai-course-card-timestamp" title={`Mốc thời gian: ${formattedTime}`}>
+        {formattedRange && (
+          <span className="ai-course-card-timestamp" title={`Đoạn video có nội dung trả lời: ${formattedRange}`}>
             <FiClock className="time-icon" />
-            <span>{formattedTime}</span>
+            <span>{formattedRange}</span>
           </span>
         )}
       </div>
@@ -102,8 +109,8 @@ const LessonCard = ({
       <div className="ai-course-card-footer">
         <span className="ai-course-card-action-text">
           {isCurrentLesson && startTime !== null
-            ? `Tua video đến ${formattedTime}`
-            : (startTime !== null ? `Mở bài học (từ ${formattedTime})` : 'Xem bài học này')}
+            ? `Xem đoạn trả lời từ ${formattedTime}`
+            : (startTime !== null ? `Mở bài học từ ${formattedTime}` : 'Xem bài học này')}
         </span>
         <FiArrowRight className="ai-course-card-arrow" />
       </div>

@@ -213,7 +213,7 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
               <button
                 key={questionText}
                 type="button"
-                onClick={() => onSelectPrompt(displayedQuestion, null)}
+                onClick={() => onSelectPrompt(displayedQuestion, 'SUGGESTED_QUESTION')}
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b1322] hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40 px-4 py-3.5 text-left transition-all duration-150 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-smart-indigo cursor-pointer shadow-2xs"
               >
                 <span className="block font-bold text-[13px] sm:text-[13.5px] leading-relaxed text-slate-800 dark:text-slate-100 tracking-tight">

@@ -6,22 +6,15 @@ import {
   ChevronUp,
   Clock,
   Cloud,
+  Cpu,
   Database,
-  RefreshCw
+  Layers,
+  RefreshCw,
+  TrendingUp,
+  Zap
 } from 'lucide-react';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '@/components/ui/card';
+import { Chip } from '@/components/base/badges/chip';
 import {
   ChartContainer,
   ChartLegend,
@@ -54,7 +47,7 @@ const METRIC_OPTIONS = [
   ['quota_errors', 'Lượt vượt quota']
 ];
 
-const CHART_COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#22d3ee', '#fb7185'];
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#6366f1'];
 
 const fallbackReasonLabels = {
   GOOGLE_MONITORING_NOT_CONFIGURED: 'Chưa cấu hình service account Google Cloud Monitoring.',
@@ -226,95 +219,140 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
     return numberFormatter.format(numericValue);
   };
 
-  const summaryItems = [
-    [t('Tổng trong kỳ'), formatValue(usageSummary.total)],
-    [t('Đỉnh mỗi mốc'), formatValue(usageSummary.peak)],
-    [t('Model hoạt động'), numberFormatter.format(usageSummary.models)],
-    [t('Mốc có dữ liệu'), numberFormatter.format(usageSummary.activeBuckets)]
-  ];
-  const summaryBorders = [
-    '',
-    'border-t border-border/70 sm:border-t-0 sm:border-l',
-    'border-t border-border/70 xl:border-t-0 xl:border-l',
-    'border-t border-border/70 sm:border-l xl:border-t-0'
+  const summaryCards = [
+    {
+      label: t('Tổng trong kỳ'),
+      value: formatValue(usageSummary.total),
+      icon: Zap,
+      iconColor: 'text-blue-500',
+      iconBg: 'bg-blue-500/10 border-blue-500/20'
+    },
+    {
+      label: t('Đỉnh mỗi mốc'),
+      value: formatValue(usageSummary.peak),
+      icon: TrendingUp,
+      iconColor: 'text-emerald-500',
+      iconBg: 'bg-emerald-500/10 border-emerald-500/20'
+    },
+    {
+      label: t('Model hoạt động'),
+      value: numberFormatter.format(usageSummary.models),
+      icon: Cpu,
+      iconColor: 'text-indigo-500',
+      iconBg: 'bg-indigo-500/10 border-indigo-500/20'
+    },
+    {
+      label: t('Mốc có dữ liệu'),
+      value: numberFormatter.format(usageSummary.activeBuckets),
+      icon: Layers,
+      iconColor: 'text-purple-500',
+      iconBg: 'bg-purple-500/10 border-purple-500/20'
+    }
   ];
 
   return (
-    <Card className="ai-usage-card mb-6 overflow-hidden bg-card/80 [--card-spacing:1.25rem]" aria-labelledby="gemini-usage-trend-title">
-      <CardHeader className="border-b border-border/70">
+    <section
+      className="ai-usage-card mb-6 overflow-hidden rounded-2xl border border-separator-border bg-background-secondary-default shadow-card transition-all duration-200"
+      aria-labelledby="gemini-usage-trend-title"
+    >
+      {/* 1. Header (BoardUI Standard) */}
+      <header className="flex flex-col gap-4 border-b border-separator-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <BarChart3 className="size-4" aria-hidden="true" />
-            </span>
-            <CardTitle id="gemini-usage-trend-title" className="text-base">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-500 shadow-2xs dark:border-blue-400/30 dark:bg-blue-400/15 dark:text-blue-400"
+              aria-hidden="true"
+            >
+              <BarChart3 className="size-5" />
+            </div>
+            <h3 id="gemini-usage-trend-title" className="text-title-3-bold text-text-primary tracking-tight">
               {t('Xu hướng sử dụng Gemini')}
-            </CardTitle>
-            <Badge variant="secondary" className="font-normal">
-              {data?.sourceUsed === 'google'
-                ? <Cloud data-icon="inline-start" />
-                : <Database data-icon="inline-start" />}
-              {sourceLabel}
-            </Badge>
+            </h3>
+            <Chip
+              variant="bold"
+              color={data?.sourceUsed === 'google' ? 'cyan' : 'purple'}
+              className="gap-1.5 px-3 py-1 text-caption-1-semibold shadow-2xs"
+            >
+              {data?.sourceUsed === 'google' ? (
+                <Cloud className="size-3.5" data-icon="inline-start" />
+              ) : (
+                <Database className="size-3.5" data-icon="inline-start" />
+              )}
+              <span>{sourceLabel}</span>
+            </Chip>
             {isStale && (
-              <Badge
-                variant="outline"
+              <Chip
+                variant="caption"
+                color="neutral"
                 title={t('Dữ liệu từ Google Cloud Monitoring có thể bị trễ >5 phút theo độ trễ tự nhiên của Google')}
-                className="font-normal text-muted-foreground"
+                className="gap-1 text-text-tertiary"
               >
                 <Clock className="size-3" aria-hidden="true" />
-                {t('Dữ liệu cũ (>5p)')}
-              </Badge>
+                <span>{t('Dữ liệu cũ (>5p)')}</span>
+              </Chip>
             )}
           </div>
-          <CardDescription className="mt-2 max-w-3xl">
+          <p className="mt-1 max-w-3xl text-caption-1-regular text-text-secondary leading-relaxed">
             {t('Telemetry nội bộ ghi nhận mức sử dụng ngay khi backend gọi Gemini; không phát sinh API giám sát trả phí.')}
-          </CardDescription>
+          </p>
         </div>
 
-        <CardAction className="flex items-center gap-1">
-          <Button
+        <div className="flex shrink-0 items-center gap-2">
+          <button
             type="button"
-            variant="outline"
-            size="sm"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border-button-default bg-background-primary-default px-3 py-1.5 text-caption-1-semibold text-text-primary shadow-2xs transition-all duration-150 hover:border-border-button-hover hover:bg-background-primary-hover disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
             disabled={refreshing}
             aria-label={refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}
             onClick={() => fetchTrend({ silent: true, fresh: true })}
           >
-            {refreshing ? <Spinner /> : <RefreshCw aria-hidden="true" />}
+            {refreshing ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden="true" />}
             <span className="hidden sm:inline">{refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}</span>
-          </Button>
-          <Button
+          </button>
+          <button
             type="button"
-            variant="ghost"
-            size="icon-sm"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-border-button-default bg-background-primary-default text-text-secondary shadow-2xs transition-all duration-150 hover:border-border-button-hover hover:bg-background-primary-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
             aria-expanded={!collapsed}
             aria-controls="gemini-usage-trend-content"
             aria-label={collapsed ? t('Mở rộng biểu đồ') : t('Thu gọn')}
             onClick={() => setCollapsed((value) => !value)}
           >
-            <ChevronUp className={`transition-transform motion-reduce:transition-none ${collapsed ? 'rotate-180' : ''}`} />
-          </Button>
-        </CardAction>
-      </CardHeader>
+            <ChevronUp className={`size-4 transition-transform duration-200 motion-reduce:transition-none ${collapsed ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      </header>
 
       {!collapsed && (
         <>
-          <CardContent id="gemini-usage-trend-content" className="flex flex-col gap-5">
-            <dl className="grid overflow-hidden rounded-xl border border-border/70 bg-muted/25 sm:grid-cols-2 xl:grid-cols-4">
-              {summaryItems.map(([label, value], index) => (
-                <div
-                  key={label}
-                  className={`min-w-0 px-4 py-3 ${summaryBorders[index]}`}
-                >
-                  <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-                  <dd className="mt-1 truncate font-mono text-base font-semibold tabular-nums text-foreground" title={value}>{value}</dd>
-                </div>
-              ))}
-            </dl>
+          {/* 2. Content Body */}
+          <div id="gemini-usage-trend-content" className="flex flex-col gap-5 p-5 sm:p-6">
+            {/* 2.1 BoardUI KPI Summary Stat Cards */}
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+              {summaryCards.map((card) => {
+                const IconComponent = card.icon;
+                return (
+                  <div
+                    key={card.label}
+                    className="flex flex-col justify-between rounded-xl border border-separator-border bg-background-primary-default p-4 shadow-2xs transition-all duration-200 hover:border-border-button-hover"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-caption-1-medium text-text-secondary">{card.label}</span>
+                      <span className={`flex size-7 items-center justify-center rounded-lg border ${card.iconBg} ${card.iconColor} shadow-2xs`}>
+                        <IconComponent className="size-3.5" aria-hidden="true" />
+                      </span>
+                    </div>
+                    <div className="mt-2.5 flex items-baseline gap-1">
+                      <span className="text-title-2-bold font-mono tabular-nums text-text-primary truncate" title={card.value}>
+                        {card.value}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
+            {/* 2.2 Filter Controls & Live Telemetry Box */}
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="grid gap-2 sm:grid-cols-3" aria-label={t('Bộ lọc biểu đồ Gemini')}>
+              <div className="grid gap-2.5 sm:grid-cols-3" aria-label={t('Bộ lọc biểu đồ Gemini')}>
                 <TrendSelect label={t('Khoảng thời gian')} value={range} onValueChange={setRange} options={RANGE_OPTIONS} t={t} />
                 <TrendSelect label={t('Chỉ số')} value={metric} onValueChange={setMetric} options={METRIC_OPTIONS} t={t} />
                 <TrendSelect
@@ -328,35 +366,52 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                   t={t}
                 />
               </div>
-              <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
-                <Database className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden="true" />
-                <div>
-                  <div className="font-medium text-foreground">{t('Telemetry nội bộ · 0₫')}</div>
-                  <div>{t('Mẫu mới nhất')}: {sampledLabel} · {t('Tự làm mới mỗi 60 giây')}</div>
+
+              {/* Zero-Cost Telemetry Live Indicator */}
+              <div
+                className="flex items-center gap-3 rounded-xl border border-separator-border bg-background-primary-default px-3.5 py-2.5 shadow-2xs"
+                aria-live="polite"
+              >
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500">
+                  <Database className="size-4" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-caption-1-semibold text-text-primary">{t('Telemetry nội bộ · 0₫')}</span>
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
+                  <p className="text-caption-2-regular text-text-tertiary truncate">
+                    {t('Mẫu mới nhất')}: {sampledLabel} · {t('Tự làm mới mỗi 60 giây')}
+                  </p>
                 </div>
               </div>
             </div>
 
+            {/* Fallback Notice Callout */}
             {fallbackText && (
-              <Alert>
-                <AlertCircle aria-hidden="true" />
-                <AlertTitle>{t('Đang dùng dữ liệu dự phòng từ backend')}</AlertTitle>
-                <AlertDescription>
-                  {t(fallbackText)} {t('Biểu đồ vẫn tiếp tục hoạt động bằng telemetry nội bộ.')}
-                </AlertDescription>
-              </Alert>
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3.5 text-caption-1-medium text-amber-200 shadow-2xs" role="alert">
+                <AlertCircle className="size-4 shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
+                <div>
+                  <div className="font-semibold text-amber-300">{t('Đang dùng dữ liệu dự phòng từ backend')}</div>
+                  <p className="mt-0.5 text-caption-2-regular text-amber-200/90 leading-relaxed">
+                    {t(fallbackText)} {t('Biểu đồ vẫn tiếp tục hoạt động bằng telemetry nội bộ.')}
+                  </p>
+                </div>
+              </div>
             )}
 
             {metric === 'tokens' && (
-              <p className="text-xs leading-5 text-muted-foreground">
+              <p className="text-caption-2-regular text-text-tertiary flex items-center gap-1.5">
+                <span className="size-1 rounded-full bg-blue-400" aria-hidden="true" />
                 {t('Backend cộng tổng token thực tế được SDK Gemini trả về cho từng request thành công.')}
               </p>
             )}
 
-            <div className="relative min-h-[320px]" aria-busy={loading}>
+            {/* 2.3 Chart Surface */}
+            <div className="relative min-h-[320px] rounded-xl border border-separator-border bg-background-primary-default p-4 shadow-2xs" aria-busy={loading}>
               {loading && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background/65 backdrop-blur-[1px]">
-                  <Spinner className="size-5 text-primary" />
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background-primary-default/70 backdrop-blur-[1px]">
+                  <Spinner className="size-6 text-primary" />
                   <span className="sr-only">{t('Đang tải dữ liệu biểu đồ')}</span>
                 </div>
               )}
@@ -365,22 +420,24 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                 <div className="-mx-2 overflow-x-auto px-2 pb-1" tabIndex={0} aria-label={t('Biểu đồ có thể cuộn ngang trên màn hình nhỏ')}>
                   <ChartContainer config={chartConfig} className="h-[320px] min-w-[680px] w-full aspect-auto" initialDimension={{ width: 960, height: 320 }}>
                     <BarChart accessibilityLayer data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid vertical={false} stroke="var(--border)" />
+                      <CartesianGrid vertical={false} stroke="var(--color-separator-border, rgba(255,255,255,0.08))" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="timestamp"
                         tickLine={false}
-                        axisLine={{ stroke: 'var(--border)' }}
+                        axisLine={{ stroke: 'var(--color-separator-border, rgba(255,255,255,0.12))' }}
                         minTickGap={28}
+                        tick={{ fill: 'var(--color-text-tertiary, #94a3b8)', fontSize: 11 }}
                         tickFormatter={(value) => dateTimeFormatter.format(new Date(value))}
                       />
                       <YAxis
                         tickLine={false}
                         axisLine={false}
                         width={56}
+                        tick={{ fill: 'var(--color-text-tertiary, #94a3b8)', fontSize: 11 }}
                         tickFormatter={formatAxisValue}
                       />
                       <ChartTooltip
-                        cursor={{ fill: 'var(--muted)', opacity: 0.35 }}
+                        cursor={{ fill: 'var(--color-background-secondary-default, rgba(255,255,255,0.05))', opacity: 0.5 }}
                         content={(
                           <ChartTooltipContent
                             indicator="dot"
@@ -389,14 +446,14 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                               : ''}
                             formatter={(value, name) => (
                               <div className="flex w-full min-w-48 items-center justify-between gap-4">
-                                <span className="text-muted-foreground">{chartConfig[name]?.label || name}</span>
-                                <span className="font-mono font-semibold tabular-nums text-foreground">{formatValue(value)}</span>
+                                <span className="text-text-secondary text-xs">{chartConfig[name]?.label || name}</span>
+                                <span className="font-mono font-semibold tabular-nums text-text-primary text-xs">{formatValue(value)}</span>
                               </div>
                             )}
                           />
                         )}
                       />
-                      <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
+                      <ChartLegend content={<ChartLegendContent className="flex-wrap pt-3 text-xs" />} />
                       {models.map((item, index) => (
                         <Bar
                           key={item}
@@ -412,7 +469,7 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                   </ChartContainer>
                 </div>
               ) : !loading && (
-                <Empty className="min-h-[320px] border border-border/70 bg-muted/15">
+                <Empty className="min-h-[320px] border border-separator-border bg-background-secondary-default/40">
                   <EmptyHeader>
                     <EmptyMedia variant="icon"><BarChart3 /></EmptyMedia>
                     <EmptyTitle>{error ? t('Không thể tải biểu đồ') : t('Chưa có dữ liệu trong khoảng đã chọn')}</EmptyTitle>
@@ -425,23 +482,35 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                 </Empty>
               )}
             </div>
-          </CardContent>
+          </div>
 
-          <CardFooter className="flex flex-wrap justify-between gap-2 border-t border-border/70 text-xs text-muted-foreground">
-            <span>{t('Đang hiển thị')}: {t(selectedMetricLabel)} · {t(RANGE_OPTIONS.find(([value]) => value === range)?.[1] || range)}</span>
-            <span>{t('Nguồn hiện tại')}: {sourceLabel}</span>
-          </CardFooter>
+          {/* 3. Footer */}
+          <footer className="flex flex-col gap-2 border-t border-separator-border bg-background-primary-default/50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 text-caption-1-regular text-text-secondary">
+            <div className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-blue-500" aria-hidden="true" />
+              <span>
+                {t('Đang hiển thị')}: <strong className="font-semibold text-text-primary">{t(selectedMetricLabel)}</strong> · {t(RANGE_OPTIONS.find(([value]) => value === range)?.[1] || range)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-caption-2-regular text-text-tertiary">
+              <span>{t('Nguồn hiện tại')}: {sourceLabel}</span>
+            </div>
+          </footer>
         </>
       )}
-    </Card>
+    </section>
   );
 };
 
 const TrendSelect = ({ label, value, onValueChange, options, t }) => (
-  <label className="grid min-w-[148px] gap-1.5 text-xs font-medium text-muted-foreground">
+  <label className="grid min-w-[148px] gap-1.5 text-caption-1-medium text-text-secondary">
     <span>{label}</span>
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger size="sm" className="w-full bg-background/60 sm:w-[168px]" aria-label={label}>
+      <SelectTrigger
+        size="sm"
+        className="w-full rounded-lg border border-border-button-default bg-background-primary-default text-caption-1-medium text-text-primary shadow-2xs transition-all hover:border-border-button-hover sm:w-[168px]"
+        aria-label={label}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="start">
@@ -456,3 +525,4 @@ const TrendSelect = ({ label, value, onValueChange, options, t }) => (
 );
 
 export default GeminiUsageTrendChart;
+

@@ -14,8 +14,23 @@ const {
   selectGlobalChatProfile,
   buildCourseCatalogReply
 } = require('./globalCourseResponse.service');
+const { getSuggestedQuestionTranscriptContext } = require('./transcriptEvidence.service');
 
 const isGeminiQuotaExhausted = (error) => error?.code === 'GEMINI_QUOTA_EXHAUSTED';
+
+const getQuickActionType = (quickAction) => (
+  quickAction && typeof quickAction === 'object' ? quickAction.type : quickAction
+);
+
+const hasVerifiedTimestampCitation = (sources = []) => (
+  Array.isArray(sources) && sources.some(source => (
+    Number.isFinite(Number(source?.startTime)) && Number(source.startTime) >= 0
+  ))
+);
+
+const getMissingTimestampReply = () => (
+  'Mình chưa xác định được chính xác đoạn video chứa câu trả lời này từ transcript. Bạn hãy thử một câu gợi ý khác hoặc thử lại sau khi phụ đề được cập nhật.'
+);
 /**
  * Trích xuất thời lượng audio an toàn qua FFmpeg metadata (không dùng shell: true)
  */
@@ -805,13 +820,15 @@ ${lessonContext.combinedContext}`;
  */
 const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto', currentTime = null, quickAction = null) => {
   try {
+    const quickActionType = getQuickActionType(quickAction);
+    const isSuggestedQuestionRequest = quickActionType === 'SUGGESTED_QUESTION';
     // 0. Xử lý Structured Quick Actions nếu được yêu cầu trực tiếp
-    if (quickAction === 'LESSON_KEY_VOCAB' || (question && /^(từ vựng trọng tâm|key vocabulary|từ vựng chính)/i.test(question.trim()))) {
+    if (quickActionType === 'LESSON_KEY_VOCAB' || (question && /^(từ vựng trọng tâm|key vocabulary|từ vựng chính)/i.test(question.trim()))) {
       if (lessonId && Number(lessonId) > 0) {
         return await handleLessonKeyVocab(userId, lessonId);
       }
     }
-    if (quickAction === 'LESSON_QUICK_QUIZ' || (question && /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(question.trim()))) {
+    if (quickActionType === 'LESSON_QUICK_QUIZ' || (question && /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(question.trim()))) {
       if (lessonId && Number(lessonId) > 0) {
         const quizRes = await handleLessonQuickQuiz(userId, lessonId);
         return {
@@ -860,7 +877,7 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
     let globalCourses = [];
     let globalCoursesLoadFailed = false;
 
-    if (userId) {
+    if (userId && !isSuggestedQuestionRequest) {
       conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
     }
 
@@ -896,18 +913,54 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
       }
     } else {
       const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
-      
-      detectedIntent = await routeIntent(question, {
-        lessonId,
-        hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
-        courseId: accessInfo.courseId
-      });
+
+      detectedIntent = isSuggestedQuestionRequest
+        ? {
+          intent: INTENTS.CURRENT_LESSON_QA,
+          scope: 'current_lesson',
+          confidence: 1,
+          method: 'suggested_question_fast_path'
+        }
+        : await routeIntent(question, {
+          lessonId,
+          hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
+          courseId: accessInfo.courseId
+        });
 
       let effectiveScope = detectedIntent.scope;
       if (isDevOrAdmin && (retrievalMode === 'force_course' || retrievalMode === 'course_wide')) {
         effectiveScope = 'course_wide';
       } else if (isDevOrAdmin && retrievalMode === 'force_lesson') {
         effectiveScope = 'current_lesson';
+      }
+
+      // Câu hỏi gợi ý đã được tạo từ transcript. Tìm thẳng đoạn bằng chứng trong
+      // PostgreSQL để tránh thêm một lượt embedding và luôn có mốc video kiểm chứng.
+      if (isSuggestedQuestionRequest) {
+        const transcriptEvidence = await getSuggestedQuestionTranscriptContext(lessonId, question);
+        if (transcriptEvidence?.cuesFound) {
+          contextText = transcriptEvidence.contextSnippet;
+          timestampInfo = {
+            lessonId: Number(lessonId),
+            startTime: transcriptEvidence.startTime,
+            endTime: transcriptEvidence.endTime
+          };
+          hasContentEvidence = true;
+          retrievalRes = {
+            contextText,
+            matches: [],
+            rankedLessons: [{
+              lessonId: Number(lessonId),
+              lessonTitle: accessInfo.lesson?.lesson_title,
+              sectionTitle: accessInfo.lesson?.section_title,
+              rerankScore: 1,
+              sourceType: 'transcript',
+              startTime: transcriptEvidence.startTime,
+              endTime: transcriptEvidence.endTime
+            }],
+            hasContentEvidence: true
+          };
+        }
       }
 
       // Xử lý Time-window Transcript Retrieval nếu có currentTime và câu hỏi liên quan bài hiện tại
@@ -991,6 +1044,16 @@ const handleRagChat = async (userId, lessonId, question, retrievalMode = 'auto',
       };
     }
 
+    if (isSuggestedQuestionRequest && !hasVerifiedTimestampCitation(verifiedEvidence.sources)) {
+      return {
+        success: true,
+        reply: getMissingTimestampReply(),
+        intent: INTENTS.CURRENT_LESSON_QA,
+        sources: [],
+        actions: []
+      };
+    }
+
     // 3. Tạo Prompt Engineering gửi cho Gemini (Sử dụng Original Question và Context)
     const historySnippet = conversationHistory.length > 0
       ? `\nLỊCH SỬ HỘI THOẠI GẦN NHẤT:\n${conversationHistory.map(h => `${h.role}: ${h.content}`).join('\n')}\n`
@@ -1068,13 +1131,15 @@ CÂU HỎI CỦA HỌC VIÊN:
  */
 const handleRagChatStream = async (userId, lessonId, question, onChunk, retrievalMode = 'auto', currentTime = null, quickAction = null) => {
   try {
+    const quickActionType = getQuickActionType(quickAction);
+    const isSuggestedQuestionRequest = quickActionType === 'SUGGESTED_QUESTION';
     // 0. Xử lý Structured Quick Actions nếu được yêu cầu trực tiếp
-    if (quickAction === 'LESSON_KEY_VOCAB' || (question && /^(từ vựng trọng tâm|key vocabulary|từ vựng chính)/i.test(question.trim()))) {
+    if (quickActionType === 'LESSON_KEY_VOCAB' || (question && /^(từ vựng trọng tâm|key vocabulary|từ vựng chính)/i.test(question.trim()))) {
       if (lessonId && Number(lessonId) > 0) {
         return await handleLessonKeyVocab(userId, lessonId, onChunk);
       }
     }
-    if (quickAction === 'LESSON_QUICK_QUIZ' || (question && /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(question.trim()))) {
+    if (quickActionType === 'LESSON_QUICK_QUIZ' || (question && /^(tạo bài tập ôn nhanh|quick quiz|làm bài tập ôn|tạo bài tập trắc nghiệm)/i.test(question.trim()))) {
       if (lessonId && Number(lessonId) > 0) {
         return await handleLessonQuickQuiz(userId, lessonId, onChunk);
       }
@@ -1108,7 +1173,7 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     let globalCourses = [];
     let globalCoursesLoadFailed = false;
 
-    if (userId) {
+    if (userId && !isSuggestedQuestionRequest) {
       conversationHistory = await getRecentConversationHistory(userId, lessonId, 6, { courseId: accessInfo.courseId });
     }
 
@@ -1149,17 +1214,51 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
     } else {
       const isDevOrAdmin = process.env.NODE_ENV !== 'production' || accessInfo.isAdmin;
 
-      detectedIntent = await routeIntent(question, {
-        lessonId,
-        hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
-        courseId: accessInfo.courseId
-      });
+      detectedIntent = isSuggestedQuestionRequest
+        ? {
+          intent: INTENTS.CURRENT_LESSON_QA,
+          scope: 'current_lesson',
+          confidence: 1,
+          method: 'suggested_question_fast_path'
+        }
+        : await routeIntent(question, {
+          lessonId,
+          hasValidLesson: !isGlobalChat && Number(lessonId) > 0,
+          courseId: accessInfo.courseId
+        });
 
       effectiveScope = detectedIntent.scope;
       if (isDevOrAdmin && (retrievalMode === 'force_course' || retrievalMode === 'course_wide')) {
         effectiveScope = 'course_wide';
       } else if (isDevOrAdmin && retrievalMode === 'force_lesson') {
         effectiveScope = 'current_lesson';
+      }
+
+      if (isSuggestedQuestionRequest) {
+        const transcriptEvidence = await getSuggestedQuestionTranscriptContext(lessonId, question);
+        if (transcriptEvidence?.cuesFound) {
+          contextText = transcriptEvidence.contextSnippet;
+          timestampInfo = {
+            lessonId: Number(lessonId),
+            startTime: transcriptEvidence.startTime,
+            endTime: transcriptEvidence.endTime
+          };
+          hasContentEvidence = true;
+          retrievalRes = {
+            contextText,
+            matches: [],
+            rankedLessons: [{
+              lessonId: Number(lessonId),
+              lessonTitle: accessInfo.lesson?.lesson_title,
+              sectionTitle: accessInfo.lesson?.section_title,
+              rerankScore: 1,
+              sourceType: 'transcript',
+              startTime: transcriptEvidence.startTime,
+              endTime: transcriptEvidence.endTime
+            }],
+            hasContentEvidence: true
+          };
+        }
       }
 
       // Xử lý Time-window Transcript Retrieval nếu có currentTime và câu hỏi liên quan bài hiện tại
@@ -1264,6 +1363,17 @@ const handleRagChatStream = async (userId, lessonId, question, onChunk, retrieva
         intent: detectedIntent?.intent || 'CURRENT_LESSON_QA',
         sources: verifiedEvidence.sources,
         actions: verifiedEvidence.actions
+      };
+    }
+
+    if (isSuggestedQuestionRequest && !hasVerifiedTimestampCitation(verifiedEvidence.sources)) {
+      const safeReply = getMissingTimestampReply();
+      if (onChunk) onChunk({ type: 'token', text: safeReply });
+      return {
+        fullText: safeReply,
+        intent: INTENTS.CURRENT_LESSON_QA,
+        sources: [],
+        actions: []
       };
     }
 
