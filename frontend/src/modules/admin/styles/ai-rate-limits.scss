@@ -225,6 +225,155 @@
     }
   }
 
+  .ai-model-routing {
+    margin-bottom: 20px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+
+    &__heading,
+    &__footer {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 15px 16px;
+    }
+
+    &__heading {
+      border-bottom: 1px solid var(--border-color);
+
+      h2 {
+        margin: 2px 0 4px;
+        color: var(--text-color);
+        font-size: 15px;
+        font-weight: 750;
+        letter-spacing: -0.015em;
+      }
+
+      p {
+        max-width: 72ch;
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+    }
+
+    &__eyebrow {
+      color: #60a5fa;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    &__state {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 9px;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 750;
+
+      i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      &.is-ready { color: #34d399; background: rgba(16, 185, 129, 0.08); }
+      &.is-cooling { color: #fbbf24; background: rgba(245, 158, 11, 0.08); }
+    }
+
+    &__body {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.65fr);
+      gap: 22px;
+      padding: 16px;
+    }
+
+    &__lane {
+      display: flex;
+      min-width: 0;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    &__arrow {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    &__model {
+      display: grid;
+      min-width: 0;
+      flex: 1 1 0;
+      align-content: start;
+      gap: 5px;
+      padding: 11px;
+      border: 1px solid var(--border-color);
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--input-bg) 80%, transparent);
+
+      > span {
+        color: var(--text-muted);
+        font-size: 9px;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      code {
+        overflow-wrap: anywhere;
+        color: var(--text-color);
+        font-size: 10.5px;
+        font-weight: 700;
+      }
+
+      small { color: #94a3b8; font-size: 9.5px; line-height: 1.4; }
+      &.is-effective { border-color: rgba(52, 211, 153, 0.4); background: rgba(16, 185, 129, 0.07); }
+      &.is-cooling { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.06); }
+      &.is-cooling small { color: #fbbf24; }
+    }
+
+    &__facts {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      margin: 0;
+
+      > div { display: grid; gap: 4px; }
+      dt { color: var(--text-muted); font-size: 9.5px; }
+      dd { display: grid; gap: 2px; margin: 0; }
+      code { overflow-wrap: anywhere; color: var(--text-color); font-size: 10.5px; font-weight: 700; }
+      small { color: var(--text-muted); font-size: 9.5px; }
+    }
+
+    &__footer {
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+
+      p {
+        max-width: 76ch;
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 10px;
+        line-height: 1.5;
+      }
+
+      button { flex: 0 0 auto; }
+    }
+  }
+
   .ai-rate-discrepancy {
     display: flex;
     align-items: flex-start;
@@ -720,6 +869,11 @@
       grid-column: 1 / -1;
     }
   }
+
+  .ai-rate-view .ai-model-routing {
+    &__body { grid-template-columns: 1fr; }
+    &__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
 }
 
 @media (max-width: 640px) {
@@ -737,6 +891,15 @@
     }
 
     .ai-rate-refresh { width: 100%; justify-content: center; }
+    .ai-model-routing {
+      &__heading,
+      &__footer { flex-direction: column; }
+      &__state { align-self: flex-start; }
+      &__lane { flex-direction: column; }
+      &__arrow { transform: rotate(90deg); }
+      &__facts { grid-template-columns: 1fr; }
+      &__footer button { width: 100%; }
+    }
     .ai-rate-setting-row {
       grid-template-columns: 1fr;
 

@@ -9,6 +9,7 @@ import {
   getGeminiUsageTrends,
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
+  resetGeminiModelRouting,
   updateGeminiRateLimitCaps
 } from '../src/modules/admin/services/adminAnalytics.service';
 
@@ -17,6 +18,7 @@ vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
   getGeminiUsageTrends: vi.fn(),
   getGeminiRateLimitCaps: vi.fn(),
   getGeminiRateLimitStatus: vi.fn(),
+  resetGeminiModelRouting: vi.fn(),
   updateGeminiRateLimitCaps: vi.fn(),
   updateUserQuota: vi.fn(),
   resetUserAiToken: vi.fn(),
@@ -44,6 +46,17 @@ describe('Gemini Rate Limits admin view', () => {
     getGeminiRateLimitStatus.mockResolvedValue({
       generatedAt: '2026-09-02T00:00:00.000Z',
       windows: { rpmSeconds: 60, tpmSeconds: 60, rpdTimezone: 'America/Los_Angeles' },
+      routing: {
+        scope: 'process_instance',
+        preferredModel: 'gemini-3.7-flash',
+        effectiveModel: 'gemini-3.7-flash',
+        fallbackOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+        effectiveOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+        lastSuccessfulModel: 'gemini-3.7-flash',
+        lastSuccessfulAt: '2026-09-02T00:00:00.000Z',
+        lastManualResetAt: null,
+        coolingDown: []
+      },
       models: [{
         model: 'gemini-3.7-flash',
         usage: { rpm: 7, tpm: 125000, rpd: 225 },
@@ -75,6 +88,16 @@ describe('Gemini Rate Limits admin view', () => {
       }]
     });
     updateGeminiRateLimitCaps.mockResolvedValue({ success: true });
+    resetGeminiModelRouting.mockResolvedValue({
+      preferredModel: 'gemini-3.7-flash',
+      effectiveModel: 'gemini-3.7-flash',
+      fallbackOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+      effectiveOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+      lastSuccessfulModel: 'gemini-3.6-flash',
+      lastSuccessfulAt: '2026-09-02T00:00:00.000Z',
+      lastManualResetAt: '2026-09-02T00:01:00.000Z',
+      coolingDown: []
+    });
   });
 
   it('keeps the existing usage view and exposes Google Rate Limits in a separate tab', async () => {
@@ -91,6 +114,9 @@ describe('Gemini Rate Limits admin view', () => {
     expect((await screen.findAllByText('gemini-3.7-flash')).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('gemini-embedding-001').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Backend telemetry đang hoạt động')).toBeInTheDocument();
+    expect(screen.getByText('Fallback và tự phục hồi')).toBeInTheDocument();
+    expect(screen.getByText('Đang ưu tiên model cao nhất')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Model ưu tiên đã sẵn sàng' })).toBeDisabled();
     expect(screen.getByText(/Tự làm mới mỗi 15 giây/)).toBeInTheDocument();
     expect(screen.getByText('Trực tiếp từ backend')).toBeInTheDocument();
     expect(screen.getByText(/Cập nhật cuối:/)).toBeInTheDocument();
@@ -109,6 +135,43 @@ describe('Gemini Rate Limits admin view', () => {
     expect(screen.getByText('210 thành công')).toBeInTheDocument();
     expect(screen.getByText('15 lỗi')).toBeInTheDocument();
     expect(screen.getByText(/Giá trị mặc định/)).toBeInTheDocument();
+  });
+
+  it('restores the preferred model cooldown without issuing a probe request', async () => {
+    const readyStatus = await getGeminiRateLimitStatus();
+    getGeminiRateLimitStatus.mockClear();
+    getGeminiRateLimitStatus.mockResolvedValue({
+      ...readyStatus,
+      routing: {
+        ...readyStatus.routing,
+        effectiveModel: 'gemini-3.6-flash',
+        effectiveOrder: ['gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+        lastSuccessfulModel: 'gemini-3.6-flash',
+        coolingDown: [{
+          model: 'gemini-3.7-flash',
+          retryAt: '2026-09-02T00:01:00.000Z',
+          remainingMs: 60000,
+          source: 'provider_retry_after'
+        }]
+      }
+    });
+
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Rate Limits Google/i }));
+    const restoreButton = await screen.findByRole('button', { name: 'Khôi phục model ưu tiên' });
+    expect(restoreButton).toBeEnabled();
+    fireEvent.click(restoreButton);
+
+    await waitFor(() => {
+      expect(resetGeminiModelRouting).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: 'Model ưu tiên đã sẵn sàng' })).toBeDisabled();
+      expect(screen.getByText('Đang ưu tiên model cao nhất')).toBeInTheDocument();
+    });
   });
 
   it('supports the ARIA tabs keyboard interaction pattern', async () => {

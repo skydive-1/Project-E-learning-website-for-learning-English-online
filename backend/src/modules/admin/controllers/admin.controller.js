@@ -97,6 +97,22 @@ exports.getAiRateLimitStatus = async (req, res, next) => {
   }
 };
 
+exports.resetAiModelRouting = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const routing = adminService.resetAiModelRouting({
+      adminUserId: req.user?.id || req.user?.user_id
+    });
+    res.status(200).json({
+      success: true,
+      message: 'Đã khôi phục model Gemini ưu tiên cao nhất',
+      data: { routing }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAiRateLimitCaps = async (req, res, next) => {
   try {
     disableLiveDataCache(res);

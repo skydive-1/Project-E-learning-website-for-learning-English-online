@@ -73,6 +73,14 @@ export const getGeminiRateLimitStatus = async ({ fresh = false } = {}) => {
   return response.data.data;
 };
 
+export const resetGeminiModelRouting = async () => {
+  const response = await apiClient.post('/admin/gemini-rate-limits/routing/reset');
+  if (!response.data?.success || !response.data?.data?.routing) {
+    throw new Error('Phản hồi khôi phục model Gemini không hợp lệ');
+  }
+  return response.data.data.routing;
+};
+
 export const getGeminiRateLimitCaps = async ({ fresh = false } = {}) => {
   const response = await apiClient.get(
     '/admin/gemini-rate-limits/caps',
