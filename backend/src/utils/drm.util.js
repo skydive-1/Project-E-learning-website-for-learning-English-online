@@ -57,6 +57,7 @@ function generateLessonDrmKeys(lessonId) {
  * lessonId nên không làm mất khả năng phát.
  */
 function getLessonDrmKeyReference(lesson, fallbackLessonId) {
+  if (lesson?.drm_key_ref) return lesson.drm_key_ref;
   const source = String(lesson?.storage_key || lesson?.content_url || '');
   const uuid = source.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
   return uuid || fallbackLessonId;

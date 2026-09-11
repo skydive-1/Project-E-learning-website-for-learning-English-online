@@ -80,18 +80,58 @@ const getClearKeyLicense = async (req, res, next) => {
     }
 
     // Video mới dùng UUID asset; video legacy dùng lessonId.
-    const keyReference = getLessonDrmKeyReference(lesson, lessonId);
-    const drmPair = generateLessonDrmKeys(keyReference);
+    let keyReference = getLessonDrmKeyReference(lesson, lessonId);
+    let drmPair = generateLessonDrmKeys(keyReference);
 
     // Không cho client dùng lessonId hợp lệ để yêu cầu một KID khác. ClearKey
     // vẫn là DRM mức cơ bản, nhưng license endpoint không được trở thành oracle
     // cấp khóa tùy ý.
     if (Array.isArray(kids) && kids.length > 0 && !kids.includes(drmPair.keyIdBase64Url)) {
-      return res.status(403).json({
-        success: false,
-        code: 'DRM_KEY_ID_MISMATCH',
-        message: 'Key ID yêu cầu không thuộc video của bài học này.'
-      });
+      let resolvedMatch = false;
+      const candidates = new Set();
+      if (lesson.drm_key_ref) candidates.add(lesson.drm_key_ref);
+      if (lesson.media_asset_id) candidates.add(lesson.media_asset_id);
+      const uuidInPath = String(lesson.storage_key || lesson.content_url || '')
+        .match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
+      if (uuidInPath) candidates.add(uuidInPath);
+      candidates.add(String(lessonId));
+
+      try {
+        const { pool } = require('../../config/database');
+        if (lesson.checksum_sha256) {
+          const historicalAssets = await pool.query(
+            'SELECT object_key, metadata FROM media_assets WHERE checksum_sha256 = $1',
+            [lesson.checksum_sha256]
+          );
+          for (const row of historicalAssets.rows) {
+            if (row.metadata?.drmKeyRef) candidates.add(row.metadata.drmKeyRef);
+            const m = String(row.object_key || '').match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
+            if (m) candidates.add(m);
+          }
+        }
+      } catch (_) {}
+
+      for (const cand of candidates) {
+        const candidatePair = generateLessonDrmKeys(cand);
+        if (kids.includes(candidatePair.keyIdBase64Url)) {
+          keyReference = cand;
+          drmPair = candidatePair;
+          resolvedMatch = true;
+          try {
+            const { pool } = require('../../config/database');
+            await pool.query('UPDATE lessons SET drm_key_ref = $1 WHERE lesson_id = $2', [cand, lessonId]);
+          } catch (_) {}
+          break;
+        }
+      }
+
+      if (!resolvedMatch) {
+        return res.status(403).json({
+          success: false,
+          code: 'DRM_KEY_ID_MISMATCH',
+          message: 'Key ID yêu cầu không thuộc video của bài học này.'
+        });
+      }
     }
 
     // Đóng gói cấu trúc W3C ClearKey JSON Web Key (JWK)

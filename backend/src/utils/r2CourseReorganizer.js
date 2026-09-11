@@ -40,6 +40,8 @@ function mediaKindFor(row) {
 }
 
 function assetIdFor(row) {
+  const sourceUuid = String(row.source_key || '').match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
+  if (sourceUuid) return sourceUuid;
   return row.media_asset_id || `${row.ref_type}-${row.ref_id}`;
 }
 
