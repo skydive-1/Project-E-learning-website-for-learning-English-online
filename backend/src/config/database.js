@@ -616,6 +616,8 @@ const testConnection = async () => {
           cleaning_started_at TIMESTAMP WITH TIME ZONE
         );
         ALTER TABLE pending_media_uploads ADD COLUMN IF NOT EXISTS course_id INT;
+        ALTER TABLE pending_media_uploads ADD COLUMN IF NOT EXISTS cleaning_started_at TIMESTAMP WITH TIME ZONE;
+        ALTER TABLE pending_media_uploads ADD COLUMN IF NOT EXISTS media_id UUID;
         DO $$
         BEGIN
           IF NOT EXISTS (
