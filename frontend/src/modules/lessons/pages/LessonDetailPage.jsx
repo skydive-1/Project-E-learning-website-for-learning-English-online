@@ -1062,12 +1062,19 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   };
 
   // 🛡️ Watchdog Timer: Chống đứng loading vô hạn chỉ trong giai đoạn INITIAL LOAD.
-  // Không còn phụ thuộc vào videoLoading state (tránh bị reset mỗi lần buffering).
-  // Timer chỉ khởi động khi lesson thay đổi (reloadKey) và tắt ngay khi video
-  // phát lần đầu (videoHasStartedRef.current = true qua onCanPlay/onPlay).
+  // Dùng watchdogLessonIdRef để biết watchdog đang chạy cho bài học nào,
+  // tránh bị reset bởi TanStack Query background refetch (staleTime: 0).
+  const watchdogLessonIdRef = useRef(null);
   const watchdogStartTimeRef = useRef(null);
   useEffect(() => {
-    videoHasStartedRef.current = false;
+    const watchdogForId = currentLesson?.id ?? reloadKey;
+
+    // Chỉ reset videoHasStartedRef khi THAY ĐỔI bài học hoặc retry,
+    // không reset khi refetch cùng ID (background refresh)
+    if (watchdogLessonIdRef.current !== watchdogForId) {
+      videoHasStartedRef.current = false;
+      watchdogLessonIdRef.current = watchdogForId;
+    }
     watchdogStartTimeRef.current = Date.now();
 
     const watchdogTimer = setTimeout(() => {
@@ -1086,7 +1093,6 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       clearTimeout(watchdogTimer);
       watchdogStartTimeRef.current = null;
     };
-  // Chỉ reset khi bài học thay đổi hoặc người dùng bấm retry (reloadKey)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLesson?.id, reloadKey]);
 
@@ -1783,8 +1789,10 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                               </div>
                             ) : (
                               <>
-                                {/* Spinner toàn màn hình: CHỈ hiện khi initial load (chưa bao giờ phát) */}
-                                {videoLoading && !videoHasStartedRef.current && (
+                                {/* Spinner toàn màn hình: chỉ phụ thuộc vào videoLoading.
+                                    onWaiting không còn đặt videoLoading=true nên
+                                    spinner sẽ tự tắt khi mạng buffer bình thường. */}
+                                {videoLoading && (
                                   <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center z-10 rounded-2xl overflow-hidden gap-4 pointer-events-none">
                                     <div className="w-10 h-10 border-4 border-slate-700 border-t-teal-400 rounded-full animate-spin"></div>
                                     <span className="text-xs font-semibold text-teal-300 tracking-wider">Đang tải video...</span>
