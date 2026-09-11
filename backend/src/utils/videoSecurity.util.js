@@ -43,7 +43,13 @@ function isAllowedMediaSource(req) {
   if (!sourceOrigin) {
     return process.env.NODE_ENV !== 'production' || process.env.VIDEO_REQUIRE_SOURCE_HEADERS === 'false';
   }
-  return getAllowedFrontendOrigins().has(sourceOrigin);
+  if (getAllowedFrontendOrigins().has(sourceOrigin)) {
+    return true;
+  }
+  if (/^https:\/\/.*project-e-learning-website.*\.vercel\.app$/i.test(sourceOrigin)) {
+    return true;
+  }
+  return false;
 }
 
 function createClientFingerprint(req) {
