@@ -125,8 +125,22 @@ exports.streamAlerts = async (req, res) => {
 exports.cleanupAlerts = async (req, res, next) => {
   try {
     const orphanCleanupService = require('../../../utils/orphanCleanup.service');
+    const { pool } = require('../../../config/database');
     const expiredRes = await orphanCleanupService.cleanupExpiredPendingUploads(100);
     const failedRes = await orphanCleanupService.processFailedStorageDeletions(100);
+
+    // Tự động đánh dấu giải quyết các sự cố AI cũ (> 3 phút) khi Admin dọn rác
+    try {
+      await pool.query(`
+        UPDATE ai_provider_incidents
+        SET resolved_at = NOW()
+        WHERE resolved_at IS NULL
+          AND last_seen_at <= NOW() - INTERVAL '3 minutes'
+      `);
+    } catch (incidentCleanupErr) {
+      console.warn('[CleanupAlerts] Không thể dọn dẹp ai_provider_incidents:', incidentCleanupErr.message);
+    }
+
     adminAlertsService.resetCache();
     const freshSnapshot = await adminAlertsService.getAdminAlertsSnapshot({ fresh: true });
     notifyOperationalAlertsChanged('manual-alert-cleanup');
