@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
-import Footer from '../../../components/common/Footer';
 import { saveFreeQuiz, saveCourseQuizQuestions } from '../../quizzes/services/quizzes.service';
 import { 
   FiUsers, 
@@ -1297,8 +1296,6 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
 
         </div>
       </div>
-
-      <Footer />
     </>
   );
 };

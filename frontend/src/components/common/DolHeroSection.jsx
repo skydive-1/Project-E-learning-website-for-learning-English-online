@@ -186,12 +186,12 @@ const DolHeroSection = () => {
       cellClass: 'border-top-divider hover:bg-slate-50/70 dark:hover:bg-slate-800/60'
     },
     {
-      id: 'general',
-      subjectId: 4,
-      subjectName: 'General English Communication',
+      id: 'basic',
+      subjectId: 5,
+      subjectName: 'English Grammar Essentials',
       pillClass: 'pill-purple',
-      pillText: 'GIAO TIẾP',
-      title: 'Luyện nói & Phản xạ IPA',
+      pillText: 'BASIC',
+      title: 'Tiếng Anh cơ bản',
       desc: 'Người mất gốc & bắt đầu lại',
       cellClass: 'border-top-divider hover:bg-slate-50/70 dark:hover:bg-slate-800/60'
     }
@@ -201,7 +201,15 @@ const DolHeroSection = () => {
     const hasCourse = dbCourses && dbCourses.length > 0
       ? dbCourses.some(c => 
           Number(c.subject_id) === Number(quadrant.subjectId) ||
-          (c.subject_name && c.subject_name.toLowerCase().includes(quadrant.subjectName.toLowerCase()))
+          (c.subject_name && (
+            c.subject_name.toLowerCase().includes(quadrant.subjectName.toLowerCase()) ||
+            (Number(quadrant.subjectId) === 5 && (
+              c.subject_name.toLowerCase().includes('grammar') ||
+              c.subject_name.toLowerCase().includes('essential') ||
+              c.subject_name.toLowerCase().includes('basic') ||
+              c.subject_name.toLowerCase().includes('cơ bản')
+            ))
+          ))
         )
       : true;
 
