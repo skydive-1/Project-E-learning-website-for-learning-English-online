@@ -67,16 +67,26 @@ const MobileSidebarDrawer = ({
               const lessonStyle = getLessonStyle(lesson, isActive);
 
               return (
-                <button
+                <div
                   key={lesson.id}
                   onClick={() => {
                     handleSelectLesson(lesson.id);
-                    setIsSidebarOpen(false);
+                    onClose();
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleSelectLesson(lesson.id);
+                      onClose();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isActive ? 'step' : undefined}
                   style={{
                     ...lessonStyle,
                   }}
-                  className={`flex items-start px-3.5 py-3 transition-colors cursor-pointer rounded-lg border-l-4 ${isSub ? 'ml-4 border-dashed' : 'border-transparent'} hover:opacity-90`}
+                  className={`lesson-drawer-item flex items-start px-3.5 py-3 transition-colors cursor-pointer rounded-lg border ${isSub ? 'ml-4 border-dashed' : 'border-transparent'} hover:opacity-90`}
                 >
                   <button
                     type="button"
@@ -104,7 +114,7 @@ const MobileSidebarDrawer = ({
                       </span>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -114,14 +124,15 @@ const MobileSidebarDrawer = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-labelledby="sidebar-title">
+    <div className="lesson-drawer fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-labelledby="sidebar-title">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full max-w-sm bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-slide-in-right" style={{ backgroundColor: 'var(--card-bg)' }}>
+      <div className="lesson-drawer__panel absolute right-0 top-0 h-full w-full max-w-sm bg-white dark:bg-slate-900 shadow-2xl flex flex-col animate-slide-in-right" style={{ backgroundColor: 'var(--card-bg)' }}>
         <div className="flex items-center justify-between p-4 border-b sticky top-0 z-10" style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}>
           <h2 id="sidebar-title" className="font-bold text-lg" style={{ color: 'var(--text-color)' }}>Danh sách bài học</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="touch-target p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Đóng danh sách bài học"
           >
             <FiX className="text-xl" />

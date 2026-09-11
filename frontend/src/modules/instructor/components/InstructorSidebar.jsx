@@ -76,14 +76,14 @@ const InstructorSidebar = ({
       aria-label="Instructor Sidebar"
     >
       {/* Brand Header */}
-      <div className="px-2 pt-1 pb-3.5">
+      <div className="instructor-sidebar-brand px-2 pt-1 pb-3.5">
         <h2 className="text-[17px] font-bold tracking-tight text-blue-600 dark:text-[#2997FF] flex items-center gap-2">
           Instructor Hub
         </h2>
       </div>
 
       {/* ── Status & Notifications Area (The fix) ────────────────────── */}
-      <div className="flex flex-col gap-2.5 mb-5 px-1">
+      <div className="instructor-sidebar-status flex flex-col gap-2.5 mb-5 px-1">
         {/* 1. "Disconnected" Status: Minimal, sleek pill-shaped badge */}
         <div className="flex items-center">
           <div 
@@ -160,7 +160,7 @@ const InstructorSidebar = ({
       </div>
 
       {/* ── Navigation List ────────────────────────────────────────── */}
-      <nav className="flex flex-col gap-1 w-full" aria-label="Instructor Sections">
+      <nav className="instructor-role-nav flex flex-col gap-1 w-full" aria-label="Các khu vực quản lý giảng viên">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -170,7 +170,7 @@ const InstructorSidebar = ({
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id)}
-              className={`group flex items-center justify-between w-full px-3.5 py-2.5 rounded-[12px] 
+              className={`instructor-role-nav__item group flex items-center justify-between w-full px-3.5 py-2.5 rounded-[12px]
                          text-[13.5px] font-medium tracking-[-0.01em] transition-all duration-150 
                          active:scale-[0.98] cursor-pointer ${
                 isActive

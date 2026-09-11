@@ -1407,7 +1407,7 @@ const CourseEditor = () => {
     <div className="instructor-page">
       <Header />
       
-      <main className="instructor-container editor-mode" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '30px' }}>
+      <main className="instructor-container editor-mode course-editor-grid">
         {/* Left Navigation Sidebar */}
         <div className="editor-sidebar">
           <button className="btn-back" onClick={() => navigate('/instructor/dashboard')}>
@@ -1508,7 +1508,7 @@ const CourseEditor = () => {
             }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px' }} className="form-section-title">Thông tin khóa học cơ bản</h2>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+              <div className="course-basic-grid" style={{ marginBottom: '20px' }}>
                 <div>
                   <label className="form-group-label" style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Tên khóa học *</label>
                   <input 
@@ -1554,7 +1554,7 @@ const CourseEditor = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="course-basic-grid">
                 <div>
                   <label className="form-group-label" style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px' }}>Ngày khai giảng</label>
                   <SingleDatePicker 
@@ -1654,7 +1654,7 @@ const CourseEditor = () => {
                             <div className="card-top-actions">
                               {lesson.type === 'youtube' ? (
                                 <div className="youtube-url-input-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <div style={{
+                                  <div className="youtube-url-field" style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '8px',
@@ -1795,8 +1795,7 @@ const CourseEditor = () => {
                                   width: `${lesson.uploadProgress || 0}%`,
                                   height: '100%',
                                   background: '#2563eb',
-                                  borderRadius: '4px',
-                                  transition: 'width 0.3s ease'
+                                  borderRadius: '4px'
                                 }} />
                               </div>
                               <span style={{ fontSize: '11px', color: 'var(--text-light, #64748b)', marginTop: '2px', display: 'block' }}>

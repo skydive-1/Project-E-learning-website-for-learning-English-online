@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { FiHome, FiBook, FiBookmark, FiAward, FiUser, FiCompass, FiLogIn, FiMessageCircle, FiBell } from 'react-icons/fi';
+import { FiHome, FiBook, FiBookmark, FiUser, FiCompass, FiLogIn, FiGrid, FiEdit3 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -55,30 +55,45 @@ const MobileBottomNav = () => {
     return null;
   }
 
+  const userRoleId = Number.parseInt(user?.roleId || user?.role_id || user?.role, 10);
+  const workspaceItem = userRoleId === 1
+    ? {
+        to: '/admin/dashboard',
+        label: t('adminDashboard') || 'Vận hành',
+        icon: <FiGrid aria-hidden="true" />,
+      }
+    : userRoleId === 2
+      ? {
+          to: '/instructor/dashboard',
+          label: t('instructorDashboard') || 'Giảng dạy',
+          icon: <FiEdit3 aria-hidden="true" />,
+        }
+      : {
+          to: '/my-courses',
+          label: t('myCourses') || t('my_courses') || 'Khóa của tôi',
+          icon: <FiBookmark aria-hidden="true" />,
+          badge: unreadCounts.discussions > 0 ? unreadCounts.discussions : null,
+        };
+
   const loggedInNavItems = [
     {
       to: '/',
       label: t('home') || 'Trang chủ',
-      icon: <FiHome className="text-lg" />,
+      icon: <FiHome aria-hidden="true" />,
       badge: null
     },
     {
       to: '/courses',
       state: { activeHubTab: 'course' },
       label: t('learn') || 'Học tập',
-      icon: <FiBook className="text-lg" />,
+      icon: <FiBook aria-hidden="true" />,
       badge: null
     },
-    {
-      to: '/my-courses',
-      label: t('my_courses') || 'Của tôi',
-      icon: <FiBookmark className="text-lg" />,
-      badge: unreadCounts.discussions > 0 ? unreadCounts.discussions : null
-    },
+    workspaceItem,
     {
       to: '/profile',
       label: t('profile') || 'Cá nhân',
-      icon: <FiUser className="text-lg" />,
+      icon: <FiUser aria-hidden="true" />,
       badge: unreadCounts.notifications > 0 ? unreadCounts.notifications : null
     }
   ];
@@ -87,26 +102,26 @@ const MobileBottomNav = () => {
     {
       to: '/',
       label: t('home') || 'Trang chủ',
-      icon: <FiHome className="text-lg" />,
+      icon: <FiHome aria-hidden="true" />,
       badge: null
     },
     {
       to: '/courses',
       state: { activeHubTab: 'course' },
       label: t('learn') || 'Học tập',
-      icon: <FiBook className="text-lg" />,
+      icon: <FiBook aria-hidden="true" />,
       badge: null
     },
     {
       to: '/academy',
       label: t('roadmap') || 'Lộ trình',
-      icon: <FiCompass className="text-lg" />,
+      icon: <FiCompass aria-hidden="true" />,
       badge: null
     },
     {
       to: '/login',
       label: t('login') || 'Đăng nhập',
-      icon: <FiLogIn className="text-lg" />,
+      icon: <FiLogIn aria-hidden="true" />,
       badge: null
     }
   ];
@@ -114,43 +129,33 @@ const MobileBottomNav = () => {
   const navItems = user ? loggedInNavItems : guestNavItems;
 
   return (
-    <nav 
+    <nav
       aria-label="Mobile Navigation Bar"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-800 text-slate-400 shadow-2xl transition-all duration-300"
-      style={{
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-      }}
+      className="mobile-bottom-nav md:hidden"
+      data-role={userRoleId === 1 ? 'admin' : userRoleId === 2 ? 'instructor' : 'student'}
     >
-      <div className="flex items-center justify-around h-16 px-1 max-w-lg mx-auto">
-        {navItems.map((item, idx) => (
+      <div className="mobile-bottom-nav__inner">
+        {navItems.map((item) => (
           <NavLink
-            key={idx}
+            key={item.to}
             to={item.to}
             state={item.state}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center flex-1 h-full min-w-[48px] min-h-[44px] px-1 py-1 transition-all duration-200 cursor-pointer ${
-                isActive
-                  ? 'text-indigo-400 font-semibold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`
+              `mobile-bottom-nav__item ${isActive ? 'is-active' : ''}`
             }
           >
             {({ isActive }) => (
               <>
-                <div className="relative p-1 rounded-lg transition-transform duration-200">
-                  {({ isActive }) => (
-                    <div className={`transition-transform duration-200 ${isActive ? 'scale-110 bg-indigo-500/20 text-indigo-400' : ''}`}>
-                      {item.icon}
-                    </div>
-                  )}
+                <span className={`mobile-bottom-nav__icon ${isActive ? 'is-active' : ''}`}>
+                  {item.icon}
                   {item.badge && item.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 min-w-[18px] bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-slate-900 dark:border-slate-950">
+                    <span className="mobile-bottom-nav__badge" aria-label={`${item.badge} thông báo chưa đọc`}>
                       {item.badge > 9 ? '9+' : item.badge}
                     </span>
                   )}
-                </div>
-                <span className="text-[10px] tracking-tight truncate max-w-[60px] mt-0.5">
+                </span>
+                <span className="mobile-bottom-nav__label">
                   {item.label}
                 </span>
               </>

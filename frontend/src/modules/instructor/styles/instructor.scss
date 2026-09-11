@@ -533,9 +533,8 @@ $border-light: var(--border-color, #e2e8f0);
       display: flex;
       align-items: center;
       gap: 10px;
-      transition: all 0.15s ease;
+      transition: background-color 0.15s ease, color 0.15s ease;
       color: $text-muted;
-      border-left: 3px solid transparent;
 
       .hub-tab-icon {
         font-size: 16px;
@@ -550,7 +549,6 @@ $border-light: var(--border-color, #e2e8f0);
       &.active {
         background: rgba(37, 99, 235, 0.08);
         color: $primary-blue;
-        border-left: 3px solid $primary-blue;
         font-weight: 700;
       }
 
@@ -2935,6 +2933,399 @@ html.dark {
     button {
       justify-content: center;
       width: 100%;
+    }
+  }
+}
+
+// ============================================================================
+// Responsive operating shell — instructor dashboard and course authoring
+// ============================================================================
+.instructor-page {
+  .instructor-content {
+    min-width: 0;
+  }
+
+  .course-editor-grid {
+    display: grid;
+    grid-template-columns: minmax(15rem, 17.5rem) minmax(0, 1fr);
+    gap: clamp(1.25rem, 2.5vw, 2rem);
+  }
+
+  .course-basic-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .instructor-page {
+    .instructor-container {
+      width: 100%;
+      max-width: none;
+      padding: 1rem var(--app-gutter, 1rem) 2rem;
+      gap: 1rem;
+    }
+
+    .instructor-sidebar-apple {
+      position: sticky;
+      top: calc(var(--app-header-height, 5rem) + 0.5rem);
+      z-index: 20;
+      width: 100% !important;
+      max-width: 100%;
+      padding: 0.65rem !important;
+      border-radius: 0.875rem !important;
+    }
+
+    .instructor-sidebar-brand {
+      display: none;
+    }
+
+    .instructor-sidebar-status {
+      margin-bottom: 0.6rem !important;
+      flex-direction: row !important;
+      align-items: center;
+      overflow-x: auto;
+    }
+
+    .instructor-role-nav {
+      flex-direction: row !important;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scrollbar-width: none;
+    }
+
+    .instructor-role-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .instructor-role-nav__item {
+      width: auto !important;
+      min-width: max-content;
+      min-height: 2.75rem;
+      flex: 0 0 auto;
+    }
+
+    .course-editor-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .editor-sidebar {
+      width: 100%;
+      gap: 0.75rem;
+    }
+
+    .course-nav-guide {
+      position: sticky;
+      top: calc(var(--app-header-height, 5rem) + 0.5rem);
+      z-index: 18;
+      padding: 0.65rem;
+
+      .hub-title {
+        display: none;
+      }
+
+      .hub-nav-list {
+        flex-direction: row;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+        scrollbar-width: none;
+      }
+
+      .hub-nav-list::-webkit-scrollbar {
+        display: none;
+      }
+
+      .hub-nav-item {
+        min-width: max-content;
+        min-height: 2.75rem;
+        border-left: 0;
+      }
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .instructor-page {
+    min-height: 100dvh;
+
+    .instructor-container {
+      margin-top: var(--app-header-height, 5rem);
+      padding: 0.75rem 0.75rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .instructor-sidebar-apple {
+      top: calc(var(--app-header-height, 5rem) + 0.25rem);
+    }
+
+    .instructor-sidebar-status {
+      display: none;
+    }
+
+    .instructor-content .content-header {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 1rem;
+
+      h1 {
+        font-size: clamp(1.35rem, 7vw, 1.75rem);
+        text-wrap: balance;
+      }
+
+      p {
+        max-width: 65ch;
+        font-size: 0.875rem;
+        line-height: 1.55;
+      }
+
+      .header-actions,
+      .btn-create-course {
+        width: 100%;
+      }
+
+      .header-actions > button,
+      .btn-create-course {
+        min-height: 2.75rem;
+        flex: 1;
+        justify-content: center;
+      }
+    }
+
+    .stats-overview {
+      grid-template-columns: repeat(3, minmax(8.75rem, 1fr));
+      gap: 0.75rem;
+      margin-inline: -0.75rem;
+      padding-inline: 0.75rem;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scroll-snap-type: inline proximity;
+
+      .stat-card {
+        min-height: 7.5rem;
+        padding: 1rem;
+        scroll-snap-align: start;
+      }
+    }
+
+    .filter-bar {
+      align-items: stretch;
+      flex-direction: column;
+
+      .search-input-wrapper,
+      .filter-select {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        min-height: 2.75rem;
+      }
+    }
+
+    .course-list-table-wrapper {
+      overflow: visible;
+      border: 0;
+      background: transparent;
+    }
+
+    .course-list-table {
+      display: block;
+
+      thead {
+        display: none;
+      }
+
+      tbody {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      tr {
+        display: grid;
+        padding: 0.4rem 1rem;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 0.875rem;
+        background: var(--card-bg, #fff);
+      }
+
+      td {
+        min-width: 0;
+        padding: 0.7rem 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        text-align: right;
+      }
+
+      td:last-child {
+        border-bottom: 0;
+      }
+
+      td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        color: var(--text-muted, #64748b);
+        font-size: 0.7rem;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      td[data-label="Khóa học"],
+      td[data-label="Học viên"] {
+        align-items: flex-start;
+        flex-direction: column;
+        text-align: left;
+      }
+
+      .course-info-cell,
+      .student-info-cell {
+        width: 100%;
+      }
+
+      .course-details,
+      .student-meta {
+        min-width: 0;
+      }
+
+      .course-name,
+      .student-name,
+      .student-username {
+        overflow-wrap: anywhere;
+      }
+
+      .actions-cell {
+        min-height: 3.75rem;
+
+        .action-btn {
+          width: 2.75rem;
+          height: 2.75rem;
+        }
+      }
+
+      .progress-bar-container {
+        width: min(9rem, 42vw);
+      }
+    }
+
+    .course-basic-form {
+      padding: 1rem !important;
+      margin-bottom: 1rem !important;
+    }
+
+    .course-basic-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1rem;
+    }
+
+    .editor-mode .content-header {
+      position: sticky;
+      top: calc(var(--app-header-height, 5rem) + 4.5rem);
+      z-index: 16;
+      margin-inline: -0.25rem;
+      padding: 0.75rem;
+      border: 1px solid var(--border-color, #e2e8f0);
+      border-radius: 0.875rem;
+      background: var(--card-bg, #fff);
+    }
+
+    .section-container {
+      padding: 0.75rem;
+    }
+
+    .section-header-edit,
+    .materials-panel-header,
+    .staged-material-card,
+    .material-item-row,
+    .quizzes-hub-header,
+    .quiz-lesson-row {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .section-header-edit .title-area,
+    .section-header-edit .title-area input,
+    .card-top-actions,
+    .youtube-url-input-group,
+    .youtube-url-field,
+    .materials-header-actions,
+    .staged-material-actions,
+    .material-item-actions,
+    .hub-header-actions,
+    .actions-group {
+      width: 100%;
+      min-width: 0 !important;
+    }
+
+    .card-top-row {
+      grid-template-columns: minmax(0, 1fr) !important;
+      align-items: stretch;
+      gap: 0.75rem;
+    }
+
+    .card-top-actions,
+    .youtube-url-input-group,
+    .materials-header-actions,
+    .staged-material-actions,
+    .material-item-actions,
+    .hub-header-actions,
+    .actions-group {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .youtube-url-input-group {
+      align-items: stretch !important;
+      flex-direction: column;
+    }
+
+    .youtube-url-field {
+      min-height: 2.75rem;
+    }
+
+    .card-top-actions button,
+    .materials-header-actions button,
+    .staged-material-actions button,
+    .material-item-actions button,
+    .hub-header-actions button,
+    .actions-group button,
+    .btn-add-lesson,
+    .btn-add-section {
+      min-height: 2.75rem;
+    }
+
+    .quizzes-filter-bar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .search-box-wrapper {
+      width: 100%;
+      max-width: none;
+    }
+  }
+}
+
+@media (max-width: 420px) {
+  .instructor-page {
+    .instructor-content .content-header .header-actions,
+    .card-top-actions,
+    .materials-header-actions,
+    .staged-material-actions,
+    .hub-header-actions,
+    .actions-group {
+      flex-direction: column;
+    }
+
+    .instructor-content .content-header .header-actions > button,
+    .card-top-actions > button,
+    .materials-header-actions > button,
+    .staged-material-actions > button,
+    .hub-header-actions > button,
+    .actions-group > button {
+      width: 100%;
+      justify-content: center;
     }
   }
 }

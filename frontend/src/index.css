@@ -18,6 +18,11 @@
 :root {
   --font-heading: 'Outfit', 'Plus Jakarta Sans', sans-serif;
   --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --app-header-height: calc(4.25rem + env(safe-area-inset-top, 0px));
+  --app-bottom-nav-height: 4.25rem;
+  --app-content-max: 87.5rem;
+  --app-gutter: clamp(1rem, 3vw, 2rem);
+  --touch-target: 2.75rem;
 
   /* Smart Indigo (primary) + Friendly Orange (secondary) */
   --primary: #1d4ed8; /* Smart Indigo */
@@ -85,6 +90,8 @@ html.dark {
 
 body {
   margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -103,6 +110,19 @@ h1, h2, h3, h4, h5, h6 {
 #root, main, .app-container {
   overflow-x: clip;
   width: 100%;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+button, a, input, select, textarea, [tabindex]:not([tabindex="-1"]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring, #1d4ed8) 32%, transparent);
+  outline-offset: 2px;
 }
 
 code {
@@ -273,7 +293,11 @@ body {
 /* Ensure mobile pages have space above Bottom Navigation */
 @media (max-width: 768px) {
   #root {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  input, select, textarea {
+    font-size: 16px;
   }
 }
 
@@ -293,6 +317,108 @@ body {
 
 .safe-pt {
   padding-top: env(safe-area-inset-top, 16px);
+}
+
+/* Role-aware mobile taskbar: primary destinations stay within thumb reach. */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-bottom-nav {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    display: block;
+    padding: 0 max(0.35rem, env(safe-area-inset-right)) env(safe-area-inset-bottom, 0px) max(0.35rem, env(safe-area-inset-left));
+    border-top: 1px solid var(--border-color, #e2e8f0);
+    background: color-mix(in srgb, var(--card-bg, #fff) 94%, transparent);
+    box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .mobile-bottom-nav__inner {
+    width: min(100%, 32rem);
+    min-height: var(--app-bottom-nav-height);
+    margin-inline: auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .mobile-bottom-nav__item {
+    min-width: 0;
+    min-height: var(--touch-target);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    border-radius: 0.75rem;
+    color: var(--text-muted, #64748b);
+    text-decoration: none;
+    transition: color 160ms ease-out, background-color 160ms ease-out, transform 160ms ease-out;
+  }
+
+  .mobile-bottom-nav__item.is-active {
+    color: var(--primary, #1d4ed8);
+  }
+
+  .mobile-bottom-nav__item:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  .mobile-bottom-nav__icon {
+    position: relative;
+    width: 2.25rem;
+    height: 1.75rem;
+    display: grid;
+    place-items: center;
+    border-radius: 0.625rem;
+    font-size: 1.15rem;
+  }
+
+  .mobile-bottom-nav__icon.is-active {
+    background: color-mix(in srgb, var(--primary, #1d4ed8) 12%, transparent);
+  }
+
+  .mobile-bottom-nav__badge {
+    position: absolute;
+    top: -0.3rem;
+    right: -0.25rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding-inline: 0.25rem;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--card-bg, #fff);
+    border-radius: 999px;
+    background: var(--destructive, #dc2626);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .mobile-bottom-nav__label {
+    width: min(100%, 4.75rem);
+    overflow: hidden;
+    color: currentColor;
+    font-size: 0.67rem;
+    font-weight: 650;
+    line-height: 1.1;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (pointer: coarse) {
+  :where(button, [role="button"], nav a, select) {
+    min-height: var(--touch-target);
+  }
 }
 
 /* Fade in animation for PWA notifications */
