@@ -416,6 +416,14 @@ class LessonsService {
         ingestPdfDocument(cleanLessonId, material.material_id, file.originalname, extractedText).catch(ragErr => {
           console.error(`[RAG Ingestion] Lỗi nạp vector tài liệu ${material.material_id}:`, ragErr.message);
         });
+
+        // Tự động sinh câu hỏi gợi ý từ tài liệu bài học nếu bài học chưa có câu hỏi video
+        try {
+          const { generateQuestionsFromMaterialIfNeeded } = require('./suggestedQuestions.service');
+          generateQuestionsFromMaterialIfNeeded(cleanLessonId, extractedText, file.originalname).catch(matErr => {
+            console.warn(`[Material AI Questions] Lỗi sinh câu hỏi từ tài liệu ${cleanLessonId}:`, matErr.message);
+          });
+        } catch (_) {}
       }
 
       return material;

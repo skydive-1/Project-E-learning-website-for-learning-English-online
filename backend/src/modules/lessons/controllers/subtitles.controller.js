@@ -110,6 +110,13 @@ exports.updateSubtitles = async (req, res, next) => {
     // Đồng bộ transcript và xóa vector cũ nếu phụ đề bị làm rỗng.
     if (cues && Array.isArray(cues) && cues.length > 0) {
       await ingestLessonTranscript(lessonId, cues);
+      // Tự động sinh câu hỏi gợi ý khi admin/giảng viên lưu phụ đề
+      try {
+        const { generateAndSaveSuggestedQuestions } = require('../services/suggestedQuestions.service');
+        generateAndSaveSuggestedQuestions(lessonId, cues).catch(err => {
+          console.warn(`[Subtitles AI Questions] Lỗi sinh câu hỏi cho lessonId=${lessonId}:`, err.message);
+        });
+      } catch (_) {}
     } else {
       await deleteLessonVectors(lessonId, 'auto-subtitle-transcript');
     }

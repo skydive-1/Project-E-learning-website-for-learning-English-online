@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
-import Footer from '../../../components/common/Footer';
 import { useLanguage } from '../../../context/LanguageContext';
 import { 
   FiBookOpen, 
@@ -205,6 +204,7 @@ const CourseListPage = () => {
     if (clean.includes('toeic')) return '2';
     if (clean.includes('business') || clean.includes('thương mại')) return '3';
     if (clean.includes('general') || clean.includes('giao tiếp') || clean.includes('phản xạ')) return '4';
+    if (clean.includes('grammar') || clean.includes('essential') || clean.includes('basic') || clean.includes('cơ bản')) return '5';
     const found = dbSubjects.find(s => 
       String(s.subject_id) === clean || 
       (s.subject_name && s.subject_name.toLowerCase() === clean)
@@ -273,7 +273,8 @@ const CourseListPage = () => {
             (selectedSubject === '1' && c.subject_name.toLowerCase().includes('ielts')) ||
             (selectedSubject === '2' && c.subject_name.toLowerCase().includes('toeic')) ||
             (selectedSubject === '3' && (c.subject_name.toLowerCase().includes('business') || c.subject_name.toLowerCase().includes('thương mại'))) ||
-            (selectedSubject === '4' && (c.subject_name.toLowerCase().includes('general') || c.subject_name.toLowerCase().includes('giao tiếp')))
+            (selectedSubject === '4' && (c.subject_name.toLowerCase().includes('general') || c.subject_name.toLowerCase().includes('giao tiếp'))) ||
+            (selectedSubject === '5' && (c.subject_name.toLowerCase().includes('grammar') || c.subject_name.toLowerCase().includes('essential') || c.subject_name.toLowerCase().includes('basic') || c.subject_name.toLowerCase().includes('cơ bản')))
           ));
       }
 
@@ -633,8 +634,6 @@ const CourseListPage = () => {
         isOpen={isHowItWorksOpen}
         onClose={() => setIsHowItWorksOpen(false)}
       />
-
-      <Footer />
     </div>
   );
 };

@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import AnimatedStatNumber from '../../../components/common/AnimatedStatNumber';
-import Footer from '../../../components/common/Footer';
 import { getCourseDetails } from '../../lessons/services/lessons.service';
 import { useLanguage } from '../../../context/LanguageContext';
 import { 
@@ -479,8 +478,6 @@ const MyCoursesPage = () => {
 
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 };

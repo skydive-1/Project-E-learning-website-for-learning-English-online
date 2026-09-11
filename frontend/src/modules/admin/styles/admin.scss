@@ -2,8 +2,10 @@
   min-height: 100vh;
   background-color: var(--bg-color);
   color: var(--text-color);
-  padding: 105px 20px 50px 20px;
+  padding: 105px 20px 60px 20px;
   font-family: 'Outfit', sans-serif;
+  display: flex;
+  flex-direction: column;
 
   tr.alert-target-row > td {
     background: rgba(245, 158, 11, 0.1);
@@ -21,6 +23,8 @@
   .admin-container {
     max-width: 1200px;
     margin: 0 auto;
+    width: 100%;
+    flex: 1;
   }
 
   .admin-header {

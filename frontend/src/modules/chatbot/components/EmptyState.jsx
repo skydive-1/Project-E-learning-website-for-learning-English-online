@@ -12,7 +12,16 @@ const LEGACY_QUESTION_PATTERNS = [
   /Bài này có những ý chính nào/i,
   /Khái niệm nào cần ghi nhớ/i,
   /Từ nào xuất hiện trong bài/i,
-  /Kiểm tra nhanh kiến thức bài này/i
+  /Kiểm tra nhanh kiến thức bài này/i,
+  /Giáo viên giải thích gì về/i,
+  /Bài giảng nêu điểm nào liên quan đến/i,
+  /Nội dung về .* được trình bày như thế nào/i,
+  /Bài giảng nhấn mạnh điều gì khi nói về/i,
+  /Nội dung cốt lõi của/i,
+  /Định nghĩa và nguyên lý của/i,
+  /Ví dụ minh họa tiêu biểu cho/i,
+  /Cách áp dụng .* trong giao tiếp thực tế/i,
+  /“(con|thì|chúng|người|mình|nhà|câu|tôi|bạn|hai|phân|thư|phát|sinh|nguy|vựng|sound)”/i
 ];
 
 const normalizeLessonQuestions = (questions) => {
@@ -73,6 +82,9 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
         return;
       }
       if (normalizedQuestions.length !== 4) {
+        if (!forceRefresh) {
+          return loadSuggestedQuestions(true);
+        }
         throw new Error('Máy chủ không trả về đủ bốn câu hỏi bám theo nội dung bài học.');
       }
       setSuggestedQuestions(normalizedQuestions);

@@ -1098,6 +1098,16 @@ ${JSON.stringify(translationInput)}
         );
       }
 
+      // Tự động sinh và lưu 4 câu hỏi gợi ý bám sát 100% video cho học viên
+      try {
+        const { generateAndSaveSuggestedQuestions } = require('./suggestedQuestions.service');
+        await generateAndSaveSuggestedQuestions(lessonId, generatedCues);
+      } catch (suggestErr) {
+        console.warn(
+          `[Subtitles AI Questions] ⚠️ Lỗi sinh câu hỏi gợi ý cho lessonId=${lessonId}: ${suggestErr.message}`
+        );
+      }
+
       return savedResult;
     } catch (pipelineErr) {
       // Chỉ job của đúng source được phép ghi failed; job cũ không
