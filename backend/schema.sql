@@ -155,8 +155,8 @@ CREATE TABLE IF NOT EXISTS quizzes (
   description TEXT,
   difficulty VARCHAR(50) DEFAULT 'Medium',
   time_limit INT DEFAULT 10,
-  is_private BOOLEAN DEFAULT FALSE,     -- Quiz ?n/c�ng khai
-  pin_code VARCHAR(20) DEFAULT NULL,    -- M? PIN ?? v�o quiz private
+  is_private BOOLEAN DEFAULT FALSE,     -- Quiz ẩn hoặc công khai
+  pin_code VARCHAR(20) DEFAULT NULL,    -- Mã PIN để vào quiz private
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_quiz_course FOREIGN KEY (course_id) REFERENCES courses(course_id) ON DELETE CASCADE,
@@ -182,10 +182,11 @@ CREATE TABLE IF NOT EXISTS questions (
 -- 10. Tạo bảng Quiz Attempts (Lịch sử làm bài trắc nghiệm)
 CREATE TABLE IF NOT EXISTS quiz_attempts (
   attempt_id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL,
+  user_id INT, -- Cho phép NULL đối với học viên vãng lai làm bài tự do
   quiz_id INT NOT NULL,
   score INT NOT NULL, -- Điểm số (0 - 100)
   completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  nickname VARCHAR(100),
   CONSTRAINT fk_attempt_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
   CONSTRAINT fk_attempt_quiz FOREIGN KEY (quiz_id) REFERENCES quizzes(quiz_id) ON DELETE CASCADE
 );

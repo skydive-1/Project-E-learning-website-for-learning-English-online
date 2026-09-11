@@ -21,6 +21,7 @@ describe('=== Admin Role-Based Authorization Test Suite (No Email Hardcoding) ==
   let server;
   let baseUrl;
   let originalQuery;
+  let originalPoolQuery;
   let originalJwtSecret;
 
   const mockUsers = [
@@ -31,11 +32,12 @@ describe('=== Admin Role-Based Authorization Test Suite (No Email Hardcoding) ==
 
   before(async () => {
     originalQuery = db.query;
+    originalPoolQuery = db.pool.query;
     originalJwtSecret = process.env.JWT_SECRET;
     process.env.JWT_SECRET = 'test-secret-key-admin-role-auth';
 
-    db.query = async (sqlText, params = []) => {
-      const cleanSql = sqlText.trim();
+    const mockQuery = async (sqlText, params = []) => {
+      const cleanSql = sqlText.replace(/\s+/g, ' ').trim();
       if (cleanSql.includes('FROM users WHERE user_id = $1 OR email = $2')) {
         const [userId, email] = params;
         const user = mockUsers.find((u) => u.user_id === Number(userId) || u.email === email);
@@ -51,6 +53,12 @@ describe('=== Admin Role-Based Authorization Test Suite (No Email Hardcoding) ==
       }
       return { rows: [] };
     };
+
+    // Auth middleware calls db.query, while admin.service destructures and calls
+    // db.pool.query. Mock both entry points so this suite never reaches a real
+    // PostgreSQL instance (GitHub Actions intentionally has no backend/.env).
+    db.query = mockQuery;
+    db.pool.query = mockQuery;
 
     const app = express();
     app.use(express.json());
@@ -69,6 +77,7 @@ describe('=== Admin Role-Based Authorization Test Suite (No Email Hardcoding) ==
 
   after(async () => {
     db.query = originalQuery;
+    db.pool.query = originalPoolQuery;
     process.env.JWT_SECRET = originalJwtSecret;
     if (server) {
       await new Promise((resolve) => server.close(resolve));
