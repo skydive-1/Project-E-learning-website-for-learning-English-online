@@ -17,10 +17,10 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
       - run: npm ci
       - run: npm run lint --if-present
-      - run: npm test --if-present -- --watchAll=false
+      - run: npm test
 
   backend:
     runs-on: ubuntu-latest
@@ -32,6 +32,6 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
       - run: npm ci
-      - run: npm test --if-present -- --runInBand
+      - run: npm test

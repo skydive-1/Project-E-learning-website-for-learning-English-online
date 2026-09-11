@@ -325,45 +325,26 @@ function normalizeSuggestedItems(items = [], transcriptText = '') {
  * @param {string} courseName 
  * @param {string} sourceText 
  * @param {string} sectionTitle 
- * @returns {Array<string>} 4 câu hỏi gợi ý
+ * @returns {Array<string>} 4 câu hỏi bám sát transcript, hoặc mảng rỗng nếu không có căn cứ
  */
 function getFallbackSuggestedQuestions(lessonTitle = '', courseName = '', sourceText = '', sectionTitle = '') {
   const groundedTerms = extractGroundedTerms(sourceText, QUESTION_COUNT);
-  const cleanLesson = (lessonTitle || '').trim().replace(/[.:!?]+$/, '');
+  if (groundedTerms.length === 0) return [];
 
-  if (groundedTerms.length > 0) {
-    const templates = [
-      term => /^[a-zA-Z]{3,}$/.test(term)
-        ? `Từ vựng “${term}” trong bài giảng mang ý nghĩa gì?`
-        : `Trọng tâm và ví dụ chính về “${term}” trong bài là gì?`,
-      term => /^[a-zA-Z]{3,}$/.test(term)
-        ? `Giáo viên hướng dẫn cách dùng “${term}” như thế nào?`
-        : `Điểm then chốt cần chú ý liên quan đến “${term}” là gì?`,
-      term => `Ngữ cảnh và ví dụ xuất hiện của “${term}” trong bài là gì?`,
-      term => `Nội dung bài giảng hướng dẫn ứng dụng “${term}” ra sao?`
-    ];
-
-    return templates.slice(0, QUESTION_COUNT).map((template, index) =>
-      template(groundedTerms[index % groundedTerms.length])
-    );
-  }
-
-  // Nếu transcript chưa có từ khóa đặc thù, sinh câu hỏi dựa trên tiêu đề bài học
-  if (cleanLesson && cleanLesson.length >= 3 && !/bai hoc moi/i.test(cleanLesson)) {
-    return [
-      `Điểm trọng tâm cần nắm vững trong bài “${cleanLesson}” là gì?`,
-      `Giáo viên đưa ra những ví dụ minh họa tiêu biểu nào trong bài học này?`,
-      `Cách áp dụng kiến thức của bài “${cleanLesson}” vào thực tế ra sao?`,
-      `Những lưu ý quan trọng để hiểu sâu và ghi nhớ bài “${cleanLesson}”?`
-    ];
-  }
-
-  return [
-    `Khái niệm và quy tắc trọng tâm được giảng trong video là gì?`,
-    `Những ví dụ cụ thể nào được giáo viên phân tích trong bài?`,
-    `Cách vận dụng các mẫu câu và từ vựng trong bài vào thực hành?`,
-    `Tóm tắt những điểm cần lưu ý nhất khi theo dõi bài giảng này?`
+  const templates = [
+    term => /^[a-zA-Z]{3,}$/.test(term)
+      ? `Từ vựng “${term}” trong bài giảng mang ý nghĩa gì?`
+      : `Trọng tâm và ví dụ chính về “${term}” trong bài là gì?`,
+    term => /^[a-zA-Z]{3,}$/.test(term)
+      ? `Giáo viên hướng dẫn cách dùng “${term}” như thế nào?`
+      : `Điểm then chốt cần chú ý liên quan đến “${term}” là gì?`,
+    term => `Ngữ cảnh và ví dụ xuất hiện của “${term}” trong bài là gì?`,
+    term => `Nội dung bài giảng hướng dẫn ứng dụng “${term}” ra sao?`
   ];
+
+  return templates.slice(0, QUESTION_COUNT).map((template, index) =>
+    template(groundedTerms[index % groundedTerms.length])
+  );
 }
 
 /**

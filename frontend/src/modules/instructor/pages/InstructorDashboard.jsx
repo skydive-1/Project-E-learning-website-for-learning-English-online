@@ -683,12 +683,6 @@ const InstructorDashboard = () => {
                       <FiBook />
                     </div>
                     <h3 className="empty-title">Chưa có khóa học nào được tạo</h3>
-                    <p className="empty-desc">
-                      Bắt đầu xây dựng giáo trình đầu tiên để chia sẻ kiến thức và quản lý học viên.
-                    </p>
-                    <button className="btn-create-course" onClick={() => navigate('/instructor/create-course')}>
-                      <FiPlus /> Tạo khóa học đầu tiên
-                    </button>
                   </div>
                 ) : (
                   <table className="course-list-table">
