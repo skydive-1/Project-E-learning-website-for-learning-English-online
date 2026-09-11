@@ -1051,6 +1051,21 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     setReloadKey(prev => prev + 1);
   };
 
+  // 🛡️ Watchdog Timer: Chống đứng loading vô hạn nếu kết nối mạng chậm hoặc trình duyệt bị treo khi buffering
+  useEffect(() => {
+    if (!videoLoading) return;
+    const watchdogTimer = setTimeout(() => {
+      if (videoLoading && !videoError) {
+        setVideoLoading(false);
+        setVideoError({
+          code: 'TIMEOUT',
+          message: 'Video tải chậm hơn dự kiến do kết nối mạng không ổn định hoặc sự cố giải mã luồng phát.'
+        });
+      }
+    }, 15000);
+    return () => clearTimeout(watchdogTimer);
+  }, [videoLoading, videoError]);
+
   // Single-flight DASH ticket renewal refs
   const activeDashTicketRef = useRef(null);
   const renewalTimerRef = useRef(null);
@@ -1144,7 +1159,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
         if (!shakaPlayerRef.current && videoRef.current) {
           const shaka = await loadShakaPlayer();
-          const player = new shaka.Player(videoRef.current);
+          const player = new shaka.Player();
+          await player.attach(videoRef.current);
           shakaPlayerRef.current = player;
           shakaAttachedToRef.current = videoRef.current;
 
@@ -1175,13 +1191,24 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
             const detail = event?.detail || event;
             const serialized = JSON.stringify(detail || {});
             const isAuthError = /\b(401|403)\b/.test(serialized);
-            if (!isAuthError || authRetryCount >= 1 || !active) return;
-            authRetryCount++;
-            fetchOrRenewTicket().then(newTicket => {
-              if (newTicket && active && dashGenerationRef.current === dashGeneration) {
-                player.retryStreaming?.();
-              }
-            }).catch(() => {});
+            if (isAuthError && authRetryCount < 1 && active) {
+              authRetryCount++;
+              fetchOrRenewTicket().then(newTicket => {
+                if (newTicket && active && dashGenerationRef.current === dashGeneration) {
+                  player.retryStreaming?.();
+                }
+              }).catch(() => {});
+              return;
+            }
+            if (!active) return;
+            console.warn('⚠️ [Shaka Streaming Error]:', detail);
+            setVideoLoading(false);
+            setVideoError({
+              code: detail?.code || 4,
+              message: isAuthError
+                ? 'Không có quyền truy cập luồng video hoặc DRM license bị từ chối.'
+                : 'Không thể giải mã hoặc phát luồng video DRM DASH.'
+            });
           };
           player.addEventListener?.('error', shakaErrorHandler);
         }
