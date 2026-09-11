@@ -5,6 +5,10 @@
 const { pool } = require('../../../config/database');
 const { supabaseAdmin } = require('../../../config/supabase');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
+const {
+  getGeminiModelRoutingStatus,
+  resetGeminiModelRouting
+} = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
 const { getGeminiUsageTrend } = require('./geminiUsageTrend.service');
@@ -976,6 +980,7 @@ const getAiRateLimitCaps = async () => {
  */
 const getRateLimitStatus = async () => {
   const runtimeModels = Array.from(new Set([
+    GEMINI_MODELS.routingPrimary,
     GEMINI_MODELS.primary,
     GEMINI_MODELS.fast,
     GEMINI_MODELS.subtitle,
@@ -1164,6 +1169,7 @@ const getRateLimitStatus = async () => {
     },
     models,
     guard,
+    routing: getGeminiModelRoutingStatus(),
     notices: noticesResult.rows.map((row) => ({
       model: row.model,
       dimension: row.dimension,
@@ -1174,6 +1180,14 @@ const getRateLimitStatus = async () => {
       occurrenceCount: Number(row.occurrence_count || 1)
     }))
   };
+};
+
+const resetAiModelRouting = ({ adminUserId } = {}) => {
+  const routing = resetGeminiModelRouting();
+  console.info(
+    `[AI Model Routing] Admin ${adminUserId || 'unknown'} đã mở lại model ưu tiên ${routing.preferredModel}; request thật tiếp theo sẽ kiểm tra model này.`
+  );
+  return routing;
 };
 
 /**
@@ -1324,6 +1338,7 @@ module.exports = {
   getGeminiUsageTrend,
   getAiRateLimitCaps,
   getRateLimitStatus,
+  resetAiModelRouting,
   updateAiRateLimitCaps,
   updateUserQuotaLimit,
   migrateCourseMedia

@@ -32,6 +32,7 @@ router.get('/gemini-usage/trends', adminController.getGeminiUsageTrend);
 
 // Hạn mức thật của Gemini theo model (tách biệt với middleware rate-limit nội bộ)
 router.get('/gemini-rate-limits/status', adminController.getAiRateLimitStatus);
+router.post('/gemini-rate-limits/routing/reset', adminController.resetAiModelRouting);
 router.get('/gemini-rate-limits/caps', adminController.getAiRateLimitCaps);
 router.put('/gemini-rate-limits/caps', adminController.updateAiRateLimitCaps);
 

@@ -29,20 +29,20 @@ const FREE_TIER_MODELS = Object.freeze([
     isPrimary: true
   },
   {
+    model: 'gemini-3.6-flash',
+    inputLimit: 1_048_576,
+    outputLimit: 65_536,
+    outputLabel: null,
+    updatedAt: '2026-08-01',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash'
+  },
+  {
     model: 'gemini-3.5-flash-lite',
     inputLimit: 1_048_576,
     outputLimit: 65_536,
     outputLabel: null,
     updatedAt: '2026-07-30',
     docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite'
-  },
-  {
-    model: 'gemini-3.1-flash-lite',
-    inputLimit: 1_048_576,
-    outputLimit: 65_536,
-    outputLabel: null,
-    updatedAt: '2026-07-21',
-    docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite'
   },
   {
     model: 'gemini-embedding-001',

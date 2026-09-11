@@ -7,7 +7,13 @@ const adminController = require('../src/modules/admin/controllers/admin.controll
 const {
   parseGeminiQuotaViolation,
   recordGeminiQuotaSignal,
-  recordAiProviderIncident
+  recordAiProviderIncident,
+  getGeminiQuotaCooldown,
+  getGeminiModelRoutingStatus,
+  getPrioritizedFallbackModels,
+  markModelQuotaExhausted,
+  recordSuccessfulGeminiModel,
+  resetGeminiModelRouting
 } = require('../src/utils/ai-clients');
 
 describe('Admin Gemini rate-limit status', () => {
@@ -29,6 +35,34 @@ describe('Admin Gemini rate-limit status', () => {
       assert.equal(payload.success, true);
     } finally {
       adminService.getRateLimitStatus = originalGetRateLimitStatus;
+    }
+  });
+
+  test('lets an admin restore the preferred model without sending a Gemini probe', async () => {
+    const originalResetAiModelRouting = adminService.resetAiModelRouting;
+    let payload = null;
+    let calledWith = null;
+    adminService.resetAiModelRouting = (options) => {
+      calledWith = options;
+      return { preferredModel: 'gemini-3.7-flash', effectiveModel: 'gemini-3.7-flash' };
+    };
+    const res = {
+      setHeader: () => {},
+      status: () => res,
+      json: (body) => { payload = body; return res; }
+    };
+
+    try {
+      await adminController.resetAiModelRouting(
+        { user: { id: 9 } },
+        res,
+        (error) => { throw error; }
+      );
+      assert.deepEqual(calledWith, { adminUserId: 9 });
+      assert.equal(payload.success, true);
+      assert.equal(payload.data.routing.effectiveModel, 'gemini-3.7-flash');
+    } finally {
+      adminService.resetAiModelRouting = originalResetAiModelRouting;
     }
   });
 
@@ -174,6 +208,44 @@ describe('Best-effort Gemini 429 calibration', () => {
     assert.equal(parsed.model, 'gemini-3.7-flash');
     assert.equal(parsed.dimension, 'rpm');
     assert.equal(parsed.providerLimit, 10);
+  });
+
+  test('uses provider retryDelay for cooldown and automatically restores model priority after expiry/reset', () => {
+    resetGeminiModelRouting({ all: true });
+    const cooldown = getGeminiQuotaCooldown({
+      status: 429,
+      response: {
+        data: {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            details: [{ retryDelay: '30s' }]
+          }
+        }
+      }
+    });
+    assert.equal(cooldown.durationMs, 31000);
+    assert.equal(cooldown.source, 'provider_retry_after');
+
+    markModelQuotaExhausted('gemini-3.7-flash', cooldown.durationMs, cooldown.source);
+    assert.equal(getPrioritizedFallbackModels('gemini-3.7-flash')[0], 'gemini-3.6-flash');
+    let routing = getGeminiModelRoutingStatus();
+    assert.equal(routing.effectiveModel, 'gemini-3.6-flash');
+    assert.equal(routing.coolingDown[0].model, 'gemini-3.7-flash');
+    assert.equal(routing.coolingDown[0].source, 'provider_retry_after');
+
+    routing = resetGeminiModelRouting();
+    assert.equal(routing.effectiveModel, 'gemini-3.7-flash');
+    assert.equal(routing.coolingDown.length, 0);
+  });
+
+  test('clears stale cooldown immediately after a successful model response', () => {
+    resetGeminiModelRouting({ all: true });
+    markModelQuotaExhausted('gemini-3.7-flash', 60000);
+    recordSuccessfulGeminiModel('gemini-3.7-flash');
+    const routing = getGeminiModelRoutingStatus();
+    assert.equal(routing.effectiveModel, 'gemini-3.7-flash');
+    assert.equal(routing.lastSuccessfulModel, 'gemini-3.7-flash');
+    assert.equal(routing.coolingDown.length, 0);
   });
 
   test('stores a non-blocking discrepancy when the parsed provider limit differs', async () => {

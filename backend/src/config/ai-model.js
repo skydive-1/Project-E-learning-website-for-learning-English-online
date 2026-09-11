@@ -17,6 +17,8 @@ const parseModelList = (value, defaults) => {
 };
 
 const GEMINI_MODELS = Object.freeze({
+  // Tách khỏi GEMINI_MODEL legacy để một cấu hình fallback tạm thời không ghim cả hệ thống ở model thấp hơn.
+  routingPrimary: String(process.env.GEMINI_ROUTING_PRIMARY_MODEL || DEFAULT_GEMINI_MODEL).trim(),
   primary: String(process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim(),
   fast: String(process.env.GEMINI_GLOBAL_CHAT_FAST_MODEL || DEFAULT_GEMINI_FAST_MODEL).trim(),
   subtitle: String(process.env.GEMINI_SUBTITLE_MODEL || DEFAULT_GEMINI_SUBTITLE_MODEL).trim(),

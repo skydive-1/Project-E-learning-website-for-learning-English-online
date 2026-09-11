@@ -3,6 +3,7 @@ import { RefreshCwIcon } from 'lucide-react';
 import {
   FiActivity,
   FiAlertTriangle,
+  FiArrowUpCircle,
   FiCheck,
   FiClock,
   FiExternalLink,
@@ -19,6 +20,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import {
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
+  resetGeminiModelRouting,
   updateGeminiRateLimitCaps
 } from '../services/adminAnalytics.service';
 import FreeTierUsageGuard from './FreeTierUsageGuard';
@@ -89,9 +91,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [resettingRouting, setResettingRouting] = useState(false);
   const [savingModel, setSavingModel] = useState(null);
   const [error, setError] = useState(null);
   const latestTelemetryAt = getValidDate(status?.guard?.checkedAt || status?.generatedAt);
+  const routing = status?.routing || null;
+  const preferredModelCoolingDown = Boolean(
+    routing?.coolingDown?.some((item) => item.model === routing.preferredModel)
+  );
 
   const fetchData = useCallback(async ({ background = false, manual = false, fresh = false } = {}) => {
     const manualStartedAt = manual ? Date.now() : 0;
@@ -211,6 +218,25 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     }
   };
 
+  const handleResetRouting = async () => {
+    try {
+      setResettingRouting(true);
+      const nextRouting = await resetGeminiModelRouting();
+      setStatus((current) => current ? { ...current, routing: nextRouting } : current);
+      showToast(t('Đã mở lại {{model}}. Request thật tiếp theo sẽ kiểm tra model này.', {
+        model: nextRouting.preferredModel
+      }), 'success');
+    } catch (resetError) {
+      console.error('Không thể khôi phục model Gemini ưu tiên:', resetError);
+      showToast(
+        resetError.response?.data?.message || t('Không thể khôi phục model ưu tiên. Vui lòng thử lại.'),
+        'error'
+      );
+    } finally {
+      setResettingRouting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="ai-rate-state" role="status">
@@ -293,6 +319,87 @@ const AIRateLimitsView = ({ canManageCaps }) => {
           </a>
         </div>
       </section>
+
+      {routing && (
+        <section className="ai-model-routing" aria-labelledby="ai-model-routing-title">
+          <div className="ai-model-routing__heading">
+            <div>
+              <span className="ai-model-routing__eyebrow">{t('Điều phối model')}</span>
+              <h2 id="ai-model-routing-title">{t('Fallback và tự phục hồi')}</h2>
+              <p>{t('Backend bỏ qua model đang cooldown và tự đưa model ưu tiên trở lại đầu hàng khi thời gian chờ kết thúc.')}</p>
+            </div>
+            <span className={`ai-model-routing__state${preferredModelCoolingDown ? ' is-cooling' : ' is-ready'}`}>
+              <i aria-hidden="true" />
+              {preferredModelCoolingDown ? t('Model chính đang chờ') : t('Đang ưu tiên model cao nhất')}
+            </span>
+          </div>
+
+          <div className="ai-model-routing__body">
+            <div className="ai-model-routing__lane" aria-label={t('Thứ tự fallback')}>
+              {(routing.fallbackOrder || []).map((model, index) => {
+                const cooldown = routing.coolingDown?.find((item) => item.model === model);
+                const isEffective = model === routing.effectiveModel;
+                return (
+                  <React.Fragment key={model}>
+                    {index > 0 && <span className="ai-model-routing__arrow" aria-hidden="true">→</span>}
+                    <div className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isEffective ? ' is-effective' : ''}`}>
+                      <span>{index === 0 ? t('Ưu tiên') : t('Dự phòng {{number}}', { number: index })}</span>
+                      <code>{model}</code>
+                      <small>
+                        {cooldown
+                          ? t('Thử lại {{time}}', {
+                            time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                          })
+                          : isEffective ? t('Request kế tiếp') : t('Sẵn sàng')}
+                      </small>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            <dl className="ai-model-routing__facts">
+              <div>
+                <dt>{t('Model cho request kế tiếp')}</dt>
+                <dd><code>{routing.effectiveModel || routing.preferredModel}</code></dd>
+              </div>
+              <div>
+                <dt>{t('Model thành công gần nhất')}</dt>
+                <dd>
+                  <code>{routing.lastSuccessfulModel || t('Chưa có dữ liệu')}</code>
+                  {routing.lastSuccessfulAt && (
+                    <small>{dateTimeFormatter.format(new Date(routing.lastSuccessfulAt))}</small>
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <footer className="ai-model-routing__footer">
+            <p>
+              {t('Đây là trạng thái runtime của instance backend hiện tại. Nút này chỉ xóa cooldown nội bộ của model chính; không gửi request thử và không tiêu tốn quota. Nếu Google vẫn trả 429, fallback tiếp tục tự động.')}
+            </p>
+            {canManageCaps && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleResetRouting}
+                disabled={resettingRouting || !preferredModelCoolingDown}
+                aria-busy={resettingRouting}
+              >
+                {resettingRouting
+                  ? <Spinner data-icon="inline-start" aria-hidden="true" />
+                  : <FiArrowUpCircle data-icon="inline-start" aria-hidden="true" />}
+                {resettingRouting
+                  ? t('Đang khôi phục')
+                  : preferredModelCoolingDown
+                    ? t('Khôi phục model ưu tiên')
+                    : t('Model ưu tiên đã sẵn sàng')}
+              </Button>
+            )}
+          </footer>
+        </section>
+      )}
 
       <GeminiFreeTierReference models={status?.models || []} />
 

@@ -159,40 +159,126 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
 function getGeminiFallbackModels(preferredModel) {
   return Array.from(new Set([
     preferredModel,
+    GEMINI_MODELS.routingPrimary,
     GEMINI_MODELS.primary,
     ...GEMINI_MODELS.fallbacks
   ].filter(Boolean)));
 }
 
-// Map lưu trữ thời điểm hết hạn quota (cooldown) của từng model khi gặp lỗi 429
-const modelQuotaCooldown = new Map();
+const DEFAULT_MODEL_QUOTA_COOLDOWN_MS = 60 * 1000;
+const MIN_MODEL_QUOTA_COOLDOWN_MS = 5 * 1000;
+const MAX_MODEL_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
 
-function markModelQuotaExhausted(model, durationMs = 10 * 60 * 1000) {
-  if (!model) return;
-  modelQuotaCooldown.set(String(model).trim(), Date.now() + durationMs);
+// Trạng thái này chỉ điều phối request trong process hiện tại; không tạo probe Gemini riêng.
+const modelQuotaCooldown = new Map();
+let lastSuccessfulGeminiModel = null;
+let lastSuccessfulGeminiAt = null;
+let lastManualRoutingResetAt = null;
+
+function normalizeModelCooldownDuration(durationMs = DEFAULT_MODEL_QUOTA_COOLDOWN_MS) {
+  const parsed = Number(durationMs);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MODEL_QUOTA_COOLDOWN_MS;
+  return Math.min(MAX_MODEL_QUOTA_COOLDOWN_MS, Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, Math.ceil(parsed)));
+}
+
+function markModelQuotaExhausted(model, durationMs = DEFAULT_MODEL_QUOTA_COOLDOWN_MS, source = 'default') {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) return;
+  const now = Date.now();
+  const cooldownMs = normalizeModelCooldownDuration(durationMs);
+  modelQuotaCooldown.set(normalizedModel, {
+    markedAt: now,
+    retryAt: now + cooldownMs,
+    cooldownMs,
+    source
+  });
+}
+
+function clearModelQuotaCooldown(model) {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) return false;
+  return modelQuotaCooldown.delete(normalizedModel);
+}
+
+function recordSuccessfulGeminiModel(model) {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) return;
+  clearModelQuotaCooldown(normalizedModel);
+  lastSuccessfulGeminiModel = normalizedModel;
+  lastSuccessfulGeminiAt = new Date().toISOString();
+}
+
+function pruneExpiredModelCooldowns(now = Date.now()) {
+  for (const [model, state] of modelQuotaCooldown.entries()) {
+    if (!state?.retryAt || state.retryAt <= now) modelQuotaCooldown.delete(model);
+  }
 }
 
 function getPrioritizedFallbackModels(preferredModel) {
   const models = getGeminiFallbackModels(preferredModel);
   const now = Date.now();
+  pruneExpiredModelCooldowns(now);
   const available = [];
   const coolingDown = [];
 
   for (const m of models) {
-    const expiresAt = modelQuotaCooldown.get(m);
-    if (expiresAt && now < expiresAt) {
-      coolingDown.push(m);
+    const cooldown = modelQuotaCooldown.get(m);
+    if (cooldown?.retryAt && now < cooldown.retryAt) {
+      coolingDown.push({ model: m, retryAt: cooldown.retryAt });
     } else {
       available.push(m);
     }
   }
 
-  // Nếu tất cả các model đều đang trong cooldown, vẫn thử lại theo thứ tự ban đầu
+  // Không gọi lại model đã biết đang bị quota trong khi vẫn còn model khả dụng.
+  if (available.length > 0) return available;
+
+  // Nếu mọi model đều cooldown, chỉ thử model sắp được mở lại nhất để tránh nhân request lỗi.
   if (available.length === 0) {
-    return models;
+    return coolingDown
+      .sort((a, b) => a.retryAt - b.retryAt)
+      .slice(0, 1)
+      .map((item) => item.model);
   }
 
-  return [...available, ...coolingDown];
+  return models;
+}
+
+function getGeminiModelRoutingStatus() {
+  const now = Date.now();
+  pruneExpiredModelCooldowns(now);
+  const fallbackOrder = getGeminiFallbackModels(GEMINI_MODELS.routingPrimary);
+  const effectiveOrder = getPrioritizedFallbackModels(GEMINI_MODELS.routingPrimary);
+  const coolingDown = fallbackOrder
+    .map((model) => ({ model, ...modelQuotaCooldown.get(model) }))
+    .filter((item) => Number.isFinite(item.retryAt) && item.retryAt > now)
+    .map((item) => ({
+      model: item.model,
+      markedAt: new Date(item.markedAt).toISOString(),
+      retryAt: new Date(item.retryAt).toISOString(),
+      remainingMs: Math.max(0, item.retryAt - now),
+      cooldownMs: item.cooldownMs,
+      source: item.source
+    }));
+
+  return {
+    scope: 'process_instance',
+    preferredModel: GEMINI_MODELS.routingPrimary,
+    effectiveModel: effectiveOrder[0] || GEMINI_MODELS.routingPrimary,
+    fallbackOrder,
+    effectiveOrder,
+    lastSuccessfulModel: lastSuccessfulGeminiModel,
+    lastSuccessfulAt: lastSuccessfulGeminiAt,
+    lastManualResetAt: lastManualRoutingResetAt,
+    coolingDown
+  };
+}
+
+function resetGeminiModelRouting({ all = false } = {}) {
+  if (all) modelQuotaCooldown.clear();
+  else clearModelQuotaCooldown(GEMINI_MODELS.routingPrimary);
+  lastManualRoutingResetAt = new Date().toISOString();
+  return getGeminiModelRoutingStatus();
 }
 
 const isGeminiQuotaError = (error) => {
@@ -222,10 +308,33 @@ const normalizeGeminiError = (error) => {
   quotaError.status = 503;
   quotaError.code = 'GEMINI_QUOTA_EXHAUSTED';
   quotaError.cause = error;
-  const retryMatch = String(error?.message || '').match(/retry in\s+(\d+(?:\.\d+)?)s/i)
-    || String(error?.message || '').match(/retry(?:Delay)?[\\"'\s:=]+(\d+(?:\.\d+)?)s/i);
+  let structuredDetail = '';
+  try {
+    structuredDetail = JSON.stringify(error?.response?.data || error?.errorDetails || error?.details || '');
+  } catch (_serializationError) {
+    structuredDetail = '';
+  }
+  const retryText = `${String(error?.message || '')} ${structuredDetail}`;
+  const retryMatch = retryText.match(/retry in\s+(\d+(?:\.\d+)?)s/i)
+    || retryText.match(/retry(?:Delay)?[\\"'\s:=]+(\d+(?:\.\d+)?)s/i);
   if (retryMatch) quotaError.retryAfterMs = Math.ceil(Number(retryMatch[1]) * 1000);
   return quotaError;
+};
+
+const getGeminiQuotaCooldown = (error) => {
+  const normalized = normalizeGeminiError(error);
+  const retryAfterMs = Number(normalized?.retryAfterMs);
+  if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+    // Chừa một giây nhỏ để không gọi đúng sát biên retry-after của provider.
+    return {
+      durationMs: normalizeModelCooldownDuration(retryAfterMs + 1000),
+      source: 'provider_retry_after'
+    };
+  }
+  return {
+    durationMs: DEFAULT_MODEL_QUOTA_COOLDOWN_MS,
+    source: 'default_60_seconds'
+  };
 };
 
 const isRagPurpose = (purpose) => /^rag_[a-z0-9_]+$/i.test(String(purpose || '').trim());
@@ -393,11 +502,12 @@ async function recordGeminiQuotaSignal({ error, model }) {
   try {
     if (!isGeminiQuotaError(error)) return;
 
-    markModelQuotaExhausted(model, 10 * 60 * 1000);
+    const cooldown = getGeminiQuotaCooldown(error);
+    markModelQuotaExhausted(model, cooldown.durationMs, cooldown.source);
 
     const parsed = parseGeminiQuotaViolation(error, model);
-    if (parsed?.model) {
-      markModelQuotaExhausted(parsed.model, 10 * 60 * 1000);
+    if (parsed?.model && parsed.model !== model) {
+      markModelQuotaExhausted(parsed.model, cooldown.durationMs, cooldown.source);
     }
 
     const logKey = `${parsed?.model || model || 'unknown'}:${parsed?.dimension || 'unknown'}`;
@@ -555,7 +665,7 @@ function normalizeRequest(request) {
  * Sau khi gọi thành công, tự động ghi nhận usageMetadata vào ai_usage_events.
  */
 async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
-  const preferredModel = modelOverride || GEMINI_MODELS.primary;
+  const preferredModel = modelOverride || GEMINI_MODELS.routingPrimary;
   const fallbackModels = getPrioritizedFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
@@ -580,6 +690,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
       });
 
       // Record real usage from Gemini response
+      recordSuccessfulGeminiModel(model);
       await resolveAiProviderIncident({ model, purpose: finalPurpose });
       await recordAiUsage({
         eventId: usageEventId,
@@ -611,7 +722,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
  * after the stream is fully consumed.
  */
 async function executeGenerateStream(client, contents, config, modelOverride = null, customCtx = {}) {
-  const preferredModel = modelOverride || GEMINI_MODELS.primary;
+  const preferredModel = modelOverride || GEMINI_MODELS.routingPrimary;
   const fallbackModels = getPrioritizedFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
@@ -708,6 +819,7 @@ const geminiModel = {
             };
           }
           // Responses without usageMetadata still close the request successfully.
+          recordSuccessfulGeminiModel(modelUsed);
           await resolveAiProviderIncident({ model: modelUsed, purpose: finalPurpose });
           await recordAiUsage({
             eventId: usageEventId,
@@ -748,7 +860,7 @@ const geminiModel = {
 
     try {
       const client = getAiClient();
-      const modelName = GEMINI_MODELS.primary;
+      const modelName = GEMINI_MODELS.routingPrimary;
       const response = await client.models.countTokens({
         model: modelName,
         contents
@@ -758,7 +870,7 @@ const geminiModel = {
         totalTokens: response.totalTokens !== undefined ? response.totalTokens : 0
       };
     } catch (error) {
-      recordGeminiQuotaSignal({ error, model: GEMINI_MODELS.primary });
+      recordGeminiQuotaSignal({ error, model: GEMINI_MODELS.routingPrimary });
       // Fallback an toàn ước lượng token (1 token ~ 4 ký tự)
       const strLength = typeof contents === "string" ? contents.length : JSON.stringify(contents).length;
       return { totalTokens: Math.max(1, Math.ceil(strLength / 4)) };
@@ -998,6 +1110,7 @@ module.exports = {
   isGeminiQuotaError,
   isRetryableGeminiError,
   normalizeGeminiError,
+  getGeminiQuotaCooldown,
   isRagPurpose,
   recordAiProviderIncident,
   resolveAiProviderIncident,
@@ -1009,6 +1122,11 @@ module.exports = {
   failAiUsageEvent,
   normalizeRequest,
   getGeminiFallbackModels,
+  getPrioritizedFallbackModels,
+  getGeminiModelRoutingStatus,
+  resetGeminiModelRouting,
+  markModelQuotaExhausted,
+  recordSuccessfulGeminiModel,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,
