@@ -362,6 +362,28 @@ exports.getTokenBalance = async (req, res, next) => {
   }
 };
 
+exports.getQuotaStatus = async (req, res, next) => {
+  try {
+    const { getQuestionQuotaStatus } = require('../services/aiQuestionQuota.service');
+    const quota = await getQuestionQuotaStatus({
+      userId: req.user?.id || req.user?.userId || req.user?.user_id,
+      roleId: Number(req.user?.roleId || req.user?.role_id || 3)
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...quota,
+        usedQuestions: quota.used,
+        remainingQuestions: quota.remaining,
+        isUnlimited: quota.unlimited
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * Lấy danh sách 4 câu hỏi gợi ý cho bài học (Udemy-like AI Assistant Feature)
  * GET /api/chatbot/suggested-questions/:lessonId
@@ -373,16 +395,15 @@ exports.getSuggestedQuestions = async (req, res, next) => {
     const forceRefresh = req.query.refresh === 'true';
     const suggestedQuestionsService = require('../../lessons/services/suggestedQuestions.service');
     const questions = await suggestedQuestionsService.getSuggestedQuestionsByLessonId(lessonId, forceRefresh);
-    if (questions.generatedByAi !== true) await releaseQuestionLimit(req);
 
     res.status(200).json({
       success: true,
       lessonId: parseInt(lessonId, 10) || 0,
       contentAvailable: questions.contentAvailable,
+      refreshing: questions.refreshing === true,
       questions
     });
   } catch (error) {
-    await releaseQuestionLimit(req);
     next(error);
   }
 };

@@ -5,10 +5,13 @@ const assert = require('node:assert/strict');
 const {
   buildTranscriptText,
   getFallbackSuggestedQuestions,
+  getSuggestedQuestionsByLessonId,
   isLegacyGenericQuestionSet,
   normalizeSuggestedQuestions,
   normalizeSuggestedItems
 } = require('../src/modules/lessons/services/suggestedQuestions.service');
+const db = require('../src/config/database');
+const { geminiModel } = require('../src/utils/ai-clients');
 
 test('suggested questions reject generic, ungrounded and oversized content', () => {
   const transcript = 'Today we practise small talk, greetings, and the phrase nice to meet you.';
@@ -84,4 +87,86 @@ test('AI suggested question evidence must be a real transcript substring', () =>
     question: 'Small talk được dùng trong tình huống nào?',
     evidence: 'we practise small talk'
   }]);
+});
+
+test('cold suggested-question requests return grounded prompts without waiting for Gemini', async () => {
+  const originalQuery = db.query;
+  const originalGenerateContent = geminiModel.generateContent;
+  const transcript = [
+    { en: 'We practise small talk with friendly greetings before meeting a new colleague.' },
+    { en: 'Small talk helps everyday conversations feel natural.' },
+    { en: 'We say nice to meet you when meeting a colleague.' }
+  ];
+  let resolveAi;
+  let aiStarted = false;
+  let savedCount = 0;
+
+  db.query = async (sql) => {
+    if (sql.includes('LEFT JOIN lesson_subtitles')) {
+      return {
+        rows: [{
+          lesson_title: 'Everyday English',
+          section_title: 'Greetings',
+          course_name: 'English Basics',
+          content_type: 'video',
+          content_url: '/uploads/lesson.mp4',
+          cues: transcript,
+          subtitle_status: 'ready',
+          questions: null
+        }]
+      };
+    }
+    if (sql.includes('SELECT l.title AS lesson_title')) {
+      return { rows: [{ lesson_title: 'Everyday English', section_title: 'Greetings', course_name: 'English Basics' }] };
+    }
+    if (sql.includes('INSERT INTO lesson_suggested_questions')) {
+      savedCount += 1;
+      return { rows: [] };
+    }
+    throw new Error(`Unexpected query in suggested-question latency test: ${sql}`);
+  };
+  geminiModel.generateContent = async () => {
+    aiStarted = true;
+    return new Promise((resolve) => { resolveAi = resolve; });
+  };
+
+  let deadline;
+  try {
+    const result = await Promise.race([
+      getSuggestedQuestionsByLessonId(46),
+      new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error('request waited for background Gemini')), 250);
+      })
+    ]);
+    clearTimeout(deadline);
+
+    assert.equal(result.length, 4);
+    assert.equal(result.contentAvailable, true);
+    assert.equal(result.generatedByAi, false);
+    assert.equal(result.refreshing, true);
+    assert.equal(result.every((question) => /“[^”]+”/.test(question)), true);
+
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(aiStarted, true);
+
+    resolveAi({
+      response: {
+        text: () => JSON.stringify({
+          items: [
+            { question: 'Small talk giúp hội thoại tự nhiên như thế nào?', evidence: 'Small talk helps everyday conversations feel natural' },
+            { question: 'Friendly greetings được dùng trước tình huống nào?', evidence: 'friendly greetings before meeting a new colleague' },
+            { question: 'Nice to meet you được nói khi nào?', evidence: 'nice to meet you when meeting a colleague' },
+            { question: 'Everyday conversations liên hệ với small talk ra sao?', evidence: 'Small talk helps everyday conversations' }
+          ]
+        })
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(savedCount, 1);
+  } finally {
+    clearTimeout(deadline);
+    db.query = originalQuery;
+    geminiModel.generateContent = originalGenerateContent;
+  }
 });

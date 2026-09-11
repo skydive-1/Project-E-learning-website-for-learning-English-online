@@ -88,9 +88,21 @@ const getReady = async (req, res) => {
   try {
     const r2Promise = r2Storage.ensureBucketExists();
     await withTimeout(r2Promise, DEPENDENCY_TIMEOUT_MS, 'R2 Storage');
+
+    // Resolving the bucket name is cosmetic (for the response payload only) and must
+    // never turn an already-successful ensureBucketExists() check into a 503. If it
+    // throws (e.g. R2_BUCKET env var missing in this specific runtime), fall back to
+    // 'unknown' instead of letting the outer catch mark storage as DOWN.
+    let bucketName = 'unknown';
+    try {
+      bucketName = r2Storage.resolveBucket();
+    } catch (_resolveErr) {
+      // intentionally swallowed - see comment above
+    }
+
     dependencies.storage_r2 = {
       status: 'UP',
-      bucket: r2Storage.resolveBucket(),
+      bucket: bucketName,
       latencyMs: Date.now() - r2Start,
       critical: true
     };

@@ -580,26 +580,65 @@ export const getTokenBalance = async (userId) => {
  * @param {number|string} lessonId
  * @returns {Promise<Array<string>>}
  */
+const SUGGESTED_QUESTIONS_CACHE_TTL_MS = 10 * 60 * 1000;
+const SUGGESTED_QUESTIONS_TIMEOUT_MS = 8000;
+const suggestedQuestionsCache = new Map();
+const suggestedQuestionsRequests = new Map();
+
+const attachSuggestedQuestionsMetadata = (questions, payload = {}) => {
+  const result = Array.isArray(questions) ? [...questions] : [];
+  for (const [key, value] of Object.entries({
+    contentAvailable: payload.contentAvailable,
+    refreshing: payload.refreshing === true
+  })) {
+    Object.defineProperty(result, key, { value, enumerable: false });
+  }
+  return result;
+};
+
 export const getSuggestedQuestions = async (lessonId, refresh = false) => {
   if (!lessonId || Number(lessonId) <= 0) return [];
-  try {
+  const cacheKey = String(lessonId);
+  const cached = suggestedQuestionsCache.get(cacheKey);
+
+  if (!refresh && cached && Date.now() - cached.savedAt < cached.ttlMs) {
+    return attachSuggestedQuestionsMetadata(cached.questions, cached);
+  }
+  if (!refresh && suggestedQuestionsRequests.has(cacheKey)) {
+    return suggestedQuestionsRequests.get(cacheKey);
+  }
+
+  const request = (async () => {
     const url = refresh 
       ? `/chatbot/suggested-questions/${lessonId}?refresh=true` 
       : `/chatbot/suggested-questions/${lessonId}`;
-    const response = await apiClient.get(url);
+    const response = await apiClient.get(url, { timeout: SUGGESTED_QUESTIONS_TIMEOUT_MS });
     if (response.data && response.data.success && Array.isArray(response.data.questions)) {
-      const questions = response.data.questions;
-      if (typeof response.data.contentAvailable === 'boolean') {
-        Object.defineProperty(questions, 'contentAvailable', {
-          value: response.data.contentAvailable,
-          enumerable: false
-        });
-      }
-      return questions;
+      const cacheEntry = {
+        questions: response.data.questions,
+        contentAvailable: response.data.contentAvailable,
+        refreshing: response.data.refreshing === true,
+        savedAt: Date.now(),
+        ttlMs: response.data.refreshing === true || response.data.contentAvailable === false
+          ? 5000
+          : SUGGESTED_QUESTIONS_CACHE_TTL_MS
+      };
+      suggestedQuestionsCache.set(cacheKey, cacheEntry);
+      return attachSuggestedQuestionsMetadata(cacheEntry.questions, cacheEntry);
     }
     throw new Error('Phản hồi câu hỏi gợi ý từ máy chủ không đúng định dạng.');
+  })();
+
+  if (!refresh) suggestedQuestionsRequests.set(cacheKey, request);
+
+  try {
+    return await request;
   } catch (error) {
     console.warn(`⚠️ Lỗi lấy câu hỏi gợi ý cho lessonId=${lessonId}:`, error.message);
     throw error;
+  } finally {
+    if (suggestedQuestionsRequests.get(cacheKey) === request) {
+      suggestedQuestionsRequests.delete(cacheKey);
+    }
   }
 };

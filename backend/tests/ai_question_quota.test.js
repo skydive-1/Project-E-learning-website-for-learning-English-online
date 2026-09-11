@@ -12,6 +12,7 @@ const {
 } = require('../src/modules/chatbot/services/aiQuestionQuota.service');
 const { checkQuestionLimit } = require('../src/middleware/tokenLimit.middleware');
 const { normalizeGeminiError } = require('../src/utils/ai-clients');
+const chatbotController = require('../src/modules/chatbot/controllers/chatbot.controller');
 
 const VIETNAM_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -111,6 +112,28 @@ test('Student request is reserved atomically and exposes remaining questions', a
   // Just verify it's a valid ISO string in the future-ish.
   assert.ok(quota.resetAt);
   assert.ok(new Date(quota.resetAt).getTime() > 0);
+});
+
+test('quota-status controller exposes the field names consumed by the frontend', async () => {
+  db.query = async () => ({
+    rows: [{ used_questions: 4, window_started_at: new Date().toISOString() }]
+  });
+  let payload;
+  const res = {
+    status() { return this; },
+    json(body) { payload = body; return this; }
+  };
+
+  await chatbotController.getQuotaStatus(
+    { user: { id: 7, roleId: 3 } },
+    res,
+    (error) => { throw error; }
+  );
+
+  assert.equal(payload.success, true);
+  assert.equal(payload.data.usedQuestions, 4);
+  assert.equal(payload.data.remainingQuestions, 6);
+  assert.equal(payload.data.isUnlimited, false);
 });
 
 test('reserveQuestion SQL uses AT TIME ZONE calendar-day comparison, not 24h interval', async () => {

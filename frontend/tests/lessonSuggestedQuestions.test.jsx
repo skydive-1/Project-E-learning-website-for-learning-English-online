@@ -15,14 +15,15 @@ describe('Lesson suggested questions', () => {
     getSuggestedQuestionsMock.mockReset();
   });
 
-  it('shows a loading state instead of ungrounded client prompts while the API is pending', () => {
+  it('keeps the assistant usable without a blocking loader while suggestions arrive', () => {
     getSuggestedQuestionsMock.mockReturnValue(new Promise(() => {}));
 
     render(<EmptyState lessonId={49} onSelectPrompt={vi.fn()} />);
 
     const list = screen.getByLabelText('Câu hỏi gợi ý cho bài học');
     expect(within(list).queryAllByRole('button')).toHaveLength(0);
-    expect(within(list).getByRole('status')).toHaveTextContent('Đang lấy câu hỏi từ nội dung bài học');
+    expect(within(list).queryByRole('status')).not.toBeInTheDocument();
+    expect(within(list).getByText(/Bạn có thể nhập câu hỏi ngay bên dưới/i)).toBeInTheDocument();
     expect(screen.queryByText(/Mục đích và nội dung chính/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Hành động nhanh/i)).not.toBeInTheDocument();
     expect(screen.getByText('Các gợi ý chỉ dựa trên nội dung xuất hiện trong bài.')).toBeInTheDocument();

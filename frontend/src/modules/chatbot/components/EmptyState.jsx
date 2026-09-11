@@ -67,7 +67,6 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
   const loadSuggestedQuestions = useCallback(async (forceRefresh = false) => {
     if (isGlobal || Number(lessonId) <= 0) return;
 
-    setSuggestedQuestions([]);
     setQuestionsError('');
     setQuestionsUnavailable(false);
     setIsLoadingQuestions(true);
@@ -100,6 +99,7 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
 
   useEffect(() => {
     if (!isGlobal && Number(lessonId) > 0) {
+      setSuggestedQuestions([]);
       loadSuggestedQuestions(false);
     }
   }, [lessonId, isGlobal, loadSuggestedQuestions]);
@@ -178,21 +178,12 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
           aria-label="Câu hỏi gợi ý cho bài học"
           aria-busy={isLoadingQuestions}
         >
-          {isLoadingQuestions && (
-            <div role="status" className="space-y-2.5">
-              <div className="min-h-12 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b1322] px-4 py-3.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 flex items-center gap-2 animate-pulse">
-                <FiRefreshCw className="animate-spin text-indigo-500 shrink-0 text-xs" />
-                <span>{isEng ? "Fetching questions from lesson content..." : "Đang lấy câu hỏi từ nội dung bài học..."}</span>
-              </div>
-              {[1, 2, 3].map((idx) => (
-                <div
-                  key={idx}
-                  className="min-h-12 rounded-xl border border-slate-200/70 dark:border-slate-800/80 bg-slate-50/40 dark:bg-[#0b1322]/60 p-3.5 animate-pulse"
-                >
-                  <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded-md w-3/4"></div>
-                </div>
-              ))}
-            </div>
+          {isLoadingQuestions && suggestedQuestions.length === 0 && (
+            <p className="px-1 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400" aria-live="polite">
+              {isEng
+                ? "You can ask right away below. Lesson suggestions will appear automatically."
+                : "Bạn có thể nhập câu hỏi ngay bên dưới; gợi ý theo bài sẽ tự xuất hiện."}
+            </p>
           )}
 
           {questionsError && !isLoadingQuestions && (
@@ -216,7 +207,7 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
             </div>
           )}
 
-          {!isLoadingQuestions && suggestedQuestions.map((questionText) => {
+          {suggestedQuestions.map((questionText) => {
             const displayedQuestion = isEng ? translateSuggestedQuestion(questionText, 'ENG') : questionText;
             return (
               <button
