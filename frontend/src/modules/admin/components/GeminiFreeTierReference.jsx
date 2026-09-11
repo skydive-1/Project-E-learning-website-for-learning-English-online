@@ -1,24 +1,17 @@
 import React, { useMemo } from 'react';
-import { ExternalLink, Info, ShieldCheck } from 'lucide-react';
+import {
+  Clock,
+  Cpu,
+  Database,
+  ExternalLink,
+  FileText,
+  Info,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles
+} from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from '@/components/ui/table';
+import { Chip } from '@/components/base/badges/chip';
 import { useLanguage } from '../../../context/LanguageContext';
 
 const AI_STUDIO_USAGE_URL = 'https://aistudio.google.com/usage';
@@ -32,7 +25,8 @@ const FREE_TIER_MODELS = Object.freeze([
     outputLimit: 65_536,
     outputLabel: null,
     updatedAt: '2026-08-13',
-    docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash'
+    docsUrl: 'https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash',
+    isPrimary: true
   },
   {
     model: 'gemini-3.5-flash-lite',
@@ -56,7 +50,8 @@ const FREE_TIER_MODELS = Object.freeze([
     outputLimit: null,
     outputLabel: 'Vector ≤ 3.072 chiều',
     updatedAt: '2025-06',
-    docsUrl: 'https://ai.google.dev/gemini-api/docs/embeddings'
+    docsUrl: 'https://ai.google.dev/gemini-api/docs/embeddings',
+    isEmbedding: true
   }
 ]);
 
@@ -65,100 +60,250 @@ const GeminiFreeTierReference = ({ models = [] }) => {
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   const formatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
 
-  const getProjectCap = (model) => {
-    const match = models.find((item) => item.model === model);
-    if (!match?.configured) return t('Chưa xác nhận');
-    return `${formatter.format(match.caps.rpm)} RPM · ${formatter.format(match.caps.tpm)} TPM · ${formatter.format(match.caps.rpd)} RPD`;
+  const getModelCapInfo = (modelName) => {
+    const match = models.find((item) => item.model === modelName);
+    if (!match?.configured) {
+      return { configured: false, label: t('Chưa xác nhận') };
+    }
+    return {
+      configured: true,
+      rpm: formatter.format(match.caps.rpm),
+      tpm: formatter.format(match.caps.tpm),
+      rpd: formatter.format(match.caps.rpd),
+      fullText: `${formatter.format(match.caps.rpm)} RPM · ${formatter.format(match.caps.tpm)} TPM · ${formatter.format(match.caps.rpd)} RPD`
+    };
   };
 
   return (
-    <Card className="mb-6 bg-card/80 [--card-spacing:1.25rem]" aria-labelledby="gemini-free-tier-title">
-      <CardHeader className="border-b">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
-            <ShieldCheck />
-          </span>
+    <section
+      className="mb-6 overflow-hidden rounded-2xl border border-separator-border bg-background-secondary-default shadow-card transition-all duration-200"
+      aria-labelledby="gemini-free-tier-title"
+    >
+      {/* 1. Header (BoardUI Standard) */}
+      <header className="flex flex-col gap-4 border-b border-separator-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-500 shadow-2xs dark:border-blue-400/30 dark:bg-blue-400/15 dark:text-blue-400"
+            aria-hidden="true"
+          >
+            <ShieldCheck className="size-5" />
+          </div>
           <div className="min-w-0">
-            <CardTitle id="gemini-free-tier-title" className="text-lg tracking-tight">
+            <h3 id="gemini-free-tier-title" className="text-title-3-bold text-text-primary tracking-tight">
               {t('Tham chiếu Gemini API Free Tier')}
-            </CardTitle>
-            <CardDescription className="mt-1 max-w-3xl leading-relaxed">
+            </h3>
+            <p className="mt-0.5 max-w-3xl text-caption-1-regular text-text-secondary leading-relaxed">
               {t('Giới hạn token là thông số chính thức theo model. RPM, TPM và RPD là cap của project, không phải một số cố định chung cho mọi tài khoản.')}
-            </CardDescription>
+            </p>
           </div>
         </div>
-        <CardAction>
-          <Badge variant="secondary">{t('0₫ input / output')}</Badge>
-        </CardAction>
-      </CardHeader>
 
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground" role="note">
-          <Info className="mt-0.5 shrink-0 text-foreground" aria-hidden="true" />
-          <p className="leading-relaxed">
-            {t('Google yêu cầu xem hạn mức request đang hoạt động trong AI Studio. Hệ thống chỉ tính phần trăm bằng cap admin đã xác nhận và tự cảnh báo khi nhận 429 từ Google.')}
-            <span className="mt-1 block text-foreground">
-              {t('Lưu ý dữ liệu: ở Free Tier, Google có thể dùng nội dung gửi lên để cải thiện sản phẩm; không gửi dữ liệu nhạy cảm.')}
-            </span>
-          </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <Chip
+            variant="bold"
+            color="lime"
+            className="gap-1.5 px-3 py-1 text-caption-1-semibold shadow-2xs"
+          >
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+            {t('0₫ input / output')}
+          </Chip>
+        </div>
+      </header>
+
+      {/* 2. Content Body */}
+      <div className="flex flex-col gap-5 p-5 sm:p-6">
+        {/* Governance Notice Card */}
+        <div
+          className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-body-medium shadow-2xs transition-colors dark:border-blue-500/25 dark:bg-blue-950/20"
+          role="note"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400 mt-0.5">
+              <Info className="size-4" aria-hidden="true" />
+            </div>
+            <div className="flex-1 space-y-2.5 text-caption-1-regular leading-relaxed">
+              <p className="text-text-secondary">
+                {t('Google yêu cầu xem hạn mức request đang hoạt động trong AI Studio. Hệ thống chỉ tính phần trăm bằng cap admin đã xác nhận và tự cảnh báo khi nhận 429 từ Google.')}
+              </p>
+              <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-caption-1-medium text-amber-300 dark:border-amber-400/25 dark:bg-amber-950/40 dark:text-amber-200">
+                <ShieldAlert className="size-3.5 text-amber-400 shrink-0" aria-hidden="true" />
+                <span>
+                  {t('Lưu ý dữ liệu: ở Free Tier, Google có thể dùng nội dung gửi lên để cải thiện sản phẩm; không gửi dữ liệu nhạy cảm.')}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('Model')}</TableHead>
-              <TableHead>{t('Token đầu vào / request')}</TableHead>
-              <TableHead>{t('Token đầu ra / request')}</TableHead>
-              <TableHead>{t('Cap request của project')}</TableHead>
-              <TableHead className="text-right">{t('Nguồn')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {FREE_TIER_MODELS.map((item) => (
-              <TableRow key={item.model}>
-                <TableCell className="font-mono font-medium">{item.model}</TableCell>
-                <TableCell className="font-mono tabular-nums">{formatter.format(item.inputLimit)}</TableCell>
-                <TableCell className="font-mono tabular-nums">
-                  {item.outputLimit ? formatter.format(item.outputLimit) : t(item.outputLabel)}
-                </TableCell>
-                <TableCell>
-                  <span className="font-medium text-foreground">{getProjectCap(item.model)}</span>
-                </TableCell>
-                <TableCell className="text-right">
-                  <a
-                    className="inline-flex min-h-11 items-center gap-1.5 font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    href={item.docsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`${t('Mở tài liệu model')} ${item.model}`}
-                  >
-                    {item.updatedAt}
-                    <ExternalLink aria-hidden="true" />
-                  </a>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
+        {/* 3. Data Table (BoardUI bui-table Pattern) */}
+        <div className="overflow-hidden rounded-xl border border-separator-border bg-background-primary-default shadow-2xs">
+          <div className="w-full overflow-x-auto">
+            <table className="bui-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('Model')}</th>
+                  <th scope="col">{t('Token đầu vào / request')}</th>
+                  <th scope="col">{t('Token đầu ra / request')}</th>
+                  <th scope="col">{t('Cap request của project')}</th>
+                  <th scope="col" className="text-right">{t('Nguồn')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {FREE_TIER_MODELS.map((item) => {
+                  const capInfo = getModelCapInfo(item.model);
 
-      <CardFooter className="flex flex-wrap justify-between gap-3 text-xs text-muted-foreground">
-        <span>{t('RPD đặt lại lúc 00:00 Pacific · giới hạn áp dụng theo project, không theo từng API key.')}</span>
-        <span className="flex flex-wrap items-center gap-3">
-          <a className="font-medium text-foreground hover:underline" href={PRICING_URL} target="_blank" rel="noreferrer">
-            {t('Bảng giá chính thức')}
+                  return (
+                    <tr key={item.model} className="transition-colors hover:bg-background-secondary-default/50">
+                      {/* Model Name */}
+                      <td>
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${
+                              item.isEmbedding
+                                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                                : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {item.isEmbedding ? (
+                              <Database className="size-3.5" />
+                            ) : (
+                              <Cpu className="size-3.5" />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-body-medium font-semibold text-text-primary">
+                              {item.model}
+                            </span>
+                            {item.isPrimary && (
+                              <Chip variant="caption" color="blue" className="text-[10px] py-0 px-1.5">
+                                <Sparkles className="size-2.5 mr-0.5 inline-block text-amber-300" />
+                                {t('Mặc định')}
+                              </Chip>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Input Tokens */}
+                      <td>
+                        <div className="flex items-baseline gap-1 font-mono">
+                          <span className="font-semibold tabular-nums text-text-primary">
+                            {formatter.format(item.inputLimit)}
+                          </span>
+                          <span className="text-caption-2-regular text-text-tertiary">tokens</span>
+                        </div>
+                      </td>
+
+                      {/* Output Tokens */}
+                      <td>
+                        {item.outputLimit ? (
+                          <div className="flex items-baseline gap-1 font-mono">
+                            <span className="font-semibold tabular-nums text-text-primary">
+                              {formatter.format(item.outputLimit)}
+                            </span>
+                            <span className="text-caption-2-regular text-text-tertiary">tokens</span>
+                          </div>
+                        ) : (
+                          <Chip variant="caption" color="purple" className="text-xs">
+                            {t(item.outputLabel)}
+                          </Chip>
+                        )}
+                      </td>
+
+                      {/* Project Cap */}
+                      <td>
+                        {capInfo.configured ? (
+                          <div
+                            className="flex flex-wrap items-center gap-1.5 font-mono text-xs"
+                            aria-label={capInfo.fullText}
+                          >
+                            <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-0.5 font-semibold text-blue-400">
+                              {capInfo.rpm} RPM
+                            </span>
+                            <span className="text-text-tertiary font-bold">·</span>
+                            <span className="rounded-md border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-400">
+                              {capInfo.tpm} TPM
+                            </span>
+                            <span className="text-text-tertiary font-bold">·</span>
+                            <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-400">
+                              {capInfo.rpd} RPD
+                            </span>
+                          </div>
+                        ) : (
+                          <Chip variant="caption" color="neutral" className="text-text-tertiary text-xs">
+                            {t('Chưa xác nhận')}
+                          </Chip>
+                        )}
+                      </td>
+
+                      {/* Documentation Source */}
+                      <td className="text-right">
+                        <a
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-separator-border bg-background-secondary-default px-2.5 py-1 text-caption-1-medium text-text-secondary shadow-2xs transition-all duration-150 hover:border-border-button-hover hover:bg-background-primary-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+                          href={item.docsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`${t('Mở tài liệu model')} ${item.model}`}
+                        >
+                          <span>{item.updatedAt}</span>
+                          <ExternalLink className="size-3 text-text-tertiary" aria-hidden="true" />
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Footer & Action Bar */}
+      <footer className="flex flex-col gap-3.5 border-t border-separator-border bg-background-primary-default/50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex items-center gap-2 text-caption-1-regular text-text-secondary">
+          <Clock className="size-3.5 text-text-tertiary shrink-0" aria-hidden="true" />
+          <span>
+            {t('RPD đặt lại lúc 00:00 Pacific · giới hạn áp dụng theo project, không theo từng API key.')}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            className="inline-flex items-center gap-1.5 rounded-lg border border-separator-border bg-background-primary-default px-3 py-1.5 text-caption-1-medium text-text-secondary shadow-2xs transition-all hover:border-border-button-hover hover:bg-background-primary-hover hover:text-text-primary"
+            href={PRICING_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <FileText className="size-3.5 text-text-tertiary" aria-hidden="true" />
+            <span>{t('Bảng giá chính thức')}</span>
           </a>
-          <a className="font-medium text-foreground hover:underline" href={RATE_LIMITS_URL} target="_blank" rel="noreferrer">
-            {t('Cách tính rate limit')}
+
+          <a
+            className="inline-flex items-center gap-1.5 rounded-lg border border-separator-border bg-background-primary-default px-3 py-1.5 text-caption-1-medium text-text-secondary shadow-2xs transition-all hover:border-border-button-hover hover:bg-background-primary-hover hover:text-text-primary"
+            href={RATE_LIMITS_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Info className="size-3.5 text-text-tertiary" aria-hidden="true" />
+            <span>{t('Cách tính rate limit')}</span>
           </a>
-          <a className="font-medium text-primary hover:underline" href={AI_STUDIO_USAGE_URL} target="_blank" rel="noreferrer">
-            {t('Xem cap đang hoạt động')}
+
+          <a
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-caption-1-semibold text-white shadow-xs transition-all duration-150 hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+            href={AI_STUDIO_USAGE_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span>{t('Xem cap đang hoạt động')}</span>
+            <ExternalLink className="size-3.5" aria-hidden="true" />
           </a>
-        </span>
-      </CardFooter>
-    </Card>
+        </div>
+      </footer>
+    </section>
   );
 };
 
 export { FREE_TIER_MODELS };
 export default GeminiFreeTierReference;
+
