@@ -522,3 +522,72 @@ body {
     font-family: var(--font-body);
   }
 }
+
+/* ─────────────────────────────────────────────────────────
+ * LoadingState — pixel-grid loader, shimmering & meme video
+ * ───────────────────────────────────────────────────────── */
+:root {
+  --ink: #0f172a;
+  --ink-3: #64748b;
+  --tooltip-bg: rgba(15, 23, 42, 0.95);
+  --tooltip-muted: #94a3b8;
+}
+
+html.dark {
+  --ink: #f8fafc;
+  --ink-3: #94a3b8;
+  --tooltip-bg: rgba(15, 23, 42, 0.95);
+  --tooltip-muted: #64748b;
+}
+
+.bg-ink {
+  background-color: var(--ink, currentColor);
+}
+
+.text-ink-3 {
+  color: var(--ink-3, #94a3b8);
+}
+
+.shadow-overlay {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.25);
+}
+
+@keyframes pixel-on {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes shimmer-text {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="pixel-on"] {
+    animation: none !important;
+    opacity: 0.15 !important;
+  }
+  [style*="shimmer-text"] {
+    animation: none !important;
+  }
+}
+
