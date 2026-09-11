@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const { logger } = require('../config/logger');
 
 const loggerMiddleware = (req, res, next) => {
   const startedAt = process.hrtime.bigint();
@@ -12,17 +13,23 @@ const loggerMiddleware = (req, res, next) => {
 
   res.once('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-    console.log(JSON.stringify({
-      level: res.statusCode >= 500 ? 'error' : (res.statusCode >= 400 ? 'warn' : 'info'),
+    const logData = {
       event: 'http_request',
       requestId,
       method: req.method,
       path: req.path,
       status: res.statusCode,
       durationMs: Number(durationMs.toFixed(1)),
-      userId: req.user?.id || req.user?.userId || null,
-      timestamp: new Date().toISOString()
-    }));
+      userId: req.user?.id || req.user?.userId || null
+    };
+
+    if (res.statusCode >= 500) {
+      logger.error(logData, 'HTTP Request Server Error');
+    } else if (res.statusCode >= 400) {
+      logger.warn(logData, 'HTTP Request Client Error');
+    } else {
+      logger.info(logData, 'HTTP Request Completed');
+    }
   });
 
   next();

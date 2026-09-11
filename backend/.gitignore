@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 *.log
+logs/
 
 # Google Cloud & Security Credentials
 *credentials*.json
