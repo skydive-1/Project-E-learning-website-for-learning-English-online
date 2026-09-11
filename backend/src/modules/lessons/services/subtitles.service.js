@@ -965,21 +965,23 @@ ${JSON.stringify(translationInput)}
       const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'true').toLowerCase() === 'true';
       if (!youtubeVideoId && vadEnabled) {
         console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
-        const vadCues = await this.runSilenceVadPipeline(videoFilePath, {
-          workers: Number(process.env.SUBTITLE_VAD_WORKERS) || 1
-        });
-        if (vadCues.length === 0) {
-          const noSpeechError = new Error('VAD pipeline không phát hiện đoạn giọng nói nào trong video.');
-          noSpeechError.status = 422;
-          noSpeechError.code = 'SUBTITLE_NO_SPEECH_DETECTED';
-          throw noSpeechError;
+        try {
+          const vadCues = await this.runSilenceVadPipeline(videoFilePath, {
+            workers: Number(process.env.SUBTITLE_VAD_WORKERS) || 1
+          });
+          if (vadCues && vadCues.length > 0) {
+            console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp khoảng lặng thật!`);
+            generatedCues = vadCues;
+          } else {
+            console.warn(`[Ưu tiên 1 - Silence VAD Pipeline] VAD không phát hiện đoạn thoại, chuyển sang Ưu tiên 2 (Gemini Direct Audio)...`);
+          }
+        } catch (vadError) {
+          console.warn(`[Ưu tiên 1 - Silence VAD Pipeline] Môi trường không hỗ trợ Python VAD (${vadError.message}), tự động fallback sang Ưu tiên 2 (Gemini Direct Audio)...`);
         }
-        console.log(`[Ưu tiên 1 - Silence VAD Pipeline] ✅ Thành công bóc băng ${vadCues.length} câu phụ đề khớp khoảng lặng thật!`);
-        generatedCues = vadCues;
       }
 
-      // Direct-audio chỉ là chế độ tương thích được bật rõ bằng ENABLE_SUBTITLE_VAD=false.
-      if (!youtubeVideoId && !vadEnabled) {
+      // ƯU TIÊN 2: Gemini Direct Audio (Chạy khi VAD bị tắt HOẶC khi VAD gặp lỗi môi trường/Python)
+      if (!youtubeVideoId && (!generatedCues || generatedCues.length === 0)) {
         console.log(`[Ưu tiên 2 - Gemini Direct Audio] Kích hoạt bóc băng audio cho bài học ${lessonId}...`);
         const os = require('os');
         const tempAudioDir = path.join(os.tmpdir(), 'elearn_temp_audio');
