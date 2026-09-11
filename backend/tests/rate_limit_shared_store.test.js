@@ -15,7 +15,8 @@ describe('Shared & Distributed Rate Limiting', () => {
   const originalEnv = {
     NODE_ENV: process.env.NODE_ENV,
     REDIS_URL: process.env.REDIS_URL,
-    REDIS_TLS_URL: process.env.REDIS_TLS_URL
+    REDIS_TLS_URL: process.env.REDIS_TLS_URL,
+    RATE_LIMIT_REQUIRE_SHARED_STORE: process.env.RATE_LIMIT_REQUIRE_SHARED_STORE
   };
 
   function restoreEnv(name, value) {
@@ -37,8 +38,31 @@ describe('Shared & Distributed Rate Limiting', () => {
     assert.equal(createDistributedRateLimitStore('test-scope'), undefined);
   });
 
-  it('logs a prominent security warning when production has no Redis URL', () => {
+  it('logs the zero-cost single-instance mode once when production has no Redis URL', () => {
     process.env.NODE_ENV = 'production';
+    delete process.env.REDIS_URL;
+    delete process.env.REDIS_TLS_URL;
+    delete process.env.RATE_LIMIT_REQUIRE_SHARED_STORE;
+
+    const notices = [];
+    const warnings = [];
+    mock.method(console, 'info', (...args) => notices.push(args));
+    mock.method(console, 'warn', (...args) => warnings.push(args));
+
+    getRedisClient();
+    getRedisClient();
+
+    assert.equal(notices.filter(args => (
+      String(args[0]).includes('Zero-cost single-instance mode active')
+    )).length, 1);
+    assert.equal(warnings.some(args => (
+      String(args[0]).includes('Shared-store mode is required')
+    )), false);
+  });
+
+  it('keeps a production warning when multi-instance shared storage is explicitly required', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.RATE_LIMIT_REQUIRE_SHARED_STORE = 'true';
     delete process.env.REDIS_URL;
     delete process.env.REDIS_TLS_URL;
 
@@ -48,7 +72,7 @@ describe('Shared & Distributed Rate Limiting', () => {
     getRedisClient();
 
     assert.ok(warnings.some(args => (
-      String(args[0]).includes('REDIS_URL is not set in production')
+      String(args[0]).includes('Shared-store mode is required')
     )));
   });
 

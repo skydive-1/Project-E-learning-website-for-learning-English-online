@@ -22,6 +22,7 @@ import {
   updateGeminiRateLimitCaps
 } from '../services/adminAnalytics.service';
 import FreeTierUsageGuard from './FreeTierUsageGuard';
+import GeminiFreeTierReference from './GeminiFreeTierReference';
 
 // Chỉ là gợi ý ban đầu cho form trống; không được dùng để tính % trước khi admin lưu.
 const SUGGESTED_CAPS = Object.freeze({
@@ -292,6 +293,8 @@ const AIRateLimitsView = ({ canManageCaps }) => {
           </a>
         </div>
       </section>
+
+      <GeminiFreeTierReference models={status?.models || []} />
 
       <FreeTierUsageGuard
         models={status?.models || []}

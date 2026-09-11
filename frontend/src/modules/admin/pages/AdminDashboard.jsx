@@ -45,7 +45,7 @@ const AdminDashboard = () => {
   // Cho phép mở thẳng một tab từ URL, ví dụ /admin/dashboard?tab=ai-quota.
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
-    return ['users', 'courses', 'quizzes', 'security', 'analytics', 'ai-quota'].includes(requestedTab) ? requestedTab : 'users';
+    return ['users', 'courses', 'security', 'analytics', 'ai-quota'].includes(requestedTab) ? requestedTab : 'users';
   });
 
   // State Cấu hình bảo mật
@@ -149,9 +149,9 @@ const AdminDashboard = () => {
     };
   }, [activeTab, deepLinkUserId, users]);
 
-  // Fetch danh sách khóa học khi tạo quiz hoặc khi Admin / Super Admin quản lý khóa học.
+  // Fetch danh sách khóa học khi Admin / Super Admin quản lý khóa học.
   useEffect(() => {
-    if (activeTab === 'quizzes' || activeTab === 'courses') {
+    if (activeTab === 'courses') {
       fetchCourses();
     }
   }, [activeTab]);
@@ -578,12 +578,6 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
               onClick={() => setActiveTab('courses')}
             >
               <FiFolder className="inline mr-2" /> {t('adminCourses')}
-            </button>
-            <button 
-              className={`admin-tab ${activeTab === 'quizzes' ? 'active' : ''}`}
-              onClick={() => setActiveTab('quizzes')}
-            >
-              <FiPlus className="inline mr-2" /> {t('adminCreateQuiz')}
             </button>
             <button 
               className={`admin-tab ${activeTab === 'security' ? 'active' : ''}`}
