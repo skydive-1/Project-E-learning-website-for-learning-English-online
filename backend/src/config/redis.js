@@ -12,19 +12,32 @@ const { RedisStore } = require('rate-limit-redis');
 let redisClient = null;
 let isConnected = false;
 let initAttempted = false;
+let lastMissingStoreMode = null;
 
-const redisUrl = process.env.REDIS_URL || process.env.REDIS_TLS_URL;
+const getRedisUrl = () => process.env.REDIS_URL || process.env.REDIS_TLS_URL;
+const requiresSharedStore = () => ['1', 'true'].includes(
+  String(process.env.RATE_LIMIT_REQUIRE_SHARED_STORE || '').toLowerCase()
+);
 
 function getRedisClient() {
   if (redisClient) return redisClient;
 
+  const redisUrl = getRedisUrl();
   if (!redisUrl) {
-    if (process.env.NODE_ENV === 'production') {
-      console.warn(
-        '⚠️ [Security Warning] REDIS_URL is not set in production! ' +
-        'Rate limiter is falling back to in-memory store. ' +
-        'Limits will NOT be shared across multi-instance / scaled deployments.'
-      );
+    const missingStoreMode = requiresSharedStore() ? 'shared-required' : 'single-instance';
+    if (process.env.NODE_ENV === 'production' && lastMissingStoreMode !== missingStoreMode) {
+      if (missingStoreMode === 'shared-required') {
+        console.warn(
+          '⚠️ [RateLimit] Shared-store mode is required but REDIS_URL is missing. ' +
+          'Do not scale this service beyond one instance until a shared store is configured.'
+        );
+      } else {
+        console.info(
+          'ℹ️ [RateLimit] Zero-cost single-instance mode active: using the in-memory store. ' +
+          'Set RATE_LIMIT_REQUIRE_SHARED_STORE=true only when deploying multiple backend instances.'
+        );
+      }
+      lastMissingStoreMode = missingStoreMode;
     }
     return null;
   }

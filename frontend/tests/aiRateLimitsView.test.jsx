@@ -97,6 +97,10 @@ describe('Gemini Rate Limits admin view', () => {
     expect(screen.getByText('Đối chiếu Google Cloud Monitoring')).toBeInTheDocument();
     expect(screen.getByText('Chưa kết nối')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Mở Google AI Studio/i })).toHaveAttribute('href', 'https://aistudio.google.com/usage');
+    expect(screen.getByText('Tham chiếu Gemini API Free Tier')).toBeInTheDocument();
+    expect(screen.getAllByText('1.048.576').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/RPM, TPM và RPD là cap của project/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Xem cap đang hoạt động' })).toHaveAttribute('href', 'https://aistudio.google.com/usage');
     expect(screen.getByRole('progressbar', { name: 'RPM gemini-3.7-flash' })).toHaveAttribute('aria-valuenow', '70');
     expect(screen.getByText('125.000')).toBeInTheDocument();
     expect(screen.getByText('Free-tier Usage Guard')).toBeInTheDocument();
