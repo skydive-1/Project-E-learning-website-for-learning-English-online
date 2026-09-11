@@ -1,7 +1,14 @@
 import apiClient from '../../../config/api.config';
 import { getCourseQuizQuestions, fetchAndCacheQuizzes } from '../../quizzes/services/quizzes.service';
 
-const getApiBaseUrl = () => (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
+const DEFAULT_API_BASE_URL = 'http://localhost:5000/api';
+const getApiBaseUrl = () => {
+  const configuredUrl = typeof import.meta.env.VITE_API_URL === 'string'
+    ? import.meta.env.VITE_API_URL.trim()
+    : '';
+  const isMissing = !configuredUrl || /^(undefined|null)$/i.test(configuredUrl);
+  return (isMissing ? DEFAULT_API_BASE_URL : configuredUrl).replace(/\/+$/, '');
+};
 const getBackendHost = () => getApiBaseUrl().replace(/\/api$/, '');
 
 export const getLessonPdfUrl = (lessonId) => {

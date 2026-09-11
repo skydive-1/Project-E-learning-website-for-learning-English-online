@@ -397,7 +397,11 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
         expect(fileUrl).toBe('https://backend-api.elearn.com/api/lessons/88/pdf?token=cross-domain-token-999');
         expect(document).toHaveAttribute('data-auth-header', 'Bearer cross-domain-token-999');
       } finally {
-        import.meta.env.VITE_API_URL = originalEnv;
+        if (originalEnv === undefined) {
+          delete import.meta.env.VITE_API_URL;
+        } else {
+          import.meta.env.VITE_API_URL = originalEnv;
+        }
       }
     });
   });
