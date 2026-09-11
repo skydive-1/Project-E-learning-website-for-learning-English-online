@@ -228,13 +228,23 @@ const collectDatabaseAlerts = async (generatedAt) => {
       LIMIT 25
     `),
     pool.query(`
+      WITH latest_completed_attempts AS (
+        SELECT DISTINCT ON (e.user_id, e.purpose)
+               e.id, e.user_id, e.purpose, e.model, e.error_code,
+               e.request_status, e.created_at, e.completed_at
+        FROM ai_usage_events e
+        WHERE e.request_status IN ('success', 'error')
+          AND e.created_at >= NOW() - INTERVAL '30 minutes'
+        ORDER BY e.user_id, e.purpose,
+                 COALESCE(e.completed_at, e.created_at) DESC,
+                 e.id DESC
+      )
       SELECT e.id, e.user_id, e.purpose, e.model, e.error_code, e.created_at,
              u.full_name, u.username
-      FROM ai_usage_events e
+      FROM latest_completed_attempts e
       LEFT JOIN users u ON u.user_id = e.user_id
       WHERE e.request_status = 'error'
-        AND e.created_at >= NOW() - INTERVAL '30 minutes'
-      ORDER BY e.created_at DESC
+      ORDER BY COALESCE(e.completed_at, e.created_at) DESC
       LIMIT 25
     `),
     pool.query(`
@@ -380,7 +390,7 @@ const collectDatabaseAlerts = async (generatedAt) => {
       id: `ai-request-${row.id}`,
       type: 'server',
       severity: 'medium',
-      title: 'Yêu cầu AI phát sinh lỗi gần đây',
+      title: 'Yêu cầu AI đang lỗi',
       message: `${row.full_name || row.username || 'Hệ thống'} · ${row.purpose} · ${row.model}${row.error_code ? ` · ${row.error_code}` : ''}.`,
       timestamp: asTimestamp(row.created_at, generatedAt),
       actionUrl: userTarget(row.user_id, { eventId: row.id }),

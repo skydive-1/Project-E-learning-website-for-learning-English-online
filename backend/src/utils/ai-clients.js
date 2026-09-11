@@ -17,6 +17,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const db = require('../config/database');
+const { notifyOperationalAlertsChanged } = require('./operationalAlertEvents');
 const {
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODELS
@@ -98,6 +99,7 @@ async function beginAiUsageEvent({ userId = null, purpose, model }) {
  * @param {{ eventId?: number|null, userId?: number|null, purpose: string, model: string, usageMetadata?: object }} opts
  */
 async function recordAiUsage({ eventId = null, userId = null, purpose, model, usageMetadata }) {
+  let eventPersisted = false;
   try {
     if (!usageMetadata && !eventId) return;
 
@@ -132,6 +134,7 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
         [userId || null, purpose, model, input, output, total, cost]
       );
     }
+    eventPersisted = true;
 
     // 2. Increment user_token_limits.used_tokens (upsert)
     if (userId && total > 0) {
@@ -146,6 +149,8 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
     }
   } catch (err) {
     console.error('[AI Usage Recording] Failed to record usage (non-fatal):', err.message);
+  } finally {
+    if (eventPersisted) notifyOperationalAlertsChanged('ai-usage-success');
   }
 }
 
@@ -272,6 +277,7 @@ async function failAiUsageEvent({ eventId, error }) {
        WHERE id = $1`,
       [eventId, errorCode]
     );
+    notifyOperationalAlertsChanged('ai-usage-error');
   } catch (err) {
     console.error('[AI Usage Recording] Failed to close failed event (non-fatal):', err.message);
   }
@@ -574,7 +580,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
       });
 
       // Record real usage from Gemini response
-      resolveAiProviderIncident({ model, purpose: finalPurpose });
+      await resolveAiProviderIncident({ model, purpose: finalPurpose });
       await recordAiUsage({
         eventId: usageEventId,
         userId: finalUserId,
@@ -687,8 +693,6 @@ const geminiModel = {
         finalUserId,
         finalPurpose
       } = await executeGenerateStream(client, contents, config, model, { purpose, userId });
-      resolveAiProviderIncident({ model: modelUsed, purpose: finalPurpose });
-
       // Tạo Async Generator bọc các chunk, ghi nhận usage khi stream kết thúc
       async function* wrapStream() {
         let lastUsageMetadata = null;
@@ -704,6 +708,7 @@ const geminiModel = {
             };
           }
           // Responses without usageMetadata still close the request successfully.
+          await resolveAiProviderIncident({ model: modelUsed, purpose: finalPurpose });
           await recordAiUsage({
             eventId: usageEventId,
             userId: finalUserId,
@@ -797,7 +802,7 @@ const embeddingModel = {
       });
 
       // Record real embedding usage
-      resolveAiProviderIncident({ model: modelName, purpose: finalPurpose });
+      await resolveAiProviderIncident({ model: modelName, purpose: finalPurpose });
       await recordAiUsage({
         eventId: usageEventId,
         userId: finalUserId,
