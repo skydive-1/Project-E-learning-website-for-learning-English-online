@@ -58,7 +58,7 @@ test('course transcript health groups observed PostgreSQL states without fabrica
 
   try {
     const snapshot = await service.getCourseTranscriptHealth();
-    assert.equal(snapshot.source, 'PostgreSQL · lessons + lesson_subtitles');
+    assert.equal(snapshot.source, 'PostgreSQL · lessons + lesson_subtitles + background_jobs');
     assert.deepEqual(snapshot.summary, {
       total: 3,
       ready: 1,
@@ -71,6 +71,9 @@ test('course transcript health groups observed PostgreSQL states without fabrica
       retryablePending: 1,
       stalePending: 1,
       sourceMismatch: 1,
+      jobQueued: 0,
+      jobRetry: 0,
+      jobProcessing: 0,
       courses: 2,
       affectedCourses: 2,
       recoverablePending: 1,

@@ -106,6 +106,20 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
     expect(isMediaReadyForPublish({ contentUrl: 'https://project.supabase.co/storage/v1/object/public/videos/a.mp4', mediaStatus: 'READY', uploadVerified: false })).toBe(false);
   });
 
+  it('cho phép khóa đã xuất bản lưu sửa chữa từng lesson mất nguồn, nhưng không nới lỏng cho lesson mới', () => {
+    const persistedMissing = {
+      id: 124,
+      isPersisted: true,
+      type: 'video',
+      storageKey: 'courses/42/asset/manifest.mpd',
+      mediaStatus: 'MISSING_SOURCE',
+      uploadVerified: false
+    };
+    expect(isMediaReadyForPublish(persistedMissing)).toBe(false);
+    expect(isMediaReadyForPublish(persistedMissing, { allowPersistedRepair: true })).toBe(true);
+    expect(isMediaReadyForPublish({ ...persistedMissing, isPersisted: false }, { allowPersistedRepair: true })).toBe(false);
+  });
+
   it('1. Đổi bài học A -> B hiển thị skeleton transition trong cột 70% và không render nội dung stale của bài A', async () => {
     const mockCourse = {
       id: 1,

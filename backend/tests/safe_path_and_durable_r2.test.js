@@ -252,4 +252,40 @@ describe('🎓 3. Courses Service Metadata & Publish Validation', () => {
       supabaseStorage.checkObjectExists = originalExists;
     }
   });
+
+  test('Khóa đã published có thể lưu sửa chữa từng bước và đánh dấu source cũ bị mất', async () => {
+    const originalExists = supabaseStorage.checkObjectExists;
+    const manifestKey = 'courses/42/asset/manifest.mpd';
+    let markedMissing = null;
+    const client = {
+      query: async (sql, params) => {
+        if (String(sql).includes('FROM lessons l JOIN sections')) {
+          return { rows: [{
+            lesson_id: 124, title: 'Mở đầu', content_type: 'video', content_url: manifestKey,
+            storage_provider: 'r2', storage_bucket: 'elearning-media', storage_key: manifestKey,
+            mime_type: 'application/dash+xml', size_bytes: 512,
+            checksum_sha256: 'c'.repeat(64), media_status: 'READY'
+          }] };
+        }
+        if (String(sql).includes("SET media_status = 'MISSING_SOURCE'")) {
+          markedMissing = params;
+        }
+        return { rows: [] };
+      }
+    };
+    try {
+      supabaseStorage.checkObjectExists = async () => false;
+      await coursesService._validateStoredCourseForPublish(client, 42, {
+        repairableExistingSources: new Map([[124, manifestKey]])
+      });
+      assert.deepEqual(markedMissing, [124, manifestKey]);
+
+      await assert.rejects(
+        () => coursesService._validateStoredCourseForPublish(client, 42),
+        err => err.code === 'MEDIA_OBJECT_MISSING'
+      );
+    } finally {
+      supabaseStorage.checkObjectExists = originalExists;
+    }
+  });
 });

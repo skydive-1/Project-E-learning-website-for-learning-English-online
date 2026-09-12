@@ -15,6 +15,25 @@ const { geminiModel } = require('../../../utils/ai-clients');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
 const youtubeTranscript = require('../../../utils/youtubeTranscript.util');
 const lessonsService = require('./lessons.service');
+const {
+  durableJobQueue,
+  DurableJobWorker,
+  normalizeError
+} = require('../../../utils/durableJobQueue.service');
+
+const DURABLE_JOB_TYPES = Object.freeze({
+  SUBTITLE: 'subtitle_generation',
+  RAG: 'rag_ingestion',
+  QUESTIONS: 'suggested_questions'
+});
+
+const TERMINAL_SUBTITLE_ERROR_CODES = new Set([
+  'TRANSCRIPT_MEDIA_SOURCE_MISSING',
+  'YOUTUBE_NO_CAPTIONS_AVAILABLE',
+  'INVALID_LESSON_ID',
+  'LESSON_NOT_FOUND',
+  'UNSUPPORTED_LESSON_TYPE'
+]);
 
 /**
  * Format số giây thành chuỗi thời gian WebVTT: 00:01:23.456
@@ -53,12 +72,10 @@ function buildVttFromCues(cues, type = 'bilingual') {
 
 class SubtitlesService {
   constructor() {
-    this.activeAutoGenerationJobs = new Set();
-    this.autoGenerationQueue = new Map();
-    this.autoQueueRunning = false;
     this.generationQueueTail = Promise.resolve();
     this.activeGenerationPromises = new Map();
     this.recoveryTimer = null;
+    this.durableWorker = null;
     this.r2AssetIndexCache = null;
   }
 
@@ -162,69 +179,45 @@ class SubtitlesService {
       [cleanLessonId, sourceContentUrl]
     );
 
-    this.scheduleAutoGeneration(cleanLessonId, sourceContentUrl);
+    await this.scheduleAutoGeneration(cleanLessonId, sourceContentUrl, { replaceActive: false });
     return true;
   }
 
-  scheduleAutoGeneration(lessonId, expectedSourceUrl) {
-    const jobKey = String(lessonId);
-    this.autoGenerationQueue.set(jobKey, { lessonId, expectedSourceUrl });
-    this.drainAutoGenerationQueue();
+  async scheduleAutoGeneration(lessonId, expectedSourceUrl, { replaceActive = false } = {}) {
+    const cleanLessonId = parseInt(lessonId, 10);
+    if (!Number.isInteger(cleanLessonId) || cleanLessonId <= 0 || !expectedSourceUrl) return null;
+    const job = await durableJobQueue.enqueue({
+      jobType: DURABLE_JOB_TYPES.SUBTITLE,
+      dedupeKey: `lesson:${cleanLessonId}`,
+      lessonId: cleanLessonId,
+      payload: { lessonId: cleanLessonId, sourceContentUrl: expectedSourceUrl },
+      priority: 100,
+      maxAttempts: 5,
+      replaceActive
+    });
+    this.durableWorker?.wake();
+    return job;
   }
 
+  // Kept as a compatibility seam for callers/tests from the former in-memory
+  // queue. Work is now claimed from PostgreSQL by the durable worker.
   drainAutoGenerationQueue() {
-    if (this.autoQueueRunning) return;
-    this.autoQueueRunning = true;
-
-    setImmediate(async () => {
-      try {
-        while (this.autoGenerationQueue.size > 0) {
-          const [jobKey, job] = this.autoGenerationQueue.entries().next().value;
-          this.autoGenerationQueue.delete(jobKey);
-          if (this.activeAutoGenerationJobs.has(jobKey)) continue;
-
-          this.activeAutoGenerationJobs.add(jobKey);
-          try {
-            console.log(`[Auto-Subtitle] Bắt đầu xử lý nền cho bài học ${job.lessonId}`);
-            await this.generateSubtitlesWithGemini(job.lessonId, {
-              expectedSourceUrl: job.expectedSourceUrl
-            });
-            console.log(`[Auto-Subtitle] Hoàn tất xử lý nền cho bài học ${job.lessonId}`);
-          } catch (error) {
-            console.warn(`[Auto-Subtitle] Xử lý bài học ${job.lessonId} thất bại: ${error.message}`);
-          } finally {
-            this.activeAutoGenerationJobs.delete(jobKey);
-          }
-
-          // Nếu video bị thay trong lúc job cũ đang chạy, row vẫn là pending
-          // và cần được chạy lại với source mới.
-          try {
-            const pending = await db.query(
-              `SELECT ls.source_content_url
-               FROM lesson_subtitles ls
-               WHERE ls.lesson_id = $1 AND ls.subtitle_status = 'pending'`,
-              [job.lessonId]
-            );
-            if (pending.rows[0]?.source_content_url) {
-              this.autoGenerationQueue.set(jobKey, {
-                lessonId: job.lessonId,
-                expectedSourceUrl: pending.rows[0].source_content_url
-              });
-            }
-          } catch (_) {}
-        }
-      } finally {
-        this.autoQueueRunning = false;
-        if (this.autoGenerationQueue.size > 0) this.drainAutoGenerationQueue();
-      }
-    });
+    this.durableWorker?.wake();
   }
 
   async resumePendingAutoGeneration() {
     const { rows } = await db.query(
-      `SELECT ls.lesson_id, COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS source_content_url
+      `SELECT ls.lesson_id,
+              ls.subtitle_status,
+              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS source_content_url,
+              job.status AS job_status,
+              job.lease_expires_at,
+              job.payload AS job_payload
        FROM lesson_subtitles ls
        JOIN lessons l ON l.lesson_id = ls.lesson_id
+       LEFT JOIN background_jobs job
+         ON job.job_type = 'subtitle_generation'
+        AND job.dedupe_key = 'lesson:' || ls.lesson_id
        WHERE l.content_type IN ('video', 'youtube')
          AND COALESCE(l.media_status, '') <> 'MISSING_SOURCE'
          AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL
@@ -233,16 +226,23 @@ class SubtitlesService {
     );
 
     for (const row of rows) {
-      await db.query(
-        `UPDATE lesson_subtitles
-         SET subtitle_status = 'pending', source_content_url = $2,
-             error_code = NULL, error_message = NULL,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE lesson_id = $1`,
-        [row.lesson_id, row.source_content_url]
-      );
-      this.scheduleAutoGeneration(row.lesson_id, row.source_content_url);
+      const hasLiveLease = row.job_status === 'processing'
+        && row.job_payload?.sourceContentUrl === row.source_content_url
+        && row.lease_expires_at
+        && new Date(row.lease_expires_at).getTime() > Date.now();
+      if (!hasLiveLease) {
+        await db.query(
+          `UPDATE lesson_subtitles
+           SET subtitle_status = 'pending', source_content_url = $2,
+               error_code = NULL, error_message = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE lesson_id = $1`,
+          [row.lesson_id, row.source_content_url]
+        );
+      }
+      await this.scheduleAutoGeneration(row.lesson_id, row.source_content_url, { replaceActive: false });
     }
+    this.durableWorker?.wake();
     return rows.length;
   }
 
@@ -289,11 +289,17 @@ class SubtitlesService {
       `SELECT c.course_id, c.course_name, l.lesson_id, l.title AS lesson_title,
               ls.subtitle_status AS previous_status,
               ls.source_content_url,
-              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url
+              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url,
+              job.status AS job_status,
+              job.lease_expires_at,
+              job.payload AS job_payload
        FROM lesson_subtitles ls
        JOIN lessons l ON l.lesson_id = ls.lesson_id
        JOIN sections s ON s.section_id = l.section_id
        JOIN courses c ON c.course_id = s.course_id
+       LEFT JOIN background_jobs job
+         ON job.job_type = 'subtitle_generation'
+        AND job.dedupe_key = 'lesson:' || ls.lesson_id
        WHERE ${filters.join('\n         AND ')}
        ORDER BY
          CASE WHEN ls.source_content_url IS DISTINCT FROM COALESCE(NULLIF(l.storage_key, ''), l.content_url)
@@ -308,12 +314,11 @@ class SubtitlesService {
     const alreadyActiveLessons = [];
     for (const row of rows) {
       if (scheduledLessons.length >= batchLimit) break;
-      const jobKey = String(row.lesson_id);
-      if (
-        this.activeAutoGenerationJobs.has(jobKey)
-        || this.activeGenerationPromises.has(jobKey)
-        || this.autoGenerationQueue.has(jobKey)
-      ) {
+      const hasLiveLease = row.job_status === 'processing'
+        && row.job_payload?.sourceContentUrl === row.current_source_url
+        && row.lease_expires_at
+        && new Date(row.lease_expires_at).getTime() > Date.now();
+      if (hasLiveLease || this.activeGenerationPromises.has(String(row.lesson_id))) {
         alreadyActiveLessons.push(row.lesson_id);
         continue;
       }
@@ -335,7 +340,7 @@ class SubtitlesService {
       );
       if (transitioned.rows.length === 0) continue;
 
-      this.scheduleAutoGeneration(row.lesson_id, row.current_source_url);
+      await this.scheduleAutoGeneration(row.lesson_id, row.current_source_url, { replaceActive: true });
       scheduledLessons.push({
         courseId: row.course_id,
         courseName: row.course_name,
@@ -477,16 +482,20 @@ class SubtitlesService {
 
   async waitForAutoGenerationIdle(timeoutMs = 2 * 60 * 60 * 1000) {
     const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 2 * 60 * 60 * 1000);
-    while (
-      this.autoQueueRunning
-      || this.autoGenerationQueue.size > 0
-      || this.activeAutoGenerationJobs.size > 0
-      || this.activeGenerationPromises.size > 0
-    ) {
+    while (true) {
+      const stats = await durableJobQueue.getStats([
+        DURABLE_JOB_TYPES.SUBTITLE,
+        DURABLE_JOB_TYPES.RAG,
+        DURABLE_JOB_TYPES.QUESTIONS
+      ]);
+      const durableWorkRemaining = ['queued', 'retry', 'processing']
+        .some(status => Number(stats[status]) > 0);
+      if (!durableWorkRemaining && !this.durableWorker?.running && this.activeGenerationPromises.size === 0) {
+        return true;
+      }
       if (Date.now() >= deadline) return false;
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    return true;
   }
 
   /**
@@ -498,13 +507,23 @@ class SubtitlesService {
     const { rows } = await db.query(
       `SELECT ls.lesson_id,
               ls.source_content_url,
-              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url
+              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url,
+              job.status AS job_status,
+              job.lease_expires_at,
+              job.payload AS job_payload
        FROM lesson_subtitles ls
        JOIN lessons l ON l.lesson_id = ls.lesson_id
+       LEFT JOIN background_jobs job
+         ON job.job_type = 'subtitle_generation'
+        AND job.dedupe_key = 'lesson:' || ls.lesson_id
        WHERE l.content_type IN ('video', 'youtube')
          AND COALESCE(l.media_status, '') <> 'MISSING_SOURCE'
-         AND ls.subtitle_status = 'pending'
-         AND ls.updated_at < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')
+         AND ls.subtitle_status IN ('pending', 'processing')
+         AND (
+           ls.updated_at < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')
+           OR job.job_id IS NULL
+           OR (job.status = 'processing' AND job.lease_expires_at <= CURRENT_TIMESTAMP)
+         )
          AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL
          AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) <> ''`,
       [Math.max(1000, Number(staleMs) || 15 * 60 * 1000)]
@@ -512,35 +531,154 @@ class SubtitlesService {
 
     let scheduledCount = 0;
     for (const row of rows) {
-      const jobKey = String(row.lesson_id);
-      if (
-        this.activeAutoGenerationJobs.has(jobKey)
-        || this.activeGenerationPromises.has(jobKey)
-        || this.autoGenerationQueue.has(jobKey)
-      ) continue;
+      const hasLiveLease = row.job_status === 'processing'
+        && row.job_payload?.sourceContentUrl === row.current_source_url
+        && row.lease_expires_at
+        && new Date(row.lease_expires_at).getTime() > Date.now();
+      if (hasLiveLease || this.activeGenerationPromises.has(String(row.lesson_id))) continue;
 
-      if (row.source_content_url !== row.current_source_url) {
-        await db.query(
-          `UPDATE lesson_subtitles
-           SET source_content_url = $2,
+      await db.query(
+        `UPDATE lesson_subtitles
+           SET subtitle_status = 'pending',
+               source_content_url = $2,
                error_code = NULL,
                error_message = NULL,
                updated_at = CURRENT_TIMESTAMP
-           WHERE lesson_id = $1 AND subtitle_status = 'pending'`,
-          [row.lesson_id, row.current_source_url]
-        );
-      }
-      this.scheduleAutoGeneration(row.lesson_id, row.current_source_url);
+         WHERE lesson_id = $1 AND subtitle_status IN ('pending', 'processing')`,
+        [row.lesson_id, row.current_source_url]
+      );
+      await this.scheduleAutoGeneration(row.lesson_id, row.current_source_url, { replaceActive: false });
       scheduledCount += 1;
     }
+    this.durableWorker?.wake();
     return scheduledCount;
   }
 
+  async loadReadyTranscriptForJob(job) {
+    const lessonId = Number(job.lesson_id || job.payload?.lessonId);
+    const expectedSourceUrl = job.payload?.sourceContentUrl || null;
+    const result = await db.query(
+      `SELECT lesson_id, cues, subtitle_status, source_content_url
+       FROM lesson_subtitles
+       WHERE lesson_id = $1
+       LIMIT 1`,
+      [lessonId]
+    );
+    const subtitle = result.rows[0];
+    if (
+      !subtitle
+      || subtitle.subtitle_status !== 'ready'
+      || !Array.isArray(subtitle.cues)
+      || subtitle.cues.length === 0
+      || (expectedSourceUrl && subtitle.source_content_url !== expectedSourceUrl)
+    ) return null;
+    return subtitle;
+  }
+
+  async acknowledgeDownstreamJob(jobType, lessonId, sourceContentUrl) {
+    try {
+      await durableJobQueue.acknowledgeByKey(
+        jobType,
+        `lesson:${Number(lessonId)}`,
+        { lessonId: Number(lessonId), sourceContentUrl }
+      );
+    } catch (error) {
+      // The transcript transaction already published the durable fallback job.
+      // A failed fast-path acknowledgement therefore must not fail the transcript.
+      console.warn(`[DurableJobs] Không thể xác nhận fast-path ${jobType} cho lessonId=${lessonId}: ${error.message}`);
+    }
+  }
+
+  isDurableJobErrorRetryable(error, job) {
+    const code = String(error?.code || '');
+    if (job?.job_type === DURABLE_JOB_TYPES.SUBTITLE && TERMINAL_SUBTITLE_ERROR_CODES.has(code)) {
+      return false;
+    }
+    const message = String(error?.message || '').toLowerCase();
+    if (job?.job_type === DURABLE_JOB_TYPES.SUBTITLE && (
+      message.includes('không tìm thấy bài học')
+      || message.includes('không phải video/youtube')
+      || message.includes('chưa có nguồn video')
+    )) return false;
+    return true;
+  }
+
+  async handleDurableJobFailure(job, error, { leaseUpdated } = {}) {
+    if (!leaseUpdated || job.job_type !== DURABLE_JOB_TYPES.SUBTITLE) return;
+    const lessonId = Number(job.lesson_id || job.payload?.lessonId);
+    const sourceContentUrl = job.payload?.sourceContentUrl || null;
+    const normalized = normalizeError(error);
+    const subtitleStatus = job.status === 'retry' ? 'pending' : 'failed';
+    await db.query(
+      `UPDATE lesson_subtitles
+       SET subtitle_status = $3,
+           error_code = $4,
+           error_message = $5,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE lesson_id = $1
+         AND source_content_url = $2`,
+      [lessonId, sourceContentUrl, subtitleStatus, normalized.code, normalized.message]
+    );
+  }
+
+  createDurableWorker(options = {}) {
+    return new DurableJobWorker({
+      queue: durableJobQueue,
+      pollMs: Number(options.pollMs || process.env.BACKGROUND_JOB_POLL_MS) || 5_000,
+      leaseMs: Number(options.leaseMs || process.env.BACKGROUND_JOB_LEASE_MS) || 15 * 60 * 1000,
+      retention: {
+        completedDays: Number(process.env.BACKGROUND_JOB_COMPLETED_RETENTION_DAYS) || 14,
+        failedDays: Number(process.env.BACKGROUND_JOB_FAILED_RETENTION_DAYS) || 90,
+        limit: Number(process.env.BACKGROUND_JOB_PURGE_BATCH_SIZE) || 1000
+      },
+      handlers: {
+        [DURABLE_JOB_TYPES.SUBTITLE]: async job => {
+          const lessonId = Number(job.lesson_id || job.payload?.lessonId);
+          const sourceContentUrl = job.payload?.sourceContentUrl;
+
+          // A reclaimed job may have left the presentation status at processing.
+          // Resetting it is safe: the trigger preserves this worker's valid lease.
+          await db.query(
+            `UPDATE lesson_subtitles
+             SET subtitle_status = 'pending', updated_at = CURRENT_TIMESTAMP
+             WHERE lesson_id = $1
+               AND source_content_url = $2
+               AND subtitle_status = 'processing'`,
+            [lessonId, sourceContentUrl]
+          );
+          console.log(`[Auto-Subtitle] Durable worker bắt đầu bài học ${lessonId} (attempt ${job.attempts}/${job.max_attempts})`);
+          await this.generateSubtitlesWithGemini(lessonId, { expectedSourceUrl: sourceContentUrl });
+        },
+        [DURABLE_JOB_TYPES.RAG]: async job => {
+          const subtitle = await this.loadReadyTranscriptForJob(job);
+          if (!subtitle) return;
+          const { ingestLessonTranscript } = require('./ragIngestion.service');
+          await ingestLessonTranscript(subtitle.lesson_id, subtitle.cues);
+        },
+        [DURABLE_JOB_TYPES.QUESTIONS]: async job => {
+          const subtitle = await this.loadReadyTranscriptForJob(job);
+          if (!subtitle) return;
+          const { generateAndSaveSuggestedQuestions } = require('./suggestedQuestions.service');
+          const questions = await generateAndSaveSuggestedQuestions(subtitle.lesson_id, subtitle.cues);
+          if (!questions?.generatedByAi) {
+            const error = new Error('Chưa thể sinh và lưu câu hỏi gợi ý bằng AI; tác vụ sẽ được thử lại.');
+            error.code = 'SUGGESTED_QUESTIONS_NOT_PERSISTED';
+            throw error;
+          }
+        }
+      },
+      classifyError: (error, job) => this.isDurableJobErrorRetryable(error, job),
+      onJobFailed: (job, error, metadata) => this.handleDurableJobFailure(job, error, metadata)
+    });
+  }
+
   startAutoGenerationRecoveryWorker({ intervalMs = 5 * 60 * 1000, staleMs = 15 * 60 * 1000 } = {}) {
-    if (this.recoveryTimer) return this.recoveryTimer;
+    if (this.recoveryTimer || this.durableWorker) return this.recoveryTimer || this.durableWorker;
+
+    this.durableWorker = this.createDurableWorker().start();
 
     const recover = () => this.recoverStalledAutoGeneration(staleMs).catch((error) => {
-      console.warn(`[Auto-Subtitle Recovery] Không thể rà soát job pending: ${error.message}`);
+      console.warn(`[Auto-Subtitle Recovery] Không thể đối soát durable jobs: ${error.message}`);
     });
 
     this.recoveryTimer = setInterval(recover, Math.max(30_000, Number(intervalMs) || 5 * 60 * 1000));
@@ -548,10 +686,11 @@ class SubtitlesService {
     return this.recoveryTimer;
   }
 
-  stopAutoGenerationRecoveryWorker() {
-    if (!this.recoveryTimer) return;
-    clearInterval(this.recoveryTimer);
+  async stopAutoGenerationRecoveryWorker() {
+    if (this.recoveryTimer) clearInterval(this.recoveryTimer);
     this.recoveryTimer = null;
+    await this.durableWorker?.stop();
+    this.durableWorker = null;
   }
 
   /**
@@ -1457,6 +1596,7 @@ ${JSON.stringify(translationInput)}
       const { ingestLessonTranscript } = require('./ragIngestion.service');
       try {
         await ingestLessonTranscript(lessonId, generatedCues);
+        await this.acknowledgeDownstreamJob(DURABLE_JOB_TYPES.RAG, lessonId, rawContentUrl);
       } catch (ragError) {
         console.warn(
           `[Subtitles RAG] Phụ đề lessonId=${lessonId} đã sẵn sàng nhưng chưa nạp được RAG: ${ragError.message}`
@@ -1466,7 +1606,10 @@ ${JSON.stringify(translationInput)}
       // Tự động sinh và lưu 4 câu hỏi gợi ý bám sát 100% video cho học viên
       try {
         const { generateAndSaveSuggestedQuestions } = require('./suggestedQuestions.service');
-        await generateAndSaveSuggestedQuestions(lessonId, generatedCues);
+        const questions = await generateAndSaveSuggestedQuestions(lessonId, generatedCues);
+        if (questions?.generatedByAi) {
+          await this.acknowledgeDownstreamJob(DURABLE_JOB_TYPES.QUESTIONS, lessonId, rawContentUrl);
+        }
       } catch (suggestErr) {
         console.warn(
           `[Subtitles AI Questions] ⚠️ Lỗi sinh câu hỏi gợi ý cho lessonId=${lessonId}: ${suggestErr.message}`

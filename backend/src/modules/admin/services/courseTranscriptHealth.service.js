@@ -3,7 +3,7 @@
 const { pool } = require('../../../config/database');
 const subtitlesService = require('../../lessons/services/subtitles.service');
 
-const TRANSCRIPT_SOURCE = 'PostgreSQL · lessons + lesson_subtitles';
+const TRANSCRIPT_SOURCE = 'PostgreSQL · lessons + lesson_subtitles + background_jobs';
 const STALE_PENDING_SECONDS = 15 * 60;
 
 const normalizeTranscriptStatus = (row) => {
@@ -23,7 +23,10 @@ const emptyCounts = () => ({
   retryable: 0,
   retryablePending: 0,
   stalePending: 0,
-  sourceMismatch: 0
+  sourceMismatch: 0,
+  jobQueued: 0,
+  jobRetry: 0,
+  jobProcessing: 0
 });
 
 const incrementCounts = (counts, lesson) => {
@@ -34,6 +37,9 @@ const incrementCounts = (counts, lesson) => {
   if (lesson.retryable && lesson.transcriptStatus === 'pending') counts.retryablePending += 1;
   if (lesson.stalePending) counts.stalePending += 1;
   if (lesson.sourceMismatch) counts.sourceMismatch += 1;
+  if (lesson.jobStatus === 'queued') counts.jobQueued += 1;
+  if (lesson.jobStatus === 'retry') counts.jobRetry += 1;
+  if (lesson.jobStatus === 'processing') counts.jobProcessing += 1;
 };
 
 const getCourseTranscriptHealth = async () => {
@@ -53,11 +59,21 @@ const getCourseTranscriptHealth = async () => {
            )::bigint AS status_age_seconds,
            COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url,
            ls.source_content_url IS NOT DISTINCT FROM
-             COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS source_matches
+             COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS source_matches,
+           job.status AS job_status,
+           job.attempts AS job_attempts,
+           job.max_attempts AS job_max_attempts,
+           job.available_at AS job_available_at,
+           job.lease_expires_at AS job_lease_expires_at,
+           job.last_error_code AS job_error_code,
+           job.last_error_message AS job_error_message
     FROM courses c
     JOIN sections s ON s.course_id = c.course_id
     JOIN lessons l ON l.section_id = s.section_id
     LEFT JOIN lesson_subtitles ls ON ls.lesson_id = l.lesson_id
+    LEFT JOIN background_jobs job
+      ON job.job_type = 'subtitle_generation'
+     AND job.dedupe_key = 'lesson:' || l.lesson_id
     WHERE l.content_type IN ('video', 'youtube')
     ORDER BY c.course_id, s.order_index, l.order_index, l.lesson_id
   `);
@@ -80,12 +96,23 @@ const getCourseTranscriptHealth = async () => {
       transcriptStatus,
       cueCount: Number(row.cue_count) || 0,
       statusAgeSeconds,
-      stalePending: transcriptStatus === 'pending' && statusAgeSeconds >= STALE_PENDING_SECONDS,
+      stalePending: transcriptStatus === 'pending'
+        && statusAgeSeconds >= STALE_PENDING_SECONDS
+        && !['queued', 'retry', 'processing'].includes(row.job_status),
       sourceMismatch,
       retryable: ['pending', 'failed'].includes(transcriptStatus)
         && row.media_status !== 'MISSING_SOURCE',
-      errorCode: transcriptStatus === 'failed' ? (row.error_code || null) : null,
-      errorMessage: transcriptStatus === 'failed' ? (row.error_message || null) : null,
+      errorCode: transcriptStatus === 'failed'
+        ? (row.error_code || row.job_error_code || null)
+        : (row.job_status === 'retry' ? (row.job_error_code || null) : null),
+      errorMessage: transcriptStatus === 'failed'
+        ? (row.error_message || row.job_error_message || null)
+        : (row.job_status === 'retry' ? (row.job_error_message || null) : null),
+      jobStatus: row.job_status || null,
+      jobAttempts: Number(row.job_attempts) || 0,
+      jobMaxAttempts: Number(row.job_max_attempts) || 0,
+      jobAvailableAt: row.job_available_at || null,
+      jobLeaseExpiresAt: row.job_lease_expires_at || null,
       updatedAt: row.updated_at || null
     };
 

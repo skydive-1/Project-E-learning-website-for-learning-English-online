@@ -259,6 +259,16 @@ const CourseTranscriptHealthPanel = () => {
                       <FiClock aria-hidden="true" /> Cũ nhất: {formatAge(oldestPending)}
                     </span>
                   )}
+                  {Number(course.counts.jobRetry) > 0 && (
+                    <span className="transcript-health-row__age">
+                      <FiRefreshCw aria-hidden="true" /> {course.counts.jobRetry} job đã hẹn tự thử lại trong PostgreSQL
+                    </span>
+                  )}
+                  {Number(course.counts.jobQueued) > 0 && Number(course.counts.jobRetry) === 0 && (
+                    <span className="transcript-health-row__age">
+                      <FiClock aria-hidden="true" /> {course.counts.jobQueued} job đã được lưu bền vững, không mất khi server restart
+                    </span>
+                  )}
                   {failureGuidance && (
                     <span className="transcript-health-row__failure">
                       <strong>{failureGuidance.title}</strong>
@@ -292,7 +302,7 @@ const CourseTranscriptHealthPanel = () => {
       )}
 
       <p className="transcript-health-panel__note">
-        Tự khôi phục chỉ chạy cho bài còn khả năng xử lý. Bài đã xác nhận mất file sẽ không bị retry vô hạn và phải tải lại video. Worker chạy tuần tự để bảo vệ quota Gemini miễn phí.
+        Job được lưu trong PostgreSQL và tự tiếp tục sau khi server restart. Bài đã xác nhận mất file không bị retry vô hạn và phải tải lại video. Worker chạy tuần tự để bảo vệ quota Gemini miễn phí.
       </p>
     </section>
   );
