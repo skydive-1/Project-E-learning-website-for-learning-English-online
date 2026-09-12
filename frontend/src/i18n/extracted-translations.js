@@ -2939,11 +2939,9 @@ const LessonDetailPage = () => {
               <>
                 <span className=",
   " />
-                File âm thanh bài nghe (Upload hoặc dán URL) *
               </span>
               {uploadingAudio && (
                 <span className=": "TODO_TRANSLATE_ />
-                File âm thanh bài nghe (Upload hoặc dán URL) *
               </span>
               {uploadingAudio && (
                 <span className=",
@@ -13914,7 +13912,6 @@ export function hexToRgba(hex, opacityPercent) {
   "cư dân sinh sống tại khu vực": "TODO_TRANSLATE_cư dân sinh sống tại khu vực",
   "cười phá lên không kìm được": "TODO_TRANSLATE_cười phá lên không kìm được",
   "cựu sinh viên": "TODO_TRANSLATE_cựu sinh viên",
-  "Dán link audio (https://...) hoặc bấm nút tải file bên cạnh": "TODO_TRANSLATE_Dán link audio (https://...) hoặc bấm nút tải file bên cạnh",
   "dạng": "TODO_TRANSLATE_dạng",
   "dạng đã chọn)": "TODO_TRANSLATE_dạng đã chọn)",
   "dáng rộng thùng thình": "TODO_TRANSLATE_dáng rộng thùng thình",
@@ -14359,7 +14356,6 @@ export function hexToRgba(hex, opacityPercent) {
   "Email đăng ký không thể thay đổi.": "TODO_TRANSLATE_Email đăng ký không thể thay đổi.",
   "Email hoặc mật khẩu không chính xác": "TODO_TRANSLATE_Email hoặc mật khẩu không chính xác",
   "ErrorBoundary đã bắt được lỗi:": "TODO_TRANSLATE_ErrorBoundary đã bắt được lỗi:",
-  "File âm thanh bài nghe (Upload hoặc dán URL) *": "TODO_TRANSLATE_File âm thanh bài nghe (Upload hoặc dán URL) *",
   "File âm thanh bài nghe:": "TODO_TRANSLATE_File âm thanh bài nghe:",
   "File ghi âm giọng nói của bạn:": "TODO_TRANSLATE_File ghi âm giọng nói của bạn:",
   "gắn kết chặt chẽ, khăng khít": "TODO_TRANSLATE_gắn kết chặt chẽ, khăng khít",

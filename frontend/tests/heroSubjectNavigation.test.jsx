@@ -146,4 +146,25 @@ describe('Hero 4 Quadrants & Course Navigation Integration', () => {
     // Destination page must show the specified message
     expect(await screen.findByText('Hiện chưa có khóa học phù hợp')).toBeInTheDocument();
   });
+
+  it('filters the catalog by roadmap and keeps a direct path to the matching course', async () => {
+    const queryClient = createQueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <MemoryRouter initialEntries={['/courses?roadmap=basic']}>
+            <Routes>
+              <Route path="/courses" element={<CourseListPage />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText('Đang xem khóa học cho lộ trình')).toBeInTheDocument();
+    expect(await screen.findByText('Giao tiếp Tiếng Anh Cơ bản')).toBeInTheDocument();
+    expect(screen.queryByText('Khóa học IELTS Nâng cao')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Đổi lộ trình' })).toHaveAttribute('href', '/academy');
+  });
 });

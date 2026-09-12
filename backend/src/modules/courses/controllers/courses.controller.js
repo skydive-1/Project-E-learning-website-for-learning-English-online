@@ -49,6 +49,7 @@ exports.getAllCourses = async (req, res, next) => {
     const filterPublished = !(isAdminOrInstructor && includeDrafts);
 
     const courses = await coursesService.getAllCourses(filterPublished);
+    res.set('Cache-Control', 'no-store');
     res.status(200).json({
       success: true,
       message: 'Lấy danh sách khóa học thành công',

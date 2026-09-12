@@ -15,6 +15,9 @@ export const roadmapPaths = [
     skills: ['Phát âm IPA chuẩn', 'Ngữ pháp cơ bản', 'Từ vựng thông dụng', 'Giao tiếp hàng ngày'],
     image: '/images/hero_illustration.png',
     subjectFilter: '4',
+    subjectFilters: ['4', '5'],
+    subjectTerms: ['general english', 'communication', 'giao tiep', 'grammar', 'essential'],
+    courseTerms: ['co ban', 'can ban', 'mat goc', 'beginner', 'foundation', 'phat am', 'ipa'],
     phases: [
       {
         step: 'Tháng 1',
@@ -55,6 +58,9 @@ export const roadmapPaths = [
     skills: ['Từ vựng TOEIC theo chủ đề', 'Ngữ pháp trọng tâm', 'Phản xạ làm bài', 'Luyện đề có thời gian'],
     image: '/images/meeting_group.png',
     subjectFilter: '2',
+    subjectFilters: ['2'],
+    subjectTerms: ['toeic'],
+    courseTerms: ['toeic'],
     phases: [
       {
         step: 'Tháng 1-2',
@@ -95,6 +101,9 @@ export const roadmapPaths = [
     skills: ['Từ vựng học thuật', 'Viết bài có phản hồi', 'Phát âm và nói', 'Luyện đề tổng hợp'],
     image: '/images/hero_illustration.png',
     subjectFilter: '1',
+    subjectFilters: ['1'],
+    subjectTerms: ['ielts'],
+    courseTerms: ['ielts'],
     phases: [
       {
         step: 'Tháng 1-2',
@@ -122,4 +131,3 @@ export const roadmapPaths = [
 ];
 
 export const getRoadmapById = (roadmapId) => roadmapPaths.find((path) => path.id === roadmapId);
-

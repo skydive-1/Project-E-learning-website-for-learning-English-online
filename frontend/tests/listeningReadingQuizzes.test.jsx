@@ -114,7 +114,50 @@ describe('Listening & Reading Quiz Questions Support', () => {
     // Check passage textarea
     expect(screen.getByLabelText(/Đoạn văn đọc hiểu/i)).toHaveValue(questions[1].passage_text);
 
-    // Check audio input
-    expect(screen.getByPlaceholderText(/Dán link audio/i)).toHaveValue(questions[0].audio_url);
+    // Listening uses managed file upload only; external URL input is intentionally absent.
+    expect(screen.queryByPlaceholderText(/Dán link audio/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Thay file âm thanh')).toBeInTheDocument();
+    expect(document.querySelector('audio')).toHaveAttribute('src', questions[0].audio_url);
+  });
+
+  it('renders a direct Speaking prompt with a British-English reference preview', () => {
+    const questions = [{
+      question_text: 'Read the sentence aloud clearly.',
+      question_type: 'pronunciation',
+      options: [],
+      correct_answer: 'History helps us understand the present.',
+      explanation: 'Focus on clear word stress and natural rhythm.'
+    }];
+
+    render(
+      <CreateQuizDialog
+        open
+        onOpenChange={vi.fn()}
+        createMode="manual"
+        onCreateModeChange={vi.fn()}
+        quizTitle="Speaking Test"
+        onQuizTitleChange={vi.fn()}
+        quizDescription="Pronunciation practice"
+        onQuizDescriptionChange={vi.fn()}
+        quizDifficulty="Medium"
+        onQuizDifficultyChange={vi.fn()}
+        quizTimeLimit={20}
+        onQuizTimeLimitChange={vi.fn()}
+        isPrivate={false}
+        onPrivateChange={vi.fn()}
+        pinCode=""
+        onPinCodeChange={vi.fn()}
+        questions={questions}
+        onQuestionsChange={vi.fn()}
+        onAddQuestion={vi.fn()}
+        submitting={false}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText(/Mẫu câu tiếng Anh học viên cần luyện phát âm/i))
+      .toHaveValue('History helps us understand the present.');
+    expect(screen.getByRole('button', { name: /^Nghe thử$/i })).toBeEnabled();
+    expect(screen.queryByText(/Speaker A|Speaker B/i)).not.toBeInTheDocument();
   });
 });

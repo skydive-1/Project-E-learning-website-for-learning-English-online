@@ -14,6 +14,10 @@ const paritySql = fs.readFileSync(
   path.join(migrationsDir, '002_quizzes_and_attempts_parity.sql'),
   'utf8'
 );
+const academyRoadmapSql = fs.readFileSync(
+  path.join(migrationsDir, '20260912_academy_course_roadmap.sql'),
+  'utf8'
+);
 
 function getTableDefinition(sql, tableName) {
   const match = sql.match(new RegExp(
@@ -116,6 +120,15 @@ describe('Database Schema Parity & Migration Integrity', () => {
         `schema.sql: thiếu bảng ${tableName}`
       );
     }
+  });
+
+  it('keeps Academy roadmap metadata in schema and safely backfills existing courses', () => {
+    const definition = getTableDefinition(schemaSql, 'courses');
+    assert.match(definition, /academy_roadmap\s+VARCHAR\(20\)/i);
+    assert.match(definition, /academy_roadmap\s+IN\s*\('basic',\s*'toeic',\s*'ielts'\)/i);
+    assert.match(academyRoadmapSql, /ADD COLUMN IF NOT EXISTS academy_roadmap/i);
+    assert.match(academyRoadmapSql, /WHEN subject_id IN \(4, 5\) THEN 'basic'/i);
+    assert.match(academyRoadmapSql, /idx_courses_academy_roadmap_status/i);
   });
 
   it('runs a pending migration once and skips it on the next pass', async () => {

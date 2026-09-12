@@ -20,7 +20,8 @@ import {
   XCircle,
   FileAudio,
   Headphones,
-  BookOpen
+  BookOpen,
+  Eye
 } from 'lucide-react';
 
 const resolveAudioUrl = (url) => {
@@ -42,6 +43,7 @@ import OpenClozeQuestion from '../../quizzes/components/OpenClozeQuestion';
 import getEffectiveQuestionType from '../../quizzes/utils/questionType';
 import { useGamification } from '../../../context/GamificationContext';
 import { useToast } from '../../../context/ToastContext';
+import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
 
 // Shadcn UI components
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -109,6 +111,38 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
+
+  // States hỗ trợ dạng bài Nghe hiểu (Listening)
+  const [isPlayingListeningTts, setIsPlayingListeningTts] = useState(false);
+  const [showListeningTranscript, setShowListeningTranscript] = useState(false);
+
+  const handleToggleListeningTts = (textToSpeak) => {
+    if (!window.speechSynthesis) return;
+    if (isPlayingListeningTts) {
+      window.speechSynthesis.cancel();
+      setIsPlayingListeningTts(false);
+      return;
+    }
+    const cleanText = String(textToSpeak || '')
+      .replace(/\[Question\][\s\S]*$/i, '')
+      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+      .replace(/Speaker\s+[A-Z]\s*:/gi, (m) => `${m}, `)
+      .trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText || textToSpeak);
+    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.88 });
+    utterance.onend = () => setIsPlayingListeningTts(false);
+    utterance.onerror = () => setIsPlayingListeningTts(false);
+    setIsPlayingListeningTts(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsPlayingListeningTts(false);
+    setShowListeningTranscript(false);
+  }, [activeQuestionIdx]);
 
   // Load questions
   useEffect(() => {
@@ -377,8 +411,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     }
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.85;
+    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.84 });
     setIsPlayingReference(true);
     utterance.onend = () => setIsPlayingReference(false);
     utterance.onerror = () => setIsPlayingReference(false);
@@ -624,24 +657,103 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
             )}
 
             {/* Listening Audio Container */}
-            {currentQuestionType === 'listening' && (currentQuestion.audio_url || currentQuestion.audioUrl) && (
-              <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/25 flex flex-col gap-2 my-1">
-                <div className="flex items-center gap-2 text-xs font-bold text-cyan-700 dark:text-cyan-300">
-                  <Headphones className="size-4" />
-                  <span>Nghe đoạn âm thanh sau và chọn đáp án chính xác:</span>
+            {currentQuestionType === 'listening' && (() => {
+              const rawQuestionText = currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText || '';
+              let listeningDialogue = '';
+              let listeningPrompt = rawQuestionText;
+              const questionMatch = rawQuestionText.match(/\[Question\]\s*:?\s*([\s\S]+)$/i);
+              if (questionMatch) {
+                listeningPrompt = questionMatch[1].trim();
+                listeningDialogue = rawQuestionText
+                  .replace(/\[Question\][\s\S]*$/i, '')
+                  .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+                  .trim();
+              } else if (/\[Audio Script\s*\/?\s*Dialogue\]/i.test(rawQuestionText)) {
+                listeningDialogue = rawQuestionText
+                  .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+                  .trim();
+              }
+
+              const hasAudioFile = Boolean(currentQuestion.audio_url || currentQuestion.audioUrl);
+
+              return (
+                <div className="p-4 sm:p-5 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 flex flex-col gap-3 my-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-cyan-700 dark:text-cyan-300">
+                      <Headphones className="size-4" />
+                      <span>Câu hỏi nghe hiểu (Listening Comprehension):</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300">
+                      {hasAudioFile ? 'File Audio' : 'Giọng đọc AI (TTS)'}
+                    </span>
+                  </div>
+
+                  {hasAudioFile && (
+                    <audio
+                      src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
+                      controls
+                      className="w-full h-10 outline-none rounded-lg shadow-xs"
+                    />
+                  )}
+
+                  {!hasAudioFile && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-background/80 border border-cyan-200/70 dark:border-cyan-800/50">
+                      <div className="text-xs font-semibold text-foreground flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
+                        <span>Nghe câu hỏi bằng giọng Anh-Anh:</span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleToggleListeningTts(listeningDialogue || rawQuestionText)}
+                        className={`text-xs font-bold gap-1.5 cursor-pointer ${
+                          isPlayingListeningTts
+                            ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                            : 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                        }`}
+                      >
+                        <Headphones className="size-3.5" />
+                        <span>{isPlayingListeningTts ? 'Dừng đọc' : 'Nghe câu hỏi'}</span>
+                      </Button>
+                    </div>
+                  )}
+
+                  {listeningDialogue && (
+                    <div className="pt-2 border-t border-cyan-200/50 dark:border-cyan-800/40">
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setShowListeningTranscript(prev => !prev)}
+                          className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 hover:underline flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Eye className="size-3.5" />
+                          <span>{showListeningTranscript ? 'Ẩn lời thoại (Hide Script)' : 'Xem lời thoại (View Script / Dialogue)'}</span>
+                        </button>
+                        {!showListeningTranscript && (
+                          <span className="text-[10px] text-muted-foreground">Luyện nghe trước khi xem lời thoại</span>
+                        )}
+                      </div>
+                      {showListeningTranscript && (
+                        <div className="mt-2 p-3 rounded-xl bg-background/90 border border-cyan-200/60 dark:border-cyan-800/40 text-xs sm:text-sm leading-relaxed text-foreground whitespace-pre-line max-h-48 overflow-y-auto font-medium animate-fade">
+                          {listeningDialogue}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <audio
-                  src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
-                  controls
-                  className="w-full h-10 outline-none rounded-lg shadow-xs"
-                />
-              </div>
-            )}
+              );
+            })()}
 
             <p className="text-base sm:text-lg font-bold text-foreground leading-relaxed mt-1">
               {currentQuestionType === 'open_cloze'
                 ? 'Hoàn thành đoạn văn bằng cách điền từ hoặc cụm từ phù hợp vào các ô trống:'
-                : currentQuestion.question}
+                : currentQuestionType === 'listening'
+                ? (() => {
+                    const raw = currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText || '';
+                    const match = raw.match(/\[Question\]\s*:?\s*([\s\S]+)$/i);
+                    return match ? match[1].trim() : (raw.replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?[\s\S]*$/i, '').trim() || raw || 'Lắng nghe câu hỏi và chọn đáp án chính xác:');
+                  })()
+                : (currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText)}
             </p>
           </div>
 

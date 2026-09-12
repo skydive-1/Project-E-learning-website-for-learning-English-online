@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   BookOpenCheckIcon,
   FilePenLineIcon,
@@ -34,6 +34,7 @@ import { generateQuizAiFromPdf } from '../../quizzes/services/quizzes.service';
 import { instructorService } from '../../instructor/services/instructor.service';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
+import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
 
 const resolveAudioUrl = (url) => {
   if (!url) return '';
@@ -60,28 +61,28 @@ const targetLevelOptions = [
     value: 'auto',
     label: 'Tự động (Theo đề gốc)',
     badge: 'Đề xuất',
-    badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    badgeColor: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-900/40',
     desc: 'Kế thừa độ khó và kiến thức tự nhiên của đề thi PDF được tải lên.'
   },
   {
     value: 'grade_6_7',
     label: 'Lớp 6 - Lớp 7 (A1 - A2)',
     badge: 'Cơ bản',
-    badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    badgeColor: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700',
     desc: 'Từ vựng nền tảng, ngữ pháp sơ cấp: Hiện tại đơn, quá khứ đơn, danh từ số nhiều.'
   },
   {
     value: 'grade_8_9',
     label: 'Lớp 8 - Lớp 9 (B1)',
     badge: 'Trung cấp',
-    badgeColor: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+    badgeColor: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700',
     desc: 'Hiện tại hoàn thành, câu bị động, câu điều kiện loại 1 & 2, mệnh đề quan hệ.'
   },
   {
     value: 'grade_10_12',
     label: 'Lớp 10 - Lớp 12 (B2 - C1)',
     badge: 'Nâng cao',
-    badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
+    badgeColor: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700',
     desc: 'Đảo ngữ, câu giả định, idioms, collocations và từ vựng học thuật chuyên sâu.'
   }
 ];
@@ -152,11 +153,40 @@ const questionTypes = [
 
 const typeLabels = Object.fromEntries(questionTypes.map(type => [type.value, type.label]));
 
-const QuestionEditor = ({ question, index, onChange, onRemove }) => {
-  const type = question.question_type || 'multiple_choice';
+const QuestionEditor = ({ question, index, onChange, onRemove, showToast }) => {
+  const type = question.question_type || question.questionType || 'multiple_choice';
   const options = Array.isArray(question.options) ? question.options : ['', '', '', ''];
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
+  const [isPlayingTts, setIsPlayingTts] = useState(false);
+  const storedAudioUrl = question.audio_url || question.audioUrl || '';
+
+  useEffect(() => () => {
+    if (audioPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(audioPreviewUrl);
+  }, [audioPreviewUrl]);
+
+  const handleToggleTts = (textOverride = '') => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    if (isPlayingTts) {
+      window.speechSynthesis.cancel();
+      setIsPlayingTts(false);
+      return;
+    }
+    const fullText = textOverride || question.question_text || question.questionText || question.question || '';
+    const cleanText = fullText
+      .replace(/\[Question\][\s\S]*$/i, '')
+      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+      .replace(/\[Dialogue\]\s*:?/gi, '')
+      .replace(/\bAccording to Speaker\s+[A-Z]\s*,?\s*/gi, '')
+      .replace(/Speaker\s+[A-Z]\s*:/gi, '')
+      .trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText || fullText);
+    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.88 });
+    utterance.onend = () => setIsPlayingTts(false);
+    utterance.onerror = () => setIsPlayingTts(false);
+    setIsPlayingTts(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const handleAudioUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -167,14 +197,24 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
       setAudioPreviewUrl(localUrl);
       const res = await instructorService.uploadMedia(file);
       const uploadedKey = res?.fileUrl || res?.storageKey;
-      if (uploadedKey) {
-        onChange({ audio_url: uploadedKey });
-      }
+      if (!uploadedKey) throw new Error('Máy chủ không trả về đường dẫn file âm thanh.');
+      onChange({ audio_url: uploadedKey, audioUrl: uploadedKey });
+      showToast?.('Đã tải file âm thanh lên thành công.', 'success');
     } catch (err) {
       console.error('Lỗi upload file audio:', err);
+      setAudioPreviewUrl('');
+      showToast?.(err.response?.data?.message || err.message || 'Không thể tải file âm thanh lên.', 'error');
     } finally {
       setUploadingAudio(false);
+      e.target.value = '';
     }
+  };
+
+  const handleRemoveAudio = () => {
+    if (audioPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(audioPreviewUrl);
+    setAudioPreviewUrl('');
+    onChange({ audio_url: '', audioUrl: '' });
+    showToast?.('Đã xóa file âm thanh. Câu hỏi sẽ sử dụng giọng đọc TTS.', 'success');
   };
 
   const updatePassage = (value) => {
@@ -206,7 +246,7 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
       {/* Question Card Header */}
       <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
-          <Badge variant="default" className="bg-blue-600 hover:bg-blue-600 font-semibold px-2.5 py-0.5 text-xs">
+          <Badge variant="default" className="bg-indigo-600 hover:bg-indigo-600 font-semibold px-2.5 py-0.5 text-xs">
             Câu {index + 1}
           </Badge>
           <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
@@ -251,13 +291,13 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
           </div>
         )}
 
-        {/* Listening Audio Upload/URL if Listening question */}
+        {/* Listening audio upload with TTS fallback */}
         {type === 'listening' && (
           <div className="flex flex-col gap-2.5 p-3 rounded-xl bg-cyan-50/60 dark:bg-cyan-950/30 border border-cyan-200/80 dark:border-cyan-900/50">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-cyan-900 dark:text-cyan-200 flex items-center gap-1.5">
                 <HeadphonesIcon className="size-4 text-cyan-600 dark:text-cyan-400" />
-                File âm thanh bài nghe (Upload hoặc dán URL) *
+                File âm thanh bài nghe
               </span>
               {uploadingAudio && (
                 <span className="text-[11px] text-cyan-600 dark:text-cyan-400 font-semibold animate-pulse">
@@ -266,33 +306,57 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                value={question.audio_url || ''}
-                placeholder="Dán link audio (https://...) hoặc bấm nút tải file bên cạnh"
-                onChange={(e) => onChange({ audio_url: e.target.value })}
-                className="text-xs h-9 bg-white dark:bg-slate-900 border-cyan-200 dark:border-cyan-800/60 flex-1"
-              />
-              <label className="inline-flex items-center justify-center px-3.5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-lg cursor-pointer transition-colors shrink-0 shadow-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className={`inline-flex items-center justify-center px-3.5 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-xs ${uploadingAudio ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                 <UploadCloudIcon className="size-3.5 mr-1.5" />
-                <span>Tải file Audio</span>
+                <span>{storedAudioUrl || audioPreviewUrl ? 'Thay file âm thanh' : 'Tải file âm thanh'}</span>
                 <input
                   type="file"
-                  accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                  accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm"
                   className="hidden"
+                  disabled={uploadingAudio}
                   onChange={handleAudioUpload}
                 />
               </label>
+              {(audioPreviewUrl || storedAudioUrl) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRemoveAudio}
+                  disabled={uploadingAudio}
+                  className="h-9 text-xs font-semibold border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 gap-1.5"
+                >
+                  <XIcon className="size-3.5" />
+                  <span>Xóa file, dùng TTS</span>
+                </Button>
+              )}
             </div>
 
-            {(audioPreviewUrl || question.audio_url) && (
+            {(audioPreviewUrl || storedAudioUrl) ? (
               <div className="mt-1 flex flex-col gap-1">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Nghe thử audio:</span>
                 <audio
-                  src={audioPreviewUrl || resolveAudioUrl(question.audio_url)}
+                  src={audioPreviewUrl || resolveAudioUrl(storedAudioUrl)}
                   controls
                   className="w-full h-8 outline-none"
                 />
+              </div>
+            ) : (
+              <div className="mt-1 p-2.5 rounded-lg bg-white/70 dark:bg-slate-900/60 border border-cyan-200/60 dark:border-cyan-850 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="text-slate-600 dark:text-slate-400 text-[11px]">
+                  Không có file âm thanh? Hệ thống sẽ đọc câu hỏi bằng giọng Anh-Anh <strong>TTS</strong> khi học viên làm bài.
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleToggleTts()}
+                  className="h-7 text-xs font-semibold border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 shrink-0 gap-1"
+                >
+                  <HeadphonesIcon className="size-3.5" />
+                  <span>{isPlayingTts ? 'Dừng đọc thử' : 'Nghe thử AI đọc'}</span>
+                </Button>
               </div>
             )}
           </div>
@@ -339,15 +403,15 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
                 return (
                   <div
                     key={letter}
-                    className={`flex items-center gap-2 rounded-lg border transition-colors p-1.5 pr-2.5 focus-within:border-blue-500 ${
+                    className={`flex items-center gap-2 rounded-lg border transition-colors p-1.5 pr-2.5 focus-within:border-indigo-500 ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 ring-1 ring-blue-500/20'
+                        ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500/20'
                         : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
                     }`}
                   >
                     <span className={`flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
                       isSelected
-                        ? 'bg-blue-600 text-white' 
+                        ? 'bg-indigo-600 text-white' 
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                     }`}>
                       {letter}
@@ -370,7 +434,7 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
                       checked={isSelected}
                       onChange={() => onChange({ correct_answer: letter })}
                       title={`Đặt ${letter} là đáp án đúng`}
-                      className="accent-blue-600 size-4 cursor-pointer"
+                      className="accent-indigo-600 size-4 cursor-pointer"
                     />
                   </div>
                 );
@@ -381,7 +445,7 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
 
         {/* 2. Speaking / Pronunciation */}
         {type === 'pronunciation' && (
-          <div>
+          <div className="flex flex-col gap-2.5">
             <label htmlFor={`q-speaking-${index}`} className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Mẫu câu tiếng Anh học viên cần luyện phát âm *
             </label>
@@ -393,6 +457,22 @@ const QuestionEditor = ({ question, index, onChange, onRemove }) => {
               onChange={(event) => onChange({ correct_answer: event.target.value })}
               className="text-sm h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
             />
+            <div className="p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/25 border border-emerald-200/70 dark:border-emerald-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                Học viên sẽ nghe mẫu câu bằng giọng Anh-Anh trước khi ghi âm câu trả lời.
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleToggleTts(question.correct_answer || '')}
+                disabled={!String(question.correct_answer || '').trim()}
+                className="h-7 text-xs font-semibold border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 shrink-0 gap-1"
+              >
+                <Mic2Icon className="size-3.5" />
+                <span>{isPlayingTts ? 'Dừng nghe' : 'Nghe thử'}</span>
+              </Button>
+            </div>
           </div>
         )}
 
@@ -714,14 +794,32 @@ const CreateQuizDialog = ({
 
   const toggleAiType = (typeKey) => {
     if (!Array.isArray(aiTypes) || !onAiTypesChange) return;
-    if (aiTypes.includes(typeKey)) {
-      onAiTypesChange(aiTypes.filter(t => t !== typeKey));
-    } else {
-      onAiTypesChange([...aiTypes, typeKey]);
-    }
+    const nextTypes = aiTypes.includes(typeKey)
+      ? aiTypes.filter(t => t !== typeKey)
+      : [...aiTypes, typeKey];
+    onAiTypesChange(nextTypes);
   };
 
   const selectedCount = Array.isArray(aiTypes) ? aiTypes.length : 0;
+
+  // Tính toán phân bổ số lượng câu hỏi trực quan (Fair Distribution Preview)
+  const calculateFrontendDistribution = (count, types) => {
+    if (!Array.isArray(types) || types.length === 0) return [];
+    const K = types.length;
+    const requestedN = Number(count) || 5;
+    const N = Math.max(requestedN, 1);
+    const b = Math.floor(N / K);
+    const R = N % K;
+    return types.map((typeKey, idx) => {
+      const typeObj = questionTypes.find(t => t.value === typeKey);
+      const label = typeObj ? typeObj.label : typeKey;
+      const cnt = b + (idx < R ? 1 : 0);
+      return { typeKey, label, count: cnt };
+    });
+  };
+
+  const currentDistribution = calculateFrontendDistribution(aiCount, aiTypes);
+  const effectiveTotalQuestions = currentDistribution.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <div 
@@ -740,7 +838,7 @@ const CreateQuizDialog = ({
         {/* ========================================================= */}
         <div className="px-6 py-4 border-b border-slate-200/80 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900 flex items-center justify-between">
           <div className="flex items-center gap-3.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50 shadow-xs">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 shadow-xs">
               <SparklesIcon className="size-5" />
             </div>
             <div>
@@ -767,7 +865,7 @@ const CreateQuizDialog = ({
         {/* 2. TABS SWITCHER (Manual vs AI)                           */}
         {/* ========================================================= */}
         <div className="px-6 py-3 shrink-0 bg-slate-50/60 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800/60">
-          <div role="tablist" className="grid grid-cols-2 w-full h-10 p-1 bg-slate-200/70 dark:bg-slate-800/80 rounded-xl">
+          <div role="tablist" className="grid grid-cols-2 w-full h-10 p-1 bg-slate-100 dark:bg-slate-800/90 rounded-xl border border-slate-200/70 dark:border-slate-800">
             <button
               type="button"
               role="tab"
@@ -775,11 +873,11 @@ const CreateQuizDialog = ({
               onClick={() => onCreateModeChange('manual')}
               className={`rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                 createMode === 'manual'
-                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-750'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <BookOpenCheckIcon className="size-4" />
+              <BookOpenCheckIcon className={`size-4 ${createMode === 'manual' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
               <span>Soạn câu hỏi ({questions.length})</span>
             </button>
 
@@ -791,11 +889,11 @@ const CreateQuizDialog = ({
                 onClick={() => onCreateModeChange('ai')}
                 className={`rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
                   createMode === 'ai'
-                    ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-750'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                <WandSparklesIcon className="size-4 text-purple-500" />
+                <WandSparklesIcon className={`size-4 ${createMode === 'ai' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
                 <span>Sinh đề bằng Trợ lý AI</span>
               </button>
             )}
@@ -835,7 +933,7 @@ const CreateQuizDialog = ({
                     id="quiz-difficulty-select"
                     value={quizDifficulty}
                     onChange={(e) => onQuizDifficultyChange(e.target.value)}
-                    className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-blue-500 outline-none"
+                    className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
                   >
                     {difficultyItems.map(d => (
                       <option key={d.value} value={d.value}>{d.label}</option>
@@ -864,7 +962,7 @@ const CreateQuizDialog = ({
                 {/* Time Limit */}
                 <div className="flex items-center gap-3">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500">
-                    <ClockIcon className="size-4.5 text-blue-500" />
+                    <ClockIcon className="size-4.5 text-indigo-500" />
                   </div>
                   <div className="flex-1">
                     <label htmlFor="quiz-time-input" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -940,7 +1038,7 @@ const CreateQuizDialog = ({
                     <select
                       value={selectedTypeToAdd}
                       onChange={(e) => setSelectedTypeToAdd(e.target.value)}
-                      className="h-9 px-3 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-blue-500 outline-none"
+                      className="h-9 px-3 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
                     >
                       {questionTypes.map(t => (
                         <option key={t.value} value={t.value}>{t.label}</option>
@@ -950,7 +1048,7 @@ const CreateQuizDialog = ({
                     <Button 
                       type="button" 
                       onClick={handleQuickAdd}
-                      className="h-9 px-3.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5"
+                      className="h-9 px-3.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
                     >
                       <PlusIcon className="size-3.5" />
                       <span>Thêm câu hỏi</span>
@@ -961,7 +1059,7 @@ const CreateQuizDialog = ({
                 {/* Empty State vs Questions List */}
                 {questions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20 text-center">
-                    <div className="flex size-12 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-500 mb-3">
+                    <div className="flex size-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 mb-3">
                       <BookOpenCheckIcon className="size-6" />
                     </div>
                     <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -995,6 +1093,7 @@ const CreateQuizDialog = ({
                         index={idx}
                         onChange={(patch) => updateQuestion(idx, patch)}
                         onRemove={() => onQuestionsChange(questions.filter((_, i) => i !== idx))}
+                        showToast={showToast}
                       />
                     ))}
                   </div>
@@ -1012,15 +1111,15 @@ const CreateQuizDialog = ({
                 <button
                   type="button"
                   onClick={() => setAiSource('pdf')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition-all ${
                     aiSource === 'pdf'
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/60 dark:border-slate-800'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-750'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
-                  <FileUpIcon className="size-4 text-indigo-500" />
+                  <FileUpIcon className={`size-4 ${aiSource === 'pdf' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
                   <span>Tải lên Đề thi PDF</span>
-                  <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] px-1.5 py-0 font-bold ml-1">
+                  <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-900/40 text-[10px] px-1.5 py-0 font-bold ml-1">
                     Đề xuất
                   </Badge>
                 </button>
@@ -1028,13 +1127,13 @@ const CreateQuizDialog = ({
                 <button
                   type="button"
                   onClick={() => setAiSource('topic')}
-                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-semibold transition-all ${
                     aiSource === 'topic'
-                      ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-xs border border-slate-200/60 dark:border-slate-800'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-750'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
-                  <WandSparklesIcon className="size-4 text-purple-500" />
+                  <WandSparklesIcon className={`size-4 ${aiSource === 'topic' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
                   <span>Nhập chủ đề văn bản</span>
                 </button>
               </div>
@@ -1045,12 +1144,12 @@ const CreateQuizDialog = ({
               {aiSource === 'pdf' ? (
                 <div className="flex flex-col gap-5">
                   {/* Hero Banner */}
-                  <div className="flex items-start gap-3.5 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border border-indigo-200/80 dark:border-indigo-900/60">
+                  <div className="flex items-start gap-3.5 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
                       <GraduationCapIcon className="size-5" />
                     </div>
-                    <div className="text-xs text-indigo-950 dark:text-indigo-200 leading-relaxed">
-                      <div className="font-bold text-sm text-indigo-950 dark:text-indigo-100 mb-0.5">
+                    <div className="text-xs leading-relaxed">
+                      <div className="font-bold text-sm text-slate-900 dark:text-slate-100 mb-0.5">
                         Thu nạp kiến thức từ tài liệu Đề thi PDF
                       </div>
                       Tải lên file đề thi tiếng Anh định dạng PDF (đề thi thử, giữa kỳ, học kỳ...). Trợ lý AI sẽ đọc hiểu cấu trúc đề, phân tích từ vựng và ngữ pháp, sau đó sinh ngẫu nhiên một bài Quizzes mới được cá nhân hóa phù hợp với <strong>Level</strong> bạn chọn bên dưới.
@@ -1100,7 +1199,7 @@ const CreateQuizDialog = ({
                             : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-600 bg-slate-50/50 dark:bg-slate-900/40'
                         }`}
                       >
-                        <div className="flex size-14 items-center justify-center rounded-2xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 mb-3 shadow-inner">
+                        <div className="flex size-14 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 mb-3 shadow-inner">
                           <UploadCloudIcon className="size-7" />
                         </div>
                         <div className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">
@@ -1200,7 +1299,7 @@ const CreateQuizDialog = ({
                             onClick={() => setPdfTargetLevel(lvl.value)}
                             className={`group flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
                               isSelected
-                                ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-1 ring-indigo-500 shadow-xs'
+                                ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 ring-1 ring-indigo-500/40 shadow-xs'
                                 : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700'
                             }`}
                           >
@@ -1230,7 +1329,7 @@ const CreateQuizDialog = ({
                       id="pdf-count-select"
                       value={String(aiCount)}
                       onChange={(e) => onAiCountChange(Number(e.target.value))}
-                      className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-indigo-500 outline-none"
+                      className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none"
                     >
                       {aiCountItems.map(c => (
                         <option key={c.value} value={c.value}>{c.label}</option>
@@ -1296,6 +1395,24 @@ const CreateQuizDialog = ({
                         );
                       })}
                     </div>
+
+                    {/* Live Fair Distribution Preview */}
+                    {selectedCount > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 p-3 mt-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                          <SparklesIcon className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                          Phân bổ dự kiến:
+                        </span>
+                        {currentDistribution.map((item) => (
+                          <span key={item.typeKey} className="inline-flex items-center px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-750 text-[11px] shadow-2xs">
+                            {item.count} {item.label}
+                          </span>
+                        ))}
+                        <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold ml-auto">
+                          Tổng: {effectiveTotalQuestions} câu
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Additional Notes (Optional) */}
@@ -1315,9 +1432,10 @@ const CreateQuizDialog = ({
                   {/* Action Button */}
                   <Button
                     type="button"
+                    variant="outline"
                     disabled={pdfGenerating || aiGenerating || pdfFiles.length === 0 || selectedCount === 0}
                     onClick={handleGeneratePdfQuiz}
-                    className="h-11 w-full bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 hover:from-indigo-700 hover:via-blue-700 hover:to-purple-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 mt-1 cursor-pointer disabled:opacity-50"
+                    className="h-11 w-full border border-slate-300 dark:border-slate-700/80 bg-transparent hover:bg-slate-100/80 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-100 font-semibold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 mt-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
                   >
                     {pdfGenerating || aiGenerating ? (
                       <>
@@ -1326,17 +1444,17 @@ const CreateQuizDialog = ({
                       </>
                     ) : pdfFiles.length === 0 ? (
                       <>
-                        <UploadCloudIcon className="size-4" />
+                        <UploadCloudIcon className="size-4 text-slate-400" />
                         <span>Vui lòng tải lên ít nhất 1 file PDF đề thi ở trên</span>
                       </>
                     ) : selectedCount === 0 ? (
                       <>
-                        <AlertCircleIcon className="size-4" />
+                        <AlertCircleIcon className="size-4 text-slate-400" />
                         <span>Vui lòng chọn ít nhất 1 dạng câu hỏi</span>
                       </>
                     ) : (
                       <>
-                        <WandSparklesIcon className="size-4" />
+                        <WandSparklesIcon className="size-4 text-slate-600 dark:text-slate-300" />
                         <span>Bắt đầu AI tổng hợp {pdfFiles.length} PDF & Tạo Quizzes ({selectedCount} dạng)</span>
                       </>
                     )}
@@ -1347,8 +1465,8 @@ const CreateQuizDialog = ({
                 /* SUB-VIEW 2: TẠO CÂU HỎI THEO CHỦ ĐỀ VĂN BẢN (EXISTING)  */
                 /* ======================================================= */
                 <div className="flex flex-col gap-5">
-                  <div className="flex items-center gap-3 p-3.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-purple-900 dark:text-purple-200">
-                    <WandSparklesIcon className="size-6 text-purple-600 dark:text-purple-400 shrink-0" />
+                  <div className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300">
+                    <WandSparklesIcon className="size-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                     <div className="text-xs leading-relaxed">
                       <strong>Trợ lý AI E-Learn</strong> sẽ tự động thiết kế câu hỏi, các phương án nhiễu, đáp án đúng và giải thích ngữ pháp chuẩn khung CEFR theo chủ đề và các dạng bạn đã chọn bên dưới.
                     </div>
@@ -1365,7 +1483,7 @@ const CreateQuizDialog = ({
                       value={aiTopic}
                       placeholder="Ví dụ: Phrasal verbs for daily communication, Simple Past vs Present Perfect, IELTS Speaking Part 1 about Hometown..."
                       onChange={(e) => onAiTopicChange(e.target.value)}
-                      className="text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                      className="text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 text-slate-900 dark:text-slate-100 rounded-xl"
                     />
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       <span className="text-[11px] text-slate-400 py-0.5">Gợi ý:</span>
@@ -1380,7 +1498,7 @@ const CreateQuizDialog = ({
                           key={tag}
                           type="button"
                           onClick={() => onAiTopicChange(tag)}
-                          className="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-950/60 hover:text-purple-600 transition-colors cursor-pointer"
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-900/50 transition-all cursor-pointer active:scale-95 font-medium"
                         >
                           + {tag}
                         </button>
@@ -1397,7 +1515,7 @@ const CreateQuizDialog = ({
                       id="ai-count-select"
                       value={String(aiCount)}
                       onChange={(e) => onAiCountChange(Number(e.target.value))}
-                      className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-purple-500 outline-none"
+                      className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 font-medium focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none rounded-xl"
                     >
                       {aiCountItems.map(c => (
                         <option key={c.value} value={c.value}>{c.label}</option>
@@ -1405,7 +1523,7 @@ const CreateQuizDialog = ({
                     </select>
                   </div>
 
-                  {/* All 4 Selectable AI Question Types */}
+                  {/* All Selectable AI Question Types */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
@@ -1463,14 +1581,33 @@ const CreateQuizDialog = ({
                         );
                       })}
                     </div>
+
+                    {/* Live Fair Distribution Preview */}
+                    {selectedCount > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 p-3 mt-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                          <SparklesIcon className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                          Phân bổ dự kiến:
+                        </span>
+                        {currentDistribution.map((item) => (
+                          <span key={item.typeKey} className="inline-flex items-center px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium border border-slate-200 dark:border-slate-750 text-[11px] shadow-2xs">
+                            {item.count} {item.label}
+                          </span>
+                        ))}
+                        <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold ml-auto">
+                          Tổng: {effectiveTotalQuestions} câu
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Submit AI Generation */}
                   <Button
                     type="button"
+                    variant="outline"
                     disabled={aiGenerating || pdfGenerating || !aiTopic.trim() || selectedCount === 0}
                     onClick={onGenerateAi}
-                    className="h-11 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
+                    className="h-11 w-full border border-slate-300 dark:border-slate-700/80 bg-transparent hover:bg-slate-100/80 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-100 font-semibold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
                   >
                     {aiGenerating ? (
                       <>
@@ -1479,12 +1616,12 @@ const CreateQuizDialog = ({
                       </>
                     ) : selectedCount === 0 ? (
                       <>
-                        <WandSparklesIcon className="size-4" />
+                        <WandSparklesIcon className="size-4 text-slate-400" />
                         <span>Vui lòng chọn ít nhất 1 dạng câu hỏi ở trên</span>
                       </>
                     ) : (
                       <>
-                        <WandSparklesIcon className="size-4" />
+                        <WandSparklesIcon className="size-4 text-slate-600 dark:text-slate-300" />
                         <span>Bắt đầu tạo câu hỏi bằng AI ({selectedCount} dạng đã chọn)</span>
                       </>
                     )}
@@ -1501,7 +1638,7 @@ const CreateQuizDialog = ({
         {createMode === 'manual' && (
           <div className="px-6 py-3.5 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 shrink-0 flex items-center justify-between">
             <div className="text-xs text-slate-500 font-medium">
-              Đã soạn <strong className="text-blue-600 dark:text-blue-400 font-bold">{questions.length}</strong> câu hỏi
+              Đã soạn <strong className="text-indigo-600 dark:text-indigo-400 font-bold">{questions.length}</strong> câu hỏi
             </div>
 
             <div className="flex items-center gap-2.5">
@@ -1517,7 +1654,7 @@ const CreateQuizDialog = ({
                 type="submit" 
                 form="manual-quiz-form" 
                 disabled={submitting || questions.length === 0}
-                className="h-9 px-5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                className="h-9 px-5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs font-semibold rounded-lg shadow-xs flex items-center gap-1.5 disabled:opacity-50 cursor-pointer transition-all"
               >
                 {submitting ? (
                   <>

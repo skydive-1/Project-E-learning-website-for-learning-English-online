@@ -9,7 +9,38 @@ const {
   normalizeYoutubeUrl
 } = require('../../../utils/youtubeTranscript.util');
 
+const ACADEMY_ROADMAPS = new Set(['basic', 'toeic', 'ielts']);
+const SUBJECT_ROADMAP_DEFAULTS = new Map([
+  [1, 'ielts'],
+  [2, 'toeic'],
+  [4, 'basic'],
+  [5, 'basic']
+]);
+
 class CoursesService {
+  _resolveAcademyRoadmap(requestedRoadmap, { subjectId, courseName, description } = {}) {
+    if (requestedRoadmap !== undefined) {
+      const normalizedRoadmap = String(requestedRoadmap || '').trim().toLowerCase();
+      if (!normalizedRoadmap) return null;
+      if (!ACADEMY_ROADMAPS.has(normalizedRoadmap)) {
+        const error = new Error('Lộ trình Academy không hợp lệ. Vui lòng chọn Cơ bản, TOEIC hoặc IELTS.');
+        error.status = 400;
+        error.code = 'INVALID_ACADEMY_ROADMAP';
+        throw error;
+      }
+      return normalizedRoadmap;
+    }
+
+    const subjectRoadmap = SUBJECT_ROADMAP_DEFAULTS.get(Number(subjectId));
+    if (subjectRoadmap) return subjectRoadmap;
+
+    const searchableText = `${courseName || ''} ${description || ''}`.toLowerCase();
+    if (searchableText.includes('toeic')) return 'toeic';
+    if (searchableText.includes('ielts')) return 'ielts';
+    if (/\b(basic|beginner|foundation)\b/.test(searchableText)) return 'basic';
+    return null;
+  }
+
   /**
    * Media video/pdf/audio/ảnh có thể đã được upload lên R2 TRƯỚC KHI khóa học có
    * course_id thật (lúc đang tạo khóa học mới, frontend chưa biết ID), nên object
@@ -88,7 +119,7 @@ class CoursesService {
     try {
       let queryText = `
         SELECT 
-          c.course_id, c.subject_id, c.course_name, c.description, c.instructor_id,
+          c.course_id, c.subject_id, c.course_name, c.description, c.academy_roadmap, c.instructor_id,
           c.thumbnail_url, c.price, c.status, c.created_at, c.updated_at,
           c.start_date, c.end_date,
           u.full_name as instructor_name,
@@ -418,6 +449,7 @@ class CoursesService {
         subjectId,
         courseName,
         description,
+        academyRoadmap,
         thumbnail_url,
         price,
         status,
@@ -455,6 +487,17 @@ class CoursesService {
       }
       const finalPrice = price || 0;
       const finalSubjectId = subjectId ? parseInt(subjectId, 10) : null;
+      const finalAcademyRoadmap = this._resolveAcademyRoadmap(academyRoadmap, {
+        subjectId: finalSubjectId,
+        courseName,
+        description
+      });
+      if (finalStatus === 'published' && !finalAcademyRoadmap) {
+        const error = new Error('Vui lòng chọn lộ trình Academy trước khi xuất bản khóa học.');
+        error.status = 400;
+        error.code = 'ACADEMY_ROADMAP_REQUIRED';
+        throw error;
+      }
       const finalStartDate = startDate || courseData.start_date || new Date().toISOString().split('T')[0];
       const finalEndDate = endDate || courseData.end_date || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
@@ -464,6 +507,7 @@ class CoursesService {
           subject_id, 
           course_name, 
           description, 
+          academy_roadmap,
           instructor_id, 
           thumbnail_url, 
           price, 
@@ -471,12 +515,13 @@ class CoursesService {
           start_date, 
           end_date
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *
       `, [
         finalSubjectId,
         courseName,
         description,
+        finalAcademyRoadmap,
         instructorId,
         thumbnail_url,
         finalPrice,
@@ -697,7 +742,8 @@ class CoursesService {
 
       // Luôn khóa và đọc trạng thái hiện tại để không bypass validation khi payload bỏ status.
       const ownerCheckRes = await client.query(
-        'SELECT course_id, instructor_id, status FROM courses WHERE course_id = $1 FOR UPDATE',
+        `SELECT course_id, instructor_id, status, subject_id, course_name, description, academy_roadmap
+         FROM courses WHERE course_id = $1 FOR UPDATE`,
         [courseId]
       );
 
@@ -721,6 +767,7 @@ class CoursesService {
         subjectId,
         courseName,
         description,
+        academyRoadmap,
         thumbnail_url,
         price,
         status,
@@ -746,6 +793,25 @@ class CoursesService {
       const values = [];
       let paramIndex = 1;
 
+      const effectiveSubjectId = subjectId !== undefined ? subjectId : existingCourse.subject_id;
+      const effectiveCourseName = courseName !== undefined ? courseName : existingCourse.course_name;
+      const effectiveDescription = description !== undefined ? description : existingCourse.description;
+      const roadmapInput = academyRoadmap !== undefined
+        ? academyRoadmap
+        : (subjectId !== undefined ? undefined : existingCourse.academy_roadmap);
+      const finalAcademyRoadmap = this._resolveAcademyRoadmap(roadmapInput, {
+        subjectId: effectiveSubjectId,
+        courseName: effectiveCourseName,
+        description: effectiveDescription
+      });
+      const resultingStatusForMetadata = finalStatus === undefined ? existingCourse.status : finalStatus;
+      if (resultingStatusForMetadata === 'published' && !finalAcademyRoadmap && finalStatus !== undefined) {
+        const error = new Error('Vui lòng chọn lộ trình Academy trước khi xuất bản khóa học.');
+        error.status = 400;
+        error.code = 'ACADEMY_ROADMAP_REQUIRED';
+        throw error;
+      }
+
       if (subjectId !== undefined) {
         updates.push(`subject_id = $${paramIndex++}`);
         values.push(subjectId ? parseInt(subjectId, 10) : null);
@@ -763,6 +829,10 @@ class CoursesService {
       if (description !== undefined) {
         updates.push(`description = $${paramIndex++}`);
         values.push(description);
+      }
+      if (finalAcademyRoadmap !== (existingCourse.academy_roadmap || null)) {
+        updates.push(`academy_roadmap = $${paramIndex++}`);
+        values.push(finalAcademyRoadmap);
       }
       if (thumbnail_url !== undefined) {
         updates.push(`thumbnail_url = $${paramIndex++}`);

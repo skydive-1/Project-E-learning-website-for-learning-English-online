@@ -180,4 +180,31 @@ describe('CreateQuizDialog shadcn UI', () => {
     // Auto-scroll called on question card
     expect(scrollIntoViewMock).toHaveBeenCalled();
   });
+
+  it('displays the Live Fair Distribution preview when question types are selected in AI mode', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sinh đề bằng/i }));
+
+    // Harness has count=5 and types=['multiple_choice', 'open_cloze'] -> 3 multiple choice + 2 open cloze = 5 questions
+    expect(screen.getByText(/Phân bổ dự kiến:/i)).toBeInTheDocument();
+    expect(screen.getByText('3 Trắc nghiệm')).toBeInTheDocument();
+    expect(screen.getByText('2 Điền từ (Open Cloze)')).toBeInTheDocument();
+    expect(screen.getByText('Tổng: 5 câu')).toBeInTheDocument();
+  });
+
+  it('keeps the chosen question count and flexibly assigns zero to overflow types', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('tab', { name: /Sinh đề bằng/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Tự luận \(Writing\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Nghe hiểu \(Listening\)/i }));
+    fireEvent.change(screen.getByLabelText('Số lượng câu hỏi'), { target: { value: '3' } });
+
+    expect(screen.getByLabelText('Số lượng câu hỏi')).toHaveValue('3');
+    expect(screen.getByText('1 Trắc nghiệm')).toBeInTheDocument();
+    expect(screen.getByText('1 Điền từ (Open Cloze)')).toBeInTheDocument();
+    expect(screen.getByText('1 Tự luận (Writing)')).toBeInTheDocument();
+    expect(screen.getByText('0 Nghe hiểu (Listening)')).toBeInTheDocument();
+    expect(screen.getByText('Tổng: 3 câu')).toBeInTheDocument();
+  });
 });

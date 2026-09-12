@@ -1630,3 +1630,65 @@ textarea:focus-visible,
     background: #14b8a6 !important;
   }
 }
+
+/* ─── Gemini Trend Chart Bouncy & Wave Motion (BoardUI 60fps) ──────────── */
+.gemini-trend-bouncy-chart .recharts-bar-rectangle {
+  transform-origin: bottom center;
+  transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 180ms ease;
+}
+
+/* Hover jump-up on individual bar columns */
+.gemini-trend-bouncy-chart .recharts-bar-rectangle:hover path,
+.gemini-trend-bouncy-chart .recharts-bar-rectangle:hover rect {
+  transform: scaleY(1.08) translateY(-4px);
+  filter: brightness(1.2) drop-shadow(0 4px 12px rgba(59, 130, 246, 0.35));
+  cursor: pointer;
+}
+
+/* Dynamic wave jump animation ("nhảy lên xuống") */
+@keyframes bui-bar-wave-jump {
+  0%, 100% {
+    transform: scaleY(1) translateY(0);
+  }
+  35% {
+    transform: scaleY(1.15) translateY(-6px);
+  }
+  65% {
+    transform: scaleY(0.92) translateY(1px);
+  }
+}
+
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangle path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangle rect {
+  animation: bui-bar-wave-jump 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-origin: bottom center;
+}
+
+/* Staggered wave timing across bar columns */
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 1) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 1) rect { animation-delay: 0.00s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 2) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 2) rect { animation-delay: 0.14s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 3) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 3) rect { animation-delay: 0.28s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 4) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 4) rect { animation-delay: 0.42s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 5) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 5) rect { animation-delay: 0.56s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 6) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 6) rect { animation-delay: 0.70s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 7) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 7) rect { animation-delay: 0.84s; }
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 8) path,
+.gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangles g:nth-child(8n + 8) rect { animation-delay: 0.98s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gemini-trend-bouncy-chart .recharts-bar-rectangle,
+  .gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangle path,
+  .gemini-trend-bouncy-chart.is-waving .recharts-bar-rectangle rect {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+

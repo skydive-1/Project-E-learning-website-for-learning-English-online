@@ -1981,6 +1981,45 @@ $slate-950: #020617;
       }
     }
 
+    .catalog-roadmap-context {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: -6px 0 20px;
+      padding: 12px 14px;
+      color: var(--text-muted, #475569);
+      font-size: 14px;
+      line-height: 1.5;
+      background: color-mix(in srgb, #{$brand-primary} 7%, var(--card-bg, #ffffff));
+      border: 1px solid color-mix(in srgb, #{$brand-primary} 28%, var(--border-color, #cbd5e1));
+      border-radius: 12px;
+
+      strong {
+        color: var(--text-color, #0f172a);
+        font-weight: 700;
+      }
+
+      a {
+        flex: 0 0 auto;
+        color: $brand-primary;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+
+        &:hover {
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
+        &:focus-visible {
+          border-radius: 4px;
+          outline: 2px solid $brand-primary;
+          outline-offset: 3px;
+        }
+      }
+    }
+
     .catalog-filter-tags {
       display: flex;
       flex-wrap: wrap;

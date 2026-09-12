@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FiAward, FiClock, FiBookOpen, FiPlay, FiCompass, FiZap, FiPlus, FiX, 
   FiKey, FiLock, FiCopy, FiCheck, FiTrash2, FiShield, FiEye, FiGlobe, FiSearch,
-  FiGrid
+  FiGrid, FiHeadphones, FiUploadCloud
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
@@ -18,7 +18,15 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
-import { syncClozeGaps, validateClozeDraft } from '../utils/openCloze';
+import { syncClozeGaps, validateClozeDraft, normalizeQuestionsList } from '../utils/openCloze';
+import { reconcileAiQuizResponse } from '../utils/aiQuizDistribution';
+import { instructorService } from '../../instructor/services/instructor.service';
+
+const resolveQuizAudioUrl = (url) => {
+  if (!url) return '';
+  if (/^(https?:\/\/|blob:|data:)/i.test(url)) return url;
+  return `/api/quizzes/audio-stream?key=${encodeURIComponent(url)}`;
+};
 
 // Component Skeleton Loading cho thẻ Quiz
 const QuizCardSkeleton = () => {
@@ -80,11 +88,14 @@ const QuizzesListPage = () => {
   const [aiTopic, setAiTopic] = useState('');
   const [aiCount, setAiCount] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [uploadingAudioIndex, setUploadingAudioIndex] = useState(null);
   const [aiTypes, setAiTypes] = useState({
     multiple_choice: true,
     writing: true,
     pronunciation: true,
-    open_cloze: true
+    open_cloze: true,
+    listening: true,
+    reading: true
   });
 
   const loadManagedQuizzes = async () => {
@@ -127,13 +138,21 @@ const QuizzesListPage = () => {
   };
 
   const handleAddQuestion = (type) => {
+    const isMultipleChoiceLike = ['multiple_choice', 'listening', 'reading'].includes(type);
     const newQuestions = [];
     for (let i = 0; i < numQuestionsToAdd; i++) {
       newQuestions.push({
         questionType: type,
+        question_type: type,
         questionText: '',
-        options: type === 'multiple_choice' ? ['', '', '', ''] : [],
-        correctAnswer: type === 'multiple_choice' ? 'A' : '',
+        question_text: '',
+        audio_url: type === 'listening' ? '' : undefined,
+        audioUrl: type === 'listening' ? '' : undefined,
+        passage_text: type === 'reading' ? '' : undefined,
+        passageText: type === 'reading' ? '' : undefined,
+        options: isMultipleChoiceLike ? ['', '', '', ''] : [],
+        correctAnswer: isMultipleChoiceLike ? 'A' : '',
+        correct_answer: isMultipleChoiceLike ? 'A' : '',
         explanation: ''
       });
     }
@@ -146,6 +165,27 @@ const QuizzesListPage = () => {
 
   const handleUpdateQuestion = (index, field, value) => {
     setQuestionsList(prev => prev.map((q, idx) => idx === index ? { ...q, [field]: value } : q));
+  };
+
+  const handleQuestionAudioUpload = async (index, file) => {
+    if (!file) return;
+    try {
+      setUploadingAudioIndex(index);
+      const res = await instructorService.uploadMedia(file);
+      const uploadedKey = res?.fileUrl || res?.storageKey;
+      if (!uploadedKey) throw new Error('Máy chủ không trả về đường dẫn file âm thanh.');
+      setQuestionsList(prev => prev.map((question, questionIndex) => (
+        questionIndex === index
+          ? { ...question, audio_url: uploadedKey, audioUrl: uploadedKey }
+          : question
+      )));
+      showToast('Đã tải file âm thanh lên thành công.', 'success');
+    } catch (error) {
+      console.error('Lỗi upload file audio:', error);
+      showToast(error.response?.data?.message || error.message || 'Không thể tải file âm thanh lên.', 'error');
+    } finally {
+      setUploadingAudioIndex(null);
+    }
   };
 
   const handleUpdateClozePassage = (index, value) => {
@@ -294,25 +334,24 @@ const QuizzesListPage = () => {
       };
       const res = await generateQuizAi(payload);
       if (res.success && Array.isArray(res.questions)) {
-        const newQuestions = res.questions.map(q => {
-          const questionType = q.questionType || 'multiple_choice';
-          return {
-            questionType,
-            questionText: q.questionText || '',
-            options: questionType === 'open_cloze'
-              ? syncClozeGaps(q.questionText || '', q.options || [])
-              : (q.options || []),
-            correctAnswer: q.correctAnswer || '',
-            explanation: q.explanation || ''
-          };
+        const reconciliation = reconcileAiQuizResponse({
+          questions: res.questions,
+          count: aiCount,
+          questionTypes: selectedTypes,
+          topic: aiTopic
         });
-        setQuestionsList(prev => [...prev, ...newQuestions]);
+        setQuestionsList(prev => [...prev, ...reconciliation.questions]);
         setAiTopic('');
-        showToast(`Đã tự động tạo và thêm ${newQuestions.length} câu hỏi thành công từ AI! Bạn có thể chỉnh sửa thêm bên dưới.`, 'success');
+        showToast(
+          reconciliation.repaired
+            ? `Đã thêm đủ ${reconciliation.questions.length} câu; hệ thống tự cân bằng ${reconciliation.recoveredCount} câu còn thiếu theo các dạng đã chọn.`
+            : `Đã tự động tạo và thêm ${reconciliation.questions.length} câu hỏi đúng phân bổ! Bạn có thể chỉnh sửa thêm bên dưới.`,
+          'success'
+        );
       }
     } catch (error) {
       console.error("Lỗi khi sinh câu hỏi AI:", error);
-      showToast(error.response?.data?.message || 'Có lỗi xảy ra khi trợ lý AI đang sinh câu hỏi!', 'error');
+      showToast(error.response?.data?.message || error.message || 'Có lỗi xảy ra khi trợ lý AI đang sinh câu hỏi!', 'error');
     } finally {
       setAiGenerating(false);
     }
@@ -447,7 +486,7 @@ const QuizzesListPage = () => {
                       <span className="text-slate-650 dark:text-slate-300">{quiz.questions?.length || 0} câu hỏi</span>
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-550 font-semibold mt-0.5">
-                      (Trắc nghiệm: {quiz.questions?.filter(q => q.questionType === 'multiple_choice' || !q.questionType).length || 0} | Viết: {quiz.questions?.filter(q => q.questionType === 'writing').length || 0} | Nói: {quiz.questions?.filter(q => q.questionType === 'pronunciation').length || 0} | Điền từ: {quiz.questions?.filter(q => q.questionType === 'open_cloze').length || 0})
+                      (Trắc nghiệm: {quiz.questions?.filter(q => q.questionType === 'multiple_choice' || q.question_type === 'multiple_choice' || !q.questionType).length || 0} | Nghe: {quiz.questions?.filter(q => q.questionType === 'listening' || q.question_type === 'listening').length || 0} | Đọc: {quiz.questions?.filter(q => q.questionType === 'reading' || q.question_type === 'reading').length || 0} | Viết: {quiz.questions?.filter(q => q.questionType === 'writing' || q.question_type === 'writing').length || 0} | Nói: {quiz.questions?.filter(q => q.questionType === 'pronunciation' || q.question_type === 'pronunciation').length || 0} | Điền từ: {quiz.questions?.filter(q => q.questionType === 'open_cloze' || q.question_type === 'open_cloze').length || 0})
                     </span>
                   </span>
 
@@ -639,6 +678,24 @@ const QuizzesListPage = () => {
                           />
                           <span>Điền từ vào đoạn văn (Open Cloze)</span>
                         </label>
+                        <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-purple-800 dark:text-purple-300">
+                          <input
+                            type="checkbox"
+                            checked={aiTypes.listening}
+                            onChange={(e) => setAiTypes(prev => ({ ...prev, listening: e.target.checked }))}
+                            className="rounded border-purple-300 dark:border-purple-800 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                          />
+                          <span>Nghe hiểu (Listening)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-purple-800 dark:text-purple-300">
+                          <input
+                            type="checkbox"
+                            checked={aiTypes.reading}
+                            onChange={(e) => setAiTypes(prev => ({ ...prev, reading: e.target.checked }))}
+                            className="rounded border-purple-300 dark:border-purple-800 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                          />
+                          <span>Đọc hiểu (Reading)</span>
+                        </label>
                       </div>
                     </div>
 
@@ -693,7 +750,7 @@ const QuizzesListPage = () => {
                   <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex flex-col gap-0.5 md:flex-row md:items-center">
                     <span>Danh sách câu hỏi ({questionsList.length})</span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold normal-case md:ml-2">
-                      (Trắc nghiệm: {questionsList.filter(q => q.questionType === 'multiple_choice').length} | Viết: {questionsList.filter(q => q.questionType === 'writing').length} | Nói: {questionsList.filter(q => q.questionType === 'pronunciation').length} | Điền từ: {questionsList.filter(q => q.questionType === 'open_cloze').length})
+                      (Trắc nghiệm: {questionsList.filter(q => (q.questionType || q.question_type) === 'multiple_choice').length} | Nghe: {questionsList.filter(q => (q.questionType || q.question_type) === 'listening').length} | Đọc: {questionsList.filter(q => (q.questionType || q.question_type) === 'reading').length} | Viết: {questionsList.filter(q => (q.questionType || q.question_type) === 'writing').length} | Nói: {questionsList.filter(q => (q.questionType || q.question_type) === 'pronunciation').length} | Điền từ: {questionsList.filter(q => (q.questionType || q.question_type) === 'open_cloze').length})
                     </span>
                   </h3>
                   <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
@@ -721,6 +778,20 @@ const QuizzesListPage = () => {
                     </button>
                     <button
                       type="button"
+                      onClick={() => handleAddQuestion('listening')}
+                      className="px-3 py-1.5 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/45 dark:hover:bg-cyan-900/65 text-cyan-700 dark:text-cyan-300 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all inline-flex items-center gap-1"
+                    >
+                      <FiHeadphones aria-hidden="true" /> + Nghe hiểu (Listening)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddQuestion('reading')}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/45 dark:hover:bg-rose-900/65 text-rose-700 dark:text-rose-300 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all inline-flex items-center gap-1"
+                    >
+                      <FiBookOpen aria-hidden="true" /> + Đọc hiểu (Reading)
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleAddQuestion('writing')}
                       className="px-3 py-1.5 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/45 dark:hover:bg-violet-900/65 text-violet-650 dark:text-violet-400 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all"
                     >
@@ -736,7 +807,7 @@ const QuizzesListPage = () => {
                     <button
                       type="button"
                       onClick={() => handleAddQuestion('open_cloze')}
-                      className="px-3 py-1.5 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/45 dark:hover:bg-cyan-900/65 text-cyan-700 dark:text-cyan-300 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all inline-flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/45 dark:hover:bg-amber-900/65 text-amber-700 dark:text-amber-300 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all inline-flex items-center gap-1.5"
                     >
                       <FiGrid aria-hidden="true" /> Điền từ (Open Cloze)
                     </button>
@@ -761,21 +832,100 @@ const QuizzesListPage = () => {
                         
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black bg-indigo-100 dark:bg-indigo-900/80 text-smart-indigo dark:text-indigo-400 px-2 py-0.5 rounded uppercase tracking-wider">
-                            Câu {index + 1} - {q.questionType === 'multiple_choice' ? 'Trắc nghiệm' : q.questionType === 'writing' ? 'Tự luận' : q.questionType === 'open_cloze' ? 'Điền từ' : 'Phát âm'}
+                            Câu {index + 1} - {
+                              (q.questionType || q.question_type) === 'multiple_choice' ? 'Trắc nghiệm' :
+                              (q.questionType || q.question_type) === 'listening' ? 'Nghe hiểu (Listening)' :
+                              (q.questionType || q.question_type) === 'reading' ? 'Đọc hiểu (Reading)' :
+                              (q.questionType || q.question_type) === 'writing' ? 'Tự luận' :
+                              (q.questionType || q.question_type) === 'open_cloze' ? 'Điền từ' :
+                              'Phát âm'
+                            }
                           </span>
                         </div>
 
+                        {/* Reading Passage Input */}
+                        {(q.questionType || q.question_type) === 'reading' && (
+                          <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/60">
+                            <label className="text-[10px] font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <FiBookOpen /> Đoạn văn đọc hiểu (Reading Passage) *:
+                            </label>
+                            <textarea
+                              rows={3}
+                              placeholder="Nhập đoạn văn đọc hiểu tiếng Anh..."
+                              value={q.passage_text || q.passageText || ''}
+                              onChange={(e) => {
+                                handleUpdateQuestion(index, 'passage_text', e.target.value);
+                                handleUpdateQuestion(index, 'passageText', e.target.value);
+                              }}
+                              className="w-full resize-y px-3 py-2 bg-white dark:bg-slate-900 dark:text-slate-100 border border-rose-200 dark:border-rose-800/60 rounded-lg focus:border-rose-500 outline-none text-xs font-semibold leading-relaxed"
+                            />
+                          </div>
+                        )}
+
+                        {/* Listening audio upload */}
+                        {(q.questionType || q.question_type) === 'listening' && (
+                          <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-cyan-50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-800/60">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[10px] font-bold text-cyan-800 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <FiHeadphones /> File âm thanh bài nghe
+                              </span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold transition-colors ${uploadingAudioIndex === index ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                                  <FiUploadCloud />
+                                  <span>{q.audio_url || q.audioUrl ? 'Thay file âm thanh' : 'Tải file âm thanh'}</span>
+                                  <input
+                                    type="file"
+                                    accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm"
+                                    className="hidden"
+                                    disabled={uploadingAudioIndex === index}
+                                    onChange={(event) => {
+                                      handleQuestionAudioUpload(index, event.target.files?.[0]);
+                                      event.target.value = '';
+                                    }}
+                                  />
+                                </label>
+                                {(q.audio_url || q.audioUrl) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateQuestion(index, 'audio_url', '');
+                                      handleUpdateQuestion(index, 'audioUrl', '');
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg border border-cyan-300 dark:border-cyan-700 text-cyan-800 dark:text-cyan-300 text-xs font-semibold"
+                                  >
+                                    Xóa file, dùng TTS
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {uploadingAudioIndex === index && (
+                              <span className="text-[11px] text-cyan-700 dark:text-cyan-300">Đang tải file âm thanh...</span>
+                            )}
+                            {(q.audio_url || q.audioUrl) ? (
+                              <audio
+                                src={resolveQuizAudioUrl(q.audio_url || q.audioUrl)}
+                                controls
+                                className="w-full h-8 outline-none"
+                              />
+                            ) : (
+                              <span className="text-[11px] text-cyan-800/80 dark:text-cyan-300/80">
+                                Không có file âm thanh? Hệ thống sẽ đọc câu hỏi bằng giọng Anh-Anh TTS khi học viên làm bài.
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex flex-col gap-1.5">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            {q.questionType === 'open_cloze' ? 'Đoạn văn có chỗ trống *' : 'Câu hỏi/Đề bài *'}
+                            {(q.questionType || q.question_type) === 'open_cloze' ? 'Đoạn văn có chỗ trống *' : 'Câu hỏi/Đề bài *'}
                           </label>
-                          {q.questionType === 'open_cloze' ? (
+                          {(q.questionType || q.question_type) === 'open_cloze' ? (
                             <>
                               <textarea
                                 required
                                 rows={4}
                                 placeholder="Ví dụ: Artificial intelligence {{1}} the way companies {{2}} data."
-                                value={q.questionText}
+                                value={q.questionText || q.question_text || ''}
                                 onChange={(e) => handleUpdateClozePassage(index, e.target.value)}
                                 className="w-full resize-y px-3 py-2.5 bg-white dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg focus:border-smart-indigo outline-none transition-colors text-sm font-semibold leading-relaxed"
                               />
@@ -788,14 +938,17 @@ const QuizzesListPage = () => {
                               type="text"
                               required
                               placeholder="Nhập nội dung câu hỏi..."
-                              value={q.questionText}
-                              onChange={(e) => handleUpdateQuestion(index, 'questionText', e.target.value)}
+                              value={q.questionText || q.question_text || ''}
+                              onChange={(e) => {
+                                handleUpdateQuestion(index, 'questionText', e.target.value);
+                                handleUpdateQuestion(index, 'question_text', e.target.value);
+                              }}
                               className="w-full px-3 py-2 bg-white dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg focus:border-smart-indigo outline-none transition-all text-xs font-semibold"
                             />
                           )}
                         </div>
 
-                        {q.questionType === 'multiple_choice' && (
+                        {['multiple_choice', 'listening', 'reading'].includes(q.questionType || q.question_type) && Array.isArray(q.options) && q.options.length > 0 && (
                           <div className="grid grid-cols-2 gap-2">
                             {q.options.map((opt, oIdx) => (
                               <div key={oIdx} className="flex items-center gap-1">
@@ -817,8 +970,11 @@ const QuizzesListPage = () => {
                             <div className="col-span-2 flex items-center gap-2 mt-1">
                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đáp án đúng:</label>
                               <select
-                                value={q.correctAnswer}
-                                onChange={(e) => handleUpdateQuestion(index, 'correctAnswer', e.target.value)}
+                                value={q.correctAnswer || q.correct_answer || 'A'}
+                                onChange={(e) => {
+                                  handleUpdateQuestion(index, 'correctAnswer', e.target.value);
+                                  handleUpdateQuestion(index, 'correct_answer', e.target.value);
+                                }}
                                 className="px-3 py-1 bg-white dark:bg-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-lg focus:border-smart-indigo outline-none text-xs font-semibold"
                               >
                                 <option value="A">A</option>

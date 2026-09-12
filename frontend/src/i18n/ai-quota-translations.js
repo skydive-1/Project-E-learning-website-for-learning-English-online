@@ -323,5 +323,9 @@ export const aiQuotaUiTranslations = Object.freeze({
   'Giải phóng token': 'Token release',
   'Đồng bộ toàn project': 'Project-wide sync',
   'Chu kỳ reset': 'Reset schedule',
-  'Cơ chế hoàn quota': 'Quota recovery mechanism'
+  'Cơ chế hoàn quota': 'Quota recovery mechanism',
+  'Nhịp nhảy biểu đồ': 'Bouncing chart pulse',
+  'Bật nhịp sóng nhảy biểu đồ': 'Enable bouncing wave animation',
+  'Tắt nhịp sóng nhảy biểu đồ': 'Disable bouncing wave animation',
+  'Nhịp sóng trực quan': 'Live wave pulse'
 });

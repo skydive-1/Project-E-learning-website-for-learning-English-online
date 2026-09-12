@@ -108,14 +108,24 @@ export const normalizeQuestion = (q) => {
       }
     }
 
+    const audioUrl = type === 'listening' ? String(q.audio_url || q.audioUrl || '').trim() : null;
+    const passageText = type === 'reading' ? String(q.passage_text || q.passageText || '').trim() : null;
+
     return {
+      id: q.id ? String(q.id) : undefined,
       question_text: text,
+      questionText: text,
+      question: text,
       question_type: type,
+      questionType: type,
       options: cleanOptions,
       correct_answer: correctAnswer,
+      correctAnswer: correctAnswer,
       explanation,
-      audio_url: type === 'listening' ? String(q.audio_url || q.audioUrl || '').trim() : null,
-      passage_text: type === 'reading' ? String(q.passage_text || q.passageText || '').trim() : null
+      audio_url: audioUrl,
+      audioUrl: audioUrl,
+      passage_text: passageText,
+      passageText: passageText
     };
   }
 
@@ -125,53 +135,87 @@ export const normalizeQuestion = (q) => {
       rawAnswer = text.replace(/^Read the following sentence.*?:\s*/i, '').trim() || text;
     }
     return {
+      id: q.id ? String(q.id) : undefined,
       question_text: text,
+      questionText: text,
+      question: text,
       question_type: 'pronunciation',
+      questionType: 'pronunciation',
       options: [],
       correct_answer: rawAnswer,
+      correctAnswer: rawAnswer,
       explanation,
       audio_url: null,
-      passage_text: null
+      audioUrl: null,
+      passage_text: null,
+      passageText: null
     };
   }
 
   if (type === 'writing') {
     return {
+      id: q.id ? String(q.id) : undefined,
       question_text: text,
+      questionText: text,
+      question: text,
       question_type: 'writing',
+      questionType: 'writing',
       options: [],
       correct_answer: '',
+      correctAnswer: '',
       explanation,
       audio_url: null,
-      passage_text: null
+      audioUrl: null,
+      passage_text: null,
+      passageText: null
     };
   }
 
   if (type === 'open_cloze') {
     const gaps = syncClozeGaps(text, Array.isArray(q.options) ? q.options : []);
     return {
+      id: q.id ? String(q.id) : undefined,
       question_text: text,
+      questionText: text,
+      question: text,
       question_type: 'open_cloze',
+      questionType: 'open_cloze',
       options: gaps,
       correct_answer: '',
+      correctAnswer: '',
       explanation,
       audio_url: null,
-      passage_text: null
+      audioUrl: null,
+      passage_text: null,
+      passageText: null
     };
   }
 
   return {
+    id: q.id ? String(q.id) : undefined,
     question_text: text,
+    questionText: text,
+    question: text,
     question_type: type,
+    questionType: type,
     options: Array.isArray(q.options) ? q.options : [],
-    correct_answer: String(q.correct_answer ?? q.correctAnswer ?? ''),
+    correct_answer: String(q.correct_answer ?? q.correctAnswer ?? '').trim(),
+    correctAnswer: String(q.correct_answer ?? q.correctAnswer ?? '').trim(),
     explanation,
-    audio_url: q.audio_url || q.audioUrl || null,
-    passage_text: q.passage_text || q.passageText || null
+    audio_url: null,
+    audioUrl: null,
+    passage_text: null,
+    passageText: null
   };
 };
 
-export const normalizeQuestionsList = (list) => {
+export const normalizeQuestionsList = (list, allowedTypes = null) => {
   if (!Array.isArray(list)) return [];
-  return list.map(normalizeQuestion).filter(Boolean);
+  const allowedSet = Array.isArray(allowedTypes) && allowedTypes.length > 0
+    ? new Set(allowedTypes.map(t => String(t).toLowerCase().trim()))
+    : null;
+  return list
+    .map(normalizeQuestion)
+    .filter(Boolean)
+    .filter(q => !allowedSet || allowedSet.has(q.question_type));
 };

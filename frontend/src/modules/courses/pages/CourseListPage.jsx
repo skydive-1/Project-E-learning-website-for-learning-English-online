@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
@@ -21,6 +21,8 @@ import VocabularyFlashcardModal from '../components/VocabularyFlashcardModal';
 import AddWordModal from '../components/AddWordModal';
 import HowItWorksModal from '../components/HowItWorksModal';
 import TestsAndQuizzesPanel from '../components/TestsAndQuizzesPanel';
+import { getRoadmapById } from '../../academy/data/roadmapPaths';
+import { courseMatchesRoadmap } from '../../academy/utils/courseRoadmap';
 import '../styles/courses.scss';
 
 // Fetch courses from Backend API for the "Course" tab
@@ -178,7 +180,9 @@ const CourseListPage = () => {
   } = useQuery({
     queryKey: ['courses'],
     queryFn: fetchCoursesFromApi,
-    enabled: activeHubTab === 'course'
+    enabled: activeHubTab === 'course',
+    staleTime: 30_000,
+    refetchOnMount: 'always'
   });
 
   // Query Subjects from Backend
@@ -213,6 +217,10 @@ const CourseListPage = () => {
   }, [dbSubjects]);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const selectedRoadmap = useMemo(
+    () => getRoadmapById(searchParams.get('roadmap')),
+    [searchParams]
+  );
 
   // Course Catalog Filter & Search States
   const [selectedSubject, setSelectedSubject] = useState(() => {
@@ -247,6 +255,7 @@ const CourseListPage = () => {
   const handleSelectSubject = (subId) => {
     setSelectedSubject(subId);
     const params = new URLSearchParams(location.search);
+    params.delete('roadmap');
     if (subId === 'all') {
       params.delete('subject');
       params.delete('subject_id');
@@ -254,6 +263,15 @@ const CourseListPage = () => {
     } else {
       params.set('subject', subId);
     }
+    const queryString = params.toString();
+    navigate({ search: queryString ? `?${queryString}` : '' }, { replace: true });
+  };
+
+  const handleClearCatalogFilters = () => {
+    setSelectedSubject('all');
+    setCourseSearch('');
+    const params = new URLSearchParams(location.search);
+    ['roadmap', 'subject', 'subject_id', 'category', 'search'].forEach((key) => params.delete(key));
     const queryString = params.toString();
     navigate({ search: queryString ? `?${queryString}` : '' }, { replace: true });
   };
@@ -278,9 +296,11 @@ const CourseListPage = () => {
           ));
       }
 
-      return matchSearch && matchSubject;
+      const matchRoadmap = !selectedRoadmap || courseMatchesRoadmap(c, selectedRoadmap);
+
+      return matchSearch && matchSubject && matchRoadmap;
     });
-  }, [dbCourses, courseSearch, selectedSubject]);
+  }, [dbCourses, courseSearch, selectedRoadmap, selectedSubject]);
 
   return (
     <div className="learning-hub-page">
@@ -469,6 +489,16 @@ const CourseListPage = () => {
                   </div>
                 </div>
 
+                {selectedRoadmap && (
+                  <div className="catalog-roadmap-context" role="status">
+                    <span>
+                      {t('Đang xem khóa học cho lộ trình')}{' '}
+                      <strong>{t(selectedRoadmap.title)}</strong>
+                    </span>
+                    <Link to="/academy">{t('Đổi lộ trình')}</Link>
+                  </div>
+                )}
+
                 {/* Category Filter Tags */}
                 {dbSubjects.length > 0 && (
                   <div className="catalog-filter-tags">
@@ -509,7 +539,7 @@ const CourseListPage = () => {
                   <p className="text-slate-500 py-8 text-center">Đang tải danh sách khóa học...</p>
                 ) : filteredDbCourses.length === 0 ? (
                   <div role="status" className="py-12 text-center text-slate-400">
-                    {selectedSubject !== 'all' ? (
+                    {selectedSubject !== 'all' || selectedRoadmap ? (
                       <>
                         <p className="text-base font-semibold text-slate-700 dark:text-slate-300">
                           {t('Hiện chưa có khóa học phù hợp')}
@@ -520,7 +550,7 @@ const CourseListPage = () => {
                         </p>
                         <button
                           type="button"
-                          onClick={() => handleSelectSubject('all')}
+                          onClick={handleClearCatalogFilters}
                           className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-sm"
                         >
                           {t('Xem tất cả khóa học')}

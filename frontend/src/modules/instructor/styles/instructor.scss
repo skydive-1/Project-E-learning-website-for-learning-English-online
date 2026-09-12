@@ -2956,6 +2956,43 @@ html.dark {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.25rem;
   }
+
+  .academy-roadmap-field {
+    grid-column: 1 / -1;
+    min-width: 0;
+
+    .form-group-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+
+    select {
+      width: 100%;
+      min-height: 2.75rem;
+      padding: 0.7rem 0.75rem;
+      color: var(--text-color, #0f172a);
+      font-size: 0.875rem;
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border-color, #cbd5e1);
+      border-radius: 0.5rem;
+
+      &:focus-visible {
+        border-color: var(--primary, #2563eb);
+        outline: 2px solid color-mix(in srgb, var(--primary, #2563eb) 32%, transparent);
+        outline-offset: 2px;
+      }
+    }
+
+    p {
+      max-width: 68ch;
+      margin: 0.5rem 0 0;
+      color: var(--text-light, #64748b);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+  }
 }
 
 @media (max-width: 1024px) {
