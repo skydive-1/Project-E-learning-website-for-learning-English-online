@@ -145,7 +145,7 @@ const ProfilePage = () => {
     }
   };
 
-  // Handle profile image click / dummy upload
+  // Cập nhật ảnh đại diện bằng URL qua API hồ sơ hiện có
   const handleAvatarChange = () => {
     const url = window.prompt(t('Nhập link URL ảnh đại diện mới của bạn:'), profileData.profilePictureUrl);
     if (url !== null) {

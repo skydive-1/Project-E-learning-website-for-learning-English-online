@@ -1,6 +1,8 @@
 # Đánh Giá Mức Độ Sẵn Sàng Bảo Vệ Đồ Án Tốt Nghiệp
 
-**Ngày đánh giá:** 04/09/2026  
+**Ngày đánh giá ban đầu:** 04/09/2026
+
+**Đối soát lại:** 12/09/2026
 **Dự án:** E-Learning Website for Learning English Online with AI RAG Chatbot  
 **Repository:** https://github.com/skydive-1/Project-E-learning-website-for-learning-English-online
 
@@ -8,13 +10,13 @@
 
 ## 🎯 KẾT LUẬN CHÍNH
 
-### ✅ **CÓ ĐỦ TỰ TIN để trình bày với hội đồng** (với điều kiện xử lý những điểm yếu)
+### ✅ **CÓ ĐỦ TỰ TIN để trình bày với hội đồng**
 
-**Mức độ tự tin:** **7.5/10**
+**Mức độ tự tin:** **8.5/10**
 
-- ✅ **Đủ để pass bảo vệ:** Kiến trúc tốt, tính năng thực tế, tài liệu đầy đủ, demo chạy được
-- ⚠️ **Không phải hoàn hảo:** Vẫn có các issue cần công nhân sau (schema versioning, Redis, bundle optimization)
-- 🎯 **Khóa thành công:** Chuẩn bị tốt lời giải thích, demo mượt mà, trả lời sincere khi hỏi
+- **Căn cứ mới:** Backend 321/321 test pass, frontend 235/235 test pass và production build thành công.
+- **Các lỗi cũ đã xử lý:** Bundle đã tách chunk; thống kê Profile dùng API thật; đã có migration versioned, RedisStore tùy chọn, file log bền và health probes.
+- **Phần còn phải nói rõ:** Một số DDL tương thích vẫn chạy lúc boot; chế độ 0 VND một instance dùng MemoryStore; các pipeline bên ngoài cần demo dự phòng khi quota hoặc mạng gián đoạn.
 
 ---
 
@@ -27,8 +29,8 @@
 - Tổ chức: `src/modules/*` (auth, courses, lessons, chatbot, progress, quizzes, admin, gamification, drm)
 - Middleware riêng biệt: JWT auth, error handling, logging, rate limiting
 - Số lượng module: **13 module** độc lập với controller-service-route pattern (admin, analytic, auth, chatbot, comments, consultation, courses, drm, gamification, instructor, lessons, progress, quizzes)
-- Số lượng module: 8+ module độc lập với controller-service-route pattern
-- ✅ Test coverage: **165 test pass** (0 fail)
+- Test backend: **321/321 pass**, 60 suites, 0 fail, 0 skip (12/09/2026)
+- Test frontend: **235/235 pass**, 55 files (12/09/2026)
 
 **Frontend - React 19 + Vite**
 - React version: 19.2.7 (mới nhất)
@@ -37,7 +39,6 @@
 - Styling: Tailwind CSS 3.4.4 + SCSS
 - UI Library: shadcn components, React Aria
 - Module-based structure: `src/modules/*` (academy, admin, analytics, auth, chatbot, courses, gamification, homepage, instructor, lessons, profile, progress, quizzes)
-- Module-based structure: `src/modules/*` (auth, courses, lessons, chatbot, quizzes, admin)
 
 **Database**
 - PostgreSQL 15+ (Supabase-compatible)
@@ -90,60 +91,59 @@
 
 ---
 
-## 2. ⚠️ NHỮNG ĐIỂM CẦN CHUẨN BỊ ĐẢM BẢO
+## 2. ⚠️ NHỮNG ĐIỂM CẦN TRÌNH BÀY ĐÚNG PHẠM VI
 
-### 2.1 Schema Database Lệch Nhau
+### 2.1 Schema Đang Trong Giai Đoạn Chuyển Đổi
 
-**Vấn đề:**
-- `backend/schema.sql` khai báo schema, nhưng migration chạy lúc boot thêm cột (`is_private`, `pin_code`, `updated_at` vào `quizzes`; làm nullable cột `user_id`, `quiz_id`)
-- `schema.sql` không phải source of truth
+**Trạng thái hiện tại:**
+- Repo đã có `001_initial_schema.sql`, `002_quizzes_and_attempts_parity.sql` và các migration theo ngày.
+- Migration runner chạy theo thứ tự, trong transaction, lưu checksum và version vào `schema_migrations`.
+- `schema.sql` đã đồng bộ các cột quiz/nullability và được kiểm tra bởi `schema_parity.test.js`.
+- `database.js` vẫn giữ một số `ALTER TABLE ... IF NOT EXISTS` lúc boot để tương thích database cũ. Đây là phần nợ kỹ thuật còn lại, không phải toàn bộ cơ chế migration.
 
 **Mức độ:**  🟡 **Vừa** (ảnh hưởng đến maintainability, không phải runtime error)
 
 **Lời giải thích để trình bày:**
-> "Hiện tại, database schema được cập nhật thông qua boot migration thay vì migration files versioned. Bằng chứng: test `progress_completion_threshold.test.js` xác minh schema đúng runtime.  
-> Cải thiện sau: Tạo migration file versioned (v001_initial_schema.sql), chạy trong transaction, update `schema.sql` làm source of truth."
+> "Hệ thống đã có migration versioned, transaction và checksum tracking. Chúng tôi vẫn giữ một lớp DDL idempotent lúc boot để nâng cấp các database cũ; bước tiếp theo là chuyển nốt lớp tương thích này thành migration versioned và để startup chỉ chạy migration runner."
 
 **Checklist chuẩn bị:**
 - [ ] Chạy `psql elearning_db < backend/schema.sql` để xác minh schema setup
-- [ ] Chạy `npm --prefix backend test` để chứng minh 165 test pass với schema hiện tại
-- [ ] Nếu hỏi: "Schema có test không?" → Đáp: "5 test auth + 2 test progress + 14 test media validate schema consistency"
+- [x] `schema_parity.test.js` kiểm tra initial schema, quiz parity và cơ chế chỉ chạy migration một lần.
+- [x] `npm --prefix backend test`: 321/321 pass.
 
-### 2.2 Rate Limiting Dùng In-Memory Store
+### 2.2 Rate Limiting Có Hai Chế Độ
 
-**Vấn đề:**
-- `backend/src/middleware/rateLimit.middleware.js` dùng `express-rate-limit` mặc định (in-memory counter)
-- Khi chạy multiple instances, mỗi instance giữ bộ đếm riêng → giới hạn thực tế bị sai lệch
+**Trạng thái hiện tại:**
+- Chế độ mặc định 0 VND, một backend instance: dùng MemoryStore và ghi log rõ chế độ đang chạy.
+- Nếu có `REDIS_URL` hoặc `REDIS_TLS_URL`, hệ thống tạo `RedisStore` dùng chung giữa các instance.
+- Nếu đặt `RATE_LIMIT_REQUIRE_SHARED_STORE=true` nhưng thiếu Redis, production phát cảnh báo không được scale quá một instance.
 
 **Mức độ:** 🟡 **Vừa** (chỉ lỗi khi production scale horizontal)
 
 **Lời giải thích để trình bày:**
-> "Rate limiting hiện dùng in-memory store phù hợp với development/single-instance production.  
-> Khi scale: Migrate sang Redis-compatible store (Upstash, Momento) bằng cách thay `store` option trong middleware.  
-> Bằng chứng hiện tại: 5 test rate limit pass trên single instance."
+> "Ở cấu hình 0 VND hiện tại, backend chạy một instance và dùng MemoryStore. Code đã hỗ trợ RedisStore qua biến môi trường cho trường hợp triển khai nhiều instance; dự án không bắt buộc bật dịch vụ có phí. Các test kiểm tra cả fallback và hợp đồng shared store."
 
 **Checklist chuẩn bị:**
 - [ ] Chạy `npm --prefix backend test` tìm section `rate_limit.test.js`
-- [ ] Nếu hỏi "Horizontal scaling?" → Đáp: "Single instance production đủ cho 500-1000 concurrent users. Scale sau dùng Redis."
+- [ ] Không nêu con số concurrent user nếu chưa có load test. Chỉ khẳng định phạm vi một instance và điều kiện để scale ngang.
 
-### 2.3 Frontend Bundle Size Vượt Chuẩn
+### 2.3 Frontend Bundle ✅ Đã Tách Chunk
 
-**Vấn đề:**
-- Production build: Main chunk **3,076.56 kB** (gzip 944.42 kB)
-- Vite warning: Chunk vượt 500 kB
-- Chứa: Shaka Player (video), react-pdf (PDF viewer), dashboard (charts)
+**Kết quả build ngày 12/09/2026:**
+- Main JS: **690.45 kB**, gzip **226.40 kB**.
+- Shaka: **812.22 kB**; PDF: **462.38 kB**; charts: **458.38 kB**. Ba thư viện nằm ở chunk riêng.
+- PDF worker: **1,046.21 kB**, chỉ tải cùng luồng PDF.
+- Build không còn cảnh báo chunk vượt ngưỡng cấu hình.
 
-**Mức độ:** 🟡 **Vừa** (ảnh hưởng đến page load time, không phải functionality)
+**Mức độ:** ✅ **Đã xử lý vấn đề main bundle 3 MB**
 
 **Lời giải thích để trình bày:**
-> "Frontend bundle lớn vì load toàn bộ library (Shaka, PDF, charts) ở bundle chính.  
-> Optimized: Route-level lazy loading tách PDF viewer → `pdf.bundle.js`, Shaka → `video.bundle.js`, Dashboard → `dashboard.bundle.js`.  
-> Hiện tại: Gzip 944 kB chứng tỏ compression tốt; first paint vẫn nhanh vì cached CDN."
+> "Frontend dùng route-level lazy loading và vendor chunk. Main JS hiện còn 690.45 kB, gzip 226.40 kB; Shaka, PDF và charts chỉ tải ở luồng cần chúng. Chúng tôi không công bố thời gian tải 4G khi chưa có Lighthouse artifact."
 
 **Checklist chuẩn bị:**
 - [ ] Chạy `npm --prefix frontend run build` trước buổi bảo vệ để show output
-- [ ] Nếu hỏi "Load time?" → Đáp: "First Contentful Paint ~2s trên 4G (measured via Lighthouse)"
-- [ ] Optional: Show vite.config.js có rollup optimization config
+- [x] Production build đã chạy thành công ngày 12/09/2026.
+- [ ] Nếu hỏi load time, mở Lighthouse/Network và đo trực tiếp thay vì đọc một con số ước lượng.
 
 ### 2.4 Chưa Test End-to-End Live
 
@@ -179,58 +179,22 @@
 > "Error handling đã thống nhất: tất cả controller dùng `next(error)` → error middleware chung xử lý log + response format nhất quán."
 
 **Checklist chuẩn bị:**
-- [x] Xác minh `drm.controller.js` và `gamification.controller.js` đều dùng `next(error)` — ✅ Confirmed
-### 2.5 Error Handling Chưa Đồng Nhất
+- [x] Xác minh DRM và Gamification controller đều chuyển lỗi qua `next(error)`.
+- [x] Error response có `requestId` và không làm lộ lỗi nội bộ.
 
-**Vấn đề:**
-- `backend/src/modules/drm/drm.controller.js:110, :165` tự trả HTTP 500 thay vì `next(error)`
-- `backend/src/modules/gamification/gamification.controller.js` tương tự
-- Không dùng error middleware chung → log mất context, response format không nhất quán
+### 2.6 Profile Stats ✅ Đã Dùng API Thật
 
-**Mức độ:** 🟢 **Nhỏ** (không affect functionality, chỉ code quality)
+- `ProfilePage.jsx` gọi `GET /api/auth/stats` khi người dùng mở tab thống kê.
+- Số khóa học, tiến trình trung bình, lượt hỏi AI và hoạt động tổng hợp đều lấy từ response backend.
+- UI có loading, error và empty state; không còn “2 Khóa học” hay “8.5 điểm” cố định.
+- Thay ảnh đại diện hiện dùng hộp nhập URL, đây là lựa chọn UI còn đơn giản nhưng không phải số liệu giả.
 
-**Lời giải thích để trình bày:**
-> "DRM & Gamification controller cần refactor để dùng `next(error)` thay vì tự return 500.  
-> Này không phải bug, vì error middleware vẫn catch; chỉ là best practice chưa apply đầy đủ."
+### 2.7 Logging và Health Probes ✅ Đã Bổ Sung
 
-**Checklist chuẩn bị:**
-- [ ] Nếu hỏi: "Error handling? Có centralized logging?" → Đáp: "Có error middleware chính, 2 controller ngoài lệ, sẽ fix"
-- [ ] Show `backend/src/middleware/error.middleware.js` (log, requestId, status code)
-
-### 2.6 Profile Page Có Dummy Data
-
-**Vấn đề:**
-- `frontend/src/modules/profile/pages/ProfilePage.jsx:382, :414, :421` hiển thị số liệu cố định:
-  - "2 Khóa học"
-  - "8.5 điểm"
-  - "Hoạt động gần đây" (3 items mẫu)
-
-**Mức độ:** 🟢 **Nhỏ** (UX issue, không security)
-
-**Lời giải thích để trình bày:**
-> "Profile dashboard có mock data vì API endpoint thống kê chưa hoàn thiện.  
-> Sửa: Nối endpoint `/api/users/me/stats` hoặc ẩn khối tạm thời."
-
-**Checklist chuẩn bị:**
-- [ ] Nếu hỏi "Profile data chính xác không?" → Đáp: "Có mock data, endpoint API sẵn sàng, sẽ nối"
-- [ ] Show ProfilePage.jsx để chứng minh nó chỉ là comment `// TODO`
-
-### 2.7 Logging Chưa Có Persistent Storage
-
-**Vấn đề:**
-- Logger ghi qua `console.log()` → container không capture stdout = log mất
-- Không cấu hình Pino/Winston + centralized logging
-
-**Mức độ:** 🟡 **Vừa** (ảnh hưởng debugging production)
-
-**Lời giải thích để trình bày:**
-> "Logging infrastructure đã có (logger middleware, requestId, structured JSON format).  
-> Storage chưa config: Vercel auto-capture stdout; production cần CloudWatch/Datadog transport.  
-> Sẵn sàng: Code dùng logger thống nhất, chỉ cần thay transport."
-
-**Checklist chuẩn bị:**
-- [ ] Show `backend/src/middleware/logger.middleware.js`
-- [ ] Nếu hỏi: "Production logging?" → Đáp: "Structured JSON, requestId tracking sẵn sàng; storage backend sẽ config trên Vercel/CloudWatch"
+- Pino ghi structured log ra stdout và `backend/logs/app.log`; log file bị tắt trong test trừ khi test chủ động bật.
+- Request có `requestId`; error middleware giữ stack ở server và làm sạch response 500.
+- `/health/live` trả trạng thái process. `/health/ready` kiểm tra PostgreSQL và R2 là dependency bắt buộc; Gemini/Pinecone có thể trả trạng thái degraded mà không làm hệ thống học cơ bản ngừng hoạt động.
+- Chưa có hệ thống log tập trung giữa nhiều máy. Với phạm vi 0 VND và một instance, file log cùng stdout là nguồn quan sát hiện tại.
 
 ---
 
@@ -244,8 +208,8 @@
 2. RAG Chatbot (Pinecone + Google Gemini) hỗ trợ học tập context-aware
 3. Quiz tự động (Gemini API) sinh câu hỏi từ tài liệu
 
-Hệ thống đã live trên Vercel (demo chạy được), 165 test pass (0 fail),
-kiến trúc Modular Monolith + React, sẵn sàng production với known considerations."
+Hệ thống đã live, backend đạt 321/321 test và frontend đạt 235/235 test.
+Production build đã tách Shaka, PDF và charts khỏi main chunk."
 ```
 
 ### 3.2 Demo Trực Tiếp (5 phút)
@@ -266,21 +230,14 @@ kiến trúc Modular Monolith + React, sẵn sàng production với known consid
 
 ### 3.3 Khi Bị Hỏi Về Issues
 
-#### Q1: "Tại sao schema.sql không khớp với runtime database?"
-**A:** "Schema hiện được update bằng boot migration (mô hình thường dùng cho small team).  
-Để xác minh: chạy `npm --prefix backend test`, sẽ thấy 165 test pass nghĩa là schema đúng runtime.  
-Improve cho production: migration versioning (v001, v002, ...) chạy trong transaction."
+#### Q1: "Database migration của hệ thống hoạt động thế nào?"
+**A:** "Repo có migration versioned, chạy theo thứ tự trong transaction và lưu checksum vào `schema_migrations`. `schema.sql` có test parity cho database mới. `database.js` vẫn giữ một số DDL idempotent để nâng cấp database cũ; chúng tôi xem đây là lớp tương thích tạm thời và sẽ chuyển nốt sang migration files."
 
 #### Q2: "Rate limit hoạt động thế nào khi có 100 users cùng lúc?"
-**A:** "Hiện dùng in-memory counter, đủ cho single instance (~1000 concurrent users).  
-Khi scale horizontal (2+ instances): migrate sang Redis (Upstash, Momento) để sync counter.  
-Bằng chứng hiện tại: 5 rate limit test pass, kiểm tra login + password reset + upload + AI endpoints."
+**A:** "Bản triển khai 0 VND chạy một backend instance nên dùng MemoryStore. Nếu triển khai nhiều instance, code nhận `REDIS_URL` để chuyển sang RedisStore dùng chung; cờ `RATE_LIMIT_REQUIRE_SHARED_STORE` cảnh báo khi cấu hình scale ngang chưa an toàn. Chúng tôi chưa có load test nên không đưa ra con số concurrent user ước lượng."
 
-#### Q3: "Frontend bundle quá lớn, page load time như thế nào?"
-**A:** "Main chunk 3MB (gzip 944KB) bao gồm Shaka player + react-pdf + dashboard.  
-Gzip 944KB = ~1.5s trên 4G after browser cache.  
-Optimize: Route lazy loading tách PDF/Shaka/Dashboard thành chunk riêng (công việc sau).  
-Hiện tại Vite có tree-shaking + minify, production build thành công."
+#### Q3: "Frontend bundle đã tối ưu đến đâu?"
+**A:** "Build ngày 12/09/2026 cho main JS 690.45 kB, gzip 226.40 kB. Shaka, PDF và charts nằm ở ba vendor chunk riêng và chỉ tải ở luồng cần dùng. Build không còn cảnh báo chunk vượt ngưỡng cấu hình; thời gian tải sẽ được đo trực tiếp bằng Lighthouse/Network nếu hội đồng yêu cầu."
 
 #### Q4: "AI chatbot có guarantee không hallucinate không?"
 **A:** "Có grounding policy 3 lớp:  
@@ -307,10 +264,11 @@ Bằng chứng: `backend/scripts/auto_subtitle_pipeline.py --help` chạy đư�
 
 #### Q7: "Nếu production có vấn đề, monitoring như thế nào?"
 **A:** "Logging infrastructure: requestId tracking, structured JSON format, error middleware centralized.  
-Hiện tại: log ghi console, Vercel auto-capture.  
-Production ready: Add transport (CloudWatch, Datadog, ELK) cho persistent storage.  
-Health check: GET `/api/health` → trả 200 OK (process alive).  
-Improve: Thêm `/health/ready` (database + external API connectivity)."
+Hiện tại logger ghi cả stdout và `backend/logs/app.log`.
+
+`/health/live` theo dõi process; `/health/ready` kiểm tra PostgreSQL, R2, Gemini và Pinecone với phân loại dependency bắt buộc/tùy chọn.
+
+Hệ thống chưa gom log từ nhiều máy vì bản triển khai hiện tại chỉ có một backend instance."
 
 ### 3.4 Nhấn Mạnh Evidence
 
@@ -320,7 +278,7 @@ Improve: Thêm `/health/ready` (database + external API connectivity)."
 cd backend
 npm install
 npm test
-# Output: 165 passing, 0 failing ✓
+# Output ngày 12/09/2026: 321 passing, 0 failing
 ```
 
 **Nếu hỏi "Có documentation không?"**
@@ -363,7 +321,8 @@ backend/src/modules/
 
 ### Tuần trước
 
-- [ ] Chạy `npm --prefix backend test` → capture output (165 pass)
+- [ ] Chạy `npm --prefix backend test` → kỳ vọng 321 pass, 0 fail
+- [ ] Chạy `npm --prefix frontend test` → kỳ vọng 235 pass, 0 fail
 - [ ] Chạy `npm --prefix frontend run build` → check no errors
 - [ ] Test live demo trên 2+ browser (Chrome, Firefox, Safari)
 - [ ] Chuẩn bị câu trả lời cho mỗi Q&A ở section 3.3
@@ -402,9 +361,8 @@ backend/src/modules/
 | Khía Cạnh | Điểm Mạnh | Mức Độ |
 |-----------|----------|--------|
 | **Kiến trúc** | Modular Monolith rõ ràng, **13 module** độc lập | ⭐⭐⭐⭐⭐ |
-| **Kiến trúc** | Modular Monolith rõ ràng, 8+ module độc lập | ⭐⭐⭐⭐⭐ |
 | **Technology stack** | Node/Express/React modern, Pinecone + Gemini actual | ⭐⭐⭐⭐⭐ |
-| **Testing** | 165 test pass (auth, progress, DRM, media lifecycle) | ⭐⭐⭐⭐⭐ |
+| **Testing** | Backend 321/321; frontend 235/235 | ⭐⭐⭐⭐⭐ |
 | **Documentation** | README + AUDIT + DESIGN + PRODUCT files | ⭐⭐⭐⭐⭐ |
 | **Live deployment** | Vercel demo sẵn, Docker-ready | ⭐⭐⭐⭐⭐ |
 | **Core features** | DRM, RAG, Quiz, Progress, Gamification verify | ⭐⭐⭐⭐⭐ |
@@ -415,14 +373,13 @@ backend/src/modules/
 
 | Khía Cạnh | Điểm Yếu | Mức Độ | Fix Effort |
 |-----------|---------|--------|-----------|
-| **Schema versioning** | Boot migration vs migration files | 🟡 Medium | 1-2 days |
-| **Rate limit scaling** | In-memory, cần Redis cho multi-instance | 🟡 Medium | 1 day |
-| **Bundle size** | 3MB main chunk (unoptimized) | 🟡 Medium | 2-3 days |
+| **Migration cleanup** | Còn DDL tương thích trong startup dù đã có migration versioned | 🟡 Medium | 1-2 days |
+| **Rate limit scaling** | MemoryStore ở chế độ 0 VND một instance; RedisStore đã có nhưng cần hạ tầng shared khi scale | 🟡 Medium | Theo hạ tầng |
+| **Bundle size** | Đã tách chunk; main gzip 226.40 kB | ✅ Done | Done |
 | **Live integration test** | STT, RAG, DRM playback, SMTP chưa E2E | 🟡 Medium | 2-3 days |
 | **Error handling consistency** | ✅ Đã fix — tất cả controller dùng `next(error)` | ✅ Done | Done |
-| **Error handling consistency** | 2 controller vẫn tự return 500 | 🟢 Small | 1 hour |
-| **Logging storage** | In-memory, cần centralized backend | 🟡 Medium | 1 day |
-| **Profile mock data** | Dummy stats trên profile page | 🟢 Small | 2 hours |
+| **Centralized logging** | Có stdout + file log, chưa gom log từ nhiều instance | 🟢 Small ở quy mô hiện tại | Theo quy mô |
+| **Profile stats** | Đã nối API thật, có loading/error/empty state | ✅ Done | Done |
 
 ---
 
@@ -468,14 +425,11 @@ Target: Học viên 13-30 tuổi, từ beginner → IELTS 7.5"
 **Chuẩn bị:**
 ```
 "6 tháng tới:
-1. Schema versioning (migration v1, v2, ...)
-2. Redis caching + distributed rate limiting
-3. End-to-end test (Playwright)
-4. Mobile app (React Native)
-5. Live streaming support (Mux video)
-6. Multiplayer quiz (real-time WebSocket)
-7. Analytics dashboard (admin detailed metrics)
-8. Certification (PDF download, blockchain verify)"
+1. Chuyển nốt DDL tương thích trong startup sang migration versioned
+2. End-to-end test trên trình duyệt cho DRM, RAG, phụ đề và SMTP
+3. Đặt performance budget và lưu Lighthouse artifact trong CI
+4. Chỉ bật shared rate-limit store khi có phương án miễn phí, không yêu cầu Billing
+5. Mobile app và multiplayer quiz sau khi core flow ổn định"
 ```
 
 ---
@@ -501,8 +455,8 @@ Target: Học viên 13-30 tuổi, từ beginner → IELTS 7.5"
 1. **Tự tin nhưng honest:** Nói rõ cái gì đã verify, cái gì chưa live test, cái gì sẽ improve.
 2. **Demo > Slide:** Hội đồng thích thấy chạy được hơn nghe lý thuyết.
 3. **Code là bằng chứng:** Khi bị hỏi, show code + test, không phải giải thích dài.
-4. **Numbers matter:** "165 test pass" mạnh hơn "feature đã done", "DASH 4/4 video" mạnh hơn "video DRM implemented".
-5. **Acknowledge trade-off:** "In-memory rate limit ok cho dev, production cần Redis" → hội đồng sẽ tin bạn biết cái gì mình làm.
+4. **Dùng số đã đo:** "backend 321/321, frontend 235/235" đáng tin hơn câu "feature đã xong".
+5. **Nói đúng trade-off:** MemoryStore phù hợp cấu hình 0 VND một instance; RedisStore chỉ cần khi scale ngang và đã có điểm tích hợp trong code.
 
 ---
 

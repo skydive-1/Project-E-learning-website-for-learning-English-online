@@ -163,7 +163,7 @@ Project-E-learning-website-for-learning-English-online/
 │   │   │   ├── drmPackager.util.js            # Shaka integration
 │   │   │   └── mediaCleanup.worker.js         # Orphan file cleanup
 │   │   └── server.js                          # App initialization & mount routes
-│   ├── tests/                                 # 165 passing tests
+│   ├── tests/                                 # 321 passing tests
 │   │   ├── auth_middleware.test.js
 │   │   ├── progress_completion_threshold.test.js
 │   │   ├── rate_limit.test.js
@@ -409,7 +409,7 @@ python main.py --lesson-id 20 --data-folder ./data
 - ✅ **Error Handling**: Global middleware, proper HTTP status codes, request tracking (requestId)
 - ✅ **Rate Limiting**: API-wide & endpoint-specific limiters active
 - ✅ **Logging**: Structured JSON logging with timestamps, requestId, user context
-- ✅ **Testing**: 165 passing tests covering auth, progress, DRM, media lifecycle
+- ✅ **Testing**: Backend 321/321 và frontend 235/235 test pass (đối soát ngày 12/09/2026)
 - ✅ **Documentation**: README, DESIGN.md, PRODUCT.md, PRODUCTION_READINESS_AUDIT.md
 - ✅ **Deployment**: Docker-compose ready, live on Vercel
 - ✅ **Video Protection**: DASH + ClearKey DRM fully implemented
@@ -417,17 +417,17 @@ python main.py --lesson-id 20 --data-folder ./data
 
 ### ⚠️ **Cần chú ý trước production**
 
-1. **Database Schema Consistency**
-   - `schema.sql` vs runtime database có chênh lệch cột (`is_private`, `pin_code`, etc.)
-   - **Fix**: Tạo migration file versioned, chạy trong transaction, thêm test CI/CD
+1. **Database Migration Transition**
+   - Đã có migration versioned, transaction, checksum và bảng `schema_migrations`; `schema.sql` cũng có test parity.
+   - `database.js` vẫn giữ một số DDL idempotent lúc khởi động để tương thích database cũ. Việc còn lại là chuyển hết các DDL này sang migration versioned rồi bỏ lớp tương thích.
 
-2. **Frontend Bundle Size**
-   - Main chunk: 3MB (gzip 944KB), vượt Vite warning (500KB)
-   - **Fix**: Route-level lazy loading, tách Shaka/PDF/Dashboard thành chunks riêng
+2. **Frontend Bundle**
+   - Production build ngày 12/09/2026: main JS 690.45 kB (gzip 226.40 kB), không còn cảnh báo chunk vượt ngưỡng cấu hình.
+   - Shaka, PDF và charts đã tách thành chunk riêng; PDF worker 1,046.21 kB chỉ tải cùng luồng PDF.
 
-3. **Rate Limiting - In-Memory Store**
-   - Mỗi server instance giữ bộ đếm riêng → giới hạn thực tế sai khi scale horizontal
-   - **Fix**: Dùng Redis-compatible store (Redis, Momento, hoặc Upstash)
+3. **Rate Limiting theo chế độ triển khai**
+   - Chế độ 0 VND một instance dùng MemoryStore; hệ thống ghi rõ trạng thái này khi chạy production.
+   - Khi có sẵn Redis-compatible store miễn phí, `REDIS_URL` kích hoạt shared `RedisStore`. `RATE_LIMIT_REQUIRE_SHARED_STORE=true` cảnh báo nếu cấu hình nhiều instance nhưng thiếu shared store.
 
 4. **Unverified Live Flows** (cần E2E testing)
    - Auto-subtitle với voice thật qua Gemini
@@ -500,7 +500,7 @@ python main.py --lesson-id 20 --data-folder ./data
 ## 👨‍💻 Công nghệ & Tiếp cận
 
 - **Architecture**: Modular Monolith (backend), Module-based (frontend)
-- **Code Quality**: Linting, formatting, 165 passing tests
+- **Code Quality**: Linting, formatting, backend 321/321 và frontend 235/235 test pass
 - **Security**: JWT + Bcrypt, CORS, rate limiting, input validation
 - **Performance**: Caching (@tanstack/react-query), database connection pooling
 - **Scalability**: Docker-ready, stateless design (session via JWT)
