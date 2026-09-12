@@ -10,7 +10,7 @@ Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 
 - Nếu điểm đã lưu nhỏ hơn 50, service trả HTTP 422 với mã `LESSON_COMPLETION_SCORE_TOO_LOW`: `backend/src/modules/progress/services/progress.service.js:49`.
 - Controller yêu cầu `isCompleted` là boolean rõ ràng, không còn mặc định ngầm thành `true`: `backend/src/modules/progress/controllers/progress.controller.js:50`.
 - Bài test gửi raw HTTP request với điểm đã lưu 49%, đồng thời thử nhét `score: 100` vào body để giả mạo: `backend/tests/progress_completion_threshold.test.js:106` và `backend/tests/progress_completion_threshold.test.js:120`.
-- Bằng chứng chạy ngày 12/09/2026: `npm --prefix backend test` đạt **321 test, 321 pass, 0 fail, 0 skipped, 0 todo**. Hai ca kiểm thử ngưỡng hoàn thành và các ca grounding đều nằm trong lần chạy này.
+- Bằng chứng chạy ngày 12/09/2026: `npm --prefix backend test` đạt **325 test, 325 pass, 0 fail, 0 skipped, 0 todo**. Bộ test gồm các ca ngưỡng hoàn thành, grounding và điều phối model theo RPD.
 
 ### 1.2. Pipeline tạo phụ đề tự động đã được khôi phục ở mức xử lý cục bộ
 
@@ -57,17 +57,18 @@ Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 
 - Trang analytics và danh sách khóa học hiển thị lỗi thay vì biến lỗi mạng thành mảng rỗng hoặc số 0: `frontend/src/modules/analytics/pages/AnalyticsDashboardPage.jsx:126`, `frontend/src/modules/courses/pages/CourseListPage.jsx:380`.
 - Đăng ký tư vấn không còn báo gửi thành công khi SMTP thiếu hoặc gửi thất bại. Backend trả lỗi 503: `backend/src/modules/consultation/consultation.service.js:142`, `:169`.
 - Quick quiz ở backend không còn dựng câu hỏi chung khi thiếu nội dung hoặc Gemini trả sai schema; các trường hợp này trả 422/502: `backend/src/modules/chatbot/services/chatbot.service.js:623`, `:668`, `:682`.
-- Bằng chứng biên dịch và kiểm thử frontend ngày 12/09/2026: `npm --prefix frontend run build` thành công; `npm --prefix frontend test` đạt **235/235 test trong 55 file**.
+- Bằng chứng biên dịch và kiểm thử frontend ngày 12/09/2026: `npm --prefix frontend run build` thành công; `npm --prefix frontend test` đạt **236/236 test trong 55 file**.
 
 ### 1.6. Logging, cấu hình production và rate limit đã được siết lại
 
 - Mỗi request có ID, response header và log gồm status, thời gian, user và path: `backend/src/middleware/logger.middleware.js:1`, `:14`. Logger được gắn trước các route tại `backend/src/server.js:89`.
-- Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 321 test.
+- Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 325 test.
 - Production startup kiểm tra JWT, URL frontend, Gemini, Pinecone, Supabase, SMTP, database, `ENABLE_DRM_PACKAGING` và `ENABLE_SUBTITLE_VAD`: `backend/src/config/environment.js:1`. Có năm test cho validator này và cả năm đều đạt.
 - Khi database không kết nối được ở production, server đóng thay vì tiếp tục chạy nửa vời: `backend/src/server.js:152`.
 - CORS không còn chấp nhận tùy ý mọi subdomain `vercel.app`: `backend/src/server.js:76`.
 - Global limiter và API limiter được gắn tại `backend/src/server.js:86`, `:107`; các route đăng nhập, reset mật khẩu, AI, upload, media và stream có limiter theo chức năng. Route lấy phụ đề nay yêu cầu xác thực và `aiLimiter`: `backend/src/modules/lessons/lessons.routes.js:42`.
 - Production không thể tắt rate limit bằng biến môi trường: `backend/src/middleware/rateLimit.middleware.js:14`. Năm test hồi quy rate limit mới thêm đều đạt.
+- Router Gemini đọc RPD do backend quan sát theo cache 15 giây. Model chạm cap được bỏ qua đến 00:00 Pacific; nếu cap cấu hình lệch, phản hồi 429 từ Google vẫn kích hoạt fallback và giữ model ngoài hàng đợi đến mốc reset. Telemetry nội bộ không được gắn nhãn là số liệu Google.
 
 ### 1.7. Đường đi DRM/DASH, watermark và phần lớn chuỗi RAG có kết nối thật trong code
 
@@ -132,7 +133,7 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 
 ### 2.7. Frontend bundle đã tách; vẫn cần performance budget
 
-- Production build ngày 12/09/2026 thành công, không còn cảnh báo chunk vượt ngưỡng cấu hình. Main JS còn **690.45 kB**, gzip **226.40 kB**.
+- Production build ngày 12/09/2026 thành công, không còn cảnh báo chunk vượt ngưỡng cấu hình. Main JS còn **690.56 kB**, gzip **226.41 kB**.
 - Shaka (**812.22 kB**), PDF (**462.38 kB**) và charts (**458.38 kB**) nằm ở các chunk riêng. PDF worker **1,046.21 kB** chỉ tải cùng luồng PDF.
 - Chưa có Lighthouse artifact hoặc budget kiểm tra trong CI, vì vậy không công bố FCP/LCP trên 4G như số đã đo.
 
@@ -156,7 +157,7 @@ Code nay trả lỗi rõ ràng khi thiếu cấu hình hoặc gửi thất bại
 
 ### 3.5. Toàn bộ test frontend ✅ Đã xác minh
 
-`frontend/package.json` có script `test: vitest run`. Lần chạy ngày 12/09/2026 đạt **55/55 test files, 235/235 tests, 0 fail**. Runner còn in cảnh báo cấu hình `esbuild` đã deprecated trong plugin React Babel; cảnh báo này không làm test hoặc build thất bại nhưng nên dọn khi nâng Vite/plugin.
+`frontend/package.json` có script `test: vitest run`. Lần chạy ngày 12/09/2026 đạt **55/55 test files, 236/236 tests, 0 fail**. Runner còn in cảnh báo cấu hình `esbuild` đã deprecated trong plugin React Babel; cảnh báo này không làm test hoặc build thất bại nhưng nên dọn khi nâng Vite/plugin.
 
 ### 3.6. Cấu hình và quan sát trên môi trường production thật
 

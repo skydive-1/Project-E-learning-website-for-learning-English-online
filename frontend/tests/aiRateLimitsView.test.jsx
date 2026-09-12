@@ -133,7 +133,8 @@ describe('Gemini Rate Limits admin view', () => {
     expect(screen.getByText('Sát ngưỡng 429')).toBeInTheDocument();
     expect(screen.getByText('Còn 25 đơn vị trước cap')).toBeInTheDocument();
     expect(screen.getByText('210 thành công')).toBeInTheDocument();
-    expect(screen.getByText('15 lỗi')).toBeInTheDocument();
+    expect(screen.getAllByText('Cửa sổ trượt 60s').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('RPD reset kế tiếp')).toBeInTheDocument();
     expect(screen.getByText(/Giá trị mặc định/)).toBeInTheDocument();
   });
 
@@ -172,6 +173,49 @@ describe('Gemini Rate Limits admin view', () => {
       expect(screen.getByRole('button', { name: 'Model ưu tiên đã sẵn sàng' })).toBeDisabled();
       expect(screen.getByText('Đang ưu tiên model cao nhất')).toBeInTheDocument();
     });
+  });
+
+  it('shows RPD-exhausted models as skipped and keeps manual restore disabled', async () => {
+    const readyStatus = await getGeminiRateLimitStatus();
+    getGeminiRateLimitStatus.mockClear();
+    getGeminiRateLimitStatus.mockResolvedValue({
+      ...readyStatus,
+      routing: {
+        ...readyStatus.routing,
+        effectiveModel: 'gemini-3.5-flash-lite',
+        effectiveOrder: ['gemini-3.5-flash-lite'],
+        coolingDown: [{
+          model: 'gemini-3.7-flash',
+          retryAt: '2026-09-12T07:00:01.000Z',
+          remainingMs: 18000000,
+          source: 'backend_observed_rpd_cap',
+          dimension: 'rpd',
+          observedUsage: 20,
+          cap: 20
+        }, {
+          model: 'gemini-3.6-flash',
+          retryAt: '2026-09-12T07:00:01.000Z',
+          remainingMs: 18000000,
+          source: 'backend_observed_rpd_cap',
+          dimension: 'rpd',
+          observedUsage: 28,
+          cap: 20
+        }]
+      }
+    });
+
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Rate Limits Google/i }));
+    expect(await screen.findByText('Đang dùng model còn RPD')).toBeInTheDocument();
+    expect(screen.getAllByText(/Hết RPD · đặt lại/)).toHaveLength(2);
+    expect(screen.getByText('Request kế tiếp').closest('div')).toHaveTextContent('gemini-3.5-flash-lite');
+    expect(screen.getByRole('button', { name: 'Chờ reset RPD' })).toBeDisabled();
+    expect(resetGeminiModelRouting).not.toHaveBeenCalled();
   });
 
   it('supports the ARIA tabs keyboard interaction pattern', async () => {

@@ -163,7 +163,7 @@ Project-E-learning-website-for-learning-English-online/
 │   │   │   ├── drmPackager.util.js            # Shaka integration
 │   │   │   └── mediaCleanup.worker.js         # Orphan file cleanup
 │   │   └── server.js                          # App initialization & mount routes
-│   ├── tests/                                 # 321 passing tests
+│   ├── tests/                                 # 325 passing tests
 │   │   ├── auth_middleware.test.js
 │   │   ├── progress_completion_threshold.test.js
 │   │   ├── rate_limit.test.js
@@ -409,11 +409,12 @@ python main.py --lesson-id 20 --data-folder ./data
 - ✅ **Error Handling**: Global middleware, proper HTTP status codes, request tracking (requestId)
 - ✅ **Rate Limiting**: API-wide & endpoint-specific limiters active
 - ✅ **Logging**: Structured JSON logging with timestamps, requestId, user context
-- ✅ **Testing**: Backend 321/321 và frontend 235/235 test pass (đối soát ngày 12/09/2026)
+- ✅ **Testing**: Backend 325/325 và frontend 236/236 test pass (đối soát ngày 12/09/2026)
 - ✅ **Documentation**: README, DESIGN.md, PRODUCT.md, PRODUCTION_READINESS_AUDIT.md
 - ✅ **Deployment**: Docker-compose ready, live on Vercel
 - ✅ **Video Protection**: DASH + ClearKey DRM fully implemented
 - ✅ **RAG Grounding**: Policy validation ensures AI responses are grounded in course materials
+- ✅ **Gemini RPD Fallback**: Router bỏ qua model đã chạm cap theo telemetry backend, chuyển sang model còn quota và tự mở lại sau 00:00 Pacific (14:00 PDT / 15:00 PST giờ Việt Nam); RPM/TPM tính theo cửa sổ trượt 60 giây; Google AI Studio/429 vẫn là nguồn đối chiếu cuối
 
 ### ⚠️ **Cần chú ý trước production**
 
@@ -422,7 +423,7 @@ python main.py --lesson-id 20 --data-folder ./data
    - `database.js` vẫn giữ một số DDL idempotent lúc khởi động để tương thích database cũ. Việc còn lại là chuyển hết các DDL này sang migration versioned rồi bỏ lớp tương thích.
 
 2. **Frontend Bundle**
-   - Production build ngày 12/09/2026: main JS 690.45 kB (gzip 226.40 kB), không còn cảnh báo chunk vượt ngưỡng cấu hình.
+   - Production build ngày 12/09/2026: main JS 690.56 kB (gzip 226.41 kB), không còn cảnh báo chunk vượt ngưỡng cấu hình.
    - Shaka, PDF và charts đã tách thành chunk riêng; PDF worker 1,046.21 kB chỉ tải cùng luồng PDF.
 
 3. **Rate Limiting theo chế độ triển khai**
@@ -500,7 +501,7 @@ python main.py --lesson-id 20 --data-folder ./data
 ## 👨‍💻 Công nghệ & Tiếp cận
 
 - **Architecture**: Modular Monolith (backend), Module-based (frontend)
-- **Code Quality**: Linting, formatting, backend 321/321 và frontend 235/235 test pass
+- **Code Quality**: Linting, formatting, backend 325/325 và frontend 236/236 test pass
 - **Security**: JWT + Bcrypt, CORS, rate limiting, input validation
 - **Performance**: Caching (@tanstack/react-query), database connection pooling
 - **Scalability**: Docker-ready, stateless design (session via JWT)

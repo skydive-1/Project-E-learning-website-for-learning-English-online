@@ -39,6 +39,7 @@ import { ToastProvider } from './context/ToastContext';
 import BadgeUnlockModal from './modules/gamification/components/BadgeUnlockModal';
 import ClickParticleEffect from './components/common/ClickParticleEffect';
 import RouteScrollManager from './components/common/RouteScrollManager';
+import PWAUpdatePrompt from './components/common/PWAUpdatePrompt';
 
 // Fallback tối giản, không gây layout shift, hiển thị trong lúc chunk của
 // route đang tải (thường chỉ vài chục-vài trăm ms trên mạng bình thường).
@@ -136,6 +137,7 @@ function App() {
         <ThemeProvider>
           <LanguageProvider>
             <ToastProvider>
+              <PWAUpdatePrompt />
               <BrowserRouter>
                 <RouteScrollManager />
                 <SecureAuthRedirectHandler />

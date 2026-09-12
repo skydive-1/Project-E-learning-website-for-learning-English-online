@@ -35,9 +35,9 @@ const SUGGESTED_CAPS = Object.freeze({
 });
 
 const DIMENSIONS = [
-  { key: 'rpm', label: 'RPM', help: 'Requests / 60 giây' },
-  { key: 'tpm', label: 'TPM', help: 'Tokens / 60 giây' },
-  { key: 'rpd', label: 'RPD', help: 'Requests / ngày Pacific' }
+  { key: 'rpm', label: 'RPM', help: 'Requests / 60 giây (cửa sổ trượt)' },
+  { key: 'tpm', label: 'TPM', help: 'Tokens / 60 giây (cửa sổ trượt)' },
+  { key: 'rpd', label: 'RPD', help: 'Requests / ngày (reset 00:00 Pacific)' }
 ];
 
 const MIN_MANUAL_REFRESH_MS = 650;
@@ -96,9 +96,11 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [error, setError] = useState(null);
   const latestTelemetryAt = getValidDate(status?.guard?.checkedAt || status?.generatedAt);
   const routing = status?.routing || null;
-  const preferredModelCoolingDown = Boolean(
-    routing?.coolingDown?.some((item) => item.model === routing.preferredModel)
-  );
+  const preferredModelCooldown = routing?.coolingDown?.find(
+    (item) => item.model === routing.preferredModel
+  ) || null;
+  const preferredModelCoolingDown = Boolean(preferredModelCooldown);
+  const preferredModelRpdExhausted = preferredModelCooldown?.dimension === 'rpd';
 
   const fetchData = useCallback(async ({ background = false, manual = false, fresh = false } = {}) => {
     const manualStartedAt = manual ? Date.now() : 0;
@@ -293,7 +295,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
             <strong id="ai-rate-sync-title">
               {refreshing ? t('Đang đồng bộ telemetry từ backend...') : t('Backend telemetry đang hoạt động')}
             </strong>
-            <p>{t('Tự làm mới mỗi 15 giây · RPM/TPM là cửa sổ 60 giây · RPD đặt lại lúc 00:00 Pacific.')}</p>
+            <p>{t('Tự làm mới mỗi 15 giây · RPM/TPM là cửa sổ trượt 60s · RPD đặt lại lúc 00:00 Pacific (14:00/15:00 VN).')}</p>
           </div>
         </div>
 
@@ -326,11 +328,13 @@ const AIRateLimitsView = ({ canManageCaps }) => {
             <div>
               <span className="ai-model-routing__eyebrow">{t('Điều phối model')}</span>
               <h2 id="ai-model-routing-title">{t('Fallback và tự phục hồi')}</h2>
-              <p>{t('Backend bỏ qua model đang cooldown và tự đưa model ưu tiên trở lại đầu hàng khi thời gian chờ kết thúc.')}</p>
+              <p>{t('Backend bỏ qua model đã hết RPD hoặc đang cooldown, rồi tự chọn model còn quota theo thứ tự ưu tiên.')}</p>
             </div>
             <span className={`ai-model-routing__state${preferredModelCoolingDown ? ' is-cooling' : ' is-ready'}`}>
               <i aria-hidden="true" />
-              {preferredModelCoolingDown ? t('Model chính đang chờ') : t('Đang ưu tiên model cao nhất')}
+              {preferredModelRpdExhausted
+                ? t('Đang dùng model còn RPD')
+                : preferredModelCoolingDown ? t('Model chính đang chờ') : t('Đang ưu tiên model cao nhất')}
             </span>
           </div>
 
@@ -347,9 +351,13 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       <code>{model}</code>
                       <small>
                         {cooldown
-                          ? t('Thử lại {{time}}', {
-                            time: dateTimeFormatter.format(new Date(cooldown.retryAt))
-                          })
+                          ? cooldown.dimension === 'rpd'
+                            ? t('Hết RPD · đặt lại {{time}}', {
+                              time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                            })
+                            : t('Thử lại {{time}}', {
+                              time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                            })
                           : isEffective ? t('Request kế tiếp') : t('Sẵn sàng')}
                       </small>
                     </div>
@@ -377,14 +385,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
           <footer className="ai-model-routing__footer">
             <p>
-              {t('Đây là trạng thái runtime của instance backend hiện tại. Nút này chỉ xóa cooldown nội bộ của model chính; không gửi request thử và không tiêu tốn quota. Nếu Google vẫn trả 429, fallback tiếp tục tự động.')}
+              {t('Routing dùng telemetry do backend quan sát để bỏ qua model đã chạm RPD; Google AI Studio và phản hồi 429 vẫn là nguồn đối chiếu cuối. Model tự trở lại sau 00:00 Pacific.')}
             </p>
             {canManageCaps && (
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleResetRouting}
-                disabled={resettingRouting || !preferredModelCoolingDown}
+                disabled={resettingRouting || !preferredModelCoolingDown || preferredModelRpdExhausted}
                 aria-busy={resettingRouting}
               >
                 {resettingRouting
@@ -392,7 +400,9 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                   : <FiArrowUpCircle data-icon="inline-start" aria-hidden="true" />}
                 {resettingRouting
                   ? t('Đang khôi phục')
-                  : preferredModelCoolingDown
+                  : preferredModelRpdExhausted
+                    ? t('Chờ reset RPD')
+                    : preferredModelCoolingDown
                     ? t('Khôi phục model ưu tiên')
                     : t('Model ưu tiên đã sẵn sàng')}
               </Button>
@@ -401,7 +411,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
         </section>
       )}
 
-      <GeminiFreeTierReference models={status?.models || []} />
+      <GeminiFreeTierReference models={status?.models || []} windows={status?.windows} />
 
       <FreeTierUsageGuard
         models={status?.models || []}
