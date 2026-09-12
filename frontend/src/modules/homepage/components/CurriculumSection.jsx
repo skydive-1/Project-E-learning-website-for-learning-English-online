@@ -154,7 +154,7 @@ const CurriculumSection = () => {
                               className="btn-module-action"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigate('/courses');
+                                navigate('/academy');
                               }}
                             >
                               <span>{t('Khám phá lộ trình chi tiết')}</span>
