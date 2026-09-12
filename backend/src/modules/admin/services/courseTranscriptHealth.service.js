@@ -103,14 +103,20 @@ const getCourseTranscriptHealth = async () => {
       ...summary,
       courses: courseList.length,
       affectedCourses: courseList.filter(course => course.affectedLessons.length > 0).length,
-      recoverablePending: summary.pending
+      recoverablePending: summary.pending,
+      recoverable: summary.pending + summary.failed
     },
     courses: courseList
   };
 };
 
-const recoverPendingTranscripts = async ({ courseId = null, lessonIds = [], limit = 10 } = {}) => (
-  subtitlesService.recoverPendingNow({ courseId, lessonIds, limit })
+const recoverPendingTranscripts = async ({
+  courseId = null,
+  lessonIds = [],
+  limit = 10,
+  includeFailed = false
+} = {}) => (
+  subtitlesService.recoverPendingNow({ courseId, lessonIds, limit, includeFailed })
 );
 
 module.exports = {

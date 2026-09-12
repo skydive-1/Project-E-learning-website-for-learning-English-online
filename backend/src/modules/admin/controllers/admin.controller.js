@@ -96,13 +96,14 @@ exports.recoverPendingTranscripts = async (req, res, next) => {
     const result = await courseTranscriptHealth.recoverPendingTranscripts({
       courseId: req.body?.courseId ?? null,
       lessonIds: req.body?.lessonIds ?? [],
-      limit: req.body?.limit ?? 10
+      limit: req.body?.limit ?? 10,
+      includeFailed: req.body?.includeFailed === true
     });
     res.status(202).json({
       success: true,
       message: result.scheduled > 0
         ? `Đã đưa ${result.scheduled} transcript vào worker xử lý ngay.`
-        : 'Không có transcript pending mới cần đưa vào worker.',
+        : 'Không có transcript đang chờ hoặc thất bại cần đưa vào worker.',
       data: result
     });
   } catch (error) {

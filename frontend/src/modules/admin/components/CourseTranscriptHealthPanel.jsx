@@ -28,6 +28,28 @@ const getCourseTone = (counts = {}) => {
   return 'ready';
 };
 
+const getFailureGuidance = (lessons = []) => {
+  const failedLessons = lessons.filter(lesson => lesson.transcriptStatus === 'failed');
+  if (failedLessons.length === 0) return null;
+  const storageMissing = failedLessons.filter(lesson => (
+    lesson.errorCode === 'TRANSCRIPT_MEDIA_SOURCE_MISSING'
+    || /HTTP 404|không tìm thấy.*(?:video|MP4|audio)/i.test(lesson.errorMessage || '')
+  ));
+  if (storageMissing.length > 0) {
+    return {
+      title: 'Không truy cập được file media nguồn',
+      detail: 'Khi thử lại, hệ thống sẽ ưu tiên MP4 gốc rồi tự dùng audio DRM dự phòng. Nếu cả hai đều thiếu, cần tải lại video.',
+      lessonIds: storageMissing.map(lesson => lesson.lessonId)
+    };
+  }
+  const firstMessage = failedLessons.find(lesson => lesson.errorMessage)?.errorMessage;
+  return {
+    title: 'Pipeline tạo transcript đã thất bại',
+    detail: firstMessage || 'Hãy thử lại. Nếu lỗi tiếp diễn, kiểm tra quota AI và nguồn video.',
+    lessonIds: failedLessons.map(lesson => lesson.lessonId)
+  };
+};
+
 const CourseTranscriptHealthPanel = () => {
   const showToast = useToast();
   const [snapshot, setSnapshot] = useState(null);
@@ -69,7 +91,11 @@ const CourseTranscriptHealthPanel = () => {
     try {
       const response = await recoverPendingTranscripts({
         courseId: course?.courseId || null,
-        limit: Math.min(20, Math.max(1, Number(course?.counts?.pending) || 10))
+        limit: Math.min(
+          20,
+          Math.max(1, Number(course?.counts?.pending) + Number(course?.counts?.failed) || 10)
+        ),
+        includeFailed: true
       });
       const scheduled = Number(response.data?.scheduled) || 0;
       const active = Number(response.data?.alreadyActive) || 0;
@@ -114,6 +140,11 @@ const CourseTranscriptHealthPanel = () => {
 
   const summary = snapshot?.summary || {};
   const pendingCount = Number(summary.pending) || 0;
+  const failedCount = Number(summary.failed) || 0;
+  const actionableCount = pendingCount + failedCount;
+  const allFailureGuidance = getFailureGuidance(
+    affectedCourses.flatMap(course => course.affectedLessons || [])
+  );
   const generatedAt = snapshot?.generatedAt
     ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(snapshot.generatedAt))
     : '—';
@@ -135,14 +166,25 @@ const CourseTranscriptHealthPanel = () => {
             type="button"
             className="is-primary"
             onClick={() => handleRecover()}
-            disabled={pendingCount === 0 || Boolean(recoveringKey)}
+            disabled={actionableCount === 0 || Boolean(recoveringKey)}
           >
             {recoveringKey === 'all'
               ? <><FiRefreshCw className="is-spinning" aria-hidden="true" /> Đang đưa vào worker…</>
-              : <><FiTool aria-hidden="true" /> Khôi phục ngay tối đa 10 bài</>}
+              : <><FiTool aria-hidden="true" /> {failedCount > 0 ? 'Thử lại tối đa 10 bài lỗi' : 'Xử lý ngay tối đa 10 bài chờ'}</>}
           </button>
         </div>
       </div>
+
+      {allFailureGuidance && (
+        <div className="transcript-health-panel__guidance" role="status">
+          <FiAlertTriangle aria-hidden="true" />
+          <div>
+            <strong>{failedCount} bài đã chạy nhưng thất bại — {allFailureGuidance.title}</strong>
+            <span>{allFailureGuidance.detail}</span>
+            <span>Bước tiếp theo: bấm “Thử lại” ở từng khóa hoặc nút màu xanh phía trên. Mỗi lượt tối đa 10 bài; bảng tự cập nhật mỗi 15 giây.</span>
+          </div>
+        </div>
+      )}
 
       <div className="transcript-health-panel__metrics" aria-label="Tổng quan trạng thái transcript">
         <div><strong>{Number(summary.ready) || 0}</strong><span>Sẵn sàng / {Number(summary.total) || 0} video</span></div>
@@ -164,6 +206,13 @@ const CourseTranscriptHealthPanel = () => {
             const pendingLessons = course.affectedLessons.filter(lesson => lesson.transcriptStatus === 'pending');
             const oldestPending = Math.max(0, ...pendingLessons.map(lesson => lesson.statusAgeSeconds));
             const tone = getCourseTone(course.counts);
+            const actionableCourseCount = Number(course.counts.pending) + Number(course.counts.failed);
+            const failureGuidance = getFailureGuidance(course.affectedLessons);
+            const courseActionLabel = course.counts.failed > 0 && course.counts.pending > 0
+              ? `Xử lý ${actionableCourseCount} bài`
+              : (course.counts.failed > 0
+                  ? `Thử lại ${course.counts.failed} bài lỗi`
+                  : `Xử lý ${course.counts.pending} bài chờ`);
             return (
               <div className={`transcript-health-row is-${tone}`} key={course.courseId}>
                 <div className="transcript-health-row__identity">
@@ -172,14 +221,20 @@ const CourseTranscriptHealthPanel = () => {
                 </div>
                 <div className="transcript-health-row__detail">
                   <span>
-                    {course.counts.pending} pending · {course.counts.processing} processing · {course.counts.failed} failed
+                    Đang chờ: {course.counts.pending} · Đang xử lý: {course.counts.processing} · Thất bại: {course.counts.failed}
                   </span>
                   <span>
-                    Lesson: {course.affectedLessons.map(lesson => `#${lesson.lessonId}`).join(', ')}
+                    Bài: {course.affectedLessons.map(lesson => `#${lesson.lessonId}`).join(', ')}
                   </span>
                   {oldestPending > 0 && (
                     <span className="transcript-health-row__age">
                       <FiClock aria-hidden="true" /> Cũ nhất: {formatAge(oldestPending)}
+                    </span>
+                  )}
+                  {failureGuidance && (
+                    <span className="transcript-health-row__failure">
+                      <strong>{failureGuidance.title}</strong>
+                      {failureGuidance.detail}
                     </span>
                   )}
                 </div>
@@ -190,11 +245,11 @@ const CourseTranscriptHealthPanel = () => {
                 <button
                   type="button"
                   onClick={() => handleRecover(course)}
-                  disabled={course.counts.pending === 0 || Boolean(recoveringKey)}
+                  disabled={actionableCourseCount === 0 || Boolean(recoveringKey)}
                 >
                   {recoveringKey === String(course.courseId)
-                    ? <><FiRefreshCw className="is-spinning" aria-hidden="true" /> Đang khôi phục…</>
-                    : <><FiTool aria-hidden="true" /> Khôi phục khóa này</>}
+                    ? <><FiRefreshCw className="is-spinning" aria-hidden="true" /> Đang đưa vào worker…</>
+                    : <><FiTool aria-hidden="true" /> {courseActionLabel}</>}
                 </button>
               </div>
             );
@@ -203,7 +258,7 @@ const CourseTranscriptHealthPanel = () => {
       )}
 
       <p className="transcript-health-panel__note">
-        Khôi phục ngay chỉ bỏ thời gian chờ watchdog. Worker vẫn bóc băng tuần tự để bảo vệ quota Gemini miễn phí và tự dừng khi nhà cung cấp giới hạn.
+        Sau khi bấm, bài chuyển sang “Đang chờ”, rồi “Đang xử lý” và cuối cùng là “Sẵn sàng” hoặc hiện lỗi mới. Worker chạy tuần tự để bảo vệ quota Gemini miễn phí.
       </p>
     </section>
   );
