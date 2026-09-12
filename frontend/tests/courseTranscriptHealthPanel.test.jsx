@@ -107,7 +107,7 @@ describe('CourseTranscriptHealthPanel', () => {
 
     expect(await screen.findByText(/5 bài đã chạy nhưng thất bại/)).toBeInTheDocument();
     expect(screen.getAllByText('Không truy cập được file media nguồn').length).toBeGreaterThan(0);
-    const retry = screen.getByRole('button', { name: 'Thử lại 5 bài lỗi' });
+    const retry = screen.getByRole('button', { name: 'Thử tự khôi phục 5 bài' });
     expect(retry).toBeEnabled();
     fireEvent.click(retry);
 
@@ -116,6 +116,49 @@ describe('CourseTranscriptHealthPanel', () => {
       limit: 5,
       includeFailed: true
     }));
+  });
+
+  it('sends confirmed missing media directly to the affected lesson in Course Editor', async () => {
+    mocks.getHealth.mockResolvedValue({
+      ...snapshot,
+      summary: {
+        ...snapshot.summary,
+        pending: 0,
+        failed: 5,
+        mediaMissing: 5,
+        recoverable: 0,
+        sourceMismatch: 0
+      },
+      courses: [{
+        ...snapshot.courses[0],
+        counts: {
+          ...snapshot.courses[0].counts,
+          pending: 0,
+          failed: 5,
+          mediaMissing: 5,
+          retryable: 0,
+          sourceMismatch: 0
+        },
+        affectedLessons: snapshot.courses[0].affectedLessons.map(lesson => ({
+          ...lesson,
+          transcriptStatus: 'failed',
+          mediaMissingSource: true,
+          retryable: false,
+          errorCode: 'TRANSCRIPT_MEDIA_SOURCE_MISSING',
+          errorMessage: 'Không tìm thấy media nguồn'
+        }))
+      }]
+    });
+
+    render(<CourseTranscriptHealthPanel />);
+
+    const reupload = await screen.findByRole('link', { name: 'Tải lại video' });
+    expect(reupload).toHaveAttribute(
+      'href',
+      '/instructor/edit-course/43?tab=curriculum&lessonId=131&issue=missing-media-source'
+    );
+    expect(screen.getAllByText('File media đã mất khỏi storage').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /Thử tự khôi phục 5 bài/ })).not.toBeInTheDocument();
   });
 
   it('keeps a retry action available when the health endpoint fails', async () => {

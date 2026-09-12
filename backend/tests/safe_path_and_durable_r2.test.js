@@ -102,6 +102,59 @@ describe('📦 2. Pending Uploads & Fail-Closed Reference Checks', () => {
       });
     }, /Mã băm SHA-256 không khớp/);
   });
+
+  test('Không cho claim DASH upload nếu thiếu video.mp4 hoặc audio.mp4', async () => {
+    const originalExists = supabaseStorage.checkObjectExists;
+    const checked = [];
+    const manifestKey = 'courses/10/asset/manifest.mpd';
+    const mockClient = {
+      query: async sql => {
+        if (String(sql).includes('FROM pending_media_uploads')) {
+          return { rows: [{
+            upload_id: 'dash-upload-uuid',
+            instructor_id: 10,
+            storage_provider: 'r2',
+            storage_key: manifestKey,
+            storage_bucket: 'elearning-media',
+            mime_type: 'application/dash+xml',
+            size_bytes: 512,
+            checksum_sha256: 'dash-checksum',
+            status: 'PENDING',
+            expires_at: new Date(Date.now() + 3600000)
+          }] };
+        }
+        return { rows: [] };
+      }
+    };
+
+    try {
+      supabaseStorage.checkObjectExists = async key => {
+        checked.push(key);
+        return !key.endsWith('/audio.mp4');
+      };
+      await assert.rejects(
+        () => orphanCleanupService.claimPendingUpload({
+          uploadId: 'dash-upload-uuid',
+          instructorId: 10,
+          userRole: 2,
+          storageKey: manifestKey,
+          storageBucket: 'elearning-media',
+          mimeType: 'application/dash+xml',
+          sizeBytes: 512,
+          checksumSha256: 'dash-checksum',
+          client: mockClient
+        }),
+        err => err.code === 'MEDIA_ASSET_GROUP_INCOMPLETE' && /audio\.mp4/.test(err.message)
+      );
+      assert.deepEqual(checked, [
+        manifestKey,
+        'courses/10/asset/video.mp4',
+        'courses/10/asset/audio.mp4'
+      ]);
+    } finally {
+      supabaseStorage.checkObjectExists = originalExists;
+    }
+  });
 });
 
 describe('🎓 3. Courses Service Metadata & Publish Validation', () => {
@@ -176,6 +229,25 @@ describe('🎓 3. Courses Service Metadata & Publish Validation', () => {
       await assert.rejects(() => coursesService._validateStoredCourseForPublish(client, 1), err => err.code === 'MEDIA_OBJECT_MISSING');
       supabaseStorage.checkObjectExists = async () => true;
       await coursesService._validateStoredCourseForPublish(client, 1);
+    } finally {
+      supabaseStorage.checkObjectExists = originalExists;
+    }
+  });
+
+  test('Publish validation kiểm tra đủ cả bộ DASH thay vì chỉ manifest', async () => {
+    const originalExists = supabaseStorage.checkObjectExists;
+    const manifestKey = 'courses/2/asset/manifest.mpd';
+    const client = { query: async () => ({ rows: [{
+      lesson_id: 8, title: 'Video DRM', content_type: 'video', content_url: manifestKey,
+      storage_provider: 'r2', storage_bucket: 'elearning-media', storage_key: manifestKey,
+      mime_type: 'application/dash+xml', size_bytes: 512, checksum_sha256: 'b'.repeat(64), media_status: 'READY'
+    }] }) };
+    try {
+      supabaseStorage.checkObjectExists = async key => !key.endsWith('/video.mp4');
+      await assert.rejects(
+        () => coursesService._validateStoredCourseForPublish(client, 1),
+        err => err.code === 'MEDIA_OBJECT_MISSING' && /video\.mp4/.test(err.message)
+      );
     } finally {
       supabaseStorage.checkObjectExists = originalExists;
     }

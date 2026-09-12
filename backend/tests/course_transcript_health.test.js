@@ -66,6 +66,9 @@ test('course transcript health groups observed PostgreSQL states without fabrica
       processing: 0,
       failed: 1,
       missing: 0,
+      mediaMissing: 0,
+      retryable: 2,
+      retryablePending: 1,
       stalePending: 1,
       sourceMismatch: 1,
       courses: 2,
@@ -103,6 +106,39 @@ test('ready rows without cues are reported as missing rather than healthy', asyn
     const snapshot = await service.getCourseTranscriptHealth();
     assert.equal(snapshot.summary.ready, 0);
     assert.equal(snapshot.summary.missing, 1);
+  } finally {
+    pool.query = originalQuery;
+  }
+});
+
+test('media marked MISSING_SOURCE is reported as reupload-required, not retryable', async () => {
+  const originalQuery = pool.query;
+  pool.query = async () => ({
+    rows: [{
+      course_id: 43,
+      course_name: 'Basic English - P3',
+      course_status: 1,
+      lesson_id: 131,
+      lesson_title: 'Architecture',
+      content_type: 'video',
+      media_status: 'MISSING_SOURCE',
+      subtitle_status: 'failed',
+      error_code: 'TRANSCRIPT_MEDIA_SOURCE_MISSING',
+      error_message: 'Không tìm thấy media nguồn',
+      cue_count: 0,
+      status_age_seconds: 60,
+      current_source_url: 'courses/43/asset/manifest.mpd',
+      source_matches: true
+    }]
+  });
+
+  try {
+    const snapshot = await service.getCourseTranscriptHealth();
+    assert.equal(snapshot.summary.mediaMissing, 1);
+    assert.equal(snapshot.summary.retryable, 0);
+    assert.equal(snapshot.summary.recoverable, 0);
+    assert.equal(snapshot.courses[0].affectedLessons[0].mediaMissingSource, true);
+    assert.equal(snapshot.courses[0].affectedLessons[0].retryable, false);
   } finally {
     pool.query = originalQuery;
   }
