@@ -5,6 +5,7 @@ import OpenClozeQuestion from '../src/modules/quizzes/components/OpenClozeQuesti
 import { getEffectiveQuestionType } from '../src/modules/quizzes/utils/questionType';
 import {
   extractClozeGapIds,
+  normalizeQuestionsList,
   syncClozeGaps,
   validateClozeDraft
 } from '../src/modules/quizzes/utils/openCloze';
@@ -87,5 +88,24 @@ describe('Open Cloze quiz UI', () => {
 
     expect(screen.getByText('change → changes')).toBeInTheDocument();
     expect(screen.getByLabelText('Đáp án cho chỗ trống 1')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('filters questions strictly by allowedTypes when specified', () => {
+    const rawQuestions = [
+      { questionType: 'multiple_choice', questionText: 'Q1', options: ['A. 1', 'B. 2', 'C. 3', 'D. 4'], correctAnswer: 'A' },
+      { questionType: 'writing', questionText: 'Write an essay', options: [] },
+      { questionType: 'pronunciation', questionText: 'Read aloud', options: [] },
+      { questionType: 'listening', questionText: '[Audio Script]: Hello', options: ['A. 1', 'B. 2', 'C. 3', 'D. 4'], correctAnswer: 'A' },
+      { questionType: 'open_cloze', questionText: 'Text {{1}}', options: [{ id: '1', answer: 'a' }] }
+    ];
+
+    const allowed = ['multiple_choice', 'open_cloze', 'listening'];
+    const filtered = normalizeQuestionsList(rawQuestions, allowed);
+
+    expect(filtered).toHaveLength(3);
+    const types = filtered.map(q => q.question_type);
+    expect(types).toEqual(['multiple_choice', 'listening', 'open_cloze']);
+    expect(types).not.toContain('writing');
+    expect(types).not.toContain('pronunciation');
   });
 });

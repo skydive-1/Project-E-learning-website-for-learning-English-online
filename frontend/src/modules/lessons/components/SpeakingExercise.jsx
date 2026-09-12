@@ -8,6 +8,7 @@ import { useAudioRecorder } from '../../../hooks/useAudioRecorder';
 import { useToast } from '../../../context/ToastContext';
 import AudioVisualizer from '../../../components/ui/AudioVisualizer';
 import { askChatbotAudio } from '../../chatbot/services/chatbot.service';
+import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
 
 // Dữ liệu mẫu phong phú cho bài tập luyện phát âm theo bài học (Read Aloud)
 const SPEAKING_LESSON_DATA = {
@@ -261,8 +262,7 @@ const SpeakingExercise = ({ lessonId, speakingSentences, speakingQuestions, onCo
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 0.85;
+      configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.84 });
       window.speechSynthesis.speak(utterance);
     } else {
       showToast("Trình duyệt của bạn không hỗ trợ công cụ Đọc tự động.", 'error');

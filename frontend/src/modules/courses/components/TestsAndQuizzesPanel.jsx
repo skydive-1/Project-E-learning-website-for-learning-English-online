@@ -18,6 +18,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
 import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
+import { reconcileAiQuizResponse } from '../../quizzes/utils/aiQuizDistribution';
 import CreateQuizDialog from './CreateQuizDialog';
 
 // Skeleton loading cho Quiz Cards
@@ -203,19 +204,29 @@ const TestsAndQuizzesPanel = () => {
       });
 
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        const normalizedQuestions = normalizeQuestionsList(res.questions);
+        const reconciliation = reconcileAiQuizResponse({
+          questions: res.questions,
+          count: aiCount,
+          questionTypes: aiTypes,
+          topic: aiTopic
+        });
 
-        setQuestionsList(normalizedQuestions);
+        setQuestionsList(reconciliation.questions);
         if (!quizTitle) setQuizTitle(`Bài tập AI: ${aiTopic.trim()}`);
         if (!quizDesc) setQuizDesc(`Đề thi tự động tạo bởi Trợ lý AI E-Learn về chủ đề ${aiTopic.trim()}.`);
         setCreateMode('manual'); // Chuyển sang xem lại câu hỏi
-        showToast(`AI đã tạo thành công ${normalizedQuestions.length} câu hỏi!`, 'success');
+        showToast(
+          reconciliation.repaired
+            ? `Đã tạo đủ ${reconciliation.questions.length} câu; hệ thống tự cân bằng ${reconciliation.recoveredCount} câu còn thiếu theo các dạng đã chọn.`
+            : `AI đã tạo thành công ${reconciliation.questions.length} câu hỏi đúng phân bổ!`,
+          'success'
+        );
       } else {
         showToast('Không thể sinh câu hỏi từ AI, vui lòng thử lại!', 'error');
       }
     } catch (err) {
       console.error('Lỗi sinh câu hỏi AI:', err);
-      showToast(err.response?.data?.message || 'Lỗi khi gọi Trợ lý AI!', 'error');
+      showToast(err.response?.data?.message || err.message || 'Lỗi khi gọi Trợ lý AI!', 'error');
     } finally {
       setAiGenerating(false);
     }
@@ -236,8 +247,13 @@ const TestsAndQuizzesPanel = () => {
 
       const res = await generateQuizAiFromPdf(formData);
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        const normalized = normalizeQuestionsList(res.questions);
-        setQuestionsList(normalized);
+        const reconciliation = reconcileAiQuizResponse({
+          questions: res.questions,
+          count,
+          questionTypes: questionTypes || ['multiple_choice'],
+          topic: additionalNotes || quizTitle || 'PDF Exam Review'
+        });
+        setQuestionsList(reconciliation.questions);
         if (!quizTitle || quizTitle.startsWith('Quiz AI')) {
           if (fileList.length === 1) {
             const cleanName = fileList[0].name.replace(/\.[^/.]+$/, "");
@@ -248,13 +264,18 @@ const TestsAndQuizzesPanel = () => {
         }
         if (!quizDesc) setQuizDesc(`Đề thi tạo tự động bởi AI tổng hợp từ ${fileList.length} tài liệu PDF: ${fileList.map(f => f.name).join(', ')}.`);
         setCreateMode('manual');
-        showToast(`AI đã phân tích ${fileList.length} file PDF và tạo thành công ${normalized.length} câu hỏi!`, 'success');
+        showToast(
+          reconciliation.repaired
+            ? `AI đã phân tích ${fileList.length} file PDF; hệ thống tự cân bằng ${reconciliation.recoveredCount} câu để đủ ${reconciliation.questions.length} câu.`
+            : `AI đã phân tích ${fileList.length} file PDF và tạo thành công ${reconciliation.questions.length} câu hỏi đúng phân bổ!`,
+          'success'
+        );
       } else {
         showToast('Không nhận được câu hỏi từ AI. Vui lòng thử lại với file PDF khác.', 'error');
       }
     } catch (err) {
       console.error('Lỗi sinh câu hỏi từ nhiều PDF:', err);
-      showToast(err.response?.data?.message || 'Không thể tạo đề thi từ file PDF này.', 'error');
+      showToast(err.response?.data?.message || err.message || 'Không thể tạo đề thi từ file PDF này.', 'error');
     } finally {
       setAiGenerating(false);
     }

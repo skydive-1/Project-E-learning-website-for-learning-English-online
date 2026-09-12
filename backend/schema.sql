@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS courses (
   subject_id INT,
   course_name VARCHAR(255) NOT NULL,
   description TEXT,
+  academy_roadmap VARCHAR(20) CHECK (academy_roadmap IN ('basic', 'toeic', 'ielts')),
   instructor_id INT NOT NULL,
   thumbnail_url VARCHAR(255),
   thumbnail_media_id UUID REFERENCES media_assets(media_id) ON DELETE SET NULL,

@@ -15,8 +15,12 @@ import {
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useLanguage } from '../../../context/LanguageContext';
-import apiClient from '../../../config/api.config';
 import { getRoadmapById } from '../data/roadmapPaths';
+import {
+  ACADEMY_COURSES_QUERY_KEY,
+  fetchAcademyCourses,
+  getCoursesForRoadmap
+} from '../utils/courseRoadmap';
 import '../styles/roadmap-detail.scss';
 
 /*
@@ -26,14 +30,6 @@ import '../styles/roadmap-detail.scss';
  * FIRST VIEWPORT: Breadcrumb, tiêu đề và mô tả ở trái; bảng tổng quan hữu ích ở phải trên desktop.
  * FORM: Editorial learning guide, seed ELRN-RD-20260910. FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
  */
-
-const fetchCourses = async () => {
-  const response = await apiClient.get('/courses');
-  if (!Array.isArray(response.data?.courses)) {
-    throw new Error('Phản hồi danh sách khóa học không đúng định dạng.');
-  }
-  return response.data.courses;
-};
 
 const CourseSkeleton = () => (
   <div className="roadmap-course-skeleton" aria-hidden="true">
@@ -98,14 +94,19 @@ const RoadmapDetailPage = () => {
     isFetching,
     refetch
   } = useQuery({
-    queryKey: ['courses'],
-    queryFn: fetchCourses,
-    enabled: Boolean(roadmap)
+    queryKey: ACADEMY_COURSES_QUERY_KEY,
+    queryFn: fetchAcademyCourses,
+    enabled: Boolean(roadmap),
+    staleTime: 30_000,
+    refetchOnMount: 'always',
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true
   });
 
   const roadmapCourses = useMemo(() => {
     if (!roadmap) return [];
-    return courses.filter((course) => String(course.subject_id) === roadmap.subjectFilter);
+    return getCoursesForRoadmap(courses, roadmap);
   }, [courses, roadmap]);
 
   useEffect(() => {
@@ -133,9 +134,7 @@ const RoadmapDetailPage = () => {
     );
   }
 
-  const displayedCourseCount = !isLoading && !isError
-    ? roadmapCourses.length
-    : roadmap.coursesCount;
+  const displayedCourseCount = !isLoading && !isError ? roadmapCourses.length : '—';
 
   return (
     <div className="roadmap-detail-page" data-design-contract="ELRN-RD-20260910">

@@ -46,6 +46,7 @@ import useStudyTimeTracker from '../../lessons/hooks/useStudyTimeTracker';
 import getEffectiveQuestionType from '../utils/questionType';
 import OpenClozeQuestion from '../components/OpenClozeQuestion';
 import QuotaIndicator from '../../chatbot/components/QuotaIndicator';
+import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
 
 const PlayQuizPage = () => {
   const { quizId } = useParams();
@@ -97,6 +98,40 @@ const PlayQuizPage = () => {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
+
+  // British-English TTS is shared by Listening and Speaking reference audio.
+  const [isPlayingTts, setIsPlayingTts] = useState(false);
+  const [showListeningTranscript, setShowListeningTranscript] = useState(false);
+
+  const handleToggleBritishTts = (textToSpeak) => {
+    if (!window.speechSynthesis) return;
+    if (isPlayingTts) {
+      window.speechSynthesis.cancel();
+      setIsPlayingTts(false);
+      return;
+    }
+    const cleanText = String(textToSpeak || '')
+      .replace(/\[Question\][\s\S]*$/i, '')
+      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+      .replace(/\[Dialogue\]\s*:?/gi, '')
+      .replace(/\bAccording to Speaker\s+[A-Z]\s*,?\s*/gi, '')
+      .replace(/Speaker\s+[A-Z]\s*:/gi, '')
+      .trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText || textToSpeak);
+    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.88 });
+    utterance.onend = () => setIsPlayingTts(false);
+    utterance.onerror = () => setIsPlayingTts(false);
+    setIsPlayingTts(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsPlayingTts(false);
+    setShowListeningTranscript(false);
+  }, [currentIdx, gameState]);
 
   useEffect(() => {
     const fetchQuiz = async () => {
@@ -609,6 +644,27 @@ const PlayQuizPage = () => {
           <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
             {(() => {
                 const effectiveQuestionType = getEffectiveQuestionType(currentQuestion);
+                const rawQuestionText = currentQuestion?.question || currentQuestion?.question_text || currentQuestion?.questionText || '';
+
+                // Tách riêng đoạn hội thoại (Dialogue) và câu hỏi (Prompt) nếu là dạng bài listening
+                let listeningDialogue = '';
+                let listeningPrompt = rawQuestionText;
+                if (effectiveQuestionType === 'listening') {
+                  const questionMatch = rawQuestionText.match(/\[Question\]\s*:?\s*([\s\S]+)$/i);
+                  if (questionMatch) {
+                    listeningPrompt = questionMatch[1].trim();
+                    listeningDialogue = rawQuestionText
+                      .replace(/\[Question\][\s\S]*$/i, '')
+                      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+                      .trim();
+                  } else if (/\[Audio Script\s*\/?\s*Dialogue\]/i.test(rawQuestionText)) {
+                    listeningDialogue = rawQuestionText
+                      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+                      .trim();
+                  }
+                }
+
+                const hasAudioFile = Boolean(currentQuestion?.audio_url || currentQuestion?.audioUrl);
 
                 return (
                   <>
@@ -642,7 +698,9 @@ const PlayQuizPage = () => {
                       <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 leading-snug">
                         {effectiveQuestionType === 'open_cloze'
                           ? 'Hoàn thành đoạn văn bằng từ phù hợp'
-                          : currentQuestion.question}
+                          : effectiveQuestionType === 'listening'
+                          ? (listeningPrompt || 'Lắng nghe câu hỏi và chọn đáp án chính xác:')
+                          : rawQuestionText}
                       </h2>
                     </div>
 
@@ -659,16 +717,72 @@ const PlayQuizPage = () => {
                     )}
 
                     {/* Listening Audio if Listening question */}
-                    {effectiveQuestionType === 'listening' && (currentQuestion.audio_url || currentQuestion.audioUrl) && (
-                      <div className="my-3 p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/25 flex flex-col items-center gap-2">
-                        <span className="text-xs font-bold text-cyan-800 dark:text-cyan-300 uppercase tracking-wider">
-                          File âm thanh bài nghe:
-                        </span>
-                        <audio
-                          src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
-                          controls
-                          className="w-full max-w-md h-10 outline-none rounded-lg"
-                        />
+                    {effectiveQuestionType === 'listening' && (
+                      <div className="my-3 p-4 sm:p-5 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-cyan-800 dark:text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <FiHeadphones className="text-sm" />
+                            File âm thanh bài nghe (Listening Audio):
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-cyan-100 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300">
+                            {hasAudioFile ? 'Audio Upload' : 'Giọng đọc AI (TTS)'}
+                          </span>
+                        </div>
+
+                        {/* File Audio Player */}
+                        {hasAudioFile && (
+                          <audio
+                            src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
+                            controls
+                            className="w-full h-10 outline-none rounded-lg"
+                          />
+                        )}
+
+                        {/* Fallback AI TTS Player when no audio file is provided */}
+                        {!hasAudioFile && (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-cyan-200/70 dark:border-cyan-800/50">
+                            <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                              <span className="size-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
+                              <span>Bấm để nghe câu hỏi bằng giọng Anh-Anh:</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBritishTts(listeningDialogue || rawQuestionText)}
+                              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0 ${
+                                isPlayingTts
+                                  ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                  : 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                              }`}
+                            >
+                              <FiHeadphones />
+                              <span>{isPlayingTts ? '⏹️ Dừng đọc' : '▶️ Nghe câu hỏi'}</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Toggleable Dialogue Script */}
+                        {listeningDialogue && (
+                          <div className="pt-2 border-t border-cyan-200/50 dark:border-cyan-800/40">
+                            <div className="flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() => setShowListeningTranscript(prev => !prev)}
+                                className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 hover:underline flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <FiEye className="text-xs" />
+                                <span>{showListeningTranscript ? 'Ẩn lời thoại (Hide Script)' : 'Xem lời thoại (View Script / Dialogue)'}</span>
+                              </button>
+                              {!showListeningTranscript && (
+                                <span className="text-[10px] text-slate-400">Luyện nghe trước khi xem lời thoại</span>
+                              )}
+                            </div>
+                            {showListeningTranscript && (
+                              <div className="mt-2 p-3 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-cyan-200/60 dark:border-cyan-800/40 text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-line max-h-48 overflow-y-auto font-medium animate-fade-in">
+                                {listeningDialogue}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -833,6 +947,18 @@ const PlayQuizPage = () => {
                           <p className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-slate-100 italic">
                             "{currentQuestion.correctAnswer || currentQuestion.question}"
                           </p>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBritishTts(currentQuestion.correctAnswer || currentQuestion.question)}
+                            className={`mt-4 mx-auto px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                              isPlayingTts
+                                ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                            }`}
+                          >
+                            <FiVolume2 />
+                            <span>{isPlayingTts ? 'Dừng nghe' : 'Nghe thử'}</span>
+                          </button>
                         </div>
 
                         {/* Microphone Status Indicator */}

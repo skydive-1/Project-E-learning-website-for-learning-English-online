@@ -22,6 +22,7 @@ import {
   deleteQuizById
 } from '../../quizzes/services/quizzes.service';
 import { syncClozeGaps, validateClozeDraft, normalizeQuestion, normalizeQuestionsList } from '../../quizzes/utils/openCloze';
+import { reconcileAiQuizResponse } from '../../quizzes/utils/aiQuizDistribution';
 import { useToast } from '../../../context/ToastContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { 
@@ -253,6 +254,7 @@ const CourseEditor = () => {
   const [subjects, setSubjects] = useState([]);
   const [courseName, setCourseName] = useState('');
   const [subjectId, setSubjectId] = useState('');
+  const [academyRoadmap, setAcademyRoadmap] = useState('');
   const [startDate, setStartDate] = useState(getTodayCivilDate());
   const [endDate, setEndDate] = useState(getNextYearCivilDate());
   const [courseStatus, setCourseStatus] = useState('draft');
@@ -343,6 +345,7 @@ const CourseEditor = () => {
             const course = courseRes.data.course;
             setCourseName(course.course_name || '');
             setSubjectId(String(course.subject_id || ''));
+            setAcademyRoadmap(course.academy_roadmap || '');
             setCourseStatus(course.status ?? 'draft');
             if (course.start_date) setStartDate(typeof course.start_date === 'string' ? course.start_date.substring(0, 10) : getTodayCivilDate());
             if (course.end_date) setEndDate(typeof course.end_date === 'string' ? course.end_date.substring(0, 10) : getNextYearCivilDate());
@@ -1014,16 +1017,26 @@ const CourseEditor = () => {
         questionTypes: quizAiTypes
       });
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        const normalized = normalizeQuestionsList(res.questions);
-        setQuizDialogQuestions(normalized);
+        const reconciliation = reconcileAiQuizResponse({
+          questions: res.questions,
+          count: quizAiCount,
+          questionTypes: quizAiTypes,
+          topic: quizAiTopic
+        });
+        setQuizDialogQuestions(reconciliation.questions);
         setQuizDialogMode('manual');
-        showToast(`Trợ lý AI đã tạo thành công ${normalized.length} câu hỏi!`, 'success');
+        showToast(
+          reconciliation.repaired
+            ? `Đã tạo đủ ${reconciliation.questions.length} câu; hệ thống tự cân bằng ${reconciliation.recoveredCount} câu còn thiếu theo các dạng đã chọn.`
+            : `Trợ lý AI đã tạo thành công ${reconciliation.questions.length} câu hỏi đúng phân bổ!`,
+          'success'
+        );
       } else {
         showToast('Không nhận được câu hỏi từ AI. Vui lòng thử lại.', 'error');
       }
     } catch (err) {
       console.error('Lỗi sinh câu hỏi AI:', err);
-      showToast(err.response?.data?.message || 'Không thể tạo câu hỏi từ AI.', 'error');
+      showToast(err.response?.data?.message || err.message || 'Không thể tạo câu hỏi từ AI.', 'error');
     } finally {
       setQuizAiGenerating(false);
     }
@@ -1044,8 +1057,13 @@ const CourseEditor = () => {
 
       const res = await generateQuizAiFromPdf(formData);
       if (res && Array.isArray(res.questions) && res.questions.length > 0) {
-        const normalized = normalizeQuestionsList(res.questions);
-        setQuizDialogQuestions(normalized);
+        const reconciliation = reconcileAiQuizResponse({
+          questions: res.questions,
+          count,
+          questionTypes: questionTypes || ['multiple_choice'],
+          topic: additionalNotes || quizDialogTitle || 'PDF Exam Review'
+        });
+        setQuizDialogQuestions(reconciliation.questions);
         if (!quizDialogTitle || quizDialogTitle.startsWith('Trắc nghiệm') || quizDialogTitle.startsWith('Bài tập') || quizDialogTitle.startsWith('Quiz AI')) {
           if (fileList.length === 1) {
             const cleanName = fileList[0].name.replace(/\.[^/.]+$/, "");
@@ -1055,13 +1073,18 @@ const CourseEditor = () => {
           }
         }
         setQuizDialogMode('manual');
-        showToast(`AI đã phân tích ${fileList.length} file PDF và tạo thành công ${normalized.length} câu hỏi!`, 'success');
+        showToast(
+          reconciliation.repaired
+            ? `AI đã phân tích ${fileList.length} file PDF; hệ thống tự cân bằng ${reconciliation.recoveredCount} câu để đủ ${reconciliation.questions.length} câu.`
+            : `AI đã phân tích ${fileList.length} file PDF và tạo thành công ${reconciliation.questions.length} câu hỏi đúng phân bổ!`,
+          'success'
+        );
       } else {
         showToast('Không nhận được câu hỏi từ AI. Vui lòng thử lại với file PDF khác.', 'error');
       }
     } catch (err) {
       console.error('Lỗi sinh câu hỏi từ nhiều PDF:', err);
-      showToast(err.response?.data?.message || 'Không thể tạo câu hỏi từ các file PDF này.', 'error');
+      showToast(err.response?.data?.message || err.message || 'Không thể tạo câu hỏi từ các file PDF này.', 'error');
     } finally {
       setQuizAiGenerating(false);
     }
@@ -1185,6 +1208,12 @@ const CourseEditor = () => {
       setActiveHubTab('basic');
       return;
     }
+    if (!academyRoadmap) {
+      setErrorMsg('Vui lòng chọn lộ trình Academy.');
+      setInvalidFieldKey('academyRoadmap');
+      setActiveHubTab('basic');
+      return;
+    }
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
       setActiveHubTab('curriculum');
@@ -1256,6 +1285,12 @@ const CourseEditor = () => {
       setActiveHubTab('basic');
       return;
     }
+    if (!academyRoadmap) {
+      setErrorMsg('Vui lòng chọn lộ trình Academy.');
+      setInvalidFieldKey('academyRoadmap');
+      setActiveHubTab('basic');
+      return;
+    }
     if (sections.length === 0) {
       setErrorMsg('Khóa học phải có ít nhất 1 chương.');
       setActiveHubTab('curriculum');
@@ -1275,6 +1310,7 @@ const CourseEditor = () => {
     const payload = {
       courseName,
       subjectId: parseInt(subjectId, 10),
+      academyRoadmap,
       startDate,
       endDate,
       status, // 1: Published, 0: Draft
@@ -1552,6 +1588,26 @@ const CourseEditor = () => {
                     </select>
                   )}
                 </div>
+              </div>
+
+              <div className="academy-roadmap-field">
+                <label htmlFor="academy-roadmap" className="form-group-label">Lộ trình Academy *</label>
+                <select
+                  id="academy-roadmap"
+                  value={academyRoadmap}
+                  onChange={(event) => {
+                    setAcademyRoadmap(event.target.value);
+                    if (invalidFieldKey === 'academyRoadmap') setInvalidFieldKey(null);
+                  }}
+                  className={invalidFieldKey === 'academyRoadmap' ? 'input-error-shake' : ''}
+                  required
+                >
+                  <option value="">Chọn lộ trình hiển thị khóa học</option>
+                  <option value="basic">Tiếng Anh cơ bản</option>
+                  <option value="toeic">Lộ trình TOEIC 700+</option>
+                  <option value="ielts">Lộ trình IELTS 6.5+</option>
+                </select>
+                <p>Khóa học đã xuất bản sẽ tự động xuất hiện trong lộ trình tương ứng trên trang Academy.</p>
               </div>
 
               <div className="course-basic-grid">

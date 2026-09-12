@@ -27,15 +27,26 @@ const mapQuizToFrontend = (quiz) => {
           parsedOptions = [];
         }
       }
+      const qText = q.question_text || q.questionText || q.question || '';
+      const qType = q.question_type || q.questionType || '';
+      const aUrl = q.audio_url || q.audioUrl || null;
+      const pText = q.passage_text || q.passageText || null;
+      const corr = q.correct_answer || q.correctAnswer || '';
       return {
-        id: String(q.question_id),
-        question: q.question_text,
+        id: String(q.question_id || q.id || ''),
+        question: qText,
+        question_text: qText,
+        questionText: qText,
         options: Array.isArray(parsedOptions) ? parsedOptions : [],
-        correctAnswer: q.correct_answer || '',
+        correctAnswer: corr,
+        correct_answer: corr,
         explanation: q.explanation || '',
-        // Giữ trạng thái thiếu metadata để lớp phân loại có thể suy luận từ
-        // options/câu mẫu, thay vì gắn nhầm mọi câu sáng tạo thành trắc nghiệm.
-        questionType: q.question_type || q.questionType || ''
+        questionType: qType,
+        question_type: qType,
+        audio_url: aUrl,
+        audioUrl: aUrl,
+        passage_text: pText,
+        passageText: pText
       };
     })
   };

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
+  Activity,
   AlertCircle,
   BarChart3,
   ChevronUp,
@@ -13,6 +14,8 @@ import {
   TrendingUp,
   Zap
 } from 'lucide-react';
+
+import AnimatedStatNumber from '../../../components/common/AnimatedStatNumber';
 
 import { Chip } from '@/components/base/badges/chip';
 import {
@@ -94,6 +97,8 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [isWaveActive, setIsWaveActive] = useState(false);
+  const [refreshBounceKey, setRefreshBounceKey] = useState(0);
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
   const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
@@ -222,28 +227,32 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
   const summaryCards = [
     {
       label: t('Tổng trong kỳ'),
-      value: formatValue(usageSummary.total),
+      rawValue: usageSummary.total,
+      suffix: metric === 'tokens' ? ' token' : metric === 'requests' ? ' request' : ` ${t('lượt vượt quota')}`,
       icon: Zap,
       iconColor: 'text-blue-500',
       iconBg: 'bg-blue-500/10 border-blue-500/20'
     },
     {
       label: t('Đỉnh mỗi mốc'),
-      value: formatValue(usageSummary.peak),
+      rawValue: usageSummary.peak,
+      suffix: metric === 'tokens' ? ' token' : metric === 'requests' ? ' request' : ` ${t('lượt vượt quota')}`,
       icon: TrendingUp,
       iconColor: 'text-emerald-500',
       iconBg: 'bg-emerald-500/10 border-emerald-500/20'
     },
     {
       label: t('Model hoạt động'),
-      value: numberFormatter.format(usageSummary.models),
+      rawValue: usageSummary.models,
+      suffix: '',
       icon: Cpu,
       iconColor: 'text-indigo-500',
       iconBg: 'bg-indigo-500/10 border-indigo-500/20'
     },
     {
       label: t('Mốc có dữ liệu'),
-      value: numberFormatter.format(usageSummary.activeBuckets),
+      rawValue: usageSummary.activeBuckets,
+      suffix: '',
       icon: Layers,
       iconColor: 'text-purple-500',
       iconBg: 'bg-purple-500/10 border-purple-500/20'
@@ -300,10 +309,30 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-caption-1-semibold shadow-2xs transition-all duration-150 ${
+              isWaveActive
+                ? 'border-blue-500/40 bg-blue-500/15 text-blue-400 dark:border-blue-400/40 dark:bg-blue-400/20 dark:text-blue-300'
+                : 'border-border-button-default bg-background-primary-default text-text-secondary hover:border-border-button-hover hover:bg-background-primary-hover hover:text-text-primary'
+            }`}
+            onClick={() => setIsWaveActive((prev) => !prev)}
+            title={t(isWaveActive ? 'Tắt nhịp sóng nhảy biểu đồ' : 'Bật nhịp sóng nhảy biểu đồ')}
+            aria-pressed={isWaveActive}
+            aria-label={t('Nhịp nhảy biểu đồ')}
+          >
+            <Activity className={`size-3.5 ${isWaveActive ? 'animate-pulse text-blue-400' : 'text-text-tertiary'}`} aria-hidden="true" />
+            <span className="hidden sm:inline">{t('Nhịp nhảy biểu đồ')}</span>
+            {isWaveActive && <span className="size-1.5 rounded-full bg-blue-400 animate-ping" aria-hidden="true" />}
+          </button>
+
+          <button
+            type="button"
             className="inline-flex items-center gap-1.5 rounded-lg border border-border-button-default bg-background-primary-default px-3 py-1.5 text-caption-1-semibold text-text-primary shadow-2xs transition-all duration-150 hover:border-border-button-hover hover:bg-background-primary-hover disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
             disabled={refreshing}
             aria-label={refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}
-            onClick={() => fetchTrend({ silent: true, fresh: true })}
+            onClick={() => {
+              setRefreshBounceKey((prev) => prev + 1);
+              fetchTrend({ silent: true, fresh: true });
+            }}
           >
             {refreshing ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden="true" />}
             <span className="hidden sm:inline">{refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}</span>
@@ -341,8 +370,12 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                       </span>
                     </div>
                     <div className="mt-2.5 flex items-baseline gap-1">
-                      <span className="text-title-2-bold font-mono tabular-nums text-text-primary truncate" title={card.value}>
-                        {card.value}
+                      <span className="text-title-2-bold font-mono tabular-nums text-text-primary truncate">
+                        <AnimatedStatNumber
+                          value={card.rawValue}
+                          suffix={card.suffix}
+                          formatter={(val) => numberFormatter.format(Math.round(val))}
+                        />
                       </span>
                     </div>
                   </div>
@@ -408,7 +441,10 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
             )}
 
             {/* 2.3 Chart Surface */}
-            <div className="relative min-h-[320px] rounded-xl border border-separator-border bg-background-primary-default p-4 shadow-2xs" aria-busy={loading}>
+            <div
+              className={`relative min-h-[320px] rounded-xl border border-separator-border bg-background-primary-default p-4 shadow-2xs gemini-trend-bouncy-chart ${isWaveActive ? 'is-waving' : ''}`}
+              aria-busy={loading}
+            >
               {loading && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background-primary-default/70 backdrop-blur-[1px]">
                   <Spinner className="size-6 text-primary" />
@@ -419,7 +455,12 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
               {chartData.length > 0 && models.length > 0 ? (
                 <div className="-mx-2 overflow-x-auto px-2 pb-1" tabIndex={0} aria-label={t('Biểu đồ có thể cuộn ngang trên màn hình nhỏ')}>
                   <ChartContainer config={chartConfig} className="h-[320px] min-w-[680px] w-full aspect-auto" initialDimension={{ width: 960, height: 320 }}>
-                    <BarChart accessibilityLayer data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <BarChart
+                      key={`bar-chart-${refreshBounceKey}-${range}-${metric}-${model}`}
+                      accessibilityLayer
+                      data={chartData}
+                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    >
                       <CartesianGrid vertical={false} stroke="var(--color-separator-border, rgba(255,255,255,0.08))" strokeDasharray="3 3" />
                       <XAxis
                         dataKey="timestamp"
@@ -462,7 +503,10 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
                           fill={`var(--color-series_${index})`}
                           radius={index === models.length - 1 ? [4, 4, 0, 0] : 0}
                           maxBarSize={38}
-                          isAnimationActive={false}
+                          isAnimationActive={true}
+                          animationDuration={950}
+                          animationEasing="ease-out"
+                          animationBegin={index * 110}
                         />
                       ))}
                     </BarChart>

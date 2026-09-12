@@ -1,15 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { Button } from '../../../components/ui/button';
 import { useLanguage } from '../../../context/LanguageContext';
-import apiClient from '../../../config/api.config';
-import { FiArrowRight, FiBookOpen, FiCheckCircle, FiClock } from 'react-icons/fi';
+import { FiArrowRight, FiBookOpen, FiCheckCircle, FiClock, FiRefreshCw } from 'react-icons/fi';
 import { roadmapPaths } from '../data/roadmapPaths';
+import {
+  ACADEMY_COURSES_QUERY_KEY,
+  fetchAcademyCourses,
+  getCoursesForRoadmap,
+  getRoadmapCatalogUrl
+} from '../utils/courseRoadmap';
 import '../styles/academy.scss';
 
-const RoadmapCard = ({ path, liveCoursesCount, onOpenDetail, t }) => (
+const RoadmapCard = ({ path, courses, isLoading, isError, onOpenDetail, t }) => (
   <article className="roadmap-path-card scroll-animate">
     <div className="path-content">
       <h2 className="path-title">{t(path.title)}</h2>
@@ -17,21 +23,49 @@ const RoadmapCard = ({ path, liveCoursesCount, onOpenDetail, t }) => (
 
       <div className="path-stats">
         <span>
-          <FiBookOpen aria-hidden="true" /> {liveCoursesCount ?? path.coursesCount} {t('courses')}
+          <FiBookOpen aria-hidden="true" />
+          {isLoading
+            ? t('Đang cập nhật...')
+            : isError
+              ? `— ${t('khóa học')}`
+              : `${courses.length} ${t('khóa học')}`}
         </span>
         <span><FiClock aria-hidden="true" /> {t(path.time)}</span>
       </div>
 
-      <Button
-        type="button"
-        size="sm"
-        onClick={() => onOpenDetail(path)}
-        className="btn-view-path"
-        aria-label={`${t('Xem chi tiết lộ trình')}: ${t(path.title)}`}
-      >
-        <span>{t('Xem chi tiết')}</span>
-        <FiArrowRight data-icon="inline-end" aria-hidden="true" />
-      </Button>
+      {!isLoading && !isError && courses.length > 0 && (
+        <div className="path-live-courses">
+          <h3>{t('Khóa học đang có')}</h3>
+          <ul>
+            {courses.slice(0, 2).map((course) => (
+              <li key={course.course_id}>
+                <Link to={`/lessons?courseId=${course.course_id}`}>
+                  <span>{course.course_name}</span>
+                  <FiArrowRight aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="path-actions">
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => onOpenDetail(path)}
+          className="btn-view-path"
+          aria-label={`${t('Xem chi tiết lộ trình')}: ${t(path.title)}`}
+        >
+          <span>{t('Xem lộ trình')}</span>
+          <FiArrowRight data-icon="inline-end" aria-hidden="true" />
+        </Button>
+        {!isLoading && !isError && courses.length > 0 && (
+          <Link className="path-catalog-link" to={getRoadmapCatalogUrl(path.id)}>
+            {t('Xem tất cả khóa học')}
+          </Link>
+        )}
+      </div>
     </div>
 
     <div className="path-image" aria-hidden="true">
@@ -43,29 +77,21 @@ const RoadmapCard = ({ path, liveCoursesCount, onOpenDetail, t }) => (
 const RoadmapPage = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [liveCourseCounts, setLiveCourseCounts] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-
-    apiClient.get('/courses')
-      .then((res) => {
-        if (!active) return;
-        const courses = res?.data?.courses || [];
-        const counts = {};
-        for (const course of courses) {
-          const subjectId = String(course.subject_id ?? '');
-          if (!subjectId) continue;
-          counts[subjectId] = (counts[subjectId] || 0) + 1;
-        }
-        setLiveCourseCounts(counts);
-      })
-      .catch(() => {
-        // Dùng số dự phòng trong cấu hình khi danh sách khóa học chưa tải được.
-      });
-
-    return () => { active = false; };
-  }, []);
+  const {
+    data: courses = [],
+    isLoading,
+    isError,
+    isFetching,
+    refetch
+  } = useQuery({
+    queryKey: ACADEMY_COURSES_QUERY_KEY,
+    queryFn: fetchAcademyCourses,
+    staleTime: 30_000,
+    refetchOnMount: 'always',
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true
+  });
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return undefined;
@@ -79,11 +105,6 @@ const RoadmapPage = () => {
     document.querySelectorAll('.scroll-animate').forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, []);
-
-  const getCourseCount = (path) => {
-    if (!path.subjectFilter || liveCourseCounts === null) return path.coursesCount;
-    return liveCourseCounts[path.subjectFilter] ?? 0;
-  };
 
   return (
     <div className="academy-page-modern">
@@ -103,12 +124,27 @@ const RoadmapPage = () => {
           <div className="container">
             <h2 className="sr-only">{t('Các lộ trình gợi ý')}</h2>
 
+            <div className={`roadmap-live-status ${isError ? 'is-error' : ''}`} role={isError ? 'alert' : 'status'}>
+              <span>
+                <i aria-hidden="true" />
+                {isError
+                  ? t('Chưa thể đồng bộ danh mục khóa học.')
+                  : t('Danh mục tự cập nhật mỗi phút từ các khóa học đang xuất bản.')}
+              </span>
+              <button type="button" onClick={() => refetch()} disabled={isFetching}>
+                <FiRefreshCw aria-hidden="true" />
+                {isFetching ? t('Đang cập nhật...') : t('Cập nhật ngay')}
+              </button>
+            </div>
+
             <div className="roadmap-grid">
               {roadmapPaths.map((path) => (
                 <RoadmapCard
                   key={path.id}
                   path={path}
-                  liveCoursesCount={getCourseCount(path)}
+                  courses={getCoursesForRoadmap(courses, path)}
+                  isLoading={isLoading}
+                  isError={isError}
                   onOpenDetail={(targetPath) => navigate(`/academy/${targetPath.id}`)}
                   t={t}
                 />

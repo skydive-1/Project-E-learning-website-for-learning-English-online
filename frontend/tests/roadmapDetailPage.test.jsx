@@ -92,6 +92,29 @@ describe('Roadmap detail page', () => {
     expect(screen.getByRole('link', { name: 'Xem tất cả khóa học' })).toHaveAttribute('href', '/courses');
   });
 
+  it('includes a production course categorized as English Grammar Essentials in the basic roadmap', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        courses: [{
+          course_id: 41,
+          course_name: 'Tiếng Anh cơ bản',
+          subject_id: 5,
+          subject_name: 'English Grammar Essentials',
+          price: 0
+        }]
+      }
+    });
+
+    renderRoute('/academy/basic');
+
+    const courseHeading = await screen.findByRole('heading', { name: 'Tiếng Anh cơ bản' });
+    expect(courseHeading.closest('article')).toHaveTextContent('Miễn phí');
+    expect(within(courseHeading.closest('article')).getAllByRole('link')[0]).toHaveAttribute(
+      'href',
+      '/lessons?courseId=41'
+    );
+  });
+
   it('handles an unknown roadmap without requesting courses', async () => {
     renderRoute('/academy/khong-ton-tai');
 

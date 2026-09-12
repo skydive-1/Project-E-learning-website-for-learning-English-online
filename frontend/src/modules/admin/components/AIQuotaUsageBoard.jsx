@@ -19,6 +19,7 @@ import {
   resetUserAiToken, 
   resetBulkAiTokens 
 } from '../services/adminAnalytics.service';
+import AnimatedStatNumber from '../../../components/common/AnimatedStatNumber';
 import RagIncidentAlertModal from './RagIncidentAlertModal';
 import GeminiUsageTrendChart from './GeminiUsageTrendChart';
 import { buildAiQuotaCsv, downloadCsvReport } from '../utils/aiQuotaCsv';
@@ -240,7 +241,12 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
             <FiZap className="ai-kpi-icon text-blue-500" />
           </div>
           <div className="ai-kpi-number-row">
-            <span className="ai-kpi-num">{numberFormatter.format(totalUsed)}</span>
+            <span className="ai-kpi-num">
+              <AnimatedStatNumber
+                value={totalUsed}
+                formatter={(val) => numberFormatter.format(Math.round(val))}
+              />
+            </span>
             <span className="ai-kpi-denom">{t('token mô hình')}</span>
           </div>
           <p className="ai-kpi-desc">
@@ -259,7 +265,12 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
             <FiUsers className="ai-kpi-icon text-indigo-400" />
           </div>
           <div className="ai-kpi-number-row">
-            <span className="ai-kpi-num">{numberFormatter.format(summary.active_ai_users_period || 0)}</span>
+            <span className="ai-kpi-num">
+              <AnimatedStatNumber
+                value={summary.active_ai_users_period || 0}
+                formatter={(val) => numberFormatter.format(Math.round(val))}
+              />
+            </span>
             <span className="ai-kpi-badge-green">
               {t('{{count}} lượt hỏi', { count: numberFormatter.format(summary.total_questions_rolling_24h || 0) })}
             </span>
@@ -278,7 +289,13 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
             <FiCpu className="ai-kpi-icon text-emerald-400" />
           </div>
           <div className="ai-kpi-number-row">
-            <span className="ai-kpi-num text-emerald-500">${summary.estimatedCostUsd || '0.0000'}</span>
+            <span className="ai-kpi-num text-emerald-500">
+              <AnimatedStatNumber
+                value={Number(summary.estimatedCostUsd || 0)}
+                decimals={4}
+                prefix="$"
+              />
+            </span>
             <span className="ai-kpi-denom">USD</span>
           </div>
           <p className="ai-kpi-desc">
@@ -302,10 +319,20 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
             <FiAlertTriangle className="ai-kpi-icon text-amber-500" />
           </div>
           <div className="ai-kpi-number-row">
-            <span className="ai-kpi-num text-rose-500">{counts.exhausted}</span>
+            <span className="ai-kpi-num text-rose-500">
+              <AnimatedStatNumber
+                value={counts.exhausted}
+                formatter={(val) => numberFormatter.format(Math.round(val))}
+              />
+            </span>
             <span className="ai-kpi-denom">{t('Đã hết (100%)')}</span>
             <span className="text-slate-500 mx-1">|</span>
-            <span className="ai-kpi-num text-amber-500 text-lg">{counts.critical}</span>
+            <span className="ai-kpi-num text-amber-500 text-lg">
+              <AnimatedStatNumber
+                value={counts.critical}
+                formatter={(val) => numberFormatter.format(Math.round(val))}
+              />
+            </span>
             <span className="ai-kpi-denom">&gt;80%</span>
           </div>
           <p className="ai-kpi-desc text-amber-400 font-medium">

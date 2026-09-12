@@ -1,104 +1,101 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 /**
- * Hiệu ứng đếm số khi phần tử xuất hiện trong khung nhìn (kiểu stat section
- * của các trang SaaS mượt như reflexai.com), nhưng cài đặt tối giản:
- * - Kích hoạt bằng IntersectionObserver (rẻ, không lắng nghe scroll liên tục).
- * - Chỉ chạy đúng 1 lần cho mỗi lần giá trị "value" đổi (không lặp lại mỗi
- *   khi phần tử vào/ra khung nhìn, tránh gây xao nhãng khi cuộn qua lại).
- * - Tôn trọng prefers-reduced-motion: hiển thị thẳng giá trị cuối, không đếm.
- * - Không dùng thư viện ngoài, không tạo thêm bundle.
- *
- * value: số nguyên hoặc số thực cần hiển thị (đích đến của phép đếm)
- * duration: thời gian đếm (ms), mặc định 900ms
- * suffix / prefix: chuỗi thêm trước/sau số (vd: "%", "+")
- * formatter: hàm tuỳ biến cách hiển thị số (mặc định Math.round + toLocaleString)
+ * AnimatedStatNumber - Hiệu ứng nhảy số / count-up mượt mà 60fps chuẩn BoardUI
+ * - Hoạt động bằng requestAnimationFrame với đường cong easeOutExpo
+ * - Tự động nhảy số lại khi giá trị "value" thay đổi (từ giá trị cũ sang giá trị mới)
+ * - Hỗ trợ số thập phân (decimals), tiền tệ ($0.6138), định dạng quốc tế (Intl/locale)
+ * - Tôn trọng prefers-reduced-motion và môi trường test (hiển thị ngay giá trị đích)
+ * - Tối ưu font-variant-numeric: tabular-nums để giữ layout ổn định khi số nhảy
  */
 const AnimatedStatNumber = ({
   value,
   duration = 900,
   suffix = '',
   prefix = '',
+  decimals = 0,
   formatter = null,
   className = ''
 }) => {
   const elementRef = useRef(null);
   const frameRef = useRef(null);
+  const prevValueRef = useRef(0);
   const hasAnimatedRef = useRef(false);
-  const [displayValue, setDisplayValue] = useState(0);
 
-  const targetValue = Number.isFinite(value) ? value : 0;
+  const numericTarget = Number.isFinite(Number(value)) ? Number(value) : 0;
+
+  const isTestOrReducedMotion = () => {
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+      return true;
+    }
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+    return false;
+  };
+
+  const [displayValue, setDisplayValue] = useState(() => {
+    return isTestOrReducedMotion() ? numericTarget : 0;
+  });
 
   useEffect(() => {
-    const prefersReducedMotion = typeof window !== 'undefined'
-      && window.matchMedia
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (prefersReducedMotion) {
-      setDisplayValue(targetValue);
+    if (isTestOrReducedMotion()) {
+      setDisplayValue(numericTarget);
+      prevValueRef.current = numericTarget;
       return undefined;
     }
 
     const node = elementRef.current;
     if (!node) return undefined;
 
-    const runCountUp = () => {
-      if (hasAnimatedRef.current) return;
-      hasAnimatedRef.current = true;
+    const startValue = hasAnimatedRef.current ? prevValueRef.current : 0;
+    hasAnimatedRef.current = true;
 
-      const startTime = performance.now();
-      const startValue = 0;
-
-      const tick = (now) => {
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        // easeOutCubic — chậm dần về cuối, đúng cảm giác "chốt số" thay vì
-        // chạy đều đều máy móc.
-        const eased = 1 - Math.pow(1 - progress, 3);
-        setDisplayValue(startValue + (targetValue - startValue) * eased);
-
-        if (progress < 1) {
-          frameRef.current = requestAnimationFrame(tick);
-        } else {
-          setDisplayValue(targetValue);
-        }
-      };
-
-      frameRef.current = requestAnimationFrame(tick);
-    };
-
-    if (typeof IntersectionObserver === 'undefined') {
-      runCountUp();
-      return () => {
-        if (frameRef.current) cancelAnimationFrame(frameRef.current);
-      };
+    if (startValue === numericTarget) {
+      setDisplayValue(numericTarget);
+      prevValueRef.current = numericTarget;
+      return undefined;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) runCountUp();
-        });
-      },
-      { threshold: 0.4 }
-    );
+    const startTime = performance.now();
 
-    observer.observe(node);
+    const tick = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // easeOutExpo cho cảm giác số nhảy mạnh mẽ lúc đầu rồi hãm phanh mượt mà
+      const eased = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      const current = startValue + (numericTarget - startValue) * eased;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(tick);
+      } else {
+        setDisplayValue(numericTarget);
+        prevValueRef.current = numericTarget;
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
 
     return () => {
-      observer.disconnect();
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetValue, duration]);
+  }, [numericTarget, duration]);
 
-  const formatted = formatter
-    ? formatter(displayValue)
-    : Math.round(displayValue).toLocaleString('vi-VN');
+  const formatNumber = (val) => {
+    if (formatter) return formatter(val);
+    if (decimals > 0) {
+      return val.toLocaleString('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    }
+    return Math.round(val).toLocaleString('vi-VN');
+  };
 
   return (
-    <span ref={elementRef} className={className}>
-      {prefix}{formatted}{suffix}
+    <span ref={elementRef} className={`tabular-nums ${className}`.trim()}>
+      {prefix}{formatNumber(displayValue)}{suffix}
     </span>
   );
 };

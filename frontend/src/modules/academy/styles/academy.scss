@@ -54,6 +54,62 @@ $accent-orange: #ff7a30;
     padding: 30px 0 72px;
   }
 
+  .roadmap-live-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+
+    > span,
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    i {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      background: #16a34a;
+      border-radius: 50%;
+    }
+
+    button {
+      min-height: 36px;
+      padding: 7px 11px;
+      color: var(--foreground);
+      font: inherit;
+      font-weight: 700;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--ring);
+        outline-offset: 2px;
+      }
+
+      &:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+    }
+
+    &.is-error i {
+      background: #dc2626;
+    }
+  }
+
   .roadmap-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -133,13 +189,92 @@ $accent-orange: #ff7a30;
       }
     }
 
+    .path-live-courses {
+      width: 100%;
+      margin: 0 0 18px;
+
+      h3 {
+        margin: 0 0 7px;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      ul {
+        display: grid;
+        gap: 5px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      a {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 32px;
+        color: var(--card-foreground);
+        font-size: 0.8125rem;
+        font-weight: 650;
+        text-decoration: none;
+
+        span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        svg {
+          flex: 0 0 auto;
+          color: var(--primary);
+        }
+
+        &:hover {
+          color: var(--primary);
+        }
+
+        &:focus-visible {
+          border-radius: 4px;
+          outline: 2px solid var(--ring);
+          outline-offset: 2px;
+        }
+      }
+    }
+
+    .path-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      margin-top: auto;
+    }
+
     .btn-view-path {
       min-height: 36px;
-      margin-top: auto;
       border-radius: 999px;
       padding-inline: 16px;
       font-weight: 700;
       box-shadow: none;
+    }
+
+    .path-catalog-link {
+      color: var(--primary);
+      font-size: 0.8125rem;
+      font-weight: 700;
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      &:focus-visible {
+        border-radius: 4px;
+        outline: 2px solid var(--ring);
+        outline-offset: 3px;
+      }
     }
 
     .path-image {
@@ -298,6 +433,18 @@ html.dark .academy-page-modern {
 
     .roadmap-paths-section {
       padding: 26px 0 56px;
+    }
+
+    .roadmap-live-status {
+      align-items: flex-start;
+
+      > span {
+        padding-top: 8px;
+      }
+
+      button span {
+        display: none;
+      }
     }
 
     .roadmap-path-card {

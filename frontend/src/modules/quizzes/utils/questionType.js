@@ -44,7 +44,19 @@ export const getEffectiveQuestionType = (question) => {
   if (question.audio_url || question.audioUrl) return 'listening';
   if (question.passage_text || question.passageText) return 'reading';
 
-  if (/\{\{\s*[A-Za-z0-9_-]+\s*\}\}/.test(String(question.question || question.question_text || ''))) {
+  const promptText = String(question.question || question.question_text || question.questionText || '');
+
+  // Detect listening if audio script or dialogue tag exists in prompt
+  if (/\[(?:Audio Script|Dialogue|Listening)\]/i.test(promptText) || /\b(?:Speaker [A-Z]|Audio Script|Listen to the conversation)\b/i.test(promptText)) {
+    return 'listening';
+  }
+
+  // Detect reading if passage tag exists
+  if (/\[(?:Reading Passage|Passage)\]/i.test(promptText)) {
+    return 'reading';
+  }
+
+  if (/\{\{\s*[A-Za-z0-9_-]+\s*\}\}/.test(promptText)) {
     return 'open_cloze';
   }
 

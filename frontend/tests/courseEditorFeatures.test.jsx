@@ -151,6 +151,7 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
               course_id: 37,
               course_name: 'IELTS Intensive 6.5+',
               subject_id: 1,
+              academy_roadmap: 'ielts',
               status: mockCourseStatus,
               sections: [
                 {
@@ -249,6 +250,7 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     expect(screen.queryByRole('button', { name: /Lưu bản nháp/i })).not.toBeInTheDocument();
 
     const courseNameInput = screen.getByDisplayValue('IELTS Intensive 6.5+');
+    expect(screen.getByLabelText('Lộ trình Academy *')).toHaveValue('ielts');
     fireEvent.change(courseNameInput, { target: { value: 'IELTS Intensive 7.0+' } });
     fireEvent.click(saveChangesButton);
 
@@ -257,6 +259,7 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
         '/courses/37',
         expect.objectContaining({
           courseName: 'IELTS Intensive 7.0+',
+          academyRoadmap: 'ielts',
           status: 1
         })
       );
