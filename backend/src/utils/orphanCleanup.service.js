@@ -6,6 +6,7 @@
 
 const db = require('../config/database');
 const supabaseStorage = require('./supabaseStorage');
+const { getRequiredPlaybackKeys } = require('./mediaAssetGroup.util');
 
 function inferMediaKind(mimeType = '', storageKey = '') {
   if (mimeType.startsWith('video/') || /\.(mp4|m4s|mpd)$/i.test(storageKey)) return 'video';
@@ -160,13 +161,18 @@ class OrphanCleanupService {
     }
 
     // 4. Kiểm tra sự tồn tại thực tế trên object storage
-    const exists = await supabaseStorage.checkObjectExists(
-      pending.storage_key,
-      pending.storage_bucket,
-      pending.storage_provider
-    );
-    if (!exists) {
-      throw new Error(`Tài nguyên ${pending.storage_key} không tồn tại thực tế trên object storage.`);
+    const requiredKeys = getRequiredPlaybackKeys(pending.storage_key);
+    const existence = await Promise.all(requiredKeys.map(key => (
+      supabaseStorage.checkObjectExists(key, pending.storage_bucket, pending.storage_provider)
+    )));
+    const missingKeys = requiredKeys.filter((_, index) => !existence[index]);
+    if (missingKeys.length > 0) {
+      const error = new Error(
+        `Media upload chưa đầy đủ trên object storage: thiếu ${missingKeys.map(key => key.split('/').pop()).join(', ')}.`
+      );
+      error.status = 409;
+      error.code = 'MEDIA_ASSET_GROUP_INCOMPLETE';
+      throw error;
     }
 
     // Đánh dấu CLAIMING trong transaction

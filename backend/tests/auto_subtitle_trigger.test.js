@@ -15,6 +15,8 @@ const originalSchedule = subtitlesService.scheduleAutoGeneration;
 const originalQueue = subtitlesService.queueAutoGeneration;
 const originalSyncLessonQuiz = coursesService._syncLessonQuiz;
 const originalCheckObjectExists = supabaseStorage.checkObjectExists;
+const originalListR2Objects = subtitlesService.listR2Objects;
+const originalFindR2ObjectsByAssetId = subtitlesService.findR2ObjectsByAssetId;
 
 afterEach(() => {
   db.query = originalDbQuery;
@@ -25,6 +27,9 @@ afterEach(() => {
   subtitlesService.queueAutoGeneration = originalQueue;
   coursesService._syncLessonQuiz = originalSyncLessonQuiz;
   supabaseStorage.checkObjectExists = originalCheckObjectExists;
+  subtitlesService.listR2Objects = originalListR2Objects;
+  subtitlesService.findR2ObjectsByAssetId = originalFindR2ObjectsByAssetId;
+  subtitlesService.r2AssetIndexCache = null;
 });
 
 describe('Automatic subtitle trigger', () => {
@@ -277,6 +282,64 @@ describe('Automatic subtitle trigger', () => {
       encrypted: true,
       audioOnly: true
     });
+  });
+
+  test('DASH transcript source discovers an older source filename in the same asset folder', async () => {
+    supabaseStorage.checkObjectExists = async () => false;
+    subtitlesService.listR2Objects = async prefix => {
+      assert.equal(prefix, 'courses/43/videos/asset');
+      return [
+        { Key: `${prefix}/manifest.mpd` },
+        { Key: `${prefix}/lesson-original-source.mp4` }
+      ];
+    };
+
+    const resolved = await subtitlesService.resolveStorageMediaForTranscription({
+      storage_key: 'courses/43/videos/asset/manifest.mpd',
+      storage_bucket: 'elearning-media',
+      storage_provider: 'r2'
+    });
+
+    assert.deepEqual(resolved, {
+      storageKey: 'courses/43/videos/asset/lesson-original-source.mp4',
+      encrypted: false,
+      audioOnly: false
+    });
+  });
+
+  test('DASH transcript source discovers a moved asset by its stable UUID', async () => {
+    const assetId = '2bc8247d-6b5a-4f88-a149-4af939173844';
+    supabaseStorage.checkObjectExists = async () => false;
+    subtitlesService.listR2Objects = async () => [];
+    subtitlesService.findR2ObjectsByAssetId = async value => {
+      assert.equal(value, assetId);
+      return [{ Key: `courses/legacy/videos/${assetId}/audio.mp4` }];
+    };
+
+    const resolved = await subtitlesService.resolveStorageMediaForTranscription({
+      storage_key: `courses/current/videos/${assetId}/manifest.mpd`,
+      storage_bucket: 'elearning-media',
+      storage_provider: 'r2'
+    });
+
+    assert.deepEqual(resolved, {
+      storageKey: `courses/legacy/videos/${assetId}/audio.mp4`,
+      encrypted: true,
+      audioOnly: true
+    });
+  });
+
+  test('missing media status update is source-safe and cannot overwrite a replacement video', async () => {
+    let write;
+    db.query = async (sql, params) => {
+      write = { sql: String(sql), params };
+      return { rows: [{ lesson_id: 131 }] };
+    };
+
+    assert.equal(await subtitlesService.markLessonMediaMissing(131, 'courses/old/manifest.mpd'), true);
+    assert.match(write.sql, /media_status = 'MISSING_SOURCE'/);
+    assert.match(write.sql, /COALESCE\(storage_key, content_url, ''\) = \$2/);
+    assert.deepEqual(write.params, [131, 'courses/old/manifest.mpd']);
   });
 
   test('new course video lesson is collected for post-commit generation', async () => {

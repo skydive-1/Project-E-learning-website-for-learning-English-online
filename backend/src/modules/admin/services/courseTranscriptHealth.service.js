@@ -19,6 +19,9 @@ const emptyCounts = () => ({
   processing: 0,
   failed: 0,
   missing: 0,
+  mediaMissing: 0,
+  retryable: 0,
+  retryablePending: 0,
   stalePending: 0,
   sourceMismatch: 0
 });
@@ -26,6 +29,9 @@ const emptyCounts = () => ({
 const incrementCounts = (counts, lesson) => {
   counts.total += 1;
   counts[lesson.transcriptStatus] += 1;
+  if (lesson.mediaMissingSource) counts.mediaMissing += 1;
+  if (lesson.retryable) counts.retryable += 1;
+  if (lesson.retryable && lesson.transcriptStatus === 'pending') counts.retryablePending += 1;
   if (lesson.stalePending) counts.stalePending += 1;
   if (lesson.sourceMismatch) counts.sourceMismatch += 1;
 };
@@ -34,6 +40,7 @@ const getCourseTranscriptHealth = async () => {
   const { rows } = await pool.query(`
     SELECT c.course_id, c.course_name, c.status AS course_status,
            l.lesson_id, l.title AS lesson_title, l.content_type,
+           l.media_status,
            ls.subtitle_status, ls.error_code, ls.error_message, ls.updated_at,
            CASE
              WHEN jsonb_typeof(COALESCE(ls.cues, '[]'::jsonb)) = 'array'
@@ -68,11 +75,15 @@ const getCourseTranscriptHealth = async () => {
       lessonId: Number(row.lesson_id),
       lessonTitle: row.lesson_title || `Bài học #${row.lesson_id}`,
       contentType: row.content_type,
+      mediaStatus: row.media_status || null,
+      mediaMissingSource: row.media_status === 'MISSING_SOURCE',
       transcriptStatus,
       cueCount: Number(row.cue_count) || 0,
       statusAgeSeconds,
       stalePending: transcriptStatus === 'pending' && statusAgeSeconds >= STALE_PENDING_SECONDS,
       sourceMismatch,
+      retryable: ['pending', 'failed'].includes(transcriptStatus)
+        && row.media_status !== 'MISSING_SOURCE',
       errorCode: transcriptStatus === 'failed' ? (row.error_code || null) : null,
       errorMessage: transcriptStatus === 'failed' ? (row.error_message || null) : null,
       updatedAt: row.updated_at || null
@@ -103,8 +114,8 @@ const getCourseTranscriptHealth = async () => {
       ...summary,
       courses: courseList.length,
       affectedCourses: courseList.filter(course => course.affectedLessons.length > 0).length,
-      recoverablePending: summary.pending,
-      recoverable: summary.pending + summary.failed
+      recoverablePending: summary.retryablePending,
+      recoverable: summary.retryable
     },
     courses: courseList
   };

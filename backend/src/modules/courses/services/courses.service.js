@@ -3,6 +3,7 @@ const { handleServiceError } = require('../../../utils/service-errors');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
 const lessonStreamCache = require('../../../utils/lessonStreamCache');
+const { getRequiredPlaybackKeys } = require('../../../utils/mediaAssetGroup.util');
 const { validateOpenClozeQuestion } = require('../../quizzes/utils/openCloze.util');
 const {
   extractYoutubeVideoId,
@@ -394,9 +395,16 @@ class CoursesService {
         err.status = 400; err.code = 'UNVERIFIED_MEDIA_ASSETS'; throw err;
       }
       if (validInternal) {
-        const exists = await supabaseStorage.checkObjectExists(lesson.storage_key, lesson.storage_bucket, lesson.storage_provider);
-        if (!exists) {
-          const err = new Error(`Media của bài học "${lesson.title || lesson.lesson_id}" không còn tồn tại trên storage.`);
+        const requiredKeys = getRequiredPlaybackKeys(lesson.storage_key);
+        const existence = await Promise.all(requiredKeys.map(key => (
+          supabaseStorage.checkObjectExists(key, lesson.storage_bucket, lesson.storage_provider)
+        )));
+        const missingKeys = requiredKeys.filter((_, index) => !existence[index]);
+        if (missingKeys.length > 0) {
+          const err = new Error(
+            `Media của bài học "${lesson.title || lesson.lesson_id}" chưa đầy đủ trên storage ` +
+            `(thiếu ${missingKeys.map(key => key.split('/').pop()).join(', ')}).`
+          );
           err.status = 400; err.code = 'MEDIA_OBJECT_MISSING'; throw err;
         }
       }

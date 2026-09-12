@@ -4,7 +4,8 @@ import {
   FiCheckCircle,
   FiClock,
   FiRefreshCw,
-  FiTool
+  FiTool,
+  FiUploadCloud
 } from 'react-icons/fi';
 import { useToast } from '../../../context/ToastContext';
 import {
@@ -31,6 +32,15 @@ const getCourseTone = (counts = {}) => {
 const getFailureGuidance = (lessons = []) => {
   const failedLessons = lessons.filter(lesson => lesson.transcriptStatus === 'failed');
   if (failedLessons.length === 0) return null;
+  const confirmedMissing = failedLessons.filter(lesson => lesson.mediaMissingSource);
+  if (confirmedMissing.length > 0) {
+    return {
+      title: 'File media đã mất khỏi storage',
+      detail: 'Hệ thống đã dò MP4 gốc, audio DRM, tên file cũ và thư mục cũ theo UUID nhưng không tìm thấy. Cần mở khóa học và tải lại video cho các bài được liệt kê.',
+      lessonIds: confirmedMissing.map(lesson => lesson.lessonId),
+      requiresReupload: true
+    };
+  }
   const storageMissing = failedLessons.filter(lesson => (
     lesson.errorCode === 'TRANSCRIPT_MEDIA_SOURCE_MISSING'
     || /HTTP 404|không tìm thấy.*(?:video|MP4|audio)/i.test(lesson.errorMessage || '')
@@ -38,15 +48,17 @@ const getFailureGuidance = (lessons = []) => {
   if (storageMissing.length > 0) {
     return {
       title: 'Không truy cập được file media nguồn',
-      detail: 'Khi thử lại, hệ thống sẽ ưu tiên MP4 gốc rồi tự dùng audio DRM dự phòng. Nếu cả hai đều thiếu, cần tải lại video.',
-      lessonIds: storageMissing.map(lesson => lesson.lessonId)
+      detail: 'Bấm “Thử tự khôi phục” một lần: hệ thống sẽ dò MP4 gốc, audio DRM, tên file cũ và vị trí cũ theo UUID.',
+      lessonIds: storageMissing.map(lesson => lesson.lessonId),
+      requiresReupload: false
     };
   }
   const firstMessage = failedLessons.find(lesson => lesson.errorMessage)?.errorMessage;
   return {
     title: 'Pipeline tạo transcript đã thất bại',
     detail: firstMessage || 'Hãy thử lại. Nếu lỗi tiếp diễn, kiểm tra quota AI và nguồn video.',
-    lessonIds: failedLessons.map(lesson => lesson.lessonId)
+    lessonIds: failedLessons.map(lesson => lesson.lessonId),
+    requiresReupload: false
   };
 };
 
@@ -141,7 +153,9 @@ const CourseTranscriptHealthPanel = () => {
   const summary = snapshot?.summary || {};
   const pendingCount = Number(summary.pending) || 0;
   const failedCount = Number(summary.failed) || 0;
-  const actionableCount = pendingCount + failedCount;
+  const actionableCount = summary.recoverable === undefined
+    ? Math.max(0, pendingCount + failedCount - (Number(summary.mediaMissing) || 0))
+    : (Number(summary.recoverable) || 0);
   const allFailureGuidance = getFailureGuidance(
     affectedCourses.flatMap(course => course.affectedLessons || [])
   );
@@ -170,7 +184,7 @@ const CourseTranscriptHealthPanel = () => {
           >
             {recoveringKey === 'all'
               ? <><FiRefreshCw className="is-spinning" aria-hidden="true" /> Đang đưa vào worker…</>
-              : <><FiTool aria-hidden="true" /> {failedCount > 0 ? 'Thử lại tối đa 10 bài lỗi' : 'Xử lý ngay tối đa 10 bài chờ'}</>}
+              : <><FiTool aria-hidden="true" /> {failedCount > 0 ? 'Thử tự khôi phục tối đa 10 bài' : 'Xử lý ngay tối đa 10 bài chờ'}</>}
           </button>
         </div>
       </div>
@@ -181,7 +195,11 @@ const CourseTranscriptHealthPanel = () => {
           <div>
             <strong>{failedCount} bài đã chạy nhưng thất bại — {allFailureGuidance.title}</strong>
             <span>{allFailureGuidance.detail}</span>
-            <span>Bước tiếp theo: bấm “Thử lại” ở từng khóa hoặc nút màu xanh phía trên. Mỗi lượt tối đa 10 bài; bảng tự cập nhật mỗi 15 giây.</span>
+            <span>
+              {allFailureGuidance.requiresReupload
+                ? 'Bước tiếp theo: bấm “Tải lại video” ở từng khóa, thay video cho đúng lesson ID đang báo lỗi rồi lưu khóa học.'
+                : 'Bước tiếp theo: bấm “Thử tự khôi phục” ở từng khóa hoặc nút màu xanh phía trên. Mỗi lượt tối đa 10 bài; bảng tự cập nhật mỗi 15 giây.'}
+            </span>
           </div>
         </div>
       )}
@@ -190,7 +208,10 @@ const CourseTranscriptHealthPanel = () => {
         <div><strong>{Number(summary.ready) || 0}</strong><span>Sẵn sàng / {Number(summary.total) || 0} video</span></div>
         <div className={pendingCount ? 'has-warning' : ''}><strong>{pendingCount}</strong><span>Đang chờ</span></div>
         <div className={Number(summary.processing) ? 'has-warning' : ''}><strong>{Number(summary.processing) || 0}</strong><span>Đang xử lý</span></div>
-        <div className={Number(summary.failed) ? 'has-error' : ''}><strong>{Number(summary.failed) || 0}</strong><span>Thất bại</span></div>
+        <div className={Number(summary.failed) ? 'has-error' : ''}>
+          <strong>{Number(summary.failed) || 0}</strong>
+          <span>Thất bại · {Number(summary.mediaMissing) || 0} mất file nguồn</span>
+        </div>
         <div><strong>{Number(summary.missing) || 0}</strong><span>Chưa có dữ liệu</span></div>
         <div className={Number(summary.sourceMismatch) ? 'has-error' : ''}><strong>{Number(summary.sourceMismatch) || 0}</strong><span>Lệch nguồn media</span></div>
       </div>
@@ -206,12 +227,19 @@ const CourseTranscriptHealthPanel = () => {
             const pendingLessons = course.affectedLessons.filter(lesson => lesson.transcriptStatus === 'pending');
             const oldestPending = Math.max(0, ...pendingLessons.map(lesson => lesson.statusAgeSeconds));
             const tone = getCourseTone(course.counts);
-            const actionableCourseCount = Number(course.counts.pending) + Number(course.counts.failed);
+            const actionableCourseCount = course.counts.retryable === undefined
+              ? Math.max(
+                0,
+                Number(course.counts.pending) + Number(course.counts.failed) - (Number(course.counts.mediaMissing) || 0)
+              )
+              : (Number(course.counts.retryable) || 0);
+            const requiresReupload = Number(course.counts.mediaMissing) > 0 && actionableCourseCount === 0;
+            const missingLessonId = course.affectedLessons.find(lesson => lesson.mediaMissingSource)?.lessonId;
             const failureGuidance = getFailureGuidance(course.affectedLessons);
             const courseActionLabel = course.counts.failed > 0 && course.counts.pending > 0
               ? `Xử lý ${actionableCourseCount} bài`
               : (course.counts.failed > 0
-                  ? `Thử lại ${course.counts.failed} bài lỗi`
+                  ? `Thử tự khôi phục ${actionableCourseCount} bài`
                   : `Xử lý ${course.counts.pending} bài chờ`);
             return (
               <div className={`transcript-health-row is-${tone}`} key={course.courseId}>
@@ -242,15 +270,21 @@ const CourseTranscriptHealthPanel = () => {
                   <span>{course.counts.sourceMismatch} lệch nguồn</span>
                   <span>{course.counts.ready}/{course.counts.total} sẵn sàng</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRecover(course)}
-                  disabled={actionableCourseCount === 0 || Boolean(recoveringKey)}
-                >
-                  {recoveringKey === String(course.courseId)
+                {requiresReupload ? (
+                  <a href={`/instructor/edit-course/${course.courseId}?tab=curriculum&lessonId=${missingLessonId}&issue=missing-media-source`}>
+                    <FiUploadCloud aria-hidden="true" /> Tải lại video
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleRecover(course)}
+                    disabled={actionableCourseCount === 0 || Boolean(recoveringKey)}
+                  >
+                    {recoveringKey === String(course.courseId)
                     ? <><FiRefreshCw className="is-spinning" aria-hidden="true" /> Đang đưa vào worker…</>
                     : <><FiTool aria-hidden="true" /> {courseActionLabel}</>}
-                </button>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -258,7 +292,7 @@ const CourseTranscriptHealthPanel = () => {
       )}
 
       <p className="transcript-health-panel__note">
-        Sau khi bấm, bài chuyển sang “Đang chờ”, rồi “Đang xử lý” và cuối cùng là “Sẵn sàng” hoặc hiện lỗi mới. Worker chạy tuần tự để bảo vệ quota Gemini miễn phí.
+        Tự khôi phục chỉ chạy cho bài còn khả năng xử lý. Bài đã xác nhận mất file sẽ không bị retry vô hạn và phải tải lại video. Worker chạy tuần tự để bảo vệ quota Gemini miễn phí.
       </p>
     </section>
   );

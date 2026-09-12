@@ -59,6 +59,7 @@ class SubtitlesService {
     this.generationQueueTail = Promise.resolve();
     this.activeGenerationPromises = new Map();
     this.recoveryTimer = null;
+    this.r2AssetIndexCache = null;
   }
 
   /**
@@ -225,6 +226,7 @@ class SubtitlesService {
        FROM lesson_subtitles ls
        JOIN lessons l ON l.lesson_id = ls.lesson_id
        WHERE l.content_type IN ('video', 'youtube')
+         AND COALESCE(l.media_status, '') <> 'MISSING_SOURCE'
          AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL
          AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) <> ''
          AND ls.subtitle_status IN ('pending', 'processing')`
@@ -267,6 +269,7 @@ class SubtitlesService {
     const params = [];
     const filters = [
       "l.content_type IN ('video', 'youtube')",
+      "COALESCE(l.media_status, '') <> 'MISSING_SOURCE'",
       includeFailed
         ? "ls.subtitle_status IN ('pending', 'failed')"
         : "ls.subtitle_status = 'pending'",
@@ -381,11 +384,95 @@ class SubtitlesService {
       if (exists) return candidate;
     }
 
+    // Một số asset cũ dùng tên file khác source.mp4/audio.mp4. Liệt kê đúng
+    // thư mục trước để phục hồi mà không quét cả bucket.
+    if ((rawLesson.storage_provider || 'r2') === 'r2') {
+      const localObjects = await this.listR2Objects(prefix);
+      const localCandidate = this.pickTranscriptionObject(localObjects);
+      if (localCandidate) return localCandidate;
+
+      // Nếu DB đã đổi đường dẫn nhưng object vẫn còn ở thư mục cũ, UUID asset
+      // là định danh ổn định. Cache index 10 phút để 28 lesson chỉ tốn một lần LIST.
+      const assetId = sourceKey.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
+      if (assetId) {
+        const indexedObjects = await this.findR2ObjectsByAssetId(assetId);
+        const indexedCandidate = this.pickTranscriptionObject(indexedObjects);
+        if (indexedCandidate) return indexedCandidate;
+      }
+    }
+
     const error = new Error(
       'Không tìm thấy MP4 nguồn hoặc audio DRM dự phòng trong kho lưu trữ. Vui lòng tải lại video bài học.'
     );
     error.code = 'TRANSCRIPT_MEDIA_SOURCE_MISSING';
     throw error;
+  }
+
+  pickTranscriptionObject(objects = []) {
+    const keys = [...new Set(objects.map(item => typeof item === 'string' ? item : item?.Key).filter(Boolean))];
+    const ranked = keys
+      .filter(key => key.toLowerCase().endsWith('.mp4'))
+      .map(key => {
+        const name = path.posix.basename(key).toLowerCase();
+        if (name === 'source.mp4') return { rank: 0, storageKey: key, encrypted: false, audioOnly: false };
+        if (name.includes('source')) return { rank: 1, storageKey: key, encrypted: false, audioOnly: false };
+        if (name === 'audio.mp4') return { rank: 2, storageKey: key, encrypted: true, audioOnly: true };
+        if (name.includes('audio')) return { rank: 3, storageKey: key, encrypted: true, audioOnly: true };
+        if (name === 'video.mp4' || name.includes('enc_video')) return null;
+        return { rank: 4, storageKey: key, encrypted: false, audioOnly: false };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.rank - b.rank || a.storageKey.localeCompare(b.storageKey));
+    if (ranked.length === 0) return null;
+    const { rank: _rank, ...candidate } = ranked[0];
+    return candidate;
+  }
+
+  async listR2Objects(prefix = '') {
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    const r2 = require('../../../utils/r2Storage');
+    const objects = [];
+    let continuationToken;
+    do {
+      const result = await r2.getClient().send(new ListObjectsV2Command({
+        Bucket: r2.resolveBucket(),
+        Prefix: prefix ? `${String(prefix).replace(/\/+$/, '')}/` : undefined,
+        ContinuationToken: continuationToken
+      }));
+      objects.push(...(result.Contents || []).filter(item => item.Key));
+      continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return objects;
+  }
+
+  async getR2AssetIndex() {
+    const now = Date.now();
+    if (this.r2AssetIndexCache?.expiresAt > now) return this.r2AssetIndexCache.promise;
+    const promise = this.listR2Objects('courses').catch(error => {
+      this.r2AssetIndexCache = null;
+      throw error;
+    });
+    this.r2AssetIndexCache = { expiresAt: now + 10 * 60 * 1000, promise };
+    return promise;
+  }
+
+  async findR2ObjectsByAssetId(assetId) {
+    const needle = `/${String(assetId).toLowerCase()}/`;
+    const objects = await this.getR2AssetIndex();
+    return objects.filter(item => String(item.Key || '').toLowerCase().includes(needle));
+  }
+
+  async markLessonMediaMissing(lessonId, expectedSourceUrl) {
+    if (!expectedSourceUrl) return false;
+    const result = await db.query(
+      `UPDATE lessons
+       SET media_status = 'MISSING_SOURCE'
+       WHERE lesson_id = $1
+         AND COALESCE(storage_key, content_url, '') = $2
+       RETURNING lesson_id`,
+      [parseInt(lessonId, 10), expectedSourceUrl]
+    );
+    return result.rows.length > 0;
   }
 
   async waitForAutoGenerationIdle(timeoutMs = 2 * 60 * 60 * 1000) {
@@ -415,6 +502,7 @@ class SubtitlesService {
        FROM lesson_subtitles ls
        JOIN lessons l ON l.lesson_id = ls.lesson_id
        WHERE l.content_type IN ('video', 'youtube')
+         AND COALESCE(l.media_status, '') <> 'MISSING_SOURCE'
          AND ls.subtitle_status = 'pending'
          AND ls.updated_at < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')
          AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL
@@ -1218,11 +1306,13 @@ ${JSON.stringify(translationInput)}
 
       // Tại điểm này, videoFilePath là đường dẫn local hợp lệ (hoặc null nếu không resolve được)
       if (!youtubeVideoId && (!videoFilePath || !fs.existsSync(videoFilePath))) {
-        throw new Error(
+        const error = new Error(
           `Không thể truy cập file video cho bài học ${lessonId}. ` +
           `content_url="${rawContentUrl}". ` +
           `Đảm bảo video đã được upload lên Supabase Storage hoặc còn tồn tại trên server.`
         );
+        error.code = 'TRANSCRIPT_MEDIA_SOURCE_MISSING';
+        throw error;
       }
 
       // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python khi được bật.
@@ -1399,6 +1489,19 @@ ${JSON.stringify(translationInput)}
         const errorMessage = pipelineErr?.code === 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
           ? youtubeTranscript.YOUTUBE_NO_CAPTIONS_MESSAGE
           : String(pipelineErr?.message || 'Lỗi không xác định trong quá trình tạo phụ đề.').slice(0, 500);
+        if (errorCode === 'TRANSCRIPT_MEDIA_SOURCE_MISSING') {
+          // Chỉ đánh dấu nguồn vẫn còn gắn với lesson. Nếu giảng viên vừa thay
+          // video trong lúc job cũ chạy, câu UPDATE này không chạm dữ liệu mới.
+          // Lỗi cập nhật media_status không được cản việc ghi trạng thái failed
+          // của transcript; hai phép ghi phục vụ hai màn hình khác nhau.
+          try {
+            await this.markLessonMediaMissing(lessonId, expectedSourceUrl || rawContentUrl);
+          } catch (mediaStatusError) {
+            console.warn(
+              `[Subtitles] Không thể đánh dấu MISSING_SOURCE cho lessonId=${lessonId}: ${mediaStatusError.message}`
+            );
+          }
+        }
         if (expectedSourceUrl) {
           await db.query(
             `UPDATE lesson_subtitles

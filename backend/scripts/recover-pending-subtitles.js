@@ -36,17 +36,22 @@ const main = async () => {
   if (hasFlag('dry-run')) {
     const snapshot = await getCourseTranscriptHealth();
     const courses = snapshot.courses
-      .filter(course => course.counts.pending > 0 || course.counts.failed > 0)
+      .filter(course => course.counts.retryable > 0 || course.counts.mediaMissing > 0)
       .filter(course => !courseId || course.courseId === courseId)
       .map(course => ({
         courseId: course.courseId,
         courseName: course.courseName,
         pending: course.counts.pending,
         failed: course.counts.failed,
+        retryable: course.counts.retryable,
+        mediaMissing: course.counts.mediaMissing,
         stalePending: course.counts.stalePending,
         sourceMismatch: course.counts.sourceMismatch,
         lessonIds: course.affectedLessons
-          .filter(lesson => ['pending', 'failed'].includes(lesson.transcriptStatus))
+          .filter(lesson => lesson.retryable)
+          .map(lesson => lesson.lessonId),
+        reuploadLessonIds: course.affectedLessons
+          .filter(lesson => lesson.mediaMissingSource)
           .map(lesson => lesson.lessonId)
       }));
     console.log(JSON.stringify({ dryRun: true, source: snapshot.source, courses }, null, 2));
@@ -67,7 +72,9 @@ const main = async () => {
   const snapshot = await getCourseTranscriptHealth();
   const remaining = snapshot.courses
     .filter(course => !courseId || course.courseId === courseId)
-    .reduce((total, course) => total + course.counts.pending + (includeFailed ? course.counts.failed : 0), 0);
+    .reduce((total, course) => (
+      total + (includeFailed ? course.counts.retryable : course.counts.retryablePending)
+    ), 0);
   console.log(JSON.stringify({ phase: 'completed', remaining }, null, 2));
 };
 
