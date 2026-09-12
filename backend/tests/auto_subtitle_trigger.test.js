@@ -76,6 +76,141 @@ describe('Automatic subtitle trigger', () => {
     assert.deepEqual(pendingWrite.params, [42, 'courses/2/new-video.mp4']);
   });
 
+  test('queue uses the canonical storage key and accepts YouTube lessons', async () => {
+    const scheduled = [];
+    db.query = async (sql) => {
+      if (String(sql).includes('FROM lessons')) {
+        return {
+          rows: [{
+            lesson_id: 43,
+            content_type: 'youtube',
+            content_url: 'https://www.youtube.com/watch?v=abcdefghijk',
+            storage_key: null
+          }]
+        };
+      }
+      return { rows: [] };
+    };
+    subtitlesService.scheduleAutoGeneration = (lessonId, source) => scheduled.push({ lessonId, source });
+
+    assert.equal(await subtitlesService.queueAutoGeneration(43), true);
+    assert.deepEqual(scheduled, [{
+      lessonId: 43,
+      source: 'https://www.youtube.com/watch?v=abcdefghijk'
+    }]);
+
+    db.query = async (sql) => {
+      if (String(sql).includes('FROM lessons')) {
+        return {
+          rows: [{
+            lesson_id: 44,
+            content_type: 'video',
+            content_url: 'courses/44/manifest.mpd',
+            storage_key: 'courses/44/source.mp4'
+          }]
+        };
+      }
+      return { rows: [] };
+    };
+
+    assert.equal(await subtitlesService.queueAutoGeneration(44), true);
+    assert.deepEqual(scheduled[1], { lessonId: 44, source: 'courses/44/source.mp4' });
+  });
+
+  test('stale queued source is repaired instead of looping forever', async () => {
+    const writes = [];
+    db.query = async (sql, params) => {
+      if (String(sql).includes('FROM lessons WHERE lesson_id')) {
+        return {
+          rows: [{
+            lesson_id: 45,
+            content_type: 'video',
+            content_url: 'courses/45/current/manifest.mpd',
+            storage_key: 'courses/45/current/manifest.mpd',
+            storage_bucket: 'videos',
+            storage_provider: 'r2'
+          }]
+        };
+      }
+      writes.push({ sql: String(sql), params });
+      return { rows: [{ lesson_id: 45 }] };
+    };
+
+    const result = await subtitlesService._generateSubtitlesWithGemini(45, {
+      expectedSourceUrl: 'courses/45/old/manifest.mpd'
+    });
+
+    assert.equal(result, null);
+    assert.equal(writes.length, 1);
+    assert.match(writes[0].sql, /source_content_url = \$3/);
+    assert.match(writes[0].sql, /subtitle_status = 'pending'/);
+    assert.deepEqual(writes[0].params, [
+      45,
+      'courses/45/old/manifest.mpd',
+      'courses/45/current/manifest.mpd'
+    ]);
+  });
+
+  test('watchdog requeues a lost stale pending job with the current source', async () => {
+    const writes = [];
+    const scheduled = [];
+    db.query = async (sql, params) => {
+      if (String(sql).includes('ls.updated_at < CURRENT_TIMESTAMP')) {
+        assert.deepEqual(params, [900000]);
+        return {
+          rows: [{
+            lesson_id: 46,
+            source_content_url: 'courses/46/old/manifest.mpd',
+            current_source_url: 'courses/46/current/manifest.mpd'
+          }]
+        };
+      }
+      writes.push({ sql: String(sql), params });
+      return { rows: [] };
+    };
+    subtitlesService.scheduleAutoGeneration = (lessonId, source) => scheduled.push({ lessonId, source });
+
+    const count = await subtitlesService.recoverStalledAutoGeneration(900000);
+
+    assert.equal(count, 1);
+    assert.deepEqual(writes[0].params, [46, 'courses/46/current/manifest.mpd']);
+    assert.deepEqual(scheduled, [{ lessonId: 46, source: 'courses/46/current/manifest.mpd' }]);
+  });
+
+  test('admin recovery schedules an immediate quota-bounded pending batch', async () => {
+    const scheduled = [];
+    const writes = [];
+    db.query = async (sql, params) => {
+      if (String(sql).includes('FROM lesson_subtitles ls') && String(sql).includes('LIMIT 200')) {
+        assert.deepEqual(params, [43]);
+        return {
+          rows: [131, 132, 133].map(lessonId => ({
+            course_id: 43,
+            course_name: 'Basic English - P3',
+            lesson_id: lessonId,
+            lesson_title: `Lesson ${lessonId}`,
+            source_content_url: `courses/43/old-${lessonId}.mp4`,
+            current_source_url: `courses/43/current-${lessonId}.mp4`
+          }))
+        };
+      }
+      writes.push({ sql: String(sql), params });
+      return { rows: [] };
+    };
+    subtitlesService.scheduleAutoGeneration = (lessonId, source) => scheduled.push({ lessonId, source });
+
+    const result = await subtitlesService.recoverPendingNow({ courseId: 43, limit: 2 });
+
+    assert.equal(result.scheduled, 2);
+    assert.equal(result.batchLimit, 2);
+    assert.deepEqual(scheduled, [
+      { lessonId: 131, source: 'courses/43/current-131.mp4' },
+      { lessonId: 132, source: 'courses/43/current-132.mp4' }
+    ]);
+    assert.equal(writes.length, 2);
+    assert.equal(result.scheduledLessons.every(lesson => lesson.sourceRepaired), true);
+  });
+
   test('new course video lesson is collected for post-commit generation', async () => {
     const queuedLessonIds = [];
     const client = {

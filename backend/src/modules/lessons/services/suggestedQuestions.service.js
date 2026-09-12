@@ -81,11 +81,18 @@ const GROUNDING_STOP_WORDS = new Set([
   'course', 'video', 'and', 'but', 'or', 'if', 'because', 'as', 'until', 'while'
 ]);
 
-function markGenerationUsage(questions, generatedByAi = false, contentAvailable = null, refreshing = false) {
+function markGenerationUsage(
+  questions,
+  generatedByAi = false,
+  contentAvailable = null,
+  refreshing = false,
+  transcriptStatus = null
+) {
   const result = Array.isArray(questions) ? questions : [];
   Object.defineProperty(result, 'generatedByAi', { value: generatedByAi, enumerable: false });
   Object.defineProperty(result, 'contentAvailable', { value: contentAvailable, enumerable: false });
   Object.defineProperty(result, 'refreshing', { value: refreshing, enumerable: false });
+  Object.defineProperty(result, 'transcriptStatus', { value: transcriptStatus, enumerable: false });
   return result;
 }
 
@@ -409,21 +416,19 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
     let transcriptText = buildTranscriptText(transcriptCues);
 
     // Không giữ request của học viên để chờ bóc băng. Pipeline phụ đề chạy nền,
-    // còn endpoint trả trạng thái chưa sẵn sàng ngay lập tức.
-    if (!transcriptText && content_type === 'video' && content_url) {
-      const { extractYoutubeVideoId } = require('../../../utils/youtubeTranscript.util');
-      const isYouTube = Boolean(extractYoutubeVideoId(content_url));
-      if (subtitle_status !== 'pending' && subtitle_status !== 'processing') {
+    // còn endpoint trả trạng thái để frontend tự cập nhật khi transcript sẵn sàng.
+    let transcriptStatus = subtitle_status || 'none';
+    const isVideoLesson = ['video', 'youtube'].includes(content_type) && Boolean(content_url);
+    if (!transcriptText && isVideoLesson) {
+      const shouldQueue = !['pending', 'processing', 'failed'].includes(transcriptStatus)
+        || (transcriptStatus === 'failed' && forceRefresh);
+      if (shouldQueue) {
         try {
           const subtitlesService = require('./subtitles.service');
-          const preparation = isYouTube
-            ? subtitlesService.generateSubtitlesWithGemini(parsedLessonId)
-            : subtitlesService.queueAutoGeneration(parsedLessonId);
-          Promise.resolve(preparation).catch((error) => {
-            console.warn(`[SuggestedQuestions] Chuẩn bị transcript nền thất bại cho lessonId=${parsedLessonId}:`, error.message);
-          });
-        } catch (_) {
-          // Pipeline nền là best-effort; phản hồi nhanh cho học viên vẫn được ưu tiên.
+          const queued = await subtitlesService.queueAutoGeneration(parsedLessonId);
+          if (queued) transcriptStatus = 'pending';
+        } catch (error) {
+          console.warn(`[SuggestedQuestions] Chuẩn bị transcript nền thất bại cho lessonId=${parsedLessonId}:`, error.message);
         }
       }
     }
@@ -433,7 +438,13 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
       if (subtitle_status === 'pending' || subtitle_status === 'processing') {
         console.log(`[SuggestedQuestions] Bài học ${parsedLessonId} đang xử lý phụ đề (status=${subtitle_status}).`);
       }
-      return markGenerationUsage([], false, false);
+      return markGenerationUsage(
+        [],
+        false,
+        false,
+        transcriptStatus === 'pending' || transcriptStatus === 'processing',
+        transcriptStatus
+      );
     }
 
     if (dbQuestions) {
@@ -455,7 +466,8 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
             normalizedItems.map(item => item.question),
             false,
             true,
-            forceRefresh
+            forceRefresh,
+            'ready'
           );
         }
       } else {
@@ -473,10 +485,10 @@ async function getSuggestedQuestionsByLessonId(lessonId, forceRefresh = false) {
     );
     if (fallbackQuestions.length === QUESTION_COUNT) {
       queueSuggestedQuestionGeneration(parsedLessonId, transcriptCues);
-      return markGenerationUsage(fallbackQuestions, false, true, true);
+      return markGenerationUsage(fallbackQuestions, false, true, true, 'ready');
     }
 
-    return markGenerationUsage([], false, true, false);
+    return markGenerationUsage([], false, true, false, 'ready');
   } catch (err) {
     console.warn(`[SuggestedQuestions Warning] Lỗi đọc DB lessonId=${lessonId}:`, err.message);
     return markGenerationUsage(getFallbackSuggestedQuestions());

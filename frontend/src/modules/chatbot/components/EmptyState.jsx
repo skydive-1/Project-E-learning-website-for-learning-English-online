@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { FiAlertCircle, FiCpu, FiBookOpen, FiHelpCircle, FiRefreshCw, FiZap, FiArrowRight } from 'react-icons/fi';
 import { getSuggestedQuestions } from '../services/chatbot.service';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -63,6 +63,9 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [questionsError, setQuestionsError] = useState('');
   const [questionsUnavailable, setQuestionsUnavailable] = useState(false);
+  const [isTranscriptPreparing, setIsTranscriptPreparing] = useState(false);
+  const [transcriptStatus, setTranscriptStatus] = useState(null);
+  const transcriptPollAttemptRef = useRef(0);
 
   const loadSuggestedQuestions = useCallback(async (forceRefresh = false) => {
     if (isGlobal || Number(lessonId) <= 0) return;
@@ -73,11 +76,22 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
     try {
       const questions = await getSuggestedQuestions(lessonId, forceRefresh);
       const normalizedQuestions = normalizeLessonQuestions(questions);
+      const nextTranscriptStatus = questions.transcriptStatus || null;
+      const transcriptPreparing = normalizedQuestions.length === 0
+        && questions.contentAvailable === false
+        && questions.refreshing === true;
+      setTranscriptStatus(nextTranscriptStatus);
+      setIsTranscriptPreparing(transcriptPreparing);
       if (normalizedQuestions.length === 0 && questions.contentAvailable === false) {
+        if (transcriptPreparing) return;
         setQuestionsUnavailable(true);
-        setQuestionsError(isEng
-          ? 'This lesson does not have a transcript yet, so grounded suggestions are unavailable.'
-          : 'Bài học chưa có transcript nên chưa thể tạo câu hỏi gợi ý có căn cứ.');
+        setQuestionsError(nextTranscriptStatus === 'failed'
+          ? (isEng
+            ? 'The transcript could not be generated automatically. You can retry now.'
+            : 'Chưa thể tự động tạo transcript. Bạn có thể thử xử lý lại ngay.')
+          : (isEng
+            ? 'This lesson does not have a transcript yet, so grounded suggestions are unavailable.'
+            : 'Bài học chưa có transcript nên chưa thể tạo câu hỏi gợi ý có căn cứ.'));
         return;
       }
       if (normalizedQuestions.length !== 4) {
@@ -86,12 +100,14 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
         }
         throw new Error('Máy chủ không trả về đủ bốn câu hỏi bám theo nội dung bài học.');
       }
+      transcriptPollAttemptRef.current = 0;
       setSuggestedQuestions(normalizedQuestions);
     } catch (error) {
       console.error('[Suggested Questions] Không thể tải câu hỏi gợi ý:', error);
       setQuestionsError(isEng
         ? 'Unable to load suggested questions from lesson content.'
         : 'Không thể tải câu hỏi gợi ý từ nội dung bài học.');
+      setIsTranscriptPreparing(false);
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -100,9 +116,32 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
   useEffect(() => {
     if (!isGlobal && Number(lessonId) > 0) {
       setSuggestedQuestions([]);
+      transcriptPollAttemptRef.current = 0;
       loadSuggestedQuestions(false);
     }
   }, [lessonId, isGlobal, loadSuggestedQuestions]);
+
+  useEffect(() => {
+    if (!isTranscriptPreparing || isGlobal || Number(lessonId) <= 0) return undefined;
+
+    if (transcriptPollAttemptRef.current >= 20) {
+      setIsTranscriptPreparing(false);
+      setQuestionsUnavailable(true);
+      setTranscriptStatus('stalled');
+      setQuestionsError(isEng
+        ? 'Transcript processing is taking longer than expected. Please retry.'
+        : 'Transcript đang xử lý quá lâu. Vui lòng thử xử lý lại.');
+      return undefined;
+    }
+
+    const attempt = transcriptPollAttemptRef.current;
+    const delayMs = Math.min(6000 * (2 ** Math.min(attempt, 3)), 30000);
+    const timer = setTimeout(() => {
+      transcriptPollAttemptRef.current += 1;
+      loadSuggestedQuestions(false);
+    }, delayMs);
+    return () => clearTimeout(timer);
+  }, [isTranscriptPreparing, isGlobal, lessonId, loadSuggestedQuestions, isEng]);
 
   const globalPrompts = isEng ? [
     {
@@ -186,6 +225,19 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
             </p>
           )}
 
+          {isTranscriptPreparing && !isLoadingQuestions && (
+            <div role="status" className="rounded-xl border border-sky-200 bg-sky-50 p-3.5 text-sky-900 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-sky-100">
+              <div className="flex items-start gap-2.5">
+                <FiRefreshCw className="mt-0.5 shrink-0 animate-spin text-base" aria-hidden="true" />
+                <p className="text-[12px] font-semibold leading-snug">
+                  {isEng
+                    ? 'Preparing the lesson transcript. Suggestions will appear automatically.'
+                    : 'Đang chuẩn bị transcript bài học. Câu hỏi gợi ý sẽ tự xuất hiện.'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {questionsError && !isLoadingQuestions && (
             <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-100">
               <div className="flex items-start gap-2.5">
@@ -194,7 +246,7 @@ const EmptyState = ({ lessonId = 0, lessonTitle = '', onSelectPrompt }) => {
                   <p className="text-[12px] font-semibold leading-snug">
                     {questionsError}
                   </p>
-                  {!questionsUnavailable && <button
+                  {(!questionsUnavailable || transcriptStatus === 'failed' || transcriptStatus === 'stalled') && <button
                     type="button"
                     onClick={() => loadSuggestedQuestions(true)}
                     className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-[12px] font-semibold text-rose-800 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100 dark:hover:bg-rose-900/50 cursor-pointer"

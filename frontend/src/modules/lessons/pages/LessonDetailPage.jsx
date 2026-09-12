@@ -927,7 +927,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
   // Tự động tải phụ đề khi đổi bài học.
   useEffect(() => {
-    if (!currentLesson?.id || currentLesson.type !== 'video') {
+    if (!currentLesson?.id || !['video', 'youtube'].includes(currentLesson.type)) {
       setSubtitleData(null);
       setSubtitleStatus('none');
       return;
@@ -955,7 +955,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
   // Polling phụ đề khi đang xử lý nền (YouTube-style: tự động cập nhật khi hoàn tất)
   useEffect(() => {
-    if (!currentLesson?.id || currentLesson.type !== 'video') return;
+    if (!currentLesson?.id || !['video', 'youtube'].includes(currentLesson.type)) return;
     if (subtitleStatus !== 'processing' && subtitleStatus !== 'pending') return;
 
     const rawLessonId = currentLesson.id.toString().replace(/^(quiz|speaking)-/, '');

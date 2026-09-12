@@ -58,6 +58,7 @@ class SubtitlesService {
     this.autoQueueRunning = false;
     this.generationQueueTail = Promise.resolve();
     this.activeGenerationPromises = new Map();
+    this.recoveryTimer = null;
   }
 
   /**
@@ -131,13 +132,14 @@ class SubtitlesService {
   async queueAutoGeneration(lessonId) {
     const cleanLessonId = parseInt(lessonId, 10);
     const lessonResult = await db.query(
-      `SELECT lesson_id, content_type, content_url
+      `SELECT lesson_id, content_type, content_url, storage_key
        FROM lessons
        WHERE lesson_id = $1`,
       [cleanLessonId]
     );
     const lesson = lessonResult.rows[0];
-    if (!lesson || lesson.content_type !== 'video' || !lesson.content_url) return false;
+    const sourceContentUrl = lesson?.storage_key || lesson?.content_url || '';
+    if (!lesson || !['video', 'youtube'].includes(lesson.content_type) || !sourceContentUrl) return false;
 
     await db.query(
       `INSERT INTO lesson_subtitles (
@@ -156,10 +158,10 @@ class SubtitlesService {
          error_code = NULL,
          error_message = NULL,
          updated_at = CURRENT_TIMESTAMP`,
-      [cleanLessonId, lesson.content_url]
+      [cleanLessonId, sourceContentUrl]
     );
 
-    this.scheduleAutoGeneration(cleanLessonId, lesson.content_url);
+    this.scheduleAutoGeneration(cleanLessonId, sourceContentUrl);
     return true;
   }
 
@@ -197,9 +199,9 @@ class SubtitlesService {
           // và cần được chạy lại với source mới.
           try {
             const pending = await db.query(
-              `SELECT source_content_url
-               FROM lesson_subtitles
-               WHERE lesson_id = $1 AND subtitle_status = 'pending'`,
+              `SELECT ls.source_content_url
+               FROM lesson_subtitles ls
+               WHERE ls.lesson_id = $1 AND ls.subtitle_status = 'pending'`,
               [job.lessonId]
             );
             if (pending.rows[0]?.source_content_url) {
@@ -219,12 +221,12 @@ class SubtitlesService {
 
   async resumePendingAutoGeneration() {
     const { rows } = await db.query(
-      `SELECT ls.lesson_id, l.content_url AS source_content_url
+      `SELECT ls.lesson_id, COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS source_content_url
        FROM lesson_subtitles ls
        JOIN lessons l ON l.lesson_id = ls.lesson_id
-       WHERE l.content_type = 'video'
-         AND l.content_url IS NOT NULL
-         AND l.content_url <> ''
+       WHERE l.content_type IN ('video', 'youtube')
+         AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL
+         AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) <> ''
          AND ls.subtitle_status IN ('pending', 'processing')`
     );
 
@@ -240,6 +242,182 @@ class SubtitlesService {
       this.scheduleAutoGeneration(row.lesson_id, row.source_content_url);
     }
     return rows.length;
+  }
+
+  /**
+   * Admin/CLI recovery: bỏ qua thời gian chờ watchdog, đồng bộ source hiện
+   * tại rồi đưa ngay một batch pending vào worker tuần tự.
+   */
+  async recoverPendingNow({ courseId = null, lessonIds = [], limit = 10 } = {}) {
+    const parsedCourseId = courseId === null || courseId === undefined || courseId === ''
+      ? null
+      : parseInt(courseId, 10);
+    if (parsedCourseId !== null && (!Number.isInteger(parsedCourseId) || parsedCourseId <= 0)) {
+      const error = new Error('courseId không hợp lệ.');
+      error.status = 400;
+      error.code = 'INVALID_COURSE_ID';
+      throw error;
+    }
+
+    const parsedLessonIds = Array.isArray(lessonIds)
+      ? [...new Set(lessonIds.map(value => parseInt(value, 10)).filter(value => Number.isInteger(value) && value > 0))]
+      : [];
+    const batchLimit = Math.min(20, Math.max(1, parseInt(limit, 10) || 10));
+    const params = [];
+    const filters = [
+      "l.content_type IN ('video', 'youtube')",
+      "ls.subtitle_status = 'pending'",
+      "COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL",
+      "COALESCE(NULLIF(l.storage_key, ''), l.content_url) <> ''"
+    ];
+
+    if (parsedCourseId !== null) {
+      params.push(parsedCourseId);
+      filters.push(`c.course_id = $${params.length}`);
+    }
+    if (parsedLessonIds.length > 0) {
+      params.push(parsedLessonIds);
+      filters.push(`l.lesson_id = ANY($${params.length}::int[])`);
+    }
+    const { rows } = await db.query(
+      `SELECT c.course_id, c.course_name, l.lesson_id, l.title AS lesson_title,
+              ls.source_content_url,
+              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url
+       FROM lesson_subtitles ls
+       JOIN lessons l ON l.lesson_id = ls.lesson_id
+       JOIN sections s ON s.section_id = l.section_id
+       JOIN courses c ON c.course_id = s.course_id
+       WHERE ${filters.join('\n         AND ')}
+       ORDER BY
+         CASE WHEN ls.source_content_url IS DISTINCT FROM COALESCE(NULLIF(l.storage_key, ''), l.content_url)
+              THEN 0 ELSE 1 END,
+         ls.updated_at ASC,
+         l.lesson_id ASC
+       LIMIT 200`,
+      params
+    );
+
+    const scheduledLessons = [];
+    const alreadyActiveLessons = [];
+    for (const row of rows) {
+      if (scheduledLessons.length >= batchLimit) break;
+      const jobKey = String(row.lesson_id);
+      if (
+        this.activeAutoGenerationJobs.has(jobKey)
+        || this.activeGenerationPromises.has(jobKey)
+        || this.autoGenerationQueue.has(jobKey)
+      ) {
+        alreadyActiveLessons.push(row.lesson_id);
+        continue;
+      }
+
+      if (row.source_content_url !== row.current_source_url) {
+        await db.query(
+          `UPDATE lesson_subtitles
+           SET source_content_url = $2,
+               error_code = NULL,
+               error_message = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE lesson_id = $1 AND subtitle_status = 'pending'`,
+          [row.lesson_id, row.current_source_url]
+        );
+      }
+      this.scheduleAutoGeneration(row.lesson_id, row.current_source_url);
+      scheduledLessons.push({
+        courseId: row.course_id,
+        courseName: row.course_name,
+        lessonId: row.lesson_id,
+        lessonTitle: row.lesson_title,
+        sourceRepaired: row.source_content_url !== row.current_source_url
+      });
+    }
+
+    return {
+      matched: rows.length,
+      scheduled: scheduledLessons.length,
+      alreadyActive: alreadyActiveLessons.length,
+      batchLimit,
+      scheduledLessons,
+      alreadyActiveLessonIds: alreadyActiveLessons
+    };
+  }
+
+  async waitForAutoGenerationIdle(timeoutMs = 2 * 60 * 60 * 1000) {
+    const deadline = Date.now() + Math.max(1000, Number(timeoutMs) || 2 * 60 * 60 * 1000);
+    while (
+      this.autoQueueRunning
+      || this.autoGenerationQueue.size > 0
+      || this.activeAutoGenerationJobs.size > 0
+      || this.activeGenerationPromises.size > 0
+    ) {
+      if (Date.now() >= deadline) return false;
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return true;
+  }
+
+  /**
+   * Safety net cho job pending bị mất khỏi memory khi worker gặp sự cố nhưng
+   * process vẫn còn sống. Chỉ nhặt job pending đã im lặng đủ lâu; job đang
+   * processing không bị giành lease giữa chừng.
+   */
+  async recoverStalledAutoGeneration(staleMs = 15 * 60 * 1000) {
+    const { rows } = await db.query(
+      `SELECT ls.lesson_id,
+              ls.source_content_url,
+              COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url
+       FROM lesson_subtitles ls
+       JOIN lessons l ON l.lesson_id = ls.lesson_id
+       WHERE l.content_type IN ('video', 'youtube')
+         AND ls.subtitle_status = 'pending'
+         AND ls.updated_at < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 millisecond')
+         AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL
+         AND COALESCE(NULLIF(l.storage_key, ''), l.content_url) <> ''`,
+      [Math.max(1000, Number(staleMs) || 15 * 60 * 1000)]
+    );
+
+    let scheduledCount = 0;
+    for (const row of rows) {
+      const jobKey = String(row.lesson_id);
+      if (
+        this.activeAutoGenerationJobs.has(jobKey)
+        || this.activeGenerationPromises.has(jobKey)
+        || this.autoGenerationQueue.has(jobKey)
+      ) continue;
+
+      if (row.source_content_url !== row.current_source_url) {
+        await db.query(
+          `UPDATE lesson_subtitles
+           SET source_content_url = $2,
+               error_code = NULL,
+               error_message = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE lesson_id = $1 AND subtitle_status = 'pending'`,
+          [row.lesson_id, row.current_source_url]
+        );
+      }
+      this.scheduleAutoGeneration(row.lesson_id, row.current_source_url);
+      scheduledCount += 1;
+    }
+    return scheduledCount;
+  }
+
+  startAutoGenerationRecoveryWorker({ intervalMs = 5 * 60 * 1000, staleMs = 15 * 60 * 1000 } = {}) {
+    if (this.recoveryTimer) return this.recoveryTimer;
+
+    const recover = () => this.recoverStalledAutoGeneration(staleMs).catch((error) => {
+      console.warn(`[Auto-Subtitle Recovery] Không thể rà soát job pending: ${error.message}`);
+    });
+
+    this.recoveryTimer = setInterval(recover, Math.max(30_000, Number(intervalMs) || 5 * 60 * 1000));
+    this.recoveryTimer.unref?.();
+    return this.recoveryTimer;
+  }
+
+  stopAutoGenerationRecoveryWorker() {
+    if (!this.recoveryTimer) return;
+    clearInterval(this.recoveryTimer);
+    this.recoveryTimer = null;
   }
 
   /**
@@ -873,8 +1051,8 @@ ${JSON.stringify(translationInput)}
       }
       const rawLesson = rawResult.rows[0];
 
-      if (rawLesson.content_type !== 'video') {
-        throw new Error(`Bài học ${lessonId} không phải là video (content_type = ${rawLesson.content_type})`);
+      if (!['video', 'youtube'].includes(rawLesson.content_type)) {
+        throw new Error(`Bài học ${lessonId} không phải video/YouTube (content_type = ${rawLesson.content_type})`);
       }
 
       rawContentUrl = rawLesson.storage_key || rawLesson.content_url || '';
@@ -883,6 +1061,23 @@ ${JSON.stringify(translationInput)}
       }
 
       if (expectedSourceUrl && rawContentUrl !== expectedSourceUrl) {
+        // Nguồn media có thể được đổi từ MP4 sang manifest DRM (hoặc được
+        // tái tổ chức trong R2) sau lúc job được tạo. Đồng bộ lại lease thay
+        // vì trả null và để drain loop nạp mãi source cũ.
+        await db.query(
+          `UPDATE lesson_subtitles
+           SET en_vtt = NULL,
+               vi_vtt = NULL,
+               bilingual_vtt = NULL,
+               cues = '[]'::jsonb,
+               subtitle_status = 'pending',
+               source_content_url = $3,
+               error_code = NULL,
+               error_message = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE lesson_id = $1 AND source_content_url = $2`,
+          [lessonId, expectedSourceUrl, rawContentUrl]
+        );
         return null;
       }
 
@@ -893,7 +1088,9 @@ ${JSON.stringify(translationInput)}
                error_code = NULL,
                error_message = NULL,
                updated_at = CURRENT_TIMESTAMP
-           WHERE lesson_id = $1 AND source_content_url = $2
+           WHERE lesson_id = $1
+             AND source_content_url = $2
+             AND subtitle_status = 'pending'
            RETURNING lesson_id`,
           [lessonId, expectedSourceUrl]
         );
