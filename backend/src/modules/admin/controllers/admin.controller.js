@@ -71,6 +71,45 @@ exports.getAiQuotaDashboard = async (req, res, next) => {
   }
 };
 
+/**
+ * Snapshot sức khỏe transcript theo khóa học từ PostgreSQL.
+ */
+exports.getCourseTranscriptHealth = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const courseTranscriptHealth = require('../services/courseTranscriptHealth.service');
+    const data = await courseTranscriptHealth.getCourseTranscriptHealth();
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Khôi phục ngay một batch pending mà không chờ watchdog định kỳ.
+ * Worker vẫn chạy tuần tự để bảo vệ quota miễn phí.
+ */
+exports.recoverPendingTranscripts = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const courseTranscriptHealth = require('../services/courseTranscriptHealth.service');
+    const result = await courseTranscriptHealth.recoverPendingTranscripts({
+      courseId: req.body?.courseId ?? null,
+      lessonIds: req.body?.lessonIds ?? [],
+      limit: req.body?.limit ?? 10
+    });
+    res.status(202).json({
+      success: true,
+      message: result.scheduled > 0
+        ? `Đã đưa ${result.scheduled} transcript vào worker xử lý ngay.`
+        : 'Không có transcript pending mới cần đưa vào worker.',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getGeminiUsageTrend = async (req, res, next) => {
   try {
     disableLiveDataCache(res);

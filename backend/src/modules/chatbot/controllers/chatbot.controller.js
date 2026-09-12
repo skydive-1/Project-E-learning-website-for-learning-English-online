@@ -401,6 +401,7 @@ exports.getSuggestedQuestions = async (req, res, next) => {
       lessonId: parseInt(lessonId, 10) || 0,
       contentAvailable: questions.contentAvailable,
       refreshing: questions.refreshing === true,
+      transcriptStatus: questions.transcriptStatus || null,
       questions
     });
   } catch (error) {

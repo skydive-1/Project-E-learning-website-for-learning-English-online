@@ -25,7 +25,7 @@ const originals = {
 
 const youtubeLesson = {
   lesson_id: 321,
-  content_type: 'video',
+  content_type: 'youtube',
   content_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
   storage_key: null,
   storage_bucket: null,

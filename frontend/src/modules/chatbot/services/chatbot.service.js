@@ -589,7 +589,8 @@ const attachSuggestedQuestionsMetadata = (questions, payload = {}) => {
   const result = Array.isArray(questions) ? [...questions] : [];
   for (const [key, value] of Object.entries({
     contentAvailable: payload.contentAvailable,
-    refreshing: payload.refreshing === true
+    refreshing: payload.refreshing === true,
+    transcriptStatus: payload.transcriptStatus || null
   })) {
     Object.defineProperty(result, key, { value, enumerable: false });
   }
@@ -618,6 +619,7 @@ export const getSuggestedQuestions = async (lessonId, refresh = false) => {
         questions: response.data.questions,
         contentAvailable: response.data.contentAvailable,
         refreshing: response.data.refreshing === true,
+        transcriptStatus: response.data.transcriptStatus || null,
         savedAt: Date.now(),
         ttlMs: response.data.refreshing === true || response.data.contentAvailable === false
           ? 5000

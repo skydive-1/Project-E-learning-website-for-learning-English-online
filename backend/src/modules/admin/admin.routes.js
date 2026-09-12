@@ -19,6 +19,10 @@ router.get('/users', adminController.getAllUsers);
 // GET /api/admin/analytics - Tiến trình toàn bộ học viên và sức khỏe hệ thống
 router.get('/analytics', adminController.getAnalyticsDashboard);
 
+// Sức khỏe transcript theo khóa học và thao tác khôi phục hàng đợi tức thời.
+router.get('/course-transcripts', adminController.getCourseTranscriptHealth);
+router.post('/course-transcripts/recover', aiLimiter, adminController.recoverPendingTranscripts);
+
 // Cảnh báo vận hành lấy từ PostgreSQL/backend telemetry, cập nhật qua SSE.
 router.get('/alerts', adminAlertsController.getAlerts);
 router.get('/alerts/stream', adminAlertsController.streamAlerts);

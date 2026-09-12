@@ -12,6 +12,7 @@ const {
 } = require('../src/modules/lessons/services/suggestedQuestions.service');
 const db = require('../src/config/database');
 const { geminiModel } = require('../src/utils/ai-clients');
+const subtitlesService = require('../src/modules/lessons/services/subtitles.service');
 
 test('suggested questions reject generic, ungrounded and oversized content', () => {
   const transcript = 'Today we practise small talk, greetings, and the phrase nice to meet you.';
@@ -73,6 +74,90 @@ test('fallback without transcript returns no fabricated suggestions', () => {
   const questions = getFallbackSuggestedQuestions('Nguyên âm đôi /e/ và /ai/', 'Basic Pronunciation');
   assert.deepEqual(questions, []);
   assert.deepEqual(normalizeSuggestedQuestions(['Present perfect dùng khi nào?'], ''), []);
+});
+
+test('missing transcript is queued once and reported as preparing', async () => {
+  const originalQuery = db.query;
+  const originalQueue = subtitlesService.queueAutoGeneration;
+  let queueCalls = 0;
+
+  db.query = async (sql) => {
+    if (String(sql).includes('LEFT JOIN lesson_subtitles')) {
+      return {
+        rows: [{
+          lesson_title: 'Architecture',
+          section_title: 'Places',
+          course_name: 'English',
+          content_type: 'video',
+          content_url: 'courses/43/lesson/manifest.mpd',
+          cues: [],
+          subtitle_status: null,
+          questions: null
+        }]
+      };
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  };
+  subtitlesService.queueAutoGeneration = async lessonId => {
+    queueCalls += 1;
+    assert.equal(lessonId, 131);
+    return true;
+  };
+
+  try {
+    const result = await getSuggestedQuestionsByLessonId(131);
+    assert.deepEqual(result, []);
+    assert.equal(result.contentAvailable, false);
+    assert.equal(result.refreshing, true);
+    assert.equal(result.transcriptStatus, 'pending');
+    assert.equal(queueCalls, 1);
+  } finally {
+    db.query = originalQuery;
+    subtitlesService.queueAutoGeneration = originalQueue;
+  }
+});
+
+test('failed transcript only retries after an explicit refresh', async () => {
+  const originalQuery = db.query;
+  const originalQueue = subtitlesService.queueAutoGeneration;
+  let queueCalls = 0;
+
+  db.query = async (sql) => {
+    if (String(sql).includes('LEFT JOIN lesson_subtitles')) {
+      return {
+        rows: [{
+          lesson_title: 'Architecture',
+          section_title: 'Places',
+          course_name: 'English',
+          content_type: 'video',
+          content_url: 'courses/43/lesson/manifest.mpd',
+          cues: [],
+          subtitle_status: 'failed',
+          questions: null
+        }]
+      };
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  };
+  subtitlesService.queueAutoGeneration = async () => {
+    queueCalls += 1;
+    return true;
+  };
+
+  try {
+    const first = await getSuggestedQuestionsByLessonId(131, false);
+    assert.equal(first.refreshing, false);
+    assert.equal(first.transcriptStatus, 'failed');
+    assert.equal(queueCalls, 0);
+
+    const retry = await getSuggestedQuestionsByLessonId(131, true);
+    assert.equal(retry.refreshing, true);
+    assert.equal(retry.transcriptStatus, 'pending');
+    assert.equal(queueCalls, 1);
+  } finally {
+    db.query = originalQuery;
+    subtitlesService.queueAutoGeneration = originalQueue;
+  }
 });
 
 test('AI suggested question evidence must be a real transcript substring', () => {

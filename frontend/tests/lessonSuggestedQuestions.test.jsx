@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getSuggestedQuestionsMock = vi.hoisted(() => vi.fn());
@@ -73,6 +73,42 @@ describe('Lesson suggested questions', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Bài học chưa có transcript'));
     expect(screen.queryByRole('button', { name: 'Thử tải lại' })).not.toBeInTheDocument();
+  });
+
+  it('polls while the transcript is preparing and shows suggestions when ready', async () => {
+    vi.useFakeTimers();
+    const pending = [];
+    Object.defineProperties(pending, {
+      contentAvailable: { value: false },
+      refreshing: { value: true },
+      transcriptStatus: { value: 'pending' }
+    });
+    const ready = [
+      'Architecture được mô tả như thế nào?',
+      'Interior xuất hiện trong ngữ cảnh nào?',
+      'Kitchen được giáo viên giải thích ra sao?',
+      'Furniture được dùng trong ví dụ nào?'
+    ];
+    Object.defineProperties(ready, {
+      contentAvailable: { value: true },
+      refreshing: { value: false },
+      transcriptStatus: { value: 'ready' }
+    });
+    getSuggestedQuestionsMock
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(ready);
+
+    try {
+      render(<EmptyState lessonId={131} onSelectPrompt={vi.fn()} />);
+      await act(async () => { await Promise.resolve(); });
+      expect(screen.getByRole('status')).toHaveTextContent('Đang chuẩn bị transcript bài học');
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(screen.getByRole('button', { name: ready[0] })).toBeInTheDocument();
+      expect(getSuggestedQuestionsMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('surfaces API failures and retries on demand', async () => {

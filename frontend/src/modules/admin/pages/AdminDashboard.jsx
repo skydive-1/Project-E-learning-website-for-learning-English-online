@@ -28,6 +28,7 @@ import { QueryClient, useQueryClient } from '@tanstack/react-query';
 import UserAnalyticsDashboard from '../components/UserAnalyticsDashboard';
 import AIQuotaControlCenter from '../components/AIQuotaControlCenter';
 import AdminAlertsPanel from '../components/AdminAlertsPanel';
+import CourseTranscriptHealthPanel from '../components/CourseTranscriptHealthPanel';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -814,6 +815,8 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                     </button>
                   </div>
                 </div>
+
+                <CourseTranscriptHealthPanel />
 
                 <div className="course-management__controls">
                   <label className="course-search">
