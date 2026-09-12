@@ -27,6 +27,7 @@ const main = async () => {
   const courseId = parsePositiveInt(readOption('course-id'), 'course-id');
   const limit = Math.min(20, parsePositiveInt(readOption('limit'), 'limit', 10));
   const timeoutMinutes = parsePositiveInt(readOption('timeout-minutes'), 'timeout-minutes', 120);
+  const includeFailed = hasFlag('include-failed');
   const lessonIds = String(readOption('lesson-ids') || '')
     .split(',')
     .map(value => Number.parseInt(value.trim(), 10))
@@ -35,23 +36,24 @@ const main = async () => {
   if (hasFlag('dry-run')) {
     const snapshot = await getCourseTranscriptHealth();
     const courses = snapshot.courses
-      .filter(course => course.counts.pending > 0)
+      .filter(course => course.counts.pending > 0 || course.counts.failed > 0)
       .filter(course => !courseId || course.courseId === courseId)
       .map(course => ({
         courseId: course.courseId,
         courseName: course.courseName,
         pending: course.counts.pending,
+        failed: course.counts.failed,
         stalePending: course.counts.stalePending,
         sourceMismatch: course.counts.sourceMismatch,
         lessonIds: course.affectedLessons
-          .filter(lesson => lesson.transcriptStatus === 'pending')
+          .filter(lesson => ['pending', 'failed'].includes(lesson.transcriptStatus))
           .map(lesson => lesson.lessonId)
       }));
     console.log(JSON.stringify({ dryRun: true, source: snapshot.source, courses }, null, 2));
     return;
   }
 
-  const result = await subtitlesService.recoverPendingNow({ courseId, lessonIds, limit });
+  const result = await subtitlesService.recoverPendingNow({ courseId, lessonIds, limit, includeFailed });
   console.log(JSON.stringify({ phase: 'scheduled', ...result }, null, 2));
   if (result.scheduled === 0 && result.alreadyActive === 0) return;
 
@@ -63,10 +65,10 @@ const main = async () => {
   }
 
   const snapshot = await getCourseTranscriptHealth();
-  const remainingPending = snapshot.courses
+  const remaining = snapshot.courses
     .filter(course => !courseId || course.courseId === courseId)
-    .reduce((total, course) => total + course.counts.pending, 0);
-  console.log(JSON.stringify({ phase: 'completed', remainingPending }, null, 2));
+    .reduce((total, course) => total + course.counts.pending + (includeFailed ? course.counts.failed : 0), 0);
+  console.log(JSON.stringify({ phase: 'completed', remaining }, null, 2));
 };
 
 main()

@@ -8,11 +8,17 @@ export const getCourseTranscriptHealth = async () => {
   return response.data.data;
 };
 
-export const recoverPendingTranscripts = async ({ courseId = null, lessonIds = [], limit = 10 } = {}) => {
+export const recoverPendingTranscripts = async ({
+  courseId = null,
+  lessonIds = [],
+  limit = 10,
+  includeFailed = false
+} = {}) => {
   const response = await apiClient.post('/admin/course-transcripts/recover', {
     courseId,
     lessonIds,
-    limit
+    limit,
+    includeFailed
   });
   if (!response.data?.success || !response.data?.data) {
     throw new Error('Phản hồi khôi phục transcript không đúng định dạng.');

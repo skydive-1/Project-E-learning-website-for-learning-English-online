@@ -5,6 +5,7 @@ const db = require('../src/config/database');
 const subtitlesController = require('../src/modules/lessons/controllers/subtitles.controller');
 const subtitlesService = require('../src/modules/lessons/services/subtitles.service');
 const coursesService = require('../src/modules/courses/services/courses.service');
+const supabaseStorage = require('../src/utils/supabaseStorage');
 
 const originalDbQuery = db.query;
 const originalGetSubtitles = subtitlesService.getSubtitlesByLessonId;
@@ -13,6 +14,7 @@ const originalInternalGenerateSubtitles = subtitlesService._generateSubtitlesWit
 const originalSchedule = subtitlesService.scheduleAutoGeneration;
 const originalQueue = subtitlesService.queueAutoGeneration;
 const originalSyncLessonQuiz = coursesService._syncLessonQuiz;
+const originalCheckObjectExists = supabaseStorage.checkObjectExists;
 
 afterEach(() => {
   db.query = originalDbQuery;
@@ -22,6 +24,7 @@ afterEach(() => {
   subtitlesService.scheduleAutoGeneration = originalSchedule;
   subtitlesService.queueAutoGeneration = originalQueue;
   coursesService._syncLessonQuiz = originalSyncLessonQuiz;
+  supabaseStorage.checkObjectExists = originalCheckObjectExists;
 });
 
 describe('Automatic subtitle trigger', () => {
@@ -189,13 +192,14 @@ describe('Automatic subtitle trigger', () => {
             course_name: 'Basic English - P3',
             lesson_id: lessonId,
             lesson_title: `Lesson ${lessonId}`,
+            previous_status: 'pending',
             source_content_url: `courses/43/old-${lessonId}.mp4`,
             current_source_url: `courses/43/current-${lessonId}.mp4`
           }))
         };
       }
       writes.push({ sql: String(sql), params });
-      return { rows: [] };
+      return { rows: [{ lesson_id: params[0] }] };
     };
     subtitlesService.scheduleAutoGeneration = (lessonId, source) => scheduled.push({ lessonId, source });
 
@@ -209,6 +213,70 @@ describe('Automatic subtitle trigger', () => {
     ]);
     assert.equal(writes.length, 2);
     assert.equal(result.scheduledLessons.every(lesson => lesson.sourceRepaired), true);
+  });
+
+  test('admin can explicitly retry failed transcripts and resets them to pending', async () => {
+    const scheduled = [];
+    const writes = [];
+    db.query = async (sql, params) => {
+      if (String(sql).includes('FROM lesson_subtitles ls') && String(sql).includes('LIMIT 200')) {
+        assert.match(String(sql), /subtitle_status IN \('pending', 'failed'\)/);
+        return {
+          rows: [{
+            course_id: 43,
+            course_name: 'Basic English - P3',
+            lesson_id: 131,
+            lesson_title: 'Architecture',
+            previous_status: 'failed',
+            source_content_url: 'courses/43/manifest.mpd',
+            current_source_url: 'courses/43/manifest.mpd'
+          }]
+        };
+      }
+      writes.push({ sql: String(sql), params });
+      return { rows: [{ lesson_id: params[0] }] };
+    };
+    subtitlesService.scheduleAutoGeneration = (lessonId, source) => scheduled.push({ lessonId, source });
+
+    const result = await subtitlesService.recoverPendingNow({
+      courseId: 43,
+      limit: 5,
+      includeFailed: true
+    });
+
+    assert.equal(result.scheduled, 1);
+    assert.equal(result.scheduledLessons[0].previousStatus, 'failed');
+    assert.match(writes[0].sql, /subtitle_status = 'pending'/);
+    assert.deepEqual(writes[0].params, [
+      131,
+      'courses/43/manifest.mpd',
+      ['pending', 'failed']
+    ]);
+    assert.deepEqual(scheduled, [{ lessonId: 131, source: 'courses/43/manifest.mpd' }]);
+  });
+
+  test('DASH transcript source falls back to encrypted audio when source MP4 is missing', async () => {
+    const checked = [];
+    supabaseStorage.checkObjectExists = async key => {
+      checked.push(key);
+      return key.endsWith('/audio.mp4');
+    };
+
+    const resolved = await subtitlesService.resolveStorageMediaForTranscription({
+      storage_key: 'courses/43/videos/asset/manifest.mpd',
+      storage_bucket: 'elearning-media',
+      storage_provider: 'r2'
+    });
+
+    assert.deepEqual(checked, [
+      'courses/43/videos/asset/source.mp4',
+      'courses/43/videos/asset/audio.mp4'
+    ]);
+    assert.deepEqual(resolved, {
+      storageKey: 'courses/43/videos/asset/audio.mp4',
+      encrypted: true,
+      audioOnly: true
+    });
   });
 
   test('new course video lesson is collected for post-commit generation', async () => {

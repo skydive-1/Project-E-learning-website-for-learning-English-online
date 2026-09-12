@@ -13,6 +13,7 @@
     "test:admin-alerts": "node --test tests/admin_alerts.test.js",
     "test:subtitles-python": "python -m unittest scripts/test_auto_subtitle_pipeline.py",
     "subtitles:recover": "node scripts/recover-pending-subtitles.js",
+    "subtitles:retry-failed": "node scripts/recover-pending-subtitles.js --include-failed",
     "subtitles:recover:check": "node scripts/recover-pending-subtitles.js --dry-run",
     "media:migrate:r2": "node scripts/migrate_media_to_r2.js",
     "media:archive-local:r2": "node scripts/archive_local_media_to_r2.js",

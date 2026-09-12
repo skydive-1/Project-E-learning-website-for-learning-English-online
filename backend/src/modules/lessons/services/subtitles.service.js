@@ -248,7 +248,7 @@ class SubtitlesService {
    * Admin/CLI recovery: bỏ qua thời gian chờ watchdog, đồng bộ source hiện
    * tại rồi đưa ngay một batch pending vào worker tuần tự.
    */
-  async recoverPendingNow({ courseId = null, lessonIds = [], limit = 10 } = {}) {
+  async recoverPendingNow({ courseId = null, lessonIds = [], limit = 10, includeFailed = false } = {}) {
     const parsedCourseId = courseId === null || courseId === undefined || courseId === ''
       ? null
       : parseInt(courseId, 10);
@@ -263,10 +263,13 @@ class SubtitlesService {
       ? [...new Set(lessonIds.map(value => parseInt(value, 10)).filter(value => Number.isInteger(value) && value > 0))]
       : [];
     const batchLimit = Math.min(20, Math.max(1, parseInt(limit, 10) || 10));
+    const recoverableStatuses = includeFailed ? ['pending', 'failed'] : ['pending'];
     const params = [];
     const filters = [
       "l.content_type IN ('video', 'youtube')",
-      "ls.subtitle_status = 'pending'",
+      includeFailed
+        ? "ls.subtitle_status IN ('pending', 'failed')"
+        : "ls.subtitle_status = 'pending'",
       "COALESCE(NULLIF(l.storage_key, ''), l.content_url) IS NOT NULL",
       "COALESCE(NULLIF(l.storage_key, ''), l.content_url) <> ''"
     ];
@@ -281,6 +284,7 @@ class SubtitlesService {
     }
     const { rows } = await db.query(
       `SELECT c.course_id, c.course_name, l.lesson_id, l.title AS lesson_title,
+              ls.subtitle_status AS previous_status,
               ls.source_content_url,
               COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS current_source_url
        FROM lesson_subtitles ls
@@ -311,23 +315,30 @@ class SubtitlesService {
         continue;
       }
 
-      if (row.source_content_url !== row.current_source_url) {
-        await db.query(
-          `UPDATE lesson_subtitles
-           SET source_content_url = $2,
-               error_code = NULL,
-               error_message = NULL,
-               updated_at = CURRENT_TIMESTAMP
-           WHERE lesson_id = $1 AND subtitle_status = 'pending'`,
-          [row.lesson_id, row.current_source_url]
-        );
-      }
+      const transitioned = await db.query(
+        `UPDATE lesson_subtitles
+         SET en_vtt = NULL,
+             vi_vtt = NULL,
+             bilingual_vtt = NULL,
+             cues = '[]'::jsonb,
+             subtitle_status = 'pending',
+             source_content_url = $2,
+             error_code = NULL,
+             error_message = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE lesson_id = $1 AND subtitle_status = ANY($3::text[])
+         RETURNING lesson_id`,
+        [row.lesson_id, row.current_source_url, recoverableStatuses]
+      );
+      if (transitioned.rows.length === 0) continue;
+
       this.scheduleAutoGeneration(row.lesson_id, row.current_source_url);
       scheduledLessons.push({
         courseId: row.course_id,
         courseName: row.course_name,
         lessonId: row.lesson_id,
         lessonTitle: row.lesson_title,
+        previousStatus: row.previous_status,
         sourceRepaired: row.source_content_url !== row.current_source_url
       });
     }
@@ -340,6 +351,41 @@ class SubtitlesService {
       scheduledLessons,
       alreadyActiveLessonIds: alreadyActiveLessons
     };
+  }
+
+  /**
+   * Chọn object tốt nhất để bóc transcript. Video DASH giữ manifest để phát,
+   * còn pipeline ưu tiên MP4 gốc và tự dùng audio DRM khi MP4 gốc đã bị dọn.
+   */
+  async resolveStorageMediaForTranscription(rawLesson) {
+    const sourceKey = rawLesson?.storage_key || rawLesson?.content_url || '';
+    if (!sourceKey || /^https?:\/\//i.test(sourceKey) || sourceKey.startsWith('/uploads/')) {
+      return { storageKey: sourceKey, encrypted: false, audioOnly: false };
+    }
+    if (!sourceKey.toLowerCase().endsWith('.mpd')) {
+      return { storageKey: sourceKey, encrypted: false, audioOnly: false };
+    }
+
+    const storage = require('../../../utils/supabaseStorage');
+    const prefix = path.posix.dirname(sourceKey);
+    const candidates = [
+      { storageKey: path.posix.join(prefix, 'source.mp4'), encrypted: false, audioOnly: false },
+      { storageKey: path.posix.join(prefix, 'audio.mp4'), encrypted: true, audioOnly: true }
+    ];
+    for (const candidate of candidates) {
+      const exists = await storage.checkObjectExists(
+        candidate.storageKey,
+        rawLesson.storage_bucket || 'videos',
+        rawLesson.storage_provider || 'r2'
+      );
+      if (exists) return candidate;
+    }
+
+    const error = new Error(
+      'Không tìm thấy MP4 nguồn hoặc audio DRM dự phòng trong kho lưu trữ. Vui lòng tải lại video bài học.'
+    );
+    error.code = 'TRANSCRIPT_MEDIA_SOURCE_MISSING';
+    throw error;
   }
 
   async waitForAutoGenerationIdle(timeoutMs = 2 * 60 * 60 * 1000) {
@@ -488,6 +534,10 @@ class SubtitlesService {
         .audioBitrate('64k')
         .format('mp3');
 
+      if (options.decryptionKey) {
+        command = command.inputOptions(['-decryption_key', String(options.decryptionKey)]);
+      }
+
       if (options.seek) {
         command = command.setStartTime(options.seek);
       }
@@ -597,10 +647,13 @@ class SubtitlesService {
   /**
    * Lấy thời lượng tổng của video bài học (giây) sử dụng FFmpeg
    */
-  async getVideoDuration(videoPath) {
+  async getVideoDuration(videoPath, options = {}) {
     const { spawn } = require('child_process');
     return new Promise((resolve) => {
-      const cp = spawn(ffmpegInstaller.path, ['-i', videoPath]);
+      const inputArgs = options.decryptionKey
+        ? ['-decryption_key', String(options.decryptionKey), '-i', videoPath]
+        : ['-i', videoPath];
+      const cp = spawn(ffmpegInstaller.path, inputArgs);
       let output = '';
       cp.stderr.on('data', (d) => { output += d.toString(); });
       cp.stdout.on('data', (d) => { output += d.toString(); });
@@ -980,7 +1033,11 @@ ${JSON.stringify(translationInput)}
         if (response.statusCode !== 200) {
           fileStream.close();
           fs.unlink(tempFilePath, () => {});
-          return reject(new Error(`Tải video từ Supabase thất bại: HTTP ${response.statusCode}`));
+          const error = new Error(`Tải media từ kho lưu trữ thất bại: HTTP ${response.statusCode}`);
+          error.code = response.statusCode === 404
+            ? 'TRANSCRIPT_MEDIA_SOURCE_MISSING'
+            : 'TRANSCRIPT_MEDIA_DOWNLOAD_FAILED';
+          return reject(error);
         }
         response.pipe(fileStream);
         fileStream.on('finish', () => {
@@ -1036,6 +1093,8 @@ ${JSON.stringify(translationInput)}
     let rawContentUrl = '';
     let videoFilePath = null;
     let tempVideoPath = null; // File tạm cần xóa sau khi xử lý xong
+    let mediaDecryptionKey = null;
+    let mediaIsEncryptedAudio = false;
     let generatedCues = [];
 
     try {
@@ -1123,11 +1182,17 @@ ${JSON.stringify(translationInput)}
         }
       } else if (rawContentUrl && !rawContentUrl.startsWith('http://') && !rawContentUrl.startsWith('https://')) {
         // Private object storage key dạng: courses/123/uuid/video.mp4
-        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện private storage key. Đang tạo Signed URL để tải tạm...`);
+        console.log(`[Subtitles] Bài học ${lessonId}: Phát hiện private storage key. Đang tìm nguồn bóc transcript...`);
         const { generateSignedUrl } = require('../../../utils/supabaseStorage');
-        const sourceStorageKey = rawContentUrl.endsWith('.mpd')
-          ? path.posix.join(path.posix.dirname(rawContentUrl), 'source.mp4')
-          : rawContentUrl;
+        const resolvedMedia = await this.resolveStorageMediaForTranscription(rawLesson);
+        const sourceStorageKey = resolvedMedia.storageKey;
+        mediaIsEncryptedAudio = resolvedMedia.encrypted && resolvedMedia.audioOnly;
+        if (resolvedMedia.encrypted) {
+          const { generateLessonDrmKeys, getLessonDrmKeyReference } = require('../../../utils/drm.util');
+          const keyReference = getLessonDrmKeyReference(rawLesson, lessonId);
+          mediaDecryptionKey = generateLessonDrmKeys(keyReference).secretKey;
+          console.log(`[Subtitles] Bài học ${lessonId}: MP4 nguồn không còn; dùng audio DRM dự phòng.`);
+        }
         const signedUrl = await generateSignedUrl(
           sourceStorageKey,
           rawLesson.storage_bucket || 'videos',
@@ -1135,7 +1200,9 @@ ${JSON.stringify(translationInput)}
           rawLesson.storage_provider || 'r2'
         );
         if (!signedUrl) {
-          throw new Error(`Không thể tạo Signed URL cho storage key: ${rawContentUrl}. Kiểm tra lại kết nối object storage.`);
+          const error = new Error(`Không thể tạo Signed URL cho media transcript của bài học ${lessonId}.`);
+          error.code = 'TRANSCRIPT_MEDIA_URL_UNAVAILABLE';
+          throw error;
         }
         console.log(`[Subtitles] Bài học ${lessonId}: Đang tải video tạm về từ object storage (có thể mất vài giây với video lớn)...`);
         tempVideoPath = await this.downloadVideoToTemp(signedUrl, lessonId);
@@ -1160,7 +1227,7 @@ ${JSON.stringify(translationInput)}
 
       // ƯU TIÊN 1: Chạy Silence Detection VAD Pipeline bằng Python khi được bật.
       const vadEnabled = String(process.env.ENABLE_SUBTITLE_VAD || 'true').toLowerCase() === 'true';
-      if (!youtubeVideoId && vadEnabled) {
+      if (!youtubeVideoId && vadEnabled && !mediaIsEncryptedAudio) {
         console.log(`[Ưu tiên 1 - Silence VAD Pipeline] Khởi chạy bóc băng timestamp chuẩn cho bài học ${lessonId}...`);
         try {
           const vadCues = await this.runSilenceVadPipeline(videoFilePath, {
@@ -1189,7 +1256,9 @@ ${JSON.stringify(translationInput)}
         try {
           let totalDuration = 0;
           try {
-            totalDuration = await this.getVideoDuration(videoFilePath);
+            totalDuration = await this.getVideoDuration(videoFilePath, {
+              decryptionKey: mediaDecryptionKey
+            });
           } catch (probeErr) {
             console.warn(`[FFprobe Warning]: Không thể đo thời lượng video (${probeErr.message}), tiến hành trích xuất toàn bộ audio.`);
           }
@@ -1200,7 +1269,9 @@ ${JSON.stringify(translationInput)}
             // Video <= 10 phút: Trích xuất và bóc băng toàn bộ một lần
             const tempAudioPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_${Date.now()}.mp3`);
             try {
-              await this.extractAudio(videoFilePath, tempAudioPath);
+              await this.extractAudio(videoFilePath, tempAudioPath, {
+                decryptionKey: mediaDecryptionKey
+              });
               const cues = await this.transcribeAudioWithGemini(tempAudioPath, 0);
               if (cues && cues.length > 0) {
                 generatedCues = cues;
@@ -1225,7 +1296,11 @@ ${JSON.stringify(translationInput)}
 
               try {
                 console.log(`[FFmpeg Audio Pipeline] Đang trích xuất chunk ${i + 1}/${numChunks} (từ ${seek}s đến ${seek + duration}s)...`);
-                await this.extractAudio(videoFilePath, tempChunkPath, { seek, duration });
+              await this.extractAudio(videoFilePath, tempChunkPath, {
+                seek,
+                duration,
+                decryptionKey: mediaDecryptionKey
+              });
                 const chunkCues = await this.transcribeAudioWithGemini(tempChunkPath, seek);
                 if (chunkCues && chunkCues.length > 0) {
                   allCues = allCues.concat(chunkCues);

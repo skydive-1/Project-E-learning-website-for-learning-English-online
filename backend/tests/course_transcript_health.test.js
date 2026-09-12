@@ -70,7 +70,8 @@ test('course transcript health groups observed PostgreSQL states without fabrica
       sourceMismatch: 1,
       courses: 2,
       affectedCourses: 2,
-      recoverablePending: 1
+      recoverablePending: 1,
+      recoverable: 2
     });
     assert.deepEqual(snapshot.courses[0].affectedLessons.map(lesson => lesson.lessonId), [124]);
     assert.equal(snapshot.courses[0].affectedLessons[0].sourceMismatch, true);

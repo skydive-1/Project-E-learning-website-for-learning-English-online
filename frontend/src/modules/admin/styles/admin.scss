@@ -546,6 +546,43 @@
       font-weight: 650;
     }
 
+    &__guidance {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+      border: 1px solid var(--color-border-error-default, rgba(185, 28, 28, 0.35));
+      border-radius: 12px;
+      background: var(--color-background-tertiary-error, rgba(185, 28, 28, 0.07));
+      padding: 13px 14px;
+      color: var(--color-foreground-icon-error, #dc2626);
+
+      > svg {
+        margin-top: 2px;
+        font-size: 17px;
+      }
+
+      > div {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      strong {
+        color: var(--color-text-error-primary, #dc2626);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      span {
+        color: var(--text-light);
+        font-size: 12px;
+        line-height: 1.55;
+        overflow-wrap: anywhere;
+      }
+    }
+
     &__note {
       margin: 14px 0 0;
       color: var(--text-light);
@@ -562,7 +599,7 @@
   .transcript-health-row {
     display: grid;
     grid-template-columns: minmax(170px, 0.8fr) minmax(260px, 1.35fr) minmax(120px, 0.55fr) auto;
-    align-items: center;
+    align-items: start;
     gap: 16px;
     padding: 15px 4px;
     border-bottom: 1px solid var(--border-color);
@@ -598,6 +635,22 @@
       color: #b45309 !important;
     }
 
+    &__failure {
+      margin-top: 5px;
+      border-radius: 8px;
+      background: var(--color-background-tertiary-error, rgba(185, 28, 28, 0.07));
+      padding: 8px 9px;
+      color: var(--color-text-error-primary, #dc2626) !important;
+      overflow-wrap: anywhere;
+
+      strong {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--color-text-error-primary, #dc2626);
+        font-size: inherit;
+      }
+    }
+
     &__status {
       font-variant-numeric: tabular-nums;
     }
@@ -631,6 +684,13 @@
 
     &.is-failed > button {
       border-color: rgba(185, 28, 28, 0.25);
+      background: rgba(185, 28, 28, 0.09);
+      color: var(--color-text-error-primary, #dc2626);
+
+      &:hover:not(:disabled) {
+        border-color: rgba(248, 113, 113, 0.55);
+        background: rgba(185, 28, 28, 0.15);
+      }
     }
   }
 

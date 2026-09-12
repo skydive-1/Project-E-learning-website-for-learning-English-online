@@ -71,19 +71,51 @@ describe('CourseTranscriptHealthPanel', () => {
     expect(screen.getByText(/PostgreSQL · lessons \+ lesson_subtitles/)).toBeInTheDocument();
     expect(screen.getAllByText('28', { selector: 'strong' })).toHaveLength(2);
     expect(screen.getByText('Basic English - P3')).toBeInTheDocument();
-    expect(screen.getByText('Lesson: #131, #132, #133, #134, #135')).toBeInTheDocument();
+    expect(screen.getByText('Bài: #131, #132, #133, #134, #135')).toBeInTheDocument();
     expect(screen.getByText('28', { selector: '.has-error strong' })).toBeInTheDocument();
   });
 
   it('recovers one course immediately and reports the scheduled batch', async () => {
     render(<CourseTranscriptHealthPanel />);
-    const button = await screen.findByRole('button', { name: /Khôi phục khóa này/ });
+    const button = await screen.findByRole('button', { name: /Xử lý 5 bài chờ/ });
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(mocks.recover).toHaveBeenCalledWith({ courseId: 43, limit: 5 });
+      expect(mocks.recover).toHaveBeenCalledWith({ courseId: 43, limit: 5, includeFailed: true });
       expect(mocks.toast).toHaveBeenCalledWith('Đã đưa 5 transcript vào worker xử lý ngay.', 'success');
     });
+  });
+
+  it('explains storage failures and lets the admin retry failed lessons', async () => {
+    mocks.getHealth.mockResolvedValue({
+      ...snapshot,
+      summary: { ...snapshot.summary, pending: 0, failed: 5, sourceMismatch: 0 },
+      courses: [{
+        ...snapshot.courses[0],
+        counts: { ...snapshot.courses[0].counts, pending: 0, failed: 5, sourceMismatch: 0 },
+        affectedLessons: snapshot.courses[0].affectedLessons.map(lesson => ({
+          ...lesson,
+          transcriptStatus: 'failed',
+          sourceMismatch: false,
+          errorCode: 'SUBTITLE_PIPELINE_FAILED',
+          errorMessage: 'Tải video từ Supabase thất bại: HTTP 404'
+        }))
+      }]
+    });
+
+    render(<CourseTranscriptHealthPanel />);
+
+    expect(await screen.findByText(/5 bài đã chạy nhưng thất bại/)).toBeInTheDocument();
+    expect(screen.getAllByText('Không truy cập được file media nguồn').length).toBeGreaterThan(0);
+    const retry = screen.getByRole('button', { name: 'Thử lại 5 bài lỗi' });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(mocks.recover).toHaveBeenCalledWith({
+      courseId: 43,
+      limit: 5,
+      includeFailed: true
+    }));
   });
 
   it('keeps a retry action available when the health endpoint fails', async () => {
