@@ -166,22 +166,24 @@ const server = app.listen(PORT, async () => {
     server.close();
     return;
   }
-  subtitlesService.resumePendingAutoGeneration()
-    .then(count => {
-      if (count > 0) console.log(`[Auto-Subtitle] Đã khôi phục ${count} job sau khi server khởi động`);
-    })
-    .catch(error => {
-      console.warn(`[Auto-Subtitle] Không thể khôi phục hàng đợi lúc khởi động: ${error.message}`);
-    });
+  try {
+    const recoveredCount = await subtitlesService.resumePendingAutoGeneration();
+    console.log(`[Auto-Subtitle] Đã đối soát ${recoveredCount} job với durable queue sau khi server khởi động`);
+  } catch (error) {
+    console.warn(`[Auto-Subtitle] Không thể đối soát durable queue lúc khởi động: ${error.message}`);
+  }
   subtitlesService.startAutoGenerationRecoveryWorker();
   const mediaCleanupWorker = startMediaCleanupWorker();
   if (mediaCleanupWorker) {
     console.log('🧹 [MediaCleanupWorker]: Tiến trình tự động dọn dẹp rác mồ côi đã khởi động');
   }
   const shutdown = () => {
-    subtitlesService.stopAutoGenerationRecoveryWorker();
+    const subtitleShutdown = subtitlesService.stopAutoGenerationRecoveryWorker();
     mediaCleanupWorker?.stop();
-    server.close(() => process.exit(0));
+    server.close(async () => {
+      await subtitleShutdown;
+      process.exit(0);
+    });
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);

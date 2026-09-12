@@ -110,7 +110,8 @@ describe('Database Schema Parity & Migration Integrity', () => {
       'ai_chat',
       'lesson_comments',
       'course_discussions',
-      'media_assets'
+      'media_assets',
+      'background_jobs'
     ];
 
     for (const tableName of essentialTables) {

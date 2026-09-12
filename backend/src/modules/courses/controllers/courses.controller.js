@@ -9,7 +9,7 @@ const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
 const { buildCourseAssetPrefix } = require('../../../utils/mediaObjectKey.util');
 
-async function registerUploadedObject(req, uploadResult, storageBucket, mimeType) {
+async function registerUploadedObject(req, uploadResult, storageBucket, mimeType, { cleanupOnFailure = true } = {}) {
   const pendingUploadId = crypto.randomUUID();
   try {
     await orphanCleanupService.registerPendingUpload({
@@ -26,10 +26,12 @@ async function registerUploadedObject(req, uploadResult, storageBucket, mimeType
     });
     return pendingUploadId;
   } catch (error) {
-    let deleted = false;
-    try { deleted = await supabaseStorage.deleteStorageObject(uploadResult.storageKey, storageBucket); } catch (_) {}
-    if (!deleted) {
-      await orphanCleanupService.recordFailedDeletion(uploadResult.storageKey, storageBucket, `Pending registration failed: ${error.message}`);
+    if (cleanupOnFailure) {
+      await orphanCleanupService.rollbackUploadedAssetBundle([{
+        key: uploadResult.storageKey,
+        bucket: uploadResult.storageBucket || storageBucket,
+        provider: uploadResult.storageProvider || 'r2'
+      }]);
     }
     const registrationError = new Error('Không thể đăng ký phiên tải lên; tệp chưa được liên kết');
     registrationError.status = 500;
@@ -143,7 +145,7 @@ exports.uploadFile = async (req, res, next) => {
       if (drmEnabled) {
         const packageResult = await packageVideoToDrmDash(req.file.path, assetId);
         if (!packageResult.success) {
-          await supabaseStorage.deleteStorageObject(uploadResult.storageKey, 'videos');
+          await orphanCleanupService.rollbackUploadedAssetBundle([uploadResult]);
           return res.status(500).json({
             success: false,
             code: 'DRM_PACKAGING_FAILED',
@@ -184,14 +186,10 @@ exports.uploadFile = async (req, res, next) => {
             )
           : { success: false, error: audioUpload.error };
 
-        const uploadedKeys = [
-          uploadResult.storageKey,
-          videoUpload.storageKey,
-          audioUpload.storageKey,
-          manifestUpload.storageKey
-        ].filter(Boolean);
+        const uploadedAssets = [uploadResult, videoUpload, audioUpload, manifestUpload]
+          .filter(item => item?.storageKey);
         if (!videoUpload.success || !audioUpload.success || !manifestUpload.success) {
-          await Promise.all(uploadedKeys.map(key => supabaseStorage.deleteStorageObject(key, 'videos')));
+          await orphanCleanupService.rollbackUploadedAssetBundle(uploadedAssets);
           return res.status(500).json({
             success: false,
             code: 'DRM_STORAGE_UPLOAD_FAILED',
@@ -205,10 +203,11 @@ exports.uploadFile = async (req, res, next) => {
             req,
             manifestUpload,
             'videos',
-            'application/dash+xml'
+            'application/dash+xml',
+            { cleanupOnFailure: false }
           );
         } catch (error) {
-          await Promise.all(uploadedKeys.map(key => supabaseStorage.deleteStorageObject(key, 'videos')));
+          await orphanCleanupService.rollbackUploadedAssetBundle(uploadedAssets);
           throw error;
         }
 

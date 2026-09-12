@@ -164,7 +164,7 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
 
 const isAllowedExternalMediaUrl = (url = '') => /^https?:\/\//i.test(url) && !/\.supabase\.co(?:\/|$)/i.test(url);
 
-export const isMediaReadyForPublish = (lesson) => {
+export const isMediaReadyForPublish = (lesson, { allowPersistedRepair = false } = {}) => {
   if (lesson.type === 'youtube') {
     return isYouTubeUrl(lesson.youtubeUrl || lesson.contentUrl);
   }
@@ -173,7 +173,11 @@ export const isMediaReadyForPublish = (lesson) => {
     lesson.pendingUploadId && lesson.storageKey && lesson.storageBucket && lesson.mimeType &&
     Number(lesson.sizeBytes) > 0 && lesson.checksumSha256;
   const isExistingReady = lesson.mediaStatus === 'READY' && lesson.uploadVerified === true;
-  return Boolean(hasClaimablePending || isExistingReady);
+  const isPersistedMissingSource = allowPersistedRepair
+    && lesson.isPersisted === true
+    && lesson.mediaStatus === 'MISSING_SOURCE'
+    && lesson.storageKey;
+  return Boolean(hasClaimablePending || isExistingReady || isPersistedMissingSource);
 };
 
 export const applySuccessfulUploadToLesson = (lesson, upload, file = {}) => {
@@ -1250,7 +1254,7 @@ const CourseEditor = () => {
             setErrorMsg(`Vui lòng tải lên nội dung (${lesson.type.toUpperCase()}) cho bài học "${lesson.title}".`);
             return;
           }
-          if (!isMediaReadyForPublish(lesson)) {
+          if (!isMediaReadyForPublish(lesson, { allowPersistedRepair: isPublishedCourse })) {
             setErrorMsg(`Bài học "${lesson.title}" chưa sẵn sàng. Vui lòng tải lại tệp.`);
             return;
           }

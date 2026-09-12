@@ -1,6 +1,6 @@
 'use strict';
 
-const { pool } = require('../src/config/database');
+const { pool, testConnection } = require('../src/config/database');
 const subtitlesService = require('../src/modules/lessons/services/subtitles.service');
 const {
   getCourseTranscriptHealth
@@ -24,6 +24,9 @@ const parsePositiveInt = (value, label, fallback = null) => {
 };
 
 const main = async () => {
+  if (!await testConnection()) {
+    throw new Error('Không thể kết nối PostgreSQL hoặc áp dụng migration trước khi phục hồi transcript.');
+  }
   const courseId = parsePositiveInt(readOption('course-id'), 'course-id');
   const limit = Math.min(20, parsePositiveInt(readOption('limit'), 'limit', 10));
   const timeoutMinutes = parsePositiveInt(readOption('timeout-minutes'), 'timeout-minutes', 120);
@@ -58,6 +61,7 @@ const main = async () => {
     return;
   }
 
+  subtitlesService.startAutoGenerationRecoveryWorker();
   const result = await subtitlesService.recoverPendingNow({ courseId, lessonIds, limit, includeFailed });
   console.log(JSON.stringify({ phase: 'scheduled', ...result }, null, 2));
   if (result.scheduled === 0 && result.alreadyActive === 0) return;
@@ -84,5 +88,6 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
+    await subtitlesService.stopAutoGenerationRecoveryWorker();
     await pool.end().catch(() => {});
   });

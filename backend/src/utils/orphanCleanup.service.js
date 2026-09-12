@@ -464,33 +464,69 @@ class OrphanCleanupService {
    * Phải áp dụng shared-reference check (Fail-Closed) trước khi xóa
    */
   async rollbackNewUploads(newlyUploadedAssets = []) {
-    if (!Array.isArray(newlyUploadedAssets) || newlyUploadedAssets.length === 0) return;
+    return this.rollbackUploadedAssetBundle(newlyUploadedAssets);
+  }
 
-    for (const item of newlyUploadedAssets) {
-      if (item && item.key) {
-        // Bỏ qua link ngoài hoặc local
-        if (item.key.startsWith('http://') || item.key.startsWith('https://') || item.key.startsWith('/uploads/')) {
-          continue;
-        }
-        try {
-          const isReferenced = await this.isKeyReferenced(item.key);
-          if (!isReferenced) {
-            const bucket = item.bucket || (item.key.endsWith('.pdf') ? 'documents' : 'videos');
-            const provider = item.provider || 'r2';
-            const success = await supabaseStorage.deleteStorageObject(item.key, bucket, provider);
-            if (success) {
-              await this.markAssetDeleted(item.key, bucket, provider);
-              console.log(`🔄 [OrphanCleanup] Đã rollback file upload mồ côi sau DB Rollback: ${bucket}/${item.key}`);
-            } else {
-              await this.recordFailedDeletion(item.key, bucket, 'Rollback delete returned false', null, provider);
-            }
-          }
-        } catch (e) {
-          console.warn(`⚠️ [OrphanCleanup] Không thể rollback file ${item.key}:`, e.message);
-          await this.recordFailedDeletion(item.key, item.bucket, e.message, null, item.provider || 'r2');
-        }
+  /**
+   * Rollback một media bundle (source/video/audio/manifest) đúng một lần cho
+   * mỗi object. Mọi item thất bại đều được ghi durable retry, còn lỗi gốc của
+   * upload/course API không bị thay thế bởi lỗi cleanup.
+   */
+  async rollbackUploadedAssetBundle(uploadedAssets = [], { pendingUploadId = null } = {}) {
+    if (!Array.isArray(uploadedAssets) || uploadedAssets.length === 0) {
+      return { deletedCount: 0, skippedCount: 0, deferredCount: 0, errors: [] };
+    }
+
+    const uniqueAssets = new Map();
+    for (const item of uploadedAssets.filter(Boolean)) {
+      const key = item.key || item.storageKey;
+      if (!key || /^https?:\/\//i.test(key) || key.startsWith('/uploads/')) continue;
+      const provider = item.provider || item.storageProvider || 'r2';
+      const bucket = item.bucket || item.storageBucket || (key.endsWith('.pdf') ? 'documents' : 'videos');
+      uniqueAssets.set(`${provider}::${bucket}::${key}`, { key, bucket, provider });
+    }
+
+    const settled = await Promise.allSettled([...uniqueAssets.values()].map(async asset => {
+      const reference = await this.getReferenceState(asset.key);
+      if (!reference.reliable) {
+        const message = `Reference check unavailable for ${asset.bucket}/${asset.key}`;
+        await this.recordFailedDeletion(asset.key, asset.bucket, message, pendingUploadId, asset.provider);
+        return { state: 'deferred', asset, error: message };
+      }
+      if (reference.referenced) return { state: 'skipped', asset };
+
+      const deleted = await supabaseStorage.deleteStorageObject(asset.key, asset.bucket, asset.provider);
+      if (!deleted) {
+        const message = `Rollback delete returned false for ${asset.bucket}/${asset.key}`;
+        await this.recordFailedDeletion(asset.key, asset.bucket, message, pendingUploadId, asset.provider);
+        return { state: 'deferred', asset, error: message };
+      }
+
+      await this.markAssetDeleted(asset.key, asset.bucket, asset.provider);
+      console.log(`🔄 [OrphanCleanup] Đã rollback object: ${asset.bucket}/${asset.key}`);
+      return { state: 'deleted', asset };
+    }));
+
+    const summary = { deletedCount: 0, skippedCount: 0, deferredCount: 0, errors: [] };
+    for (let index = 0; index < settled.length; index += 1) {
+      const outcome = settled[index];
+      const asset = [...uniqueAssets.values()][index];
+      if (outcome.status === 'rejected') {
+        const message = outcome.reason?.message || 'Unknown rollback error';
+        summary.deferredCount += 1;
+        summary.errors.push(`${asset.bucket}/${asset.key}: ${message}`);
+        console.warn(`⚠️ [OrphanCleanup] Không thể rollback ${asset.bucket}/${asset.key}:`, message);
+        await this.recordFailedDeletion(asset.key, asset.bucket, message, pendingUploadId, asset.provider);
+      } else if (outcome.value.state === 'deleted') {
+        summary.deletedCount += 1;
+      } else if (outcome.value.state === 'skipped') {
+        summary.skippedCount += 1;
+      } else {
+        summary.deferredCount += 1;
+        if (outcome.value.error) summary.errors.push(outcome.value.error);
       }
     }
+    return summary;
   }
 
   /**
@@ -504,19 +540,13 @@ class OrphanCleanupService {
 
     for (const item of rows) {
       try {
-        const reference = await this.getReferenceState(item.storage_key);
-        if (!reference.reliable) {
-          await db.query(
-            `UPDATE pending_media_uploads
-             SET status = 'PENDING', cleaning_started_at = NULL,
-                 expires_at = CURRENT_TIMESTAMP + INTERVAL '5 minutes'
-             WHERE upload_id = $1`,
-            [item.upload_id]
-          );
-          errors.push(`Không xác minh được tham chiếu cho ${item.storage_key}`);
-          continue;
-        }
-        if (reference.referenced) {
+        const bundle = this.expandMediaAssets([item]);
+        const result = await this.rollbackUploadedAssetBundle(bundle, {
+          pendingUploadId: item.upload_id
+        });
+        errors.push(...result.errors);
+
+        if (result.skippedCount > 0) {
           await db.query(
             `UPDATE pending_media_uploads
              SET status = 'COMMITTED', cleaning_started_at = NULL
@@ -525,22 +555,15 @@ class OrphanCleanupService {
           );
           continue;
         }
-
-        const deleted = await supabaseStorage.deleteStorageObject(
-          item.storage_key,
-          item.storage_bucket,
-          item.storage_provider
-        );
-        if (!deleted) throw new Error('deleteStorageObject returned false');
-
-        await db.query(
-          `UPDATE pending_media_uploads
-           SET status = 'EXPIRED', cleaning_started_at = NULL
-           WHERE upload_id = $1`,
-          [item.upload_id]
-        );
-        await this.markAssetDeleted(item.storage_key, item.storage_bucket, item.storage_provider);
-        cleanedCount++;
+        if (result.deferredCount === 0) {
+          await db.query(
+            `UPDATE pending_media_uploads
+             SET status = 'EXPIRED', cleaning_started_at = NULL
+             WHERE upload_id = $1`,
+            [item.upload_id]
+          );
+          cleanedCount += 1;
+        }
       } catch (error) {
         errors.push(`Lỗi dọn dẹp ${item.storage_key}: ${error.message}`);
         console.warn(`⚠️ [Pending Cleanup] Lỗi xóa ${item.storage_key}:`, error.message);

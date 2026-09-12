@@ -185,6 +185,74 @@ describe('Automatic subtitle trigger', () => {
     assert.deepEqual(scheduled, [{ lessonId: 46, source: 'courses/46/current/manifest.mpd' }]);
   });
 
+  test('startup recovery republishes an abandoned processing lesson to the durable queue', async () => {
+    const scheduled = [];
+    const writes = [];
+    db.query = async (sql, params) => {
+      const text = String(sql);
+      if (text.includes("ls.subtitle_status IN ('pending', 'processing')") && text.includes('LEFT JOIN background_jobs')) {
+        return {
+          rows: [{
+            lesson_id: 131,
+            subtitle_status: 'processing',
+            source_content_url: 'courses/43/videos/131/source.mp4',
+            job_status: 'processing',
+            lease_expires_at: new Date(Date.now() - 60_000).toISOString(),
+            job_payload: { lessonId: 131, sourceContentUrl: 'courses/43/videos/131/source.mp4' }
+          }]
+        };
+      }
+      writes.push({ sql: text, params });
+      return { rows: [] };
+    };
+    subtitlesService.scheduleAutoGeneration = async (lessonId, source, options) => {
+      scheduled.push({ lessonId, source, options });
+    };
+
+    const recovered = await subtitlesService.resumePendingAutoGeneration();
+
+    assert.equal(recovered, 1);
+    assert.match(writes[0].sql, /subtitle_status = 'pending'/);
+    assert.deepEqual(scheduled, [{
+      lessonId: 131,
+      source: 'courses/43/videos/131/source.mp4',
+      options: { replaceActive: false }
+    }]);
+  });
+
+  test('startup recovery does not steal a valid lease owned by another server instance', async () => {
+    const writes = [];
+    const scheduled = [];
+    db.query = async (sql, params) => {
+      const text = String(sql);
+      if (text.includes("ls.subtitle_status IN ('pending', 'processing')") && text.includes('LEFT JOIN background_jobs')) {
+        return {
+          rows: [{
+            lesson_id: 132,
+            subtitle_status: 'processing',
+            source_content_url: 'courses/43/videos/132/source.mp4',
+            job_status: 'processing',
+            lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
+            job_payload: { lessonId: 132, sourceContentUrl: 'courses/43/videos/132/source.mp4' }
+          }]
+        };
+      }
+      writes.push({ sql: text, params });
+      return { rows: [] };
+    };
+    subtitlesService.scheduleAutoGeneration = async (lessonId, source, options) => {
+      scheduled.push({ lessonId, source, options });
+    };
+
+    assert.equal(await subtitlesService.resumePendingAutoGeneration(), 1);
+    assert.equal(writes.length, 0, 'không được reset trạng thái của job còn lease hợp lệ');
+    assert.deepEqual(scheduled[0], {
+      lessonId: 132,
+      source: 'courses/43/videos/132/source.mp4',
+      options: { replaceActive: false }
+    });
+  });
+
   test('admin recovery schedules an immediate quota-bounded pending batch', async () => {
     const scheduled = [];
     const writes = [];

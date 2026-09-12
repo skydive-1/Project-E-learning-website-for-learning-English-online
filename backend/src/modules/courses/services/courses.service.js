@@ -366,7 +366,7 @@ class CoursesService {
     }
   }
 
-  async _validateStoredCourseForPublish(client, courseId) {
+  async _validateStoredCourseForPublish(client, courseId, { repairableExistingSources = new Map() } = {}) {
     const result = await client.query(`
       SELECT l.lesson_id, l.title, l.content_type, l.storage_provider, l.storage_bucket,
              l.storage_key, l.mime_type, l.size_bytes, l.checksum_sha256, l.media_status,
@@ -388,9 +388,18 @@ class CoursesService {
       }
       if (['quiz', 'text', 'speaking'].includes(String(lesson.content_type).toLowerCase())) continue;
       const validExternal = ['external', 'youtube'].includes(lesson.storage_provider) && /^https?:\/\//i.test(lesson.content_url || '') && !(lesson.content_url || '').includes('supabase.co');
-      const validInternal = ['r2', 'supabase'].includes(lesson.storage_provider) && lesson.storage_bucket && lesson.storage_key &&
-        lesson.mime_type && lesson.media_status === 'READY';
+      const hasInternalMetadata = ['r2', 'supabase'].includes(lesson.storage_provider)
+        && lesson.storage_bucket && lesson.storage_key && lesson.mime_type;
+      const validInternal = hasInternalMetadata && lesson.media_status === 'READY';
+      const currentSource = lesson.storage_key || lesson.content_url || '';
+      const isUnchangedRepairSource = repairableExistingSources.get(Number(lesson.lesson_id)) === currentSource;
       if (!validExternal && !validInternal) {
+        // Một khóa đã published có thể đang chứa media cũ bị mất. Cho phép
+        // lưu lần lượt từng bài sửa chữa, nhưng chỉ với đúng source đã tồn tại
+        // trước transaction; media mới vẫn phải qua pending upload/claim.
+        if (hasInternalMetadata && isUnchangedRepairSource && lesson.media_status === 'MISSING_SOURCE') {
+          continue;
+        }
         const err = new Error(`Bài học "${lesson.title || lesson.lesson_id}" có media chưa được xác thực.`);
         err.status = 400; err.code = 'UNVERIFIED_MEDIA_ASSETS'; throw err;
       }
@@ -401,6 +410,16 @@ class CoursesService {
         )));
         const missingKeys = requiredKeys.filter((_, index) => !existence[index]);
         if (missingKeys.length > 0) {
+          if (isUnchangedRepairSource) {
+            await client.query(
+              `UPDATE lessons
+               SET media_status = 'MISSING_SOURCE'
+               WHERE lesson_id = $1
+                 AND COALESCE(storage_key, content_url, '') = $2`,
+              [lesson.lesson_id, currentSource]
+            );
+            continue;
+          }
           const err = new Error(
             `Media của bài học "${lesson.title || lesson.lesson_id}" chưa đầy đủ trên storage ` +
             `(thiếu ${missingKeys.map(key => key.split('/').pop()).join(', ')}).`
@@ -744,6 +763,7 @@ class CoursesService {
     const assetsToCleanup = [];
     const subtitleLessonIds = [];
     const lessonIdsToInvalidate = new Set();
+    const repairableExistingSources = new Map();
 
     try {
       await client.query('BEGIN');
@@ -876,7 +896,7 @@ class CoursesService {
       // --- SYNCHRONIZE SECTIONS AND LESSONS ---
       if (sections && Array.isArray(sections)) {
         const existingCourseLessonsRes = await client.query(
-          `SELECT l.lesson_id
+          `SELECT l.lesson_id, COALESCE(NULLIF(l.storage_key, ''), l.content_url) AS source_url
            FROM lessons l
            JOIN sections s ON s.section_id = l.section_id
            WHERE s.course_id = $1`,
@@ -884,6 +904,7 @@ class CoursesService {
         );
         for (const row of existingCourseLessonsRes.rows) {
           lessonIdsToInvalidate.add(row.lesson_id);
+          if (row.source_url) repairableExistingSources.set(Number(row.lesson_id), row.source_url);
         }
 
         const existingSectionsRes = await client.query(
@@ -1082,7 +1103,13 @@ class CoursesService {
         await orphanCleanupService.commitPendingUploads(claimedUploadIds, client);
       }
       const resultingStatus = finalStatus === undefined ? existingCourse.status : finalStatus;
-      if (resultingStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
+      if (resultingStatus === 'published') {
+        await this._validateStoredCourseForPublish(client, courseId, {
+          repairableExistingSources: existingCourse.status === 'published'
+            ? repairableExistingSources
+            : new Map()
+        });
+      }
       await client.query('COMMIT');
 
       for (const lessonId of lessonIdsToInvalidate) {

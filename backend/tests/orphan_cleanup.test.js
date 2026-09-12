@@ -155,6 +155,65 @@ describe('🧹 TASK-DURABLE-VIDEO-MEDIA-MERGE-BLOCKERS-R2: Orphan Asset Cleanup 
       assert.strictEqual(deletedFromStorage[0].key, 'courses/temp/upload1.mp4');
       assert.strictEqual(deletedFromStorage[1].key, 'courses/temp/upload2.pdf');
     });
+
+    it('2.4. rollbackUploadedAssetBundle deduplicates objects and durably records delete failures', async () => {
+      const failedDeletionKeys = [];
+      db.query = async (sql, params) => {
+        if (String(sql).includes('SELECT COUNT(*) FROM lessons')) {
+          return { rows: [{ total_ref: '0' }] };
+        }
+        if (String(sql).includes('INSERT INTO failed_storage_deletions')) {
+          failedDeletionKeys.push(params[1]);
+        }
+        return { rows: [] };
+      };
+      supabaseStorage.deleteStorageObject = async (key, bucket, provider) => {
+        deletedFromStorage.push({ key, bucket, provider });
+        return !key.endsWith('/audio.mp4');
+      };
+
+      const result = await orphanCleanupService.rollbackUploadedAssetBundle([
+        { storageKey: 'courses/43/asset/source.mp4', storageBucket: 'videos', storageProvider: 'r2' },
+        { storageKey: 'courses/43/asset/source.mp4', storageBucket: 'videos', storageProvider: 'r2' },
+        { storageKey: 'courses/43/asset/audio.mp4', storageBucket: 'videos', storageProvider: 'r2' }
+      ]);
+
+      assert.equal(deletedFromStorage.length, 2, 'mỗi object trong bundle chỉ được xóa một lần');
+      assert.equal(result.deletedCount, 1);
+      assert.equal(result.deferredCount, 1);
+      assert.deepEqual(failedDeletionKeys, ['courses/43/asset/audio.mp4']);
+    });
+
+    it('2.5. expired DRM pending upload cleans manifest and every sibling object', async () => {
+      const statusUpdates = [];
+      db.query = async (sql, params) => {
+        const text = String(sql);
+        if (text.includes('SELECT COUNT(*) FROM lessons')) {
+          return { rows: [{ total_ref: '0' }] };
+        }
+        if (text.includes("SET status = 'EXPIRED'")) statusUpdates.push(params[0]);
+        return { rows: [] };
+      };
+
+      const result = await orphanCleanupService.cleanupPendingUploadRows([{
+        upload_id: '00000000-0000-4000-8000-000000000043',
+        storage_key: 'courses/43/videos/asset/manifest.mpd',
+        storage_bucket: 'videos',
+        storage_provider: 'r2'
+      }]);
+
+      assert.equal(result.cleanedCount, 1);
+      assert.deepEqual(
+        deletedFromStorage.map(item => item.key).sort(),
+        [
+          'courses/43/videos/asset/audio.mp4',
+          'courses/43/videos/asset/manifest.mpd',
+          'courses/43/videos/asset/source.mp4',
+          'courses/43/videos/asset/video.mp4'
+        ].sort()
+      );
+      assert.deepEqual(statusUpdates, ['00000000-0000-4000-8000-000000000043']);
+    });
   });
 
   describe('3. Course Service Integration: Replace Asset & Delete Course', () => {
