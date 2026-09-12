@@ -167,13 +167,49 @@ function getGeminiFallbackModels(preferredModel) {
 
 const DEFAULT_MODEL_QUOTA_COOLDOWN_MS = 60 * 1000;
 const MIN_MODEL_QUOTA_COOLDOWN_MS = 5 * 1000;
-const MAX_MODEL_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
+const MAX_MODEL_QUOTA_COOLDOWN_MS = 26 * 60 * 60 * 1000;
+const RPD_ROUTING_REFRESH_MS = 15 * 1000;
+const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
+const pacificDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: PACIFIC_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
 
 // Trạng thái này chỉ điều phối request trong process hiện tại; không tạo probe Gemini riêng.
 const modelQuotaCooldown = new Map();
+const observedRpdUsage = new Map();
+let rpdRoutingRefreshExpiresAt = 0;
+let rpdRoutingRefreshModelsKey = '';
+let rpdRoutingRefreshPromise = null;
+let pacificResetCache = { day: null, resetAt: 0 };
 let lastSuccessfulGeminiModel = null;
 let lastSuccessfulGeminiAt = null;
 let lastManualRoutingResetAt = null;
+
+function getPacificDayKey(timestamp = Date.now()) {
+  return pacificDayFormatter.format(new Date(timestamp));
+}
+
+function getNextPacificRpdResetAt(now = Date.now()) {
+  const currentDay = getPacificDayKey(now);
+  if (pacificResetCache.day === currentDay && pacificResetCache.resetAt > now) {
+    return pacificResetCache.resetAt;
+  }
+  let cursor = Math.floor(now / 60_000) * 60_000 + 60_000;
+  const searchLimit = now + MAX_MODEL_QUOTA_COOLDOWN_MS;
+
+  while (cursor <= searchLimit) {
+    if (getPacificDayKey(cursor) !== currentDay) {
+      pacificResetCache = { day: currentDay, resetAt: cursor };
+      return cursor;
+    }
+    cursor += 60_000;
+  }
+
+  return now + 24 * 60 * 60 * 1000;
+}
 
 function normalizeModelCooldownDuration(durationMs = DEFAULT_MODEL_QUOTA_COOLDOWN_MS) {
   const parsed = Number(durationMs);
@@ -181,17 +217,37 @@ function normalizeModelCooldownDuration(durationMs = DEFAULT_MODEL_QUOTA_COOLDOW
   return Math.min(MAX_MODEL_QUOTA_COOLDOWN_MS, Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, Math.ceil(parsed)));
 }
 
-function markModelQuotaExhausted(model, durationMs = DEFAULT_MODEL_QUOTA_COOLDOWN_MS, source = 'default') {
+function markModelQuotaExhausted(
+  model,
+  durationMs = DEFAULT_MODEL_QUOTA_COOLDOWN_MS,
+  source = 'default',
+  metadata = {}
+) {
   const normalizedModel = String(model || '').trim();
   if (!normalizedModel) return;
   const now = Date.now();
   const cooldownMs = normalizeModelCooldownDuration(durationMs);
-  modelQuotaCooldown.set(normalizedModel, {
+  const nextState = {
     markedAt: now,
     retryAt: now + cooldownMs,
     cooldownMs,
-    source
-  });
+    source,
+    dimension: metadata.dimension || null,
+    observedUsage: Number.isFinite(Number(metadata.observedUsage))
+      ? Number(metadata.observedUsage)
+      : null,
+    cap: Number.isFinite(Number(metadata.cap)) ? Number(metadata.cap) : null
+  };
+  const existing = modelQuotaCooldown.get(normalizedModel);
+
+  // Không để một lỗi RPM ngắn ghi đè trạng thái đã biết là hết RPD đến nửa đêm Pacific.
+  if (existing?.dimension === 'rpd'
+    && existing.retryAt > nextState.retryAt
+    && nextState.dimension !== 'rpd') {
+    return;
+  }
+
+  modelQuotaCooldown.set(normalizedModel, nextState);
 }
 
 function clearModelQuotaCooldown(model) {
@@ -203,7 +259,8 @@ function clearModelQuotaCooldown(model) {
 function recordSuccessfulGeminiModel(model) {
   const normalizedModel = String(model || '').trim();
   if (!normalizedModel) return;
-  clearModelQuotaCooldown(normalizedModel);
+  const cooldown = modelQuotaCooldown.get(normalizedModel);
+  if (cooldown?.dimension !== 'rpd') clearModelQuotaCooldown(normalizedModel);
   lastSuccessfulGeminiModel = normalizedModel;
   lastSuccessfulGeminiAt = new Date().toISOString();
 }
@@ -258,7 +315,10 @@ function getGeminiModelRoutingStatus() {
       retryAt: new Date(item.retryAt).toISOString(),
       remainingMs: Math.max(0, item.retryAt - now),
       cooldownMs: item.cooldownMs,
-      source: item.source
+      source: item.source,
+      dimension: item.dimension || null,
+      observedUsage: item.observedUsage,
+      cap: item.cap
     }));
 
   return {
@@ -275,10 +335,128 @@ function getGeminiModelRoutingStatus() {
 }
 
 function resetGeminiModelRouting({ all = false } = {}) {
-  if (all) modelQuotaCooldown.clear();
-  else clearModelQuotaCooldown(GEMINI_MODELS.routingPrimary);
+  if (all) {
+    modelQuotaCooldown.clear();
+    observedRpdUsage.clear();
+    rpdRoutingRefreshExpiresAt = 0;
+    rpdRoutingRefreshModelsKey = '';
+  }
+  else {
+    const preferredState = modelQuotaCooldown.get(GEMINI_MODELS.routingPrimary);
+    if (preferredState?.dimension !== 'rpd') {
+      clearModelQuotaCooldown(GEMINI_MODELS.routingPrimary);
+    }
+  }
   lastManualRoutingResetAt = new Date().toISOString();
   return getGeminiModelRoutingStatus();
+}
+
+function applyObservedGeminiRpdUsage(models = [], { now = Date.now() } = {}) {
+  const resetAt = getNextPacificRpdResetAt(now);
+  const pacificDay = getPacificDayKey(now);
+
+  for (const item of models) {
+    const model = String(item?.model || '').trim();
+    const usage = Number(item?.usage?.rpd ?? item?.rpdCurrent ?? item?.rpd_current);
+    const cap = Number(item?.caps?.rpd ?? item?.rpdCap ?? item?.rpd_cap);
+    if (!model || !Number.isFinite(cap) || cap <= 0 || !Number.isFinite(usage) || usage < 0) {
+      continue;
+    }
+
+    observedRpdUsage.set(model, { usage, cap, resetAt, pacificDay });
+    const currentCooldown = modelQuotaCooldown.get(model);
+
+    if (usage >= cap) {
+      markModelQuotaExhausted(
+        model,
+        Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, resetAt - now + 1000),
+        'backend_observed_rpd_cap',
+        { dimension: 'rpd', observedUsage: usage, cap }
+      );
+    } else if (currentCooldown?.source === 'backend_observed_rpd_cap') {
+      clearModelQuotaCooldown(model);
+    }
+  }
+
+  return getGeminiModelRoutingStatus();
+}
+
+function noteObservedGeminiAttempt(model, now = Date.now()) {
+  const normalizedModel = String(model || '').trim();
+  const state = observedRpdUsage.get(normalizedModel);
+  if (!state) return;
+
+  if (state.pacificDay !== getPacificDayKey(now) || state.resetAt <= now) {
+    observedRpdUsage.delete(normalizedModel);
+    const cooldown = modelQuotaCooldown.get(normalizedModel);
+    if (cooldown?.source === 'backend_observed_rpd_cap') clearModelQuotaCooldown(normalizedModel);
+    return;
+  }
+
+  state.usage += 1;
+  if (state.usage >= state.cap) {
+    markModelQuotaExhausted(
+      normalizedModel,
+      Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, state.resetAt - now + 1000),
+      'backend_observed_rpd_cap',
+      { dimension: 'rpd', observedUsage: state.usage, cap: state.cap }
+    );
+  }
+}
+
+async function refreshObservedGeminiRpdRouting(models) {
+  const normalizedModels = Array.from(new Set(
+    (models || []).map((model) => String(model || '').trim()).filter(Boolean)
+  ));
+  const modelsKey = normalizedModels.slice().sort().join('|');
+  const now = Date.now();
+
+  if (!modelsKey || (modelsKey === rpdRoutingRefreshModelsKey && now < rpdRoutingRefreshExpiresAt)) {
+    return;
+  }
+  if (rpdRoutingRefreshPromise) {
+    await rpdRoutingRefreshPromise;
+    return;
+  }
+
+  rpdRoutingRefreshPromise = (async () => {
+    try {
+      const result = await db.query(`
+        WITH bounds AS (
+          SELECT date_trunc('day', NOW() AT TIME ZONE '${PACIFIC_TIME_ZONE}') AS pacific_today
+        )
+        SELECT
+          s.model,
+          s.rpd_cap,
+          COUNT(e.id)::int AS rpd_current
+        FROM ai_model_rate_limit_settings s
+        CROSS JOIN bounds b
+        LEFT JOIN ai_usage_events e
+          ON e.model = s.model
+         AND date_trunc('day', e.created_at AT TIME ZONE '${PACIFIC_TIME_ZONE}') = b.pacific_today
+        WHERE s.model = ANY($1::text[])
+        GROUP BY s.model, s.rpd_cap
+      `, [normalizedModels]);
+
+      applyObservedGeminiRpdUsage(result.rows || [], { now: Date.now() });
+      rpdRoutingRefreshModelsKey = modelsKey;
+      rpdRoutingRefreshExpiresAt = Date.now() + RPD_ROUTING_REFRESH_MS;
+    } catch (error) {
+      // Telemetry nội bộ chỉ là lớp phòng ngừa. Khi DB lỗi, fallback 429 của Google vẫn hoạt động.
+      console.warn('[Gemini RPD Guard] Không đọc được usage nội bộ; tiếp tục dùng provider fallback:', error.message);
+      rpdRoutingRefreshExpiresAt = Date.now() + RPD_ROUTING_REFRESH_MS;
+    } finally {
+      rpdRoutingRefreshPromise = null;
+    }
+  })();
+
+  await rpdRoutingRefreshPromise;
+}
+
+async function getQuotaAwareFallbackModels(preferredModel) {
+  const models = getGeminiFallbackModels(preferredModel);
+  await refreshObservedGeminiRpdRouting(models);
+  return getPrioritizedFallbackModels(preferredModel);
 }
 
 const isGeminiQuotaError = (error) => {
@@ -321,19 +499,39 @@ const normalizeGeminiError = (error) => {
   return quotaError;
 };
 
-const getGeminiQuotaCooldown = (error) => {
+const getGeminiQuotaCooldown = (error, fallbackModel = null) => {
   const normalized = normalizeGeminiError(error);
   const retryAfterMs = Number(normalized?.retryAfterMs);
+  const parsed = parseGeminiQuotaViolation(error, fallbackModel);
+  const isRpdExhausted = parsed?.dimension === 'rpd';
+
+  if (isRpdExhausted) {
+    const now = Date.now();
+    const resetAt = Number.isFinite(retryAfterMs) && retryAfterMs > 0
+      ? now + retryAfterMs + 1000
+      : getNextPacificRpdResetAt(now) + 1000;
+    return {
+      durationMs: normalizeModelCooldownDuration(resetAt - now),
+      source: Number.isFinite(retryAfterMs) && retryAfterMs > 0
+        ? 'provider_rpd_retry_after'
+        : 'provider_rpd_pacific_reset',
+      dimension: 'rpd',
+      retryAt: resetAt
+    };
+  }
+
   if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
     // Chừa một giây nhỏ để không gọi đúng sát biên retry-after của provider.
     return {
       durationMs: normalizeModelCooldownDuration(retryAfterMs + 1000),
-      source: 'provider_retry_after'
+      source: 'provider_retry_after',
+      dimension: parsed?.dimension || null
     };
   }
   return {
     durationMs: DEFAULT_MODEL_QUOTA_COOLDOWN_MS,
-    source: 'default_60_seconds'
+    source: 'default_60_seconds',
+    dimension: parsed?.dimension || null
   };
 };
 
@@ -502,12 +700,17 @@ async function recordGeminiQuotaSignal({ error, model }) {
   try {
     if (!isGeminiQuotaError(error)) return;
 
-    const cooldown = getGeminiQuotaCooldown(error);
-    markModelQuotaExhausted(model, cooldown.durationMs, cooldown.source);
-
     const parsed = parseGeminiQuotaViolation(error, model);
+    const cooldown = getGeminiQuotaCooldown(error, model);
+    const cooldownMetadata = {
+      dimension: cooldown.dimension || parsed?.dimension || null,
+      observedUsage: null,
+      cap: parsed?.providerLimit ?? null
+    };
+    markModelQuotaExhausted(model, cooldown.durationMs, cooldown.source, cooldownMetadata);
+
     if (parsed?.model && parsed.model !== model) {
-      markModelQuotaExhausted(parsed.model, cooldown.durationMs, cooldown.source);
+      markModelQuotaExhausted(parsed.model, cooldown.durationMs, cooldown.source, cooldownMetadata);
     }
 
     const logKey = `${parsed?.model || model || 'unknown'}:${parsed?.dimension || 'unknown'}`;
@@ -666,13 +869,14 @@ function normalizeRequest(request) {
  */
 async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
   const preferredModel = modelOverride || GEMINI_MODELS.routingPrimary;
-  const fallbackModels = getPrioritizedFallbackModels(preferredModel);
+  const fallbackModels = await getQuotaAwareFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
 
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
+    noteObservedGeminiAttempt(model);
     const ctx = getAiContext();
     const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
     const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
@@ -723,13 +927,14 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
  */
 async function executeGenerateStream(client, contents, config, modelOverride = null, customCtx = {}) {
   const preferredModel = modelOverride || GEMINI_MODELS.routingPrimary;
-  const fallbackModels = getPrioritizedFallbackModels(preferredModel);
+  const fallbackModels = await getQuotaAwareFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
 
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
+    noteObservedGeminiAttempt(model);
     const ctx = getAiContext();
     const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
     const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
@@ -1123,7 +1328,10 @@ module.exports = {
   normalizeRequest,
   getGeminiFallbackModels,
   getPrioritizedFallbackModels,
+  getQuotaAwareFallbackModels,
   getGeminiModelRoutingStatus,
+  getNextPacificRpdResetAt,
+  applyObservedGeminiRpdUsage,
   resetGeminiModelRouting,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,

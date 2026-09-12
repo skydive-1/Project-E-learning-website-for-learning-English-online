@@ -13,7 +13,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // Không tự reload tab đang học khi có deployment mới. Ứng dụng sẽ
+      // hiển thị prompt và chỉ kích hoạt service worker mới khi người dùng
+      // chủ động xác nhận cập nhật.
+      registerType: 'prompt',
       injectRegister: null,
       includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png', 'robots.txt'],
       manifest: {

@@ -10,7 +10,10 @@ const {
   recordAiProviderIncident,
   getGeminiQuotaCooldown,
   getGeminiModelRoutingStatus,
+  getNextPacificRpdResetAt,
   getPrioritizedFallbackModels,
+  getQuotaAwareFallbackModels,
+  applyObservedGeminiRpdUsage,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
   resetGeminiModelRouting
@@ -126,6 +129,9 @@ describe('Admin Gemini rate-limit status', () => {
       assert.ok(capturedParams[0][0].includes('gemini-3.7-flash'));
       assert.ok(capturedParams[0][0].includes('gemini-embedding-001'));
       assert.equal(status.windows.rpdTimezone, 'America/Los_Angeles');
+      assert.equal(status.windows.rpdResetPacificTime, '00:00');
+      assert.match(status.windows.rpdResetVietnamTime, /^\d{2}:\d{2}$/);
+      assert.ok(status.windows.nextRpdResetAt);
       assert.deepEqual(status.models[0].usage, { rpm: 7, tpm: 125000, rpd: 225 });
       assert.deepEqual(status.models[0].requestStatus.rpm, { success: 5, error: 2, pending: 0 });
       assert.deepEqual(status.models[0].percentUsed, { rpm: 70, tpm: 50, rpd: 90 });
@@ -236,6 +242,92 @@ describe('Best-effort Gemini 429 calibration', () => {
     routing = resetGeminiModelRouting();
     assert.equal(routing.effectiveModel, 'gemini-3.7-flash');
     assert.equal(routing.coolingDown.length, 0);
+  });
+
+  test('converts the Pacific RPD reset to 14:00 or 15:00 Vietnam time across DST', () => {
+    const summerReset = getNextPacificRpdResetAt(Date.UTC(2026, 8, 12, 1, 0, 0));
+    const winterReset = getNextPacificRpdResetAt(Date.UTC(2026, 0, 15, 1, 0, 0));
+
+    assert.equal(new Date(summerReset).toISOString(), '2026-09-12T07:00:00.000Z');
+    assert.equal(new Date(winterReset).toISOString(), '2026-01-15T08:00:00.000Z');
+  });
+
+  test('skips models at the observed RPD cap and keeps the remaining model first', () => {
+    resetGeminiModelRouting({ all: true });
+    applyObservedGeminiRpdUsage([
+      { model: 'gemini-3.7-flash', usage: { rpd: 20 }, caps: { rpd: 20 } },
+      { model: 'gemini-3.6-flash', usage: { rpd: 28 }, caps: { rpd: 20 } },
+      { model: 'gemini-3.5-flash-lite', usage: { rpd: 15 }, caps: { rpd: 500 } }
+    ]);
+
+    let routing = getGeminiModelRoutingStatus();
+    assert.equal(routing.effectiveModel, 'gemini-3.5-flash-lite');
+    assert.deepEqual(routing.coolingDown.map((item) => item.model), [
+      'gemini-3.7-flash',
+      'gemini-3.6-flash'
+    ]);
+    assert.ok(routing.coolingDown.every((item) => item.dimension === 'rpd'));
+    assert.ok(routing.coolingDown.every((item) => item.source === 'backend_observed_rpd_cap'));
+
+    recordSuccessfulGeminiModel('gemini-3.7-flash');
+    resetGeminiModelRouting();
+    routing = getGeminiModelRoutingStatus();
+    assert.equal(routing.effectiveModel, 'gemini-3.5-flash-lite');
+
+    resetGeminiModelRouting({ all: true });
+  });
+
+  test('loads persisted RPD usage before choosing the model for a request', async () => {
+    const originalQuery = db.query;
+    let guardQueries = 0;
+    resetGeminiModelRouting({ all: true });
+    db.query = async (text) => {
+      if (text.includes('COUNT(e.id)::int AS rpd_current')) {
+        guardQueries += 1;
+        return {
+          rows: [
+            { model: 'gemini-3.7-flash', rpd_current: 20, rpd_cap: 20 },
+            { model: 'gemini-3.6-flash', rpd_current: 28, rpd_cap: 20 },
+            { model: 'gemini-3.5-flash-lite', rpd_current: 15, rpd_cap: 500 }
+          ]
+        };
+      }
+      return { rows: [] };
+    };
+
+    try {
+      const firstOrder = await getQuotaAwareFallbackModels('gemini-3.7-flash');
+      const cachedOrder = await getQuotaAwareFallbackModels('gemini-3.7-flash');
+      assert.equal(firstOrder[0], 'gemini-3.5-flash-lite');
+      assert.equal(cachedOrder[0], 'gemini-3.5-flash-lite');
+      assert.equal(guardQueries, 1);
+    } finally {
+      db.query = originalQuery;
+      resetGeminiModelRouting({ all: true });
+    }
+  });
+
+  test('holds a provider-confirmed RPD exhaustion until the Pacific reset window', () => {
+    const rpd429 = {
+      status: 429,
+      response: {
+        data: {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            details: [{
+              quotaMetric: 'generate_content_free_tier_requests_per_day_per_project_per_model',
+              quotaValue: '20',
+              quotaDimensions: { model: 'gemini-3.7-flash' }
+            }]
+          }
+        }
+      }
+    };
+
+    const cooldown = getGeminiQuotaCooldown(rpd429);
+    assert.equal(cooldown.dimension, 'rpd');
+    assert.equal(cooldown.source, 'provider_rpd_pacific_reset');
+    assert.ok(cooldown.retryAt > Date.now());
   });
 
   test('clears stale cooldown immediately after a successful model response', () => {

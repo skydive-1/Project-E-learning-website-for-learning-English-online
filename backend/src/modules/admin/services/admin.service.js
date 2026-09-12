@@ -6,7 +6,9 @@ const { pool } = require('../../../config/database');
 const { supabaseAdmin } = require('../../../config/supabase');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
 const {
+  applyObservedGeminiRpdUsage,
   getGeminiModelRoutingStatus,
+  getNextPacificRpdResetAt,
   resetGeminiModelRouting
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
@@ -1160,12 +1162,28 @@ const getRateLimitStatus = async () => {
     checkedAt: new Date().toISOString()
   };
 
+  // Đồng bộ telemetry backend vào runtime router mà không gọi thử Gemini.
+  // Google 429 vẫn là nguồn xác nhận cuối nếu cap admin cấu hình không còn đúng.
+  applyObservedGeminiRpdUsage(models);
+
+  const nextResetTimestamp = getNextPacificRpdResetAt();
+  const nextRpdResetAt = new Date(nextResetTimestamp).toISOString();
+  const rpdResetVietnamTime = new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(nextResetTimestamp));
+
   return {
     generatedAt: new Date().toISOString(),
     windows: {
       rpmSeconds: 60,
       tpmSeconds: 60,
-      rpdTimezone: 'America/Los_Angeles'
+      rpdTimezone: 'America/Los_Angeles',
+      rpdResetPacificTime: '00:00',
+      rpdResetVietnamTime,
+      nextRpdResetAt
     },
     models,
     guard,

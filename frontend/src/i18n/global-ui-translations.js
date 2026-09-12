@@ -151,6 +151,14 @@ export const globalUiTranslations = {
   'Phiên đăng nhập đã hết hạn.': 'Your session has expired.',
   'Không thể kết nối tới máy chủ xác thực.': 'Unable to connect to the authentication server.',
 
+  // PWA updates
+  'Có phiên bản mới': 'New version available',
+  'Bản cập nhật đã sẵn sàng. Hãy cập nhật sau khi bạn đã lưu bài làm hoặc nội dung đang nhập.': 'An update is ready. Update after saving your answers or anything you are editing.',
+  'Để sau': 'Later',
+  'Cập nhật ứng dụng': 'Update app',
+  'Đang cập nhật ứng dụng...': 'Updating app...',
+  'Không thể cập nhật ứng dụng. Bạn có thể tiếp tục học và thử lại sau.': 'The app could not be updated. You can keep learning and try again later.',
+
   // Profile and learner dashboard
   'Quay lại trang chủ': 'Back to home',
   'Thông tin cá nhân': 'Personal information',

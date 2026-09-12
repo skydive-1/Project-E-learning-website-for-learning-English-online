@@ -1,14 +1,17 @@
 import React, { useMemo } from 'react';
 import {
+  Calendar,
   Clock,
   Cpu,
   Database,
   ExternalLink,
   FileText,
   Info,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Zap
 } from 'lucide-react';
 
 import { Chip } from '@/components/base/badges/chip';
@@ -55,10 +58,51 @@ const FREE_TIER_MODELS = Object.freeze([
   }
 ]);
 
-const GeminiFreeTierReference = ({ models = [] }) => {
+const GeminiFreeTierReference = ({ models = [], windows }) => {
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
   const formatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+
+  const nextResetDate = useMemo(() => {
+    if (windows?.nextRpdResetAt) {
+      const parsed = new Date(windows.nextRpdResetAt);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    const now = Date.now();
+    const ptFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const currentDay = ptFormatter.format(now);
+    let cursor = Math.floor(now / 60_000) * 60_000 + 60_000;
+    while (cursor <= now + 26 * 3600_000) {
+      if (ptFormatter.format(cursor) !== currentDay) return new Date(cursor);
+      cursor += 60_000;
+    }
+    return new Date(now + 24 * 3600_000);
+  }, [windows?.nextRpdResetAt]);
+
+  const vietnamResetTime = useMemo(() => {
+    if (windows?.rpdResetVietnamTime) return windows.rpdResetVietnamTime;
+    return new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(nextResetDate);
+  }, [windows?.rpdResetVietnamTime, nextResetDate]);
+
+  const remainingHoursMinutes = useMemo(() => {
+    const diffMs = Math.max(0, nextResetDate.getTime() - Date.now());
+    const hours = Math.floor(diffMs / 3600_000);
+    const minutes = Math.floor((diffMs % 3600_000) / 60_000);
+    if (hours > 0) {
+      return t('Còn {{hours}} giờ {{minutes}} phút', { hours, minutes });
+    }
+    return t('Còn {{minutes}} phút', { minutes });
+  }, [nextResetDate, t]);
 
   const getModelCapInfo = (modelName) => {
     const match = models.find((item) => item.model === modelName);
@@ -131,6 +175,84 @@ const GeminiFreeTierReference = ({ models = [] }) => {
                   {t('Lưu ý dữ liệu: ở Free Tier, Google có thể dùng nội dung gửi lên để cải thiện sản phẩm; không gửi dữ liệu nhạy cảm.')}
                 </span>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2.1 Reset Schedule & Windows Card Grid */}
+        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+          {/* Card RPM */}
+          <div className="flex flex-col justify-between rounded-xl border border-separator-border bg-background-primary-default p-4 shadow-2xs">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-500 dark:text-blue-400">
+                    <RotateCcw className="size-3.5" />
+                  </div>
+                  <span className="font-mono text-body-medium font-bold text-text-primary">RPM</span>
+                </div>
+                <Chip variant="caption" color="blue" className="text-[11px] py-0 px-2">
+                  {t('Cửa sổ trượt 60s')}
+                </Chip>
+              </div>
+              <p className="text-caption-1-regular text-text-secondary leading-relaxed">
+                {t('Google tính toán số request trong 60 giây gần nhất. Mỗi request sẽ tự động hoàn lại quota sau 60 giây kể từ khi gửi.')}
+              </p>
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-separator-border/60 pt-2 text-[11px] text-text-tertiary">
+              <span>{t('Chu kỳ reset')}</span>
+              <span className="font-mono font-medium text-text-secondary">60s rolling</span>
+            </div>
+          </div>
+
+          {/* Card TPM */}
+          <div className="flex flex-col justify-between rounded-xl border border-separator-border bg-background-primary-default p-4 shadow-2xs">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg border border-indigo-500/20 bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
+                    <Zap className="size-3.5" />
+                  </div>
+                  <span className="font-mono text-body-medium font-bold text-text-primary">TPM</span>
+                </div>
+                <Chip variant="caption" color="indigo" className="text-[11px] py-0 px-2">
+                  {t('Cửa sổ trượt 60s')}
+                </Chip>
+              </div>
+              <p className="text-caption-1-regular text-text-secondary leading-relaxed">
+                {t('Tính tổng token đầu vào và đầu ra trong 60 giây gần nhất. Lượng token được giải phóng dần sau 60 giây.')}
+              </p>
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-separator-border/60 pt-2 text-[11px] text-text-tertiary">
+              <span>{t('Chu kỳ reset')}</span>
+              <span className="font-mono font-medium text-text-secondary">60s rolling</span>
+            </div>
+          </div>
+
+          {/* Card RPD */}
+          <div className="flex flex-col justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 shadow-2xs dark:border-emerald-500/25 dark:bg-emerald-950/15">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 dark:text-emerald-400">
+                    <Calendar className="size-3.5" />
+                  </div>
+                  <span className="font-mono text-body-medium font-bold text-text-primary">RPD</span>
+                </div>
+                <Chip variant="bold" color="emerald" className="text-[11px] py-0 px-2 font-mono">
+                  {vietnamResetTime} VN (00:00 PT)
+                </Chip>
+              </div>
+              <p className="text-caption-1-regular text-text-secondary leading-relaxed">
+                {t('Đặt lại toàn bộ về 0 lúc 00:00 Pacific Time (PT) mỗi ngày. Giới hạn áp dụng chung trên toàn bộ Google Project.')}
+              </p>
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-emerald-500/20 pt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              <span className="flex items-center gap-1">
+                <Clock className="size-3 shrink-0" />
+                {t('RPD reset kế tiếp')}
+              </span>
+              <span className="font-mono">{remainingHoursMinutes}</span>
             </div>
           </div>
         </div>
@@ -264,7 +386,7 @@ const GeminiFreeTierReference = ({ models = [] }) => {
         <div className="flex items-center gap-2 text-caption-1-regular text-text-secondary">
           <Clock className="size-3.5 text-text-tertiary shrink-0" aria-hidden="true" />
           <span>
-            {t('RPD đặt lại lúc 00:00 Pacific · giới hạn áp dụng theo project, không theo từng API key.')}
+            {t('RPD đặt lại lúc 00:00 Pacific (tương ứng 14:00/15:00 giờ Việt Nam) · RPM/TPM là cửa sổ trượt 60 giây · Giới hạn áp dụng theo project, không theo từng API key.')}
           </span>
         </div>
 
