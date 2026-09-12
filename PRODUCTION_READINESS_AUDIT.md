@@ -1,6 +1,6 @@
 # Báo cáo kiểm tra mức độ sẵn sàng trước bảo vệ
 
-Ngày đối soát: 02/09/2026. Kết luận chung: **chưa đủ căn cứ để xác nhận hệ thống sẵn sàng vận hành production**. Các kết luận bên dưới chỉ bao phủ những gì đã được chứng minh bằng test, kết quả tìm kiếm mã nguồn, truy vấn chỉ đọc hoặc trace trực tiếp đường đi của request.
+Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 12/09/2026. Kết luận chung: **đủ bằng chứng kỹ thuật để bảo vệ đồ án; chưa nên gọi mọi tích hợp bên ngoài là production-verified**. Các kết luận bên dưới chỉ bao phủ những gì test, production build, truy vấn chỉ đọc hoặc trace trực tiếp đường đi của request đã chứng minh.
 
 ## 1. CONFIRMED FIXED — Đã sửa và có bằng chứng
 
@@ -10,7 +10,7 @@ Ngày đối soát: 02/09/2026. Kết luận chung: **chưa đủ căn cứ đ�
 - Nếu điểm đã lưu nhỏ hơn 50, service trả HTTP 422 với mã `LESSON_COMPLETION_SCORE_TOO_LOW`: `backend/src/modules/progress/services/progress.service.js:49`.
 - Controller yêu cầu `isCompleted` là boolean rõ ràng, không còn mặc định ngầm thành `true`: `backend/src/modules/progress/controllers/progress.controller.js:50`.
 - Bài test gửi raw HTTP request với điểm đã lưu 49%, đồng thời thử nhét `score: 100` vào body để giả mạo: `backend/tests/progress_completion_threshold.test.js:106` và `backend/tests/progress_completion_threshold.test.js:120`.
-- Bằng chứng chạy: `npm --prefix backend test` đạt **165 test, 165 pass, 0 fail, 0 skipped, 0 todo**. Hai ca kiểm thử ngưỡng hoàn thành và năm ca grounding đều nằm trong lần chạy này.
+- Bằng chứng chạy ngày 12/09/2026: `npm --prefix backend test` đạt **321 test, 321 pass, 0 fail, 0 skipped, 0 todo**. Hai ca kiểm thử ngưỡng hoàn thành và các ca grounding đều nằm trong lần chạy này.
 
 ### 1.2. Pipeline tạo phụ đề tự động đã được khôi phục ở mức xử lý cục bộ
 
@@ -57,12 +57,12 @@ Ngày đối soát: 02/09/2026. Kết luận chung: **chưa đủ căn cứ đ�
 - Trang analytics và danh sách khóa học hiển thị lỗi thay vì biến lỗi mạng thành mảng rỗng hoặc số 0: `frontend/src/modules/analytics/pages/AnalyticsDashboardPage.jsx:126`, `frontend/src/modules/courses/pages/CourseListPage.jsx:380`.
 - Đăng ký tư vấn không còn báo gửi thành công khi SMTP thiếu hoặc gửi thất bại. Backend trả lỗi 503: `backend/src/modules/consultation/consultation.service.js:142`, `:169`.
 - Quick quiz ở backend không còn dựng câu hỏi chung khi thiếu nội dung hoặc Gemini trả sai schema; các trường hợp này trả 422/502: `backend/src/modules/chatbot/services/chatbot.service.js:623`, `:668`, `:682`.
-- Bằng chứng biên dịch và kiểm thử frontend: `npm --prefix frontend run build` thành công; `npm exec -- vitest run tests/lessonSuggestedQuestions.test.jsx tests/videoTicketContract.test.jsx` chạy từ thư mục frontend đạt **13/13 test**.
+- Bằng chứng biên dịch và kiểm thử frontend ngày 12/09/2026: `npm --prefix frontend run build` thành công; `npm --prefix frontend test` đạt **235/235 test trong 55 file**.
 
 ### 1.6. Logging, cấu hình production và rate limit đã được siết lại
 
 - Mỗi request có ID, response header và log gồm status, thời gian, user và path: `backend/src/middleware/logger.middleware.js:1`, `:14`. Logger được gắn trước các route tại `backend/src/server.js:89`.
-- Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 165 test.
+- Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 321 test.
 - Production startup kiểm tra JWT, URL frontend, Gemini, Pinecone, Supabase, SMTP, database, `ENABLE_DRM_PACKAGING` và `ENABLE_SUBTITLE_VAD`: `backend/src/config/environment.js:1`. Có năm test cho validator này và cả năm đều đạt.
 - Khi database không kết nối được ở production, server đóng thay vì tiếp tục chạy nửa vời: `backend/src/server.js:152`.
 - CORS không còn chấp nhận tùy ý mọi subdomain `vercel.app`: `backend/src/server.js:76`.
@@ -94,36 +94,34 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 - Generator luận văn không còn công bố `Grounded 100%`, `Faithfulness 98.2%`, hallucination 1.2%, Hit Rate 96.4% hoặc latency 0.68 giây như số đo thật. Bảng ghi rõ trạng thái chưa có phép đo đủ bằng chứng tại `backend/scripts/generate_thesis_defense_doc.py:365`; câu trả lời phản biện nêu đúng giới hạn tại dòng 472.
 - File `SO_TAY_THUYET_TRINH_VA_BAO_VE_DO_AN_RAG_AI.docx` đã được sinh lại. Kiểm tra trực tiếp toàn bộ paragraph và table trong DOCX xác nhận có câu “Chưa có phép đo đủ bằng chứng” và không còn năm cụm số liệu/tuyên bố cũ nêu trên.
 
-## 2. CONFIRMED BROKEN / INCOMPLETE — Đã xác nhận hỏng hoặc còn thiếu
+## 2. KNOWN LIMITATIONS — Giới hạn còn lại sau lần đối soát 12/09/2026
 
-### 2.1. Schema chuẩn và schema đang chạy bị lệch nhau
+### 2.1. Versioned migration đã có, DDL tương thích lúc boot vẫn chưa bỏ hết
 
-- `schema.sql` khai báo bảng `quizzes` tại `backend/schema.sql:121`, nhưng các cột `is_private`, `pin_code`, `updated_at` chỉ được thêm lúc boot ở `backend/src/config/database.js:174`.
-- `schema.sql` khai báo `quiz_attempts.user_id` và `quiz_id` là `NOT NULL`: `backend/schema.sql:149`. Schema thật đọc từ database cho thấy cả hai đang nullable; boot migration chỉ ghi rõ việc bỏ `NOT NULL` cho `user_id` tại `backend/src/config/database.js:207`.
-- Thư mục migration không có migration có phiên bản tương ứng cho hai thay đổi này. Nhiều boot migration bắt lỗi rồi chỉ cảnh báo và tiếp tục, nên một lần deploy lỗi có thể để schema ở trạng thái dở dang.
-- Cách sửa: tạo migration có version, chạy trong transaction, cập nhật `schema.sql`, thêm bài test so sánh catalog với schema mong đợi, rồi bỏ DDL best-effort khỏi startup. Đây là lỗi cấu trúc chưa nên vá tự động khi chưa chốt quy tắc nullability của `quiz_id`.
+- Repo có `001_initial_schema.sql`, `002_quizzes_and_attempts_parity.sql` và các migration theo ngày. `migrationRunner.js` chạy file theo thứ tự, trong transaction, đồng thời lưu version và checksum vào `schema_migrations`.
+- `schema.sql` đã chứa các cột quiz và nullability cần thiết. `schema_parity.test.js` kiểm tra initial schema, parity migration và việc migration đã chạy sẽ được bỏ qua ở lần sau.
+- `database.js` vẫn giữ một số `ALTER TABLE ... IF NOT EXISTS` để nâng cấp database cũ. Lớp tương thích này làm schema change có hai đường thực thi; nên chuyển nốt DDL sang migration versioned rồi để startup chỉ gọi migration runner.
 
-### 2.2. Forensic Watermark và cơ chế răn đe (Deterrence & Forensic Tracking)
+### 2.2. Forensic Watermark là biện pháp truy vết và răn đe
 
-- Đã chuẩn hóa toàn bộ tài liệu, UI và code: mô tả chính xác Forensic Watermark và các cảnh báo tầng trình duyệt là biện pháp *định danh người xem phục vụ truy vết pháp lý và răn đe phát tán*, không tuyên bố "ngăn chặn tuyệt đối 100%" việc ghi hình bằng thiết bị phần cứng ngoại vi hoặc phần mềm quay cấp OS.
+- Watermark định danh người xem và các cảnh báo tầng trình duyệt không thể ngăn tuyệt đối phần mềm quay cấp hệ điều hành, camera ngoài hoặc thiết bị capture. Khi bảo vệ cần mô tả đúng giới hạn này.
 
-### 2.3. Profile còn hiển thị số liệu mẫu cố định
+### 2.3. Profile stats đã nối API; thay avatar vẫn dùng hộp nhập URL
 
-- Upload avatar còn comment dummy: `frontend/src/modules/profile/pages/ProfilePage.jsx:128`.
-- “2 Khóa học”, “8.5 điểm” và hoạt động gần đây là giá trị tĩnh: `frontend/src/modules/profile/pages/ProfilePage.jsx:382`, `:414`, `:421`.
-- Đây không phải fallback khi API lỗi, nhưng vẫn có thể làm người dùng hiểu nhầm dữ liệu. Cách sửa: nối endpoint thống kê thật hoặc ẩn toàn bộ khối cho tới khi có nguồn dữ liệu.
+- `ProfilePage.jsx` gọi `GET /api/auth/stats` và hiển thị `enrolledCourses`, `avgProgress`, `aiChatCount`, `completedLessons` từ backend, kèm loading/error/empty state.
+- Không còn “2 Khóa học”, “8.5 điểm” hoặc danh sách hoạt động mẫu. Luồng đổi avatar vẫn dùng `window.prompt` để nhập URL; đây là UX đơn giản, không phải dữ liệu giả.
 
-### 2.4. Error handling chưa đồng nhất và log chưa có nơi lưu bền
+### 2.4. Error handling, file log và health probes đã có; chưa gom log đa instance
 
-- DRM controller và gamification controller vẫn tự trả 500 thay vì chuyển qua error middleware chung: `backend/src/modules/drm/drm.controller.js:110`, `:165`, `backend/src/modules/gamification/controllers/gamification.controller.js:10`.
-- Logger hiện ghi JSON qua `console`; repo không cấu hình transport/lưu trữ tập trung. Nếu nền tảng chạy container mà không thu stdout, log sự cố sẽ mất khi instance bị thay.
-- Health endpoint chỉ trả trạng thái process, chưa kiểm tra database, object storage, Pinecone hoặc Gemini.
-- Cách sửa: chuyển lỗi controller qua `next(error)`, dùng Pino/Winston với hệ thống thu log của môi trường triển khai, bổ sung `/health/live` và `/health/ready` với timeout ngắn cho dependency thiết yếu.
+- DRM và Gamification controller đã chuyển lỗi qua `next(error)`.
+- Logger Pino ghi structured log ra stdout và `backend/logs/app.log`. Cấu hình hiện tại chưa gom log từ nhiều instance, phù hợp phạm vi triển khai 0 VND một instance nhưng không đủ cho cụm backend phân tán.
+- `/health/live` trả liveness; `/health/ready` kiểm tra PostgreSQL và R2 như dependency bắt buộc, Gemini/Pinecone như dependency tùy chọn. Test xác nhận dependency bắt buộc lỗi sẽ trả HTTP 503.
 
-### 2.5. Rate limit dùng bộ nhớ từng process
+### 2.5. Rate limit hỗ trợ shared store nhưng cấu hình 0 VND vẫn chạy một instance
 
-- Factory trong `backend/src/middleware/rateLimit.middleware.js` không cấu hình shared store. Khi chạy nhiều instance, mỗi instance giữ bộ đếm riêng và giới hạn thực tế bị nhân lên.
-- Cách sửa: dùng Redis-compatible store, đặt key theo user/IP phù hợp từng route và thêm test hai instance dùng chung store.
+- Khi không có Redis URL, `express-rate-limit` dùng MemoryStore và production ghi log rằng hệ thống đang ở chế độ 0 VND một instance.
+- Khi có `REDIS_URL` hoặc `REDIS_TLS_URL`, code tạo `RedisStore`. `RATE_LIMIT_REQUIRE_SHARED_STORE=true` phát cảnh báo nếu thiếu shared store.
+- Không được scale ngang bằng MemoryStore. Dự án không yêu cầu bật Billing hoặc mua Redis; nếu không có lựa chọn miễn phí phù hợp thì giữ một instance.
 
 ### 2.6. Một số test mang tên lớn hơn phạm vi chúng kiểm tra
 
@@ -132,10 +130,11 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 - `backend/scripts/test_e2e_rag.js:118` chỉ kiểm tra service export hàm.
 - Không có test bị `.skip`, `.todo` hoặc `.only`, nhưng ba trường hợp trên cần đổi tên hoặc thay bằng integration test thật để tránh hiểu nhầm mức bao phủ.
 
-### 2.7. Frontend bundle quá lớn
+### 2.7. Frontend bundle đã tách; vẫn cần performance budget
 
-- Production build thành công nhưng báo chunk chính **3,076.56 kB**, gzip **944.42 kB**; PDF worker **1,046.21 kB**. Vite cảnh báo chunk vượt 500 kB.
-- Cách sửa: route-level lazy loading, tách Shaka/PDF/editor/dashboard thành chunk riêng, kiểm tra bundle analyzer và đặt budget trong CI.
+- Production build ngày 12/09/2026 thành công, không còn cảnh báo chunk vượt ngưỡng cấu hình. Main JS còn **690.45 kB**, gzip **226.40 kB**.
+- Shaka (**812.22 kB**), PDF (**462.38 kB**) và charts (**458.38 kB**) nằm ở các chunk riêng. PDF worker **1,046.21 kB** chỉ tải cùng luồng PDF.
+- Chưa có Lighthouse artifact hoặc budget kiểm tra trong CI, vì vậy không công bố FCP/LCP trên 4G như số đã đo.
 
 ## 3. UNVERIFIED — Chưa đủ điều kiện xác minh
 
@@ -155,9 +154,9 @@ Code, database và contract test xác nhận đường DASH/ClearKey/ticket/wate
 
 Code nay trả lỗi rõ ràng khi thiếu cấu hình hoặc gửi thất bại, nhưng chưa gửi một email staging và xác nhận message được nhận. Cần tài khoản SMTP thử nghiệm hoặc mail sandbox cùng test kiểm tra message ID và nội dung.
 
-### 3.5. Toàn bộ test frontend
+### 3.5. Toàn bộ test frontend ✅ Đã xác minh
 
-Frontend không có một script `test` tổng quát. Chỉ có production build và 13 test được chọn đã chạy. Do đó không có cơ sở báo số pass/fail/skip cho toàn bộ frontend. Cần chuẩn hóa `npm test` hoặc `vitest run`, khai báo môi trường jsdom và đưa lệnh đó vào CI.
+`frontend/package.json` có script `test: vitest run`. Lần chạy ngày 12/09/2026 đạt **55/55 test files, 235/235 tests, 0 fail**. Runner còn in cảnh báo cấu hình `esbuild` đã deprecated trong plugin React Babel; cảnh báo này không làm test hoặc build thất bại nhưng nên dọn khi nâng Vite/plugin.
 
 ### 3.6. Cấu hình và quan sát trên môi trường production thật
 
