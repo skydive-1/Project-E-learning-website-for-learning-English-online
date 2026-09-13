@@ -10,7 +10,8 @@ const {
   getGeminiModelRoutingStatus,
   getNextPacificRpdResetAt,
   resetGeminiModelRouting,
-  setPreferredGeminiModel
+  setPreferredGeminiModel,
+  probeGeminiModelsLive
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
@@ -1067,6 +1068,7 @@ const getRateLimitStatus = async () => {
       s.rpm_cap,
       s.tpm_cap,
       s.rpd_cap,
+      s.rpd_exhausted_until,
       s.updated_at,
       s.updated_by,
       COALESCE(u.full_name, u.username, u.email) AS updated_by_name
@@ -1140,6 +1142,7 @@ const getRateLimitStatus = async () => {
       },
       overLimitDimensions,
       peakPercent,
+      rpdExhaustedUntil: row.rpd_exhausted_until || null,
       riskLevel: !configured ? 'unconfigured'
         : peakPercent >= 100 ? 'exceeded'
           : peakPercent >= 85 ? 'critical'
@@ -1212,6 +1215,10 @@ const resetAiModelRouting = ({ adminUserId } = {}) => {
 
 const setPreferredAiModel = async ({ model, adminUserId } = {}) => {
   return setPreferredGeminiModel(model, { adminUserId });
+};
+
+const probeAiModelsLive = async ({ adminUserId } = {}) => {
+  return probeGeminiModelsLive({ adminUserId });
 };
 
 /**
@@ -1364,6 +1371,7 @@ module.exports = {
   getRateLimitStatus,
   resetAiModelRouting,
   setPreferredAiModel,
+  probeAiModelsLive,
   updateAiRateLimitCaps,
   updateUserQuotaLimit,
   migrateCourseMedia
