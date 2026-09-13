@@ -124,7 +124,7 @@ describe('Admin Gemini rate-limit status', () => {
     }
   });
 
-  test('maps rolling RPM/TPM/RPD usage and computes percentages from admin caps', async () => {
+  test('maps backend attempts and compares them with admin reference caps', async () => {
     const originalQuery = db.pool.query;
     const capturedSql = [];
     const capturedParams = [];
@@ -187,8 +187,17 @@ describe('Admin Gemini rate-limit status', () => {
       assert.equal(status.windows.rpdResetPacificTime, '00:00');
       assert.match(status.windows.rpdResetVietnamTime, /^\d{2}:\d{2}$/);
       assert.ok(status.windows.nextRpdResetAt);
+      assert.deepEqual(status.telemetry, {
+        source: 'backend_observed_attempts',
+        authority: 'application',
+        providerUsageAvailable: false,
+        countsFailedAttempts: true,
+        capsAreReferenceOnly: true
+      });
       assert.deepEqual(status.models[0].usage, { rpm: 7, tpm: 125000, rpd: 225 });
+      assert.deepEqual(status.models[0].attempts, { rolling60Seconds: 7, pacificDay: 225 });
       assert.deepEqual(status.models[0].requestStatus.rpm, { success: 5, error: 2, pending: 0 });
+      assert.equal(status.models[0].comparisonBasis, 'admin_reference_caps');
       assert.deepEqual(status.models[0].percentUsed, { rpm: 70, tpm: 50, rpd: 90 });
       assert.equal(status.models[0].riskLevel, 'critical');
       assert.deepEqual(status.models[0].headroom, { rpm: 3, tpm: 125000, rpd: 25 });
@@ -299,6 +308,66 @@ describe('Best-effort Gemini 429 calibration', () => {
     assert.equal(routing.coolingDown.length, 0);
   });
 
+  test('does not infer RPD from a generic free-tier metric and honors its short retryDelay', () => {
+    const ambiguous429 = {
+      status: 429,
+      response: {
+        data: {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            details: [
+              {
+                quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                quotaValue: '20',
+                quotaDimensions: { model: 'gemini-3.7-flash' }
+              },
+              { retryDelay: '45s' }
+            ]
+          }
+        }
+      }
+    };
+
+    assert.equal(parseGeminiQuotaViolation(ambiguous429), null);
+    const cooldown = getGeminiQuotaCooldown(ambiguous429, 'gemini-3.7-flash');
+    assert.equal(cooldown.dimension, null);
+    assert.equal(cooldown.source, 'provider_retry_after');
+    assert.equal(cooldown.durationMs, 46000);
+  });
+
+  test('uses bounded exponential backoff for an ambiguous 429 without RetryInfo', () => {
+    const ambiguous429 = {
+      status: 429,
+      response: {
+        data: {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'Resource has been exhausted (e.g. check quota).'
+          }
+        }
+      }
+    };
+
+    const first = getGeminiQuotaCooldown(ambiguous429, 'gemini-3.7-flash', {
+      transientFailureCount: 1,
+      jitterMs: 0
+    });
+    const second = getGeminiQuotaCooldown(ambiguous429, 'gemini-3.7-flash', {
+      transientFailureCount: 2,
+      jitterMs: 0
+    });
+    const capped = getGeminiQuotaCooldown(ambiguous429, 'gemini-3.7-flash', {
+      transientFailureCount: 8,
+      jitterMs: 0
+    });
+
+    assert.equal(first.source, 'provider_transient_backoff');
+    assert.equal(first.dimension, null);
+    assert.equal(first.durationMs, 30000);
+    assert.equal(second.durationMs, 60000);
+    assert.equal(capped.durationMs, 300000);
+  });
+
   test('converts the Pacific RPD reset to 14:00 or 15:00 Vietnam time across DST', () => {
     const summerReset = getNextPacificRpdResetAt(Date.UTC(2026, 8, 12, 1, 0, 0));
     const winterReset = getNextPacificRpdResetAt(Date.UTC(2026, 0, 15, 1, 0, 0));
@@ -307,7 +376,7 @@ describe('Best-effort Gemini 429 calibration', () => {
     assert.equal(new Date(winterReset).toISOString(), '2026-01-15T08:00:00.000Z');
   });
 
-  test('skips models at the observed RPD cap and keeps the remaining model first', () => {
+  test('does not lock models from backend attempt counts', () => {
     resetGeminiModelRouting({ all: true });
     applyObservedGeminiRpdUsage([
       { model: 'gemini-3.7-flash', usage: { rpd: 20 }, caps: { rpd: 20 } },
@@ -315,24 +384,14 @@ describe('Best-effort Gemini 429 calibration', () => {
       { model: 'gemini-3.5-flash-lite', usage: { rpd: 15 }, caps: { rpd: 500 } }
     ]);
 
-    let routing = getGeminiModelRoutingStatus();
-    assert.equal(routing.effectiveModel, 'gemini-3.5-flash-lite');
-    assert.deepEqual(routing.coolingDown.map((item) => item.model), [
-      'gemini-3.7-flash',
-      'gemini-3.6-flash'
-    ]);
-    assert.ok(routing.coolingDown.every((item) => item.dimension === 'rpd'));
-    assert.ok(routing.coolingDown.every((item) => item.source === 'backend_observed_rpd_cap'));
-
-    recordSuccessfulGeminiModel('gemini-3.7-flash');
-    resetGeminiModelRouting();
-    routing = getGeminiModelRoutingStatus();
-    assert.equal(routing.effectiveModel, 'gemini-3.5-flash-lite');
+    const routing = getGeminiModelRoutingStatus();
+    assert.equal(routing.effectiveModel, 'gemini-3.7-flash');
+    assert.deepEqual(routing.coolingDown, []);
 
     resetGeminiModelRouting({ all: true });
   });
 
-  test('loads persisted RPD usage before choosing the model for a request', async () => {
+  test('loads backend attempts without treating them as provider quota', async () => {
     const originalQuery = db.query;
     let guardQueries = 0;
     resetGeminiModelRouting({ all: true });
@@ -353,9 +412,36 @@ describe('Best-effort Gemini 429 calibration', () => {
     try {
       const firstOrder = await getQuotaAwareFallbackModels('gemini-3.7-flash');
       const cachedOrder = await getQuotaAwareFallbackModels('gemini-3.7-flash');
-      assert.equal(firstOrder[0], 'gemini-3.5-flash-lite');
-      assert.equal(cachedOrder[0], 'gemini-3.5-flash-lite');
+      assert.equal(firstOrder[0], 'gemini-3.7-flash');
+      assert.equal(cachedOrder[0], 'gemini-3.7-flash');
       assert.equal(guardQueries, 1);
+    } finally {
+      db.query = originalQuery;
+      resetGeminiModelRouting({ all: true });
+    }
+  });
+
+  test('still skips a provider-confirmed RPD cooldown persisted in the database', async () => {
+    const originalQuery = db.query;
+    resetGeminiModelRouting({ all: true });
+    db.query = async (text) => {
+      if (text.includes('COUNT(e.id)::int AS rpd_current')) {
+        return {
+          rows: [{
+            model: 'gemini-3.7-flash',
+            rpd_current: 2,
+            rpd_cap: 20,
+            rpd_exhausted_until: new Date(Date.now() + 60_000).toISOString()
+          }]
+        };
+      }
+      return { rows: [] };
+    };
+
+    try {
+      const order = await getQuotaAwareFallbackModels('gemini-3.7-flash');
+      assert.equal(order[0], 'gemini-3.6-flash');
+      assert.equal(getGeminiModelRoutingStatus().coolingDown[0].source, 'db_persisted_rpd_exhaustion');
     } finally {
       db.query = originalQuery;
       resetGeminiModelRouting({ all: true });
@@ -383,6 +469,76 @@ describe('Best-effort Gemini 429 calibration', () => {
     assert.equal(cooldown.dimension, 'rpd');
     assert.equal(cooldown.source, 'provider_rpd_pacific_reset');
     assert.ok(cooldown.retryAt > Date.now());
+  });
+
+  test('uses provider retryDelay before Pacific reset for an explicit RPD violation', () => {
+    const rpd429 = {
+      status: 429,
+      response: {
+        data: {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            details: [
+              {
+                quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                quotaValue: '20',
+                quotaDimensions: { model: 'gemini-3.7-flash' }
+              },
+              { retryDelay: '30s' }
+            ]
+          }
+        }
+      }
+    };
+
+    const parsed = parseGeminiQuotaViolation(rpd429);
+    assert.equal(parsed.dimension, 'rpd');
+    const cooldown = getGeminiQuotaCooldown(rpd429);
+    assert.equal(cooldown.dimension, 'rpd');
+    assert.equal(cooldown.source, 'provider_rpd_retry_after');
+    assert.equal(cooldown.durationMs, 31000);
+  });
+
+  test('lets an admin force a half-open retry without sending a probe request', () => {
+    resetGeminiModelRouting({ all: true });
+    markModelQuotaExhausted(
+      'gemini-3.7-flash',
+      60_000,
+      'provider_rpd_pacific_reset',
+      { dimension: 'rpd', cap: 20 }
+    );
+    assert.equal(getGeminiModelRoutingStatus().coolingDown.length, 1);
+
+    const routing = resetGeminiModelRouting({ force: true });
+    assert.equal(routing.preferredModel, 'gemini-3.7-flash');
+    assert.equal(routing.effectiveModel, 'gemini-3.7-flash');
+    assert.equal(routing.coolingDown.length, 0);
+  });
+
+  test('prefers an explicit provider reset timestamp over inferred Pacific midnight', () => {
+    const providerResetAt = new Date(Date.now() + 120_000).toISOString();
+    const rpd429 = {
+      status: 429,
+      response: {
+        data: {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            details: [{
+              quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+              quotaValue: '20',
+              quotaDimensions: { model: 'gemini-3.7-flash' },
+              quotaResetTimestamp: providerResetAt
+            }]
+          }
+        }
+      }
+    };
+
+    const parsed = parseGeminiQuotaViolation(rpd429);
+    assert.equal(parsed.providerResetAt, Date.parse(providerResetAt));
+    const cooldown = getGeminiQuotaCooldown(rpd429);
+    assert.equal(cooldown.source, 'provider_rpd_reset_timestamp');
+    assert.ok(Math.abs(cooldown.retryAt - (Date.parse(providerResetAt) + 1000)) < 5);
   });
 
   test('clears stale cooldown immediately after a successful model response', () => {

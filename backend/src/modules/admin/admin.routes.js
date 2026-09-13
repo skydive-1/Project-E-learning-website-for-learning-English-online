@@ -40,7 +40,6 @@ router.get('/gemini-rate-limits/status', adminController.getAiRateLimitStatus);
 router.get('/gemini-rate-limits/stream', adminRateLimitsController.streamAiRateLimits);
 router.post('/gemini-rate-limits/routing/reset', adminController.resetAiModelRouting);
 router.post('/gemini-rate-limits/routing/preferred', adminController.setPreferredAiModel);
-router.post('/gemini-rate-limits/probe', adminController.probeAiModelsLive);
 router.get('/gemini-rate-limits/caps', adminController.getAiRateLimitCaps);
 router.put('/gemini-rate-limits/caps', adminController.updateAiRateLimitCaps);
 

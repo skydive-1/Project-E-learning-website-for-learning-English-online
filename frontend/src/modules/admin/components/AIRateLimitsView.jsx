@@ -21,7 +21,6 @@ import {
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
   connectGeminiRateLimitStream,
-  probeGeminiQuotaLive,
   resetGeminiModelRouting,
   setPreferredGeminiModel,
   updateGeminiRateLimitCaps
@@ -31,16 +30,16 @@ import GeminiFreeTierReference from './GeminiFreeTierReference';
 
 // Chỉ là gợi ý ban đầu cho form trống; không được dùng để tính % trước khi admin lưu.
 const SUGGESTED_CAPS = Object.freeze({
-  'gemini-3.7-flash': { rpmCap: 10, tpmCap: 250000, rpdCap: 250 },
-  'gemini-3.6-flash': { rpmCap: 10, tpmCap: 250000, rpdCap: 250 },
-  'gemini-3.5-flash-lite': { rpmCap: 15, tpmCap: 250000, rpdCap: 1000 },
+  'gemini-3.7-flash': { rpmCap: 5, tpmCap: 250000, rpdCap: 20 },
+  'gemini-3.6-flash': { rpmCap: 5, tpmCap: 250000, rpdCap: 20 },
+  'gemini-3.5-flash-lite': { rpmCap: 15, tpmCap: 250000, rpdCap: 500 },
   'gemini-embedding-001': { rpmCap: 100, tpmCap: 30000, rpdCap: 1000 }
 });
 
 const DIMENSIONS = [
-  { key: 'rpm', label: 'RPM', help: 'Requests / 60 giây (cửa sổ trượt)' },
-  { key: 'tpm', label: 'TPM', help: 'Tokens / 60 giây (cửa sổ trượt)' },
-  { key: 'rpd', label: 'RPD', help: 'Requests / ngày (reset 00:00 Pacific)' }
+  { key: 'rpm', label: 'Lượt gọi / 60s', help: 'Backend đã thử gọi trong 60 giây gần nhất' },
+  { key: 'tpm', label: 'Token / 60s', help: 'Token backend ghi nhận trong 60 giây gần nhất' },
+  { key: 'rpd', label: 'Lượt gọi hôm nay', help: 'Backend đã thử gọi trong ngày Pacific' }
 ];
 
 const MIN_MANUAL_REFRESH_MS = 650;
@@ -100,7 +99,6 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [resettingRouting, setResettingRouting] = useState(false);
   const [settingPreferredModel, setSettingPreferredModel] = useState(null);
   const [savingModel, setSavingModel] = useState(null);
-  const [probingQuota, setProbingQuota] = useState(false);
   const [error, setError] = useState(null);
   const [streamState, setStreamState] = useState('connecting');
   const isStreamConnecting = streamState === 'connecting' || streamState === 'delayed';
@@ -350,38 +348,6 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     }
   };
 
-  const handleProbeLive = async () => {
-    if (probingQuota) return;
-    try {
-      setProbingQuota(true);
-      const report = await probeGeminiQuotaLive();
-      const healthyModels = (report.results || []).filter((r) => r.status === 'healthy').map((r) => r.model);
-      const rpdExhausted = (report.results || []).filter((r) => r.status === 'rpd_exhausted').map((r) => r.model);
-
-      if (rpdExhausted.length > 0) {
-        showToast(
-          t('Google AI Studio: {{models}} đã chạm trần RPD (20/20). Backend đã điều phối sang {{effective}}.', {
-            models: rpdExhausted.join(', '),
-            effective: report.routing?.effectiveModel || 'model dự phòng'
-          }),
-          'warning'
-        );
-      } else {
-        showToast(
-          t('Đã quét live Google AI Studio: Tất cả {{count}} model đều sẵn sàng!', { count: healthyModels.length }),
-          'success'
-        );
-      }
-
-      await fetchData({ background: true, fresh: true });
-    } catch (probeErr) {
-      console.error('Không thể quét Google Quota:', probeErr);
-      showToast(probeErr.response?.data?.message || t('Lỗi khi kiểm tra Google AI Studio. Vui lòng thử lại.'), 'error');
-    } finally {
-      setProbingQuota(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="ai-rate-state" role="status">
@@ -407,34 +373,17 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     <div className="ai-rate-view">
       <header className="ai-rate-header">
         <div>
-          <h2>{t('Nhịp sử dụng Gemini')}</h2>
-          <p>{t('Theo dõi request Gemini do backend ghi nhận theo từng model. Cap chỉ có hiệu lực sau khi admin xác nhận và lưu.')}</p>
+          <h2>{t('Lượt gọi Gemini từ backend')}</h2>
+          <p>{t('Theo dõi từng lần backend thử gọi Gemini, gồm thành công, lỗi và đang xử lý. Đây không phải số usage do Google AI Studio báo cáo.')}</p>
         </div>
         <div className="ai-rate-header__actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Button
             type="button"
             variant="outline"
             size="lg"
-            className="ai-rate-probe"
-            onClick={handleProbeLive}
-            disabled={probingQuota || refreshing}
-            aria-busy={probingQuota}
-            title={t('Gửi ping trực tiếp tới Google AI Studio để quét hạn mức thực tế của từng model (0 VND)')}
-          >
-            {probingQuota ? (
-              <Spinner data-icon="inline-start" aria-hidden="true" />
-            ) : (
-              <FiActivity data-icon="inline-start" aria-hidden="true" />
-            )}
-            {probingQuota ? t('Đang quét Google...') : t('Kiểm tra quota Google')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
             className="ai-rate-refresh"
             onClick={() => fetchData({ manual: true, fresh: true })}
-            disabled={refreshing || probingQuota}
+            disabled={refreshing}
             aria-busy={refreshing}
             aria-label={refreshing ? t('Đang cập nhật') : t('Cập nhật ngay')}
           >
@@ -467,7 +416,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                         ? t('Luồng telemetry đang phục hồi')
                         : t('Đang kết nối telemetry backend...')}
             </strong>
-            <p>{t('SSE cập nhật ngay sau request AI · polling 15 giây chỉ dùng dự phòng · RPM/TPM là cửa sổ trượt 60s · RPD đặt lại lúc 00:00 Pacific.')}</p>
+            <p>{t('SSE cập nhật ngay sau mỗi lượt backend gọi AI · polling 15 giây chỉ dùng dự phòng · kết quả được tách thành công, lỗi và đang xử lý.')}</p>
           </div>
         </div>
 
@@ -489,10 +438,10 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
         <div className="ai-rate-sync-status__provider">
           <div>
-            <span>{t('Đối chiếu Google Cloud Monitoring')}</span>
-            <strong>{t('Chưa kết nối')}</strong>
+            <span>{t('Usage chính thức của Google')}</span>
+            <strong>{t('Chỉ đối chiếu thủ công')}</strong>
           </div>
-          <p>{t('Gemini API key không cấp quyền đọc Usage. Cần service account để đồng bộ metric từ Google; dữ liệu Google có thể trễ khoảng 150 giây.')}</p>
+          <p>{t('GEMINI_API_KEY không đọc được bộ đếm trên AI Studio. Ngưỡng lưu trong hệ thống chỉ dùng để tham chiếu, không phải quota còn lại.')}</p>
           <a href="https://aistudio.google.com/usage" target="_blank" rel="noreferrer">
             {t('Mở Google AI Studio')}
             <FiExternalLink aria-hidden="true" />
@@ -506,7 +455,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
             <div>
               <span className="ai-model-routing__eyebrow">{t('Điều phối model')}</span>
               <h2 id="ai-model-routing-title">{t('Fallback và tự phục hồi')}</h2>
-              <p>{t('Backend bỏ qua model đã hết RPD hoặc đang cooldown, rồi tự chọn model còn quota theo thứ tự ưu tiên.')}</p>
+              <p>{t('Backend chỉ bỏ qua model khi Gemini API trả tín hiệu quota hoặc model đang cooldown; số lượt gọi nội bộ không tự khóa model.')}</p>
             </div>
             <div className="ai-model-routing__heading-actions">
               {canManageCaps && (
@@ -526,7 +475,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       const isRpdExhausted = mCooldown?.dimension === 'rpd';
                       return (
                         <option key={m} value={m} disabled={isRpdExhausted}>
-                          {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''} {isRpdExhausted ? t('(🔒 Hết RPD)') : ''}
+                          {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''} {isRpdExhausted ? t('(Google API đang cooldown)') : ''}
                         </option>
                       );
                     })}
@@ -536,7 +485,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
               <span className={`ai-model-routing__state${preferredModelCoolingDown ? ' is-cooling' : ' is-ready'}`}>
                 <i aria-hidden="true" />
                 {preferredModelRpdExhausted
-                  ? t('Đang dùng model còn RPD')
+                  ? t('Đang dùng model dự phòng')
                   : preferredModelCoolingDown
                     ? t('Model chính đang chờ')
                     : routing.isCustomPreferred
@@ -570,7 +519,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                         }
                       } : undefined}
                       title={isRpdExhausted
-                        ? t('Model {{model}} đã hết 20 RPD trong ngày. Hệ thống tạm khóa và sẽ tự động mở lại vào lúc {{time}}.', {
+                        ? t('Gemini API đã trả lỗi quota RPD cho {{model}}. Backend tạm dừng model đến {{time}} để tránh gửi lặp request lỗi.', {
                             model,
                             time: dateTimeFormatter.format(new Date(cooldown.retryAt))
                           })
@@ -587,8 +536,8 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                           </span>
                         )}
                         {isRpdExhausted && !isPreferred && (
-                          <span className="ai-model-routing__lock-badge" title={t('Hết RPD trong ngày')}>
-                            🔒 {t('Tạm khóa')}
+                          <span className="ai-model-routing__lock-badge" title={t('Gemini API đang từ chối request do quota')}>
+                            {t('Provider cooldown')}
                           </span>
                         )}
                       </div>
@@ -596,7 +545,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       <small>
                         {cooldown
                           ? cooldown.dimension === 'rpd'
-                            ? t('Hết RPD · đặt lại {{time}}', {
+                            ? t('Google API từ chối · thử lại {{time}}', {
                                 time: dateTimeFormatter.format(new Date(cooldown.retryAt))
                               })
                             : t('Thử lại {{time}}', {
@@ -607,7 +556,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       {canManageCaps && !isPreferred && (
                         <span className="ai-model-routing__action-hint">
                           {isRpdExhausted
-                            ? t('Đã khóa RPD')
+                            ? t('Provider cooldown')
                             : settingPreferredModel === model
                               ? t('Đang chuyển...')
                               : t('Bấm để ưu tiên')}
@@ -638,14 +587,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
           <footer className="ai-model-routing__footer">
             <p>
-              {t('Routing dùng telemetry do backend quan sát để bỏ qua model đã chạm RPD; Google AI Studio và phản hồi 429 vẫn là nguồn đối chiếu cuối. Model tự trở lại sau 00:00 Pacific.')}
+              {t('Routing không suy ra quota Google từ số lượt gọi nội bộ. Mọi phản hồi 429 đều dùng cooldown ngắn hoặc RetryInfo; chỉ payload ghi rõ quota ngày mới được phân loại là RPD. Model khác tiếp tục phục vụ theo thứ tự fallback.')}
             </p>
             {canManageCaps && (
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleResetRouting}
-                disabled={resettingRouting || !preferredModelCoolingDown || preferredModelRpdExhausted}
+                disabled={resettingRouting || !preferredModelCoolingDown}
                 aria-busy={resettingRouting}
               >
                 {resettingRouting
@@ -653,9 +602,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                   : <FiArrowUpCircle data-icon="inline-start" aria-hidden="true" />}
                 {resettingRouting
                   ? t('Đang khôi phục')
-                  : preferredModelRpdExhausted
-                    ? t('Chờ reset RPD')
-                    : preferredModelCoolingDown
+                  : preferredModelCoolingDown
                     ? t('Khôi phục model ưu tiên')
                     : t('Model ưu tiên đã sẵn sàng')}
               </Button>
@@ -675,14 +622,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
         <div className="ai-rate-discrepancy" role="alert">
           <FiAlertTriangle aria-hidden="true" />
           <div>
-            <strong>{t('Phát hiện giới hạn thật có thể khác cấu hình hiện tại — vui lòng xác nhận lại.')}</strong>
+            <strong>{t('Tín hiệu quota từ Google không khớp với số lượt backend đã ghi nhận.')}</strong>
             <ul>
               {status.notices.map((notice) => (
                 <li key={`${notice.model}-${notice.dimension}`}>
-                  <code>{notice.model}</code> · {notice.dimension.toUpperCase()} · {t('cap đang lưu')} {numberFormatter.format(notice.configuredCap)}
+                  <code>{notice.model}</code> · {notice.dimension.toUpperCase()} · {t('ngưỡng tham chiếu')} {numberFormatter.format(notice.configuredCap)}
                   {notice.providerLimit
-                    ? ` · ${t('tín hiệu từ Google')} ${numberFormatter.format(notice.providerLimit)}`
-                    : ` · ${t('usage quan sát')} ${numberFormatter.format(notice.observedUsage)}`}
+                    ? ` · ${t('Google báo giới hạn')} ${numberFormatter.format(notice.providerLimit)} · ${t('backend đã thử {{count}} lượt', { count: numberFormatter.format(notice.observedUsage) })}`
+                    : ` · ${t('backend đã thử {{count}} lượt', { count: numberFormatter.format(notice.observedUsage) })}`}
                 </li>
               ))}
             </ul>
@@ -693,8 +640,8 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       {(status?.models || []).length === 0 ? (
         <div className="ai-rate-empty">
           <FiActivity aria-hidden="true" />
-          <h3>{t('Chưa có model hoạt động trong 24 giờ qua')}</h3>
-          <p>{t('Khi Gemini phát sinh usage, model sẽ xuất hiện ở đây. Bạn vẫn có thể chuẩn bị cap trong phần cấu hình bên dưới.')}</p>
+          <h3>{t('Backend chưa gọi model Gemini nào trong 24 giờ qua')}</h3>
+          <p>{t('Model sẽ xuất hiện sau lần backend thử gọi đầu tiên. Bạn vẫn có thể lưu ngưỡng tham chiếu ở phần cấu hình bên dưới.')}</p>
         </div>
       ) : (
         <div className="ai-model-grid">
@@ -709,7 +656,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                   <h3>{item.model}</h3>
                   <span className={item.configured ? 'is-configured' : 'is-unconfigured'}>
                     {item.configured ? <FiCheck aria-hidden="true" /> : <FiInfo aria-hidden="true" />}
-                    {item.configured ? t('Đã xác nhận cap') : t('Chưa cấu hình cap')}
+                    {item.configured ? t('Đã lưu ngưỡng tham chiếu') : t('Chưa có ngưỡng tham chiếu')}
                   </span>
                 </div>
                 <span className={`ai-model-live is-${streamState}`}><i /> {streamState === 'live' ? 'BACKEND LIVE' : 'BACKEND'}</span>
@@ -739,7 +686,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       </div>
                       <div className="ai-limit-meter__values">
                         <span>{numberFormatter.format(current)}</span>
-                        <span>{cap ? `/ ${numberFormatter.format(cap)}` : t('Chưa có cap')}</span>
+                        <span>{cap ? `/ ${t('ngưỡng')} ${numberFormatter.format(cap)}` : t('Chưa có ngưỡng')}</span>
                       </div>
                     </div>
                   );
@@ -775,7 +722,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     time: dateTimeFormatter.format(new Date(item.updatedAt)),
                     name: item.updatedByName ? ` · ${item.updatedByName}` : ''
                   })
-                  : t('Cần xác nhận cap trong Google AI Studio')}
+                  : t('Chưa lưu ngưỡng tham chiếu')}
               </footer>
             </article>
           ))}

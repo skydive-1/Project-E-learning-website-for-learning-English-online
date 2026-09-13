@@ -10,8 +10,7 @@ const {
   getGeminiModelRoutingStatus,
   getNextPacificRpdResetAt,
   resetGeminiModelRouting,
-  setPreferredGeminiModel,
-  probeGeminiModelsLive
+  setPreferredGeminiModel
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { notifyAiRateLimitsChanged } = require('../../../utils/aiRateLimitEvents');
@@ -982,7 +981,9 @@ const getAiRateLimitCaps = async () => {
 };
 
 /**
- * Tính usage theo model: RPM/TPM là rolling 60 giây, RPD reset lúc 00:00 Pacific.
+ * Tính telemetry theo model từ ai_usage_events.
+ * RPM/RPD ở đây là số lần backend thử gọi (gồm success/error/pending), không phải
+ * số quota còn lại hoặc usage chính thức do Google AI Studio báo cáo.
  */
 const getRateLimitStatus = async () => {
   const runtimeModels = Array.from(new Set([
@@ -1122,6 +1123,10 @@ const getRateLimitStatus = async () => {
     return {
       model: row.model,
       usage,
+      attempts: {
+        rolling60Seconds: usage.rpm,
+        pacificDay: usage.rpd
+      },
       requestStatus: {
         rpm: {
           success: Number(row.rpm_success || 0),
@@ -1143,6 +1148,7 @@ const getRateLimitStatus = async () => {
       },
       overLimitDimensions,
       peakPercent,
+      comparisonBasis: 'admin_reference_caps',
       rpdExhaustedUntil: row.rpd_exhausted_until || null,
       riskLevel: !configured ? 'unconfigured'
         : peakPercent >= 100 ? 'exceeded'
@@ -1168,8 +1174,7 @@ const getRateLimitStatus = async () => {
     checkedAt: new Date().toISOString()
   };
 
-  // Đồng bộ telemetry backend vào runtime router mà không gọi thử Gemini.
-  // Google 429 vẫn là nguồn xác nhận cuối nếu cap admin cấu hình không còn đúng.
+  // Chỉ nạp cooldown provider đã lưu. Telemetry attempts không được tự khóa model.
   applyObservedGeminiRpdUsage(models);
 
   const nextResetTimestamp = getNextPacificRpdResetAt();
@@ -1183,6 +1188,13 @@ const getRateLimitStatus = async () => {
 
   return {
     generatedAt: new Date().toISOString(),
+    telemetry: {
+      source: 'backend_observed_attempts',
+      authority: 'application',
+      providerUsageAvailable: false,
+      countsFailedAttempts: true,
+      capsAreReferenceOnly: true
+    },
     windows: {
       rpmSeconds: 60,
       tpmSeconds: 60,
@@ -1207,7 +1219,9 @@ const getRateLimitStatus = async () => {
 };
 
 const resetAiModelRouting = ({ adminUserId } = {}) => {
-  const routing = resetGeminiModelRouting();
+  // Đây không phải probe: chỉ mở circuit breaker. Request nghiệp vụ thật tiếp theo
+  // sẽ xác nhận model đã phục hồi hay tiếp tục nhận 429 từ Google.
+  const routing = resetGeminiModelRouting({ force: true });
   console.info(
     `[AI Model Routing] Admin ${adminUserId || "unknown"} đã mở lại model ưu tiên ${routing.preferredModel}; request thật tiếp theo sẽ kiểm tra model này.`
   );
@@ -1216,10 +1230,6 @@ const resetAiModelRouting = ({ adminUserId } = {}) => {
 
 const setPreferredAiModel = async ({ model, adminUserId } = {}) => {
   return setPreferredGeminiModel(model, { adminUserId });
-};
-
-const probeAiModelsLive = async ({ adminUserId } = {}) => {
-  return probeGeminiModelsLive({ adminUserId });
 };
 
 /**
@@ -1374,7 +1384,6 @@ module.exports = {
   getRateLimitStatus,
   resetAiModelRouting,
   setPreferredAiModel,
-  probeAiModelsLive,
   updateAiRateLimitCaps,
   updateUserQuotaLimit,
   migrateCourseMedia

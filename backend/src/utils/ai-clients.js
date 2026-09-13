@@ -195,6 +195,10 @@ function getGeminiFallbackModels(preferredModel) {
 const DEFAULT_MODEL_QUOTA_COOLDOWN_MS = 60 * 1000;
 const MIN_MODEL_QUOTA_COOLDOWN_MS = 5 * 1000;
 const MAX_MODEL_QUOTA_COOLDOWN_MS = 26 * 60 * 60 * 1000;
+const TRANSIENT_QUOTA_BACKOFF_BASE_MS = 30 * 1000;
+const TRANSIENT_QUOTA_BACKOFF_MAX_MS = 5 * 60 * 1000;
+const TRANSIENT_QUOTA_STREAK_TTL_MS = 5 * 60 * 1000;
+const TRANSIENT_QUOTA_JITTER_MAX_MS = 1000;
 const RPD_ROUTING_REFRESH_MS = 15 * 1000;
 const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
 const pacificDayFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -206,6 +210,7 @@ const pacificDayFormatter = new Intl.DateTimeFormat('en-CA', {
 
 // Trạng thái này chỉ điều phối request trong process hiện tại; không tạo probe Gemini riêng.
 const modelQuotaCooldown = new Map();
+const modelQuotaFailureStreak = new Map();
 const observedRpdUsage = new Map();
 let rpdRoutingRefreshExpiresAt = 0;
 let rpdRoutingRefreshModelsKey = '';
@@ -299,9 +304,21 @@ function clearModelQuotaCooldown(model) {
   return modelQuotaCooldown.delete(normalizedModel);
 }
 
+function noteModelQuotaFailure(model, now = Date.now()) {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) return 1;
+  const previous = modelQuotaFailureStreak.get(normalizedModel);
+  const count = previous && now - previous.lastFailureAt <= TRANSIENT_QUOTA_STREAK_TTL_MS
+    ? Math.min(previous.count + 1, 8)
+    : 1;
+  modelQuotaFailureStreak.set(normalizedModel, { count, lastFailureAt: now });
+  return count;
+}
+
 function recordSuccessfulGeminiModel(model) {
   const normalizedModel = String(model || '').trim();
   if (!normalizedModel) return;
+  modelQuotaFailureStreak.delete(normalizedModel);
   const cooldown = modelQuotaCooldown.get(normalizedModel);
   if (cooldown?.dimension !== 'rpd') clearModelQuotaCooldown(normalizedModel);
   lastSuccessfulGeminiModel = normalizedModel;
@@ -380,18 +397,20 @@ function getGeminiModelRoutingStatus() {
   };
 }
 
-function resetGeminiModelRouting({ all = false } = {}) {
+function resetGeminiModelRouting({ all = false, force = false } = {}) {
   const preferred = getActivePreferredModel();
   if (all) {
     modelQuotaCooldown.clear();
+    modelQuotaFailureStreak.clear();
     observedRpdUsage.clear();
     rpdRoutingRefreshExpiresAt = 0;
     rpdRoutingRefreshModelsKey = '';
   }
   else {
     const preferredState = modelQuotaCooldown.get(preferred);
-    if (preferredState?.dimension !== 'rpd') {
+    if (force || preferredState?.dimension !== 'rpd') {
       clearModelQuotaCooldown(preferred);
+      modelQuotaFailureStreak.delete(preferred);
     }
   }
   lastManualRoutingResetAt = new Date().toISOString();
@@ -455,14 +474,10 @@ function applyObservedGeminiRpdUsage(models = [], { now = Date.now() } = {}) {
     observedRpdUsage.set(model, { usage, cap, resetAt, pacificDay });
     const currentCooldown = modelQuotaCooldown.get(model);
 
-    if (usage >= cap) {
-      markModelQuotaExhausted(
-        model,
-        Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, resetAt - now + 1000),
-        'backend_observed_rpd_cap',
-        { dimension: 'rpd', observedUsage: usage, cap }
-      );
-    } else if (currentCooldown?.source === 'backend_observed_rpd_cap') {
+    // ai_usage_events là số lần backend thử gọi, gồm cả request bị Google từ chối.
+    // Vì vậy usage nội bộ chỉ dùng để hiển thị telemetry, không được tự kết luận
+    // project đã hết RPD. Chỉ phản hồi quota có cấu trúc từ provider mới điều phối cooldown.
+    if (currentCooldown?.source === 'backend_observed_rpd_cap') {
       clearModelQuotaCooldown(model);
     }
   }
@@ -483,14 +498,6 @@ function noteObservedGeminiAttempt(model, now = Date.now()) {
   }
 
   state.usage += 1;
-  if (state.usage >= state.cap) {
-    markModelQuotaExhausted(
-      normalizedModel,
-      Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, state.resetAt - now + 1000),
-      'backend_observed_rpd_cap',
-      { dimension: 'rpd', observedUsage: state.usage, cap: state.cap }
-    );
-  }
 }
 
 async function refreshObservedGeminiRpdRouting(models) {
@@ -603,7 +610,11 @@ const normalizeGeminiError = (error) => {
   return quotaError;
 };
 
-const getGeminiQuotaCooldown = (error, fallbackModel = null) => {
+const getGeminiQuotaCooldown = (
+  error,
+  fallbackModel = null,
+  { transientFailureCount = 1, jitterMs = 0 } = {}
+) => {
   const normalized = normalizeGeminiError(error);
   const retryAfterMs = Number(normalized?.retryAfterMs);
   const parsed = parseGeminiQuotaViolation(error, fallbackModel);
@@ -611,19 +622,36 @@ const getGeminiQuotaCooldown = (error, fallbackModel = null) => {
 
   if (isRpdExhausted) {
     const now = Date.now();
+    const providerResetAt = Number(parsed?.providerResetAt);
+    if (Number.isFinite(providerResetAt) && providerResetAt > now) {
+      const resetAt = providerResetAt + 1000;
+      return {
+        durationMs: normalizeModelCooldownDuration(resetAt - now),
+        source: 'provider_rpd_reset_timestamp',
+        dimension: 'rpd',
+        retryAt: resetAt
+      };
+    }
+
+    // RetryInfo là chỉ dẫn trực tiếp cho request vừa thất bại. Tôn trọng chỉ dẫn này
+    // để model có cơ hội half-open bằng request thật, kể cả khi quotaId ghi RPD.
+    // Nếu Google tiếp tục trả 429, model sẽ lại cooldown và fallback vẫn phục vụ user.
+    if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+      const resetAt = now + retryAfterMs + 1000;
+      return {
+        durationMs: normalizeModelCooldownDuration(resetAt - now),
+        source: 'provider_rpd_retry_after',
+        dimension: 'rpd',
+        retryAt: resetAt
+      };
+    }
+
     const pacificResetAt = getNextPacificRpdResetAt(now) + 1000;
-    // Google thường gửi retryDelay mặc định (49s-60s) ngay cả khi đã chạm trần RPD ngày.
-    // Lỗi RPD chỉ thực sự hết hiệu lực sau mốc đặt lại 00:00 Pacific (14:00 VN).
-    // Chỉ tôn trọng retryAfterMs nếu nó đại diện cho một khoảng tạm dừng dài hơn 1 giờ.
-    const isExtendedRetryAfter = Number.isFinite(retryAfterMs) && retryAfterMs > 3600_000;
-    const resetAt = isExtendedRetryAfter ? now + retryAfterMs + 1000 : pacificResetAt;
     return {
-      durationMs: normalizeModelCooldownDuration(resetAt - now),
-      source: isExtendedRetryAfter
-        ? 'provider_rpd_retry_after'
-        : 'provider_rpd_pacific_reset',
+      durationMs: normalizeModelCooldownDuration(pacificResetAt - now),
+      source: 'provider_rpd_pacific_reset',
       dimension: 'rpd',
-      retryAt: resetAt
+      retryAt: pacificResetAt
     };
   }
 
@@ -635,9 +663,18 @@ const getGeminiQuotaCooldown = (error, fallbackModel = null) => {
       dimension: parsed?.dimension || null
     };
   }
+  const failureCount = Math.max(1, Math.min(8, Math.floor(Number(transientFailureCount) || 1)));
+  const exponentialDelay = Math.min(
+    TRANSIENT_QUOTA_BACKOFF_MAX_MS,
+    TRANSIENT_QUOTA_BACKOFF_BASE_MS * (2 ** (failureCount - 1))
+  );
+  const safeJitterMs = Math.max(
+    0,
+    Math.min(TRANSIENT_QUOTA_JITTER_MAX_MS, Math.floor(Number(jitterMs) || 0))
+  );
   return {
-    durationMs: DEFAULT_MODEL_QUOTA_COOLDOWN_MS,
-    source: 'default_60_seconds',
+    durationMs: normalizeModelCooldownDuration(exponentialDelay + safeJitterMs),
+    source: 'provider_transient_backoff',
     dimension: parsed?.dimension || null
   };
 };
@@ -778,10 +815,12 @@ function parseGeminiQuotaViolation(error, fallbackModel = null) {
   const searchable = entries.map((entry) => `${entry.path}=${entry.value}`).join('\n');
   const normalized = searchable.toLowerCase().replace(/[\s_.:/-]+/g, '');
 
+  // Chỉ xem là RPD khi provider nêu rõ "per day"/"daily"/"RPD". Tên metric
+  // chung generate_content_free_tier_requests không đủ để phân biệt RPM và RPD.
   let dimension = null;
   if (/tpm|tokens?perminute/.test(normalized)) dimension = 'tpm';
   else if (/rpm|requests?perminute/.test(normalized)) dimension = 'rpm';
-  else if (/rpd|requests?perday|dailyrequests?|generatecontentfreetierrequests/.test(normalized)) dimension = 'rpd';
+  else if (/rpd|requests?perday|dailyrequests?|requests?daily|perdayperproject/.test(normalized)) dimension = 'rpd';
   if (!dimension) return null;
 
   const knownModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-embedding-001'];
@@ -799,11 +838,17 @@ function parseGeminiQuotaViolation(error, fallbackModel = null) {
   ));
   const messageLimitMatch = searchable.match(/limit:\s*(\d+)/i);
   const providerLimit = limitEntry ? Number(limitEntry.value) : (messageLimitMatch ? Number(messageLimitMatch[1]) : null);
+  const resetEntry = entries.find((entry) => (
+    /quotareset(timestamp|time|at)|reset(timestamp|time|at)/i.test(entry.path)
+    && Number.isFinite(Date.parse(entry.value))
+  ));
+  const providerResetAt = resetEntry ? Date.parse(resetEntry.value) : null;
 
   return {
     model,
     dimension,
     providerLimit,
+    providerResetAt,
     rawDetail
   };
 }
@@ -818,7 +863,13 @@ async function recordGeminiQuotaSignal({ error, model }) {
     if (!isGeminiQuotaError(error)) return;
 
     const parsed = parseGeminiQuotaViolation(error, model);
-    const cooldown = getGeminiQuotaCooldown(error, model);
+    const cooldownModel = parsed?.model || model;
+    const transientFailureCount = noteModelQuotaFailure(cooldownModel);
+    const jitterMs = Math.floor(Math.random() * TRANSIENT_QUOTA_JITTER_MAX_MS);
+    const cooldown = getGeminiQuotaCooldown(error, model, {
+      transientFailureCount,
+      jitterMs
+    });
     const cooldownMetadata = {
       dimension: cooldown.dimension || parsed?.dimension || null,
       observedUsage: null,
@@ -936,71 +987,6 @@ function getAiClient() {
     return ai;
   }
   throw new Error("Chưa cấu hình GEMINI_API_KEY trong file .env. Vui lòng lấy key miễn phí từ https://aistudio.google.com/app/apikey và dán vào backend/.env");
-}
-
-/**
- * Thực hiện quét trực tiếp (Live Probe) tới Google Gemini API để cập nhật chính xác
- * trạng thái quota, RPD và độ trễ của các model theo thời gian thực (0 VND).
- */
-async function probeGeminiModelsLive({ adminUserId = null } = {}) {
-  const modelsToProbe = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
-  const results = [];
-  const client = getAiClient();
-
-  for (const model of modelsToProbe) {
-    const startTime = Date.now();
-    try {
-      await client.models.generateContent({
-        model,
-        contents: 'ping'
-      });
-      const latencyMs = Date.now() - startTime;
-      clearModelQuotaCooldown(model);
-      recordSuccessfulGeminiModel(model);
-      results.push({
-        model,
-        status: 'healthy',
-        statusCode: 200,
-        latencyMs,
-        dimension: null,
-        providerLimit: null,
-        message: 'Sẵn sàng hoạt động (200 OK)'
-      });
-    } catch (error) {
-      const latencyMs = Date.now() - startTime;
-      const isQuota = isGeminiQuotaError(error);
-      const parsed = parseGeminiQuotaViolation(error, model);
-      const cooldown = getGeminiQuotaCooldown(error, model);
-
-      if (isQuota) {
-        await recordGeminiQuotaSignal({ error, model });
-      } else {
-        markModelQuotaExhausted(model, cooldown.durationMs, 'probe_error', { dimension: 'error' });
-      }
-
-      results.push({
-        model,
-        status: isQuota ? (parsed?.dimension === 'rpd' ? 'rpd_exhausted' : 'quota_exhausted') : 'error',
-        statusCode: error?.status || 429,
-        latencyMs,
-        dimension: parsed?.dimension || 'unknown',
-        providerLimit: parsed?.providerLimit || null,
-        message: error?.message?.slice(0, 300) || 'Lỗi hạn mức hoặc kết nối'
-      });
-    }
-  }
-
-  const updatedRouting = getGeminiModelRoutingStatus();
-  console.info(
-    `[AI Quota Prober] Admin ${adminUserId || 'system'} đã quét live ${modelsToProbe.length} model. Kết quả: `
-    + results.map((r) => `${r.model}: ${r.status}`).join(', ')
-  );
-
-  return {
-    probedAt: new Date().toISOString(),
-    results,
-    routing: updatedRouting
-  };
 }
 
 /**
@@ -1527,7 +1513,6 @@ module.exports = {
   resetGeminiModelRouting,
   setPreferredGeminiModel,
   getActivePreferredModel,
-  probeGeminiModelsLive,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
   geminiModel,

@@ -3,7 +3,7 @@ import { FiAlertOctagon, FiAlertTriangle, FiCheckCircle, FiShield } from 'react-
 
 import { useLanguage } from '../../../context/LanguageContext';
 
-const DIMENSION_LABELS = { rpm: 'RPM', tpm: 'TPM', rpd: 'RPD' };
+const DIMENSION_LABELS = { rpm: 'Lượt gọi / 60s', tpm: 'Token / 60s', rpd: 'Lượt gọi hôm nay' };
 
 export const assessFreeTierUsage = (models = []) => models.map((model) => {
   const entries = Object.entries(model.percentUsed || {}).filter(([, value]) => Number.isFinite(value));
@@ -22,10 +22,10 @@ export const assessFreeTierUsage = (models = []) => models.map((model) => {
 });
 
 const LEVEL_META = {
-  exceeded: { icon: FiAlertOctagon, label: 'Đã vượt cap', tone: 'danger' },
-  critical: { icon: FiAlertTriangle, label: 'Sát ngưỡng 429', tone: 'danger' },
-  warning: { icon: FiAlertTriangle, label: 'Cần giảm nhịp', tone: 'warning' },
-  healthy: { icon: FiCheckCircle, label: 'Trong ngưỡng an toàn', tone: 'healthy' },
+  exceeded: { icon: FiAlertOctagon, label: 'Đã vượt ngưỡng tham chiếu', tone: 'danger' },
+  critical: { icon: FiAlertTriangle, label: 'Gần ngưỡng tham chiếu', tone: 'danger' },
+  warning: { icon: FiAlertTriangle, label: 'Nhịp gọi đang tăng', tone: 'warning' },
+  healthy: { icon: FiCheckCircle, label: 'Nhịp gọi bình thường', tone: 'healthy' },
   unconfigured: { icon: FiShield, label: 'Chưa thể giám sát', tone: 'muted' }
 };
 
@@ -48,8 +48,8 @@ const FreeTierUsageGuard = ({ models = [], checkedAt }) => {
         <div className="free-tier-guard__title">
           <HeaderIcon aria-hidden="true" />
           <div>
-            <h2 id="free-tier-guard-title">{t('Free-tier Usage Guard')}</h2>
-            <p>{t('Tự quét RPM, TPM và RPD mỗi 15 giây để phát hiện nguy cơ 429 trước khi chạm giới hạn.')}</p>
+            <h2 id="free-tier-guard-title">{t('Giám sát lượt gọi backend')}</h2>
+            <p>{t('So sánh số lần backend thử gọi với ngưỡng admin lưu để nhận biết nhịp sử dụng; không đại diện quota Google còn lại.')}</p>
           </div>
         </div>
         <div className={`free-tier-guard__verdict is-${meta.tone}`}>
@@ -73,8 +73,8 @@ const FreeTierUsageGuard = ({ models = [], checkedAt }) => {
                 <strong>{item.peakPercent === null ? '—' : `${numberFormatter.format(item.peakPercent)}%`}</strong>
                 <small>
                   {item.headroomAtPeak === null || item.headroomAtPeak === undefined
-                    ? t('Lưu cap để bật cảnh báo chủ động')
-                    : t('Còn {{count}} đơn vị trước cap', { count: numberFormatter.format(item.headroomAtPeak) })}
+                    ? t('Lưu ngưỡng để bật so sánh')
+                    : t('Còn {{count}} đơn vị trước ngưỡng tham chiếu', { count: numberFormatter.format(item.headroomAtPeak) })}
                 </small>
               </div>
             );
@@ -83,7 +83,7 @@ const FreeTierUsageGuard = ({ models = [], checkedAt }) => {
       )}
 
       <footer>
-        {t('Guard đếm mọi request Gemini do backend gửi, kể cả request lỗi; Google AI Studio vẫn là nguồn đối chiếu cuối cùng.')}
+        {t('Bao gồm mọi lần backend thử gọi, kể cả request lỗi. Google AI Studio vẫn là nơi xem usage chính thức của project.')}
       </footer>
     </section>
   );

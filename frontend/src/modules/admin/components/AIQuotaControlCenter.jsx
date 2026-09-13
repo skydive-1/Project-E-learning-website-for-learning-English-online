@@ -66,8 +66,8 @@ const AIQuotaControlCenter = ({ canManageCaps = false }) => {
         >
           <FiActivity aria-hidden="true" />
           <span>
-            <strong>{t('Rate Limits Google')}</strong>
-            <small>RPM · TPM · RPD (Pacific Time)</small>
+            <strong>{t('Lượt gọi Gemini từ backend')}</strong>
+            <small>{t('Lượt gọi · token · kết quả')}</small>
           </span>
         </button>
       </div>
