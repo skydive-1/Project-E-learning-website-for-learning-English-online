@@ -476,8 +476,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       <small>
                         {cooldown
                           ? cooldown.dimension === 'rpd'
-                            ? t('Hết RPD{{limit}} · đặt lại {{time}}', {
-                                limit: cooldown.cap ? ` (${cooldown.cap}/${cooldown.cap})` : '',
+                            ? t('Hết RPD · đặt lại {{time}}', {
                                 time: dateTimeFormatter.format(new Date(cooldown.retryAt))
                               })
                             : t('Thử lại {{time}}', {
