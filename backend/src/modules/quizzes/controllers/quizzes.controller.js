@@ -932,13 +932,13 @@ exports.generateQuizAiFromPdf = async (req, res, next) => {
       throw err;
     }
 
-    const pdfParse = require('pdf-parse');
+    const { extractTextFromPdf } = require('../../../utils/pdfExtractor.util');
     const extractedDocs = [];
 
     for (const f of files) {
       try {
-        const data = await pdfParse(f.buffer);
-        const text = (data.text || '').replace(/\r\n/g, '\n').trim();
+        const rawText = await extractTextFromPdf(f.buffer);
+        const text = (rawText || '').replace(/\r\n/g, '\n').trim();
         if (text.length > 50) {
           extractedDocs.push({
             name: f.originalname || 'De_thi.pdf',
