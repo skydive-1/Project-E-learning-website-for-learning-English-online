@@ -68,6 +68,12 @@ router.post('/rate-limit/toggle', adminController.toggleRateLimit);
 // Query: ?dryRun=true (chỉ xem kế hoạch) | ?deleteSource=false (giữ lại file Supabase)
 router.post('/courses/:courseId/migrate-media', adminController.migrateCourseMedia);
 
+// Publishing Gate & Transcript Automation endpoints cho Admin
+const coursesController = require('../courses/controllers/courses.controller');
+router.post('/courses/:courseId/approve', coursesController.approveCourse);
+router.post('/courses/:courseId/reject', coursesController.rejectCourse);
+router.get('/courses/:courseId/transcript-pipeline', coursesController.getCourseTranscriptPipeline);
+
 /**
  * @swagger
  * tags:

@@ -30,124 +30,19 @@ router.post('/', authenticate, authorize([1, 2]), coursesController.createCourse
 // PUT /api/courses/:courseId - Cập nhật thông tin khóa học
 router.put('/:courseId', authenticate, authorize([1, 2]), coursesController.updateCourse);
 
+// POST /api/courses/:courseId/submit-review - Giảng viên gửi khóa học vào Cổng kiểm duyệt
+router.post('/:courseId/submit-review', authenticate, authorize([1, 2]), coursesController.submitForReview);
+
+// POST /api/courses/:courseId/approve - Admin phê duyệt xuất bản khóa học
+router.post('/:courseId/approve', authenticate, authorize([1]), coursesController.approveCourse);
+
+// POST /api/courses/:courseId/reject - Admin từ chối/yêu cầu sửa khóa học
+router.post('/:courseId/reject', authenticate, authorize([1]), coursesController.rejectCourse);
+
+// GET /api/courses/:courseId/transcript-pipeline - Xem chi tiết quy trình tự động hóa Transcript & AI của khóa học
+router.get('/:courseId/transcript-pipeline', authenticate, authorize([1, 2]), coursesController.getCourseTranscriptPipeline);
+
 // DELETE /api/courses/:courseId - Xóa khóa học
 router.delete('/:courseId', authenticate, authorize([1, 2]), coursesController.deleteCourse);
 
-/**
- * @swagger
- * tags:
- *   name: Courses
- *   description: API quản lý khóa học
- * 
- * /api/courses:
- *   get:
- *     summary: Lấy danh sách khóa học
- *     tags: [Courses]
- *     responses:
- *       200:
- *         description: Thành công
- *   post:
- *     summary: Tạo khóa học mới
- *     tags: [Courses]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Thành công
- * 
- * /api/courses/subjects:
- *   get:
- *     summary: Lấy danh sách môn học
- *     tags: [Courses]
- *     responses:
- *       200:
- *         description: Thành công
- * 
- * /api/courses/{courseId}:
- *   get:
- *     summary: Lấy chi tiết khóa học
- *     tags: [Courses]
- *     parameters:
- *       - in: path
- *         name: courseId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Thành công
- *   put:
- *     summary: Cập nhật khóa học
- *     tags: [Courses]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: courseId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Thành công
- *   delete:
- *     summary: Xóa khóa học
- *     tags: [Courses]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: courseId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Thành công
- * 
- * /api/courses/lessons/{lessonId}:
- *   get:
- *     summary: Lấy chi tiết bài học
- *     tags: [Courses]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: lessonId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Thành công
- * 
- * /api/courses/upload:
- *   post:
- *     summary: Tải lên file
- *     tags: [Courses]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *     responses:
- *       200:
- *         description: Thành công
- */
 module.exports = router;
