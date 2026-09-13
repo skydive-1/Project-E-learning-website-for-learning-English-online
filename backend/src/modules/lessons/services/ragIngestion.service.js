@@ -267,6 +267,10 @@ async function deleteMaterialVectors(materialId) {
       console.log(`[RAG Ingestion] ✅ Đã xóa toàn bộ vector của materialId=${materialId} khỏi Pinecone.`);
     }
   } catch (err) {
+    if (err.status === 404 || /404|not found/i.test(err.message)) {
+      console.log(`[RAG Ingestion] ℹ️ Không có vector cũ cho materialId=${materialId} (Pinecone 404), tiếp tục.`);
+      return;
+    }
     console.warn(`[RAG Ingestion] Cảnh báo xóa vector của materialId=${materialId}:`, err.message);
     throw err;
   }
@@ -278,7 +282,15 @@ async function deleteLessonVectors(lessonId, source = null, materialId = null) {
   const filter = { lesson_id: { $eq: Number(lessonId) } };
   if (source) filter.source = { $eq: source };
   if (materialId) filter.material_id = { $eq: Number(materialId) };
-  await targetIndex.deleteMany({ filter });
+  try {
+    await targetIndex.deleteMany({ filter });
+  } catch (err) {
+    if (err.status === 404 || /404|not found/i.test(err.message)) {
+      console.log(`[RAG Ingestion] ℹ️ Không có vector cũ cho lessonId=${lessonId} (Pinecone 404), bỏ qua dọn dẹp và tiếp tục upsert mới.`);
+      return false;
+    }
+    throw err;
+  }
   return true;
 }
 

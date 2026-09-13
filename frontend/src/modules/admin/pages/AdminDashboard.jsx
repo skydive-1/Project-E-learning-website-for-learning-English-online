@@ -32,6 +32,11 @@ import AIQuotaControlCenter from '../components/AIQuotaControlCenter';
 import AdminAlertsPanel from '../components/AdminAlertsPanel';
 import CourseTranscriptHealthPanel from '../components/CourseTranscriptHealthPanel';
 import CourseTranscriptPipelineModal from '../components/CourseTranscriptPipelineModal';
+import {
+  COURSE_TRANSCRIPT_POLL_INTERVAL_MS,
+  getCourseTranscriptProgress,
+  hasActiveTranscriptWork
+} from '../utils/courseTranscriptProgress';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -100,6 +105,9 @@ const AdminDashboard = () => {
   const [courses, setCourses] = useState([]);
   const [loadingCourses, setLoadingCourses] = useState(false);
   const [errorCourses, setErrorCourses] = useState('');
+  const [isSyncingCourses, setIsSyncingCourses] = useState(false);
+  const [courseSyncError, setCourseSyncError] = useState('');
+  const [coursesUpdatedAt, setCoursesUpdatedAt] = useState(null);
   const [courseSearch, setCourseSearch] = useState('');
   const [courseStatusFilter, setCourseStatusFilter] = useState('all');
   const [pipelineModalCourseId, setPipelineModalCourseId] = useState(null);
@@ -125,6 +133,42 @@ const AdminDashboard = () => {
       explanation: ''
     }
   ]);
+
+  const fetchCourses = useCallback(async ({ quiet = false } = {}) => {
+    if (quiet) {
+      setIsSyncingCourses(true);
+    } else {
+      setLoadingCourses(true);
+      setErrorCourses('');
+    }
+    setCourseSyncError('');
+
+    try {
+      const response = await apiClient.get('/courses?includeDrafts=true');
+      if (response.data && response.data.courses) {
+        setCourses(response.data.courses || []);
+        setCoursesUpdatedAt(new Date());
+      } else if (quiet) {
+        setCourseSyncError('Tự động cập nhật tạm gián đoạn.');
+      } else {
+        setCourses([]);
+        setErrorCourses('Không lấy được danh sách khóa học.');
+      }
+    } catch (err) {
+      console.error('Lỗi fetch courses:', err);
+      if (quiet) {
+        setCourseSyncError('Tự động cập nhật tạm gián đoạn.');
+      } else {
+        setErrorCourses(err.response?.data?.message || 'Không thể kết nối máy chủ để tải khóa học.');
+      }
+    } finally {
+      if (quiet) {
+        setIsSyncingCourses(false);
+      } else {
+        setLoadingCourses(false);
+      }
+    }
+  }, []);
 
   // Fetch danh sách users khi mở tab users
   useEffect(() => {
@@ -159,7 +203,27 @@ const AdminDashboard = () => {
     if (activeTab === 'courses') {
       fetchCourses();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchCourses]);
+
+  const hasLiveTranscriptWork = hasActiveTranscriptWork(courses);
+
+  // Đồng bộ nền chỉ khi có transcript đang chờ/xử lý, và không gọi API khi tab trình duyệt bị ẩn.
+  useEffect(() => {
+    if (activeTab !== 'courses' || !hasLiveTranscriptWork) return undefined;
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCourses({ quiet: true });
+      }
+    };
+    const timer = window.setInterval(refreshIfVisible, COURSE_TRANSCRIPT_POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [activeTab, fetchCourses, hasLiveTranscriptWork]);
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
@@ -176,25 +240,6 @@ const AdminDashboard = () => {
       setErrorUsers(err.response?.data?.message || 'Có lỗi xảy ra khi kết nối server');
     } finally {
       setLoadingUsers(false);
-    }
-  };
-
-  const fetchCourses = async () => {
-    setLoadingCourses(true);
-    setErrorCourses('');
-    try {
-      const response = await apiClient.get('/courses?includeDrafts=true');
-      if (response.data && response.data.courses) {
-        setCourses(response.data.courses || []);
-      } else {
-        setCourses([]);
-        setErrorCourses('Không lấy được danh sách khóa học.');
-      }
-    } catch (err) {
-      console.error('Lỗi fetch courses:', err);
-      setErrorCourses(err.response?.data?.message || 'Không thể kết nối máy chủ để tải khóa học.');
-    } finally {
-      setLoadingCourses(false);
     }
   };
 
@@ -802,6 +847,27 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                   <div>
                     <h2 id="course-management-title">Quản lý khóa học</h2>
                     <p>Xem toàn bộ khóa học, chỉnh sửa nội dung hoặc tạo khóa học mới vào hệ thống.</p>
+                    <div
+                      className={`course-sync-status ${courseSyncError ? 'has-error' : (hasLiveTranscriptWork ? 'is-live' : 'is-synced')}`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className="course-sync-status__dot" aria-hidden="true" />
+                      <span>
+                        {courseSyncError
+                          ? courseSyncError
+                          : (isSyncingCourses
+                              ? 'Đang đồng bộ trạng thái transcript…'
+                              : (hasLiveTranscriptWork
+                                  ? `Tự cập nhật mỗi ${COURSE_TRANSCRIPT_POLL_INTERVAL_MS / 1000} giây khi có tác vụ`
+                                  : 'Dữ liệu transcript đã đồng bộ'))}
+                      </span>
+                      {coursesUpdatedAt && !isSyncingCourses && (
+                        <time dateTime={coursesUpdatedAt.toISOString()}>
+                          {coursesUpdatedAt.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </time>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <button
@@ -827,7 +893,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                     <button
                       type="button"
                       className="course-refresh-button"
-                      onClick={fetchCourses}
+                      onClick={() => fetchCourses()}
                       disabled={loadingCourses}
                     >
                       <FiRefreshCw className={loadingCourses ? 'is-spinning' : ''} aria-hidden="true" />
@@ -894,7 +960,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                           <th>Giảng viên</th>
                           <th>Chủ đề</th>
                           <th>Trạng thái</th>
-                          <th>Tiến trình</th>
+                          <th title="Tỷ lệ bài video đã có transcript sẵn sàng">Transcript</th>
                           <th>Ngày tạo</th>
                           <th className="course-table__action-heading">Hành động</th>
                         </tr>
@@ -904,10 +970,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                           const rawStatus = course.status_name || (course.status === 'pending_review' ? 'pending_review' : (Number(course.status) === 1 || course.status === 'published' ? 'published' : 'draft'));
                           const isPublished = rawStatus === 'published';
                           const isPendingReview = rawStatus === 'pending_review';
-                          const ts = course.transcript_summary || {};
-                          const totalVideos = Number(ts.total_video_lessons ?? ts.total ?? course.total_media_lessons ?? 0);
-                          const readySubs = Number(ts.ready_transcripts ?? ts.ready ?? course.ready_transcripts ?? 0);
-                          const progressPct = Number(ts.progress_percent ?? (totalVideos > 0 ? Math.round((readySubs / totalVideos) * 100) : 100));
+                          const transcriptProgress = getCourseTranscriptProgress(course);
 
                           return (
                             <tr key={course.course_id} className={isPendingReview ? 'row-pending-review' : ''}>
@@ -924,13 +987,14 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                                   {isPublished ? 'Đã xuất bản' : (isPendingReview ? 'Chờ kiểm duyệt' : 'Bản nháp')}
                                 </span>
                               </td>
-                              <td data-label="Tiến trình">
+                              <td data-label="Transcript">
                                 <div
-                                  className="course-ai-progress-widget"
+                                  className={`course-ai-progress-widget is-${transcriptProgress.state}`}
                                   onClick={() => setPipelineModalCourseId(course.course_id)}
-                                  title="Nhấn để xem telemetry tiến trình tự động hóa AI"
+                                  title="Xem trạng thái transcript chi tiết theo từng bài video"
                                   role="button"
                                   tabIndex={0}
+                                  aria-label={`${transcriptProgress.ready}/${transcriptProgress.total} video có transcript. ${transcriptProgress.label}. Nhấn để xem chi tiết.`}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                       setPipelineModalCourseId(course.course_id);
@@ -940,16 +1004,17 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                                   <div className="progress-info-row">
                                     <span className="progress-fraction">
                                       <FiCpu className="widget-icon" />
-                                      {readySubs}/{totalVideos} video
+                                      {transcriptProgress.ready}/{transcriptProgress.total} video
                                     </span>
-                                    <span className="progress-pct">{progressPct}%</span>
+                                    <span className="progress-pct">{transcriptProgress.percent}%</span>
                                   </div>
                                   <div className="micro-progress-track">
                                     <div
-                                      className={`micro-progress-fill ${progressPct === 100 ? 'is-done' : (ts.failed_transcripts > 0 ? 'has-error' : 'is-running')}`}
-                                      style={{ width: `${progressPct}%` }}
+                                      className={`micro-progress-fill is-${transcriptProgress.state}`}
+                                      style={{ width: `${transcriptProgress.percent}%` }}
                                     />
                                   </div>
+                                  <span className="progress-status-text">{transcriptProgress.label}</span>
                                 </div>
                               </td>
                               <td data-label="Ngày tạo" className="course-table__date-cell">

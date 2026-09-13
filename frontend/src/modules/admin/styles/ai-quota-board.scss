@@ -270,10 +270,17 @@
       padding: 1px 5px;
       border-radius: 4px;
 
-      &.blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-      &.yellow { background: rgba(234, 179, 8, 0.15); color: #facc15; }
-      &.orange { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
-      &.red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+      &.blue { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
+      &.yellow { background: rgba(202, 138, 4, 0.12); color: #854d0e; }
+      &.orange { background: rgba(234, 88, 12, 0.12); color: #c2410c; }
+      &.red { background: rgba(220, 38, 38, 0.12); color: #b91c1c; }
+
+      .dark &, [data-theme='dark'] & {
+        &.blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        &.yellow { background: rgba(234, 179, 8, 0.15); color: #facc15; }
+        &.orange { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+        &.red { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+      }
     }
 
     .ai-table-progress-track {
@@ -303,9 +310,13 @@
     border: 1px solid rgba(16, 185, 129, 0.28);
     border-radius: 6px;
     background: rgba(16, 185, 129, 0.1);
-    color: #34d399;
+    color: #047857;
     font-size: 12px;
     font-weight: 600;
+
+    .dark &, [data-theme='dark'] & {
+      color: #34d399;
+    }
   }
 
   @media (max-width: 767px) {
@@ -382,7 +393,8 @@
           border-radius: 6px;
 
           &:hover {
-            color: #ffffff;
+            color: var(--text-color, #0f172a);
+            background: var(--dropdown-hover, rgba(0, 0, 0, 0.05));
             transform: rotate(90deg) scale(1.15);
           }
         }
@@ -513,9 +525,15 @@
   overflow: hidden;
   border: 1px solid rgba(244, 63, 94, 0.38);
   border-radius: 16px;
-  background: var(--card-bg, #0b132b);
-  color: var(--text-color, #f8fafc);
-  box-shadow: 0 24px 64px rgba(2, 6, 23, 0.56);
+  background: var(--card-bg, #ffffff);
+  color: var(--text-color, #0f172a);
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.12), 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+
+  .dark &, [data-theme='dark'] & {
+    background: var(--card-bg, #0b132b);
+    color: var(--text-color, #f8fafc);
+    box-shadow: 0 24px 64px rgba(2, 6, 23, 0.56);
+  }
 
   .rag-incident-status {
     display: inline-flex;
@@ -525,8 +543,14 @@
     font-size: 10px;
     font-weight: 750;
 
-    &.is-active { color: #fda4af; }
-    &.is-recovered { color: #34d399; }
+    &.is-active {
+      color: #e11d48;
+      .dark &, [data-theme='dark'] & { color: #fda4af; }
+    }
+    &.is-recovered {
+      color: #047857;
+      .dark &, [data-theme='dark'] & { color: #34d399; }
+    }
   }
 }
 
@@ -555,9 +579,22 @@
   padding: 14px 20px 18px;
   border-bottom: 1px solid var(--border-color, #1e293b);
 
-  > svg { flex: 0 0 auto; margin-top: 2px; color: #fb7185; font-size: 21px; }
+  > svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: #e11d48;
+    font-size: 21px;
+    .dark &, [data-theme='dark'] & { color: #fb7185; }
+  }
   h2 { margin: 0 0 5px; font-size: clamp(18px, 3vw, 23px); font-weight: 760; letter-spacing: -0.025em; }
-  p { max-width: 65ch; margin: 0; color: #fda4af; font-size: 11.5px; line-height: 1.5; }
+  p {
+    max-width: 65ch;
+    margin: 0;
+    color: #475569;
+    font-size: 11.5px;
+    line-height: 1.5;
+    .dark &, [data-theme='dark'] & { color: #fda4af; }
+  }
 }
 
 .rag-incident-facts {
@@ -580,18 +617,27 @@
 
   dt { color: var(--text-muted, #94a3b8); font-size: 10.5px; }
   dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text-color); font-size: 11px; font-weight: 650; }
-  code { color: #bfdbfe; font-size: 10px; }
+  code {
+    color: #1d4ed8;
+    font-size: 10px;
+    .dark &, [data-theme='dark'] & { color: #bfdbfe; }
+  }
 }
 
 .rag-incident-message {
   margin: 10px 20px 18px;
   padding: 11px 12px;
-  border: 1px solid rgba(244, 63, 94, 0.24);
+  border: 1px solid rgba(244, 63, 94, 0.28);
   border-radius: 10px;
-  background: rgba(244, 63, 94, 0.08);
-  color: #fecdd3;
+  background: #fff1f2;
+  color: #9f1239;
   font-size: 11.5px;
   line-height: 1.5;
+
+  .dark &, [data-theme='dark'] & {
+    background: rgba(244, 63, 94, 0.08);
+    color: #fecdd3;
+  }
 }
 
 .rag-incident-actions {

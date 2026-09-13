@@ -162,15 +162,15 @@ const GeminiFreeTierReference = ({ models = [], windows }) => {
           role="note"
         >
           <div className="flex items-start gap-3">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400 mt-0.5">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 mt-0.5">
               <Info className="size-4" aria-hidden="true" />
             </div>
             <div className="flex-1 space-y-2.5 text-caption-1-regular leading-relaxed">
               <p className="text-text-secondary">
                 {t('Google yêu cầu xem hạn mức request đang hoạt động trong AI Studio. Hệ thống chỉ tính phần trăm bằng cap admin đã xác nhận và tự cảnh báo khi nhận 429 từ Google.')}
               </p>
-              <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-caption-1-medium text-amber-300 dark:border-amber-400/25 dark:bg-amber-950/40 dark:text-amber-200">
-                <ShieldAlert className="size-3.5 text-amber-400 shrink-0" aria-hidden="true" />
+              <div className="inline-flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-caption-1-medium text-amber-800 dark:border-amber-400/25 dark:bg-amber-950/40 dark:text-amber-200">
+                <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
                 <span>
                   {t('Lưu ý dữ liệu: ở Free Tier, Google có thể dùng nội dung gửi lên để cải thiện sản phẩm; không gửi dữ liệu nhạy cảm.')}
                 </span>
@@ -282,8 +282,8 @@ const GeminiFreeTierReference = ({ models = [], windows }) => {
                           <div
                             className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${
                               item.isEmbedding
-                                ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                                : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+                                : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
                             }`}
                             aria-hidden="true"
                           >
@@ -299,7 +299,7 @@ const GeminiFreeTierReference = ({ models = [], windows }) => {
                             </span>
                             {item.isPrimary && (
                               <Chip variant="caption" color="blue" className="text-[10px] py-0 px-1.5">
-                                <Sparkles className="size-2.5 mr-0.5 inline-block text-amber-300" />
+                                <Sparkles className="size-2.5 mr-0.5 inline-block text-amber-500 dark:text-amber-300" />
                                 {t('Mặc định')}
                               </Chip>
                             )}
@@ -340,15 +340,15 @@ const GeminiFreeTierReference = ({ models = [], windows }) => {
                             className="flex flex-wrap items-center gap-1.5 font-mono text-xs"
                             aria-label={capInfo.fullText}
                           >
-                            <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-0.5 font-semibold text-blue-400">
+                            <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-0.5 font-semibold text-blue-700 dark:text-blue-400">
                               {capInfo.rpm} RPM
                             </span>
                             <span className="text-text-tertiary font-bold">·</span>
-                            <span className="rounded-md border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-400">
+                            <span className="rounded-md border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 font-semibold text-indigo-700 dark:text-indigo-400">
                               {capInfo.tpm} TPM
                             </span>
                             <span className="text-text-tertiary font-bold">·</span>
-                            <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-400">
+                            <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-700 dark:text-emerald-400">
                               {capInfo.rpd} RPD
                             </span>
                           </div>

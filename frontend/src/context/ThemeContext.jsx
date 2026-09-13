@@ -14,6 +14,7 @@ export const ThemeProvider = ({ children }) => {
     } else {
       root.classList.remove('dark');
     }
+    root.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
