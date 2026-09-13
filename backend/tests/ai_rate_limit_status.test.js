@@ -1,9 +1,12 @@
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 
 const db = require('../src/config/database');
 const adminService = require('../src/modules/admin/services/admin.service');
 const adminController = require('../src/modules/admin/controllers/admin.controller');
+const adminRateLimitsController = require('../src/modules/admin/controllers/adminRateLimits.controller');
+const { notifyAiRateLimitsChanged } = require('../src/utils/aiRateLimitEvents');
 const {
   parseGeminiQuotaViolation,
   recordGeminiQuotaSignal,
@@ -38,6 +41,57 @@ describe('Admin Gemini rate-limit status', () => {
       assert.equal(headers.Pragma, 'no-cache');
       assert.equal(payload.success, true);
     } finally {
+      adminService.getRateLimitStatus = originalGetRateLimitStatus;
+    }
+  });
+
+  test('pushes a new SSE rate-limit snapshot immediately after an AI usage event', async () => {
+    const originalGetRateLimitStatus = adminService.getRateLimitStatus;
+    let rpm = 1;
+    adminService.getRateLimitStatus = async () => ({
+      generatedAt: new Date().toISOString(),
+      models: [{
+        model: 'gemini-test',
+        usage: { rpm, tpm: rpm * 100, rpd: rpm },
+        requestStatus: { rpm: { success: rpm, error: 0, pending: 0 } },
+        caps: { rpm: 10, tpm: 1000, rpd: 100 },
+        riskLevel: 'healthy',
+        updatedAt: null
+      }],
+      guard: { checkedAt: new Date().toISOString() },
+      routing: { effectiveModel: 'gemini-test' },
+      notices: [],
+      windows: { nextRpdResetAt: '2026-09-09T07:00:00.000Z' }
+    });
+
+    const req = new EventEmitter();
+    const res = new EventEmitter();
+    const headers = {};
+    const chunks = [];
+    res.destroyed = false;
+    res.writableEnded = false;
+    res.socket = { setTimeout: () => {}, setKeepAlive: () => {} };
+    res.setHeader = (name, value) => { headers[name] = value; };
+    res.status = () => res;
+    res.flushHeaders = () => {};
+    res.flush = () => {};
+    res.write = (chunk) => { chunks.push(chunk); return true; };
+
+    try {
+      await adminRateLimitsController.streamAiRateLimits(req, res);
+      rpm = 2;
+      notifyAiRateLimitsChanged('ai-usage-success');
+      await new Promise((resolve) => setImmediate(resolve));
+      req.emit('close');
+
+      const output = chunks.join('');
+      assert.equal(headers['Content-Type'], 'text/event-stream; charset=utf-8');
+      assert.match(output, /event: connected/);
+      assert.equal((output.match(/event: rate-limits/g) || []).length, 2);
+      assert.match(output, /"rpm":2/);
+      assert.match(output, /backend_observed_telemetry/);
+    } finally {
+      req.emit('close');
       adminService.getRateLimitStatus = originalGetRateLimitStatus;
     }
   });

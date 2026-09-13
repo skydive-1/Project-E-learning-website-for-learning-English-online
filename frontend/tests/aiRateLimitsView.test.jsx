@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { LanguageProvider } from '../src/context/LanguageContext';
 import AIQuotaControlCenter from '../src/modules/admin/components/AIQuotaControlCenter';
@@ -9,6 +9,7 @@ import {
   getGeminiUsageTrends,
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
+  connectGeminiRateLimitStream,
   resetGeminiModelRouting,
   updateGeminiRateLimitCaps
 } from '../src/modules/admin/services/adminAnalytics.service';
@@ -18,6 +19,7 @@ vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
   getGeminiUsageTrends: vi.fn(),
   getGeminiRateLimitCaps: vi.fn(),
   getGeminiRateLimitStatus: vi.fn(),
+  connectGeminiRateLimitStream: vi.fn(),
   resetGeminiModelRouting: vi.fn(),
   updateGeminiRateLimitCaps: vi.fn(),
   updateUserQuota: vi.fn(),
@@ -33,6 +35,8 @@ const quotaFixture = {
 };
 
 describe('Gemini Rate Limits admin view', () => {
+  let streamHandlers;
+
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
@@ -43,6 +47,12 @@ describe('Gemini Rate Limits admin view', () => {
       providerStatus: 'connected', availableModels: [], series: []
     });
     getGeminiRateLimitCaps.mockResolvedValue([]);
+    streamHandlers = null;
+    connectGeminiRateLimitStream.mockImplementation((handlers) => {
+      streamHandlers = handlers;
+      queueMicrotask(() => handlers.onStatus?.('live', { source: 'backend_observed_telemetry' }));
+      return { done: new Promise(() => {}), close: vi.fn() };
+    });
     getGeminiRateLimitStatus.mockResolvedValue({
       generatedAt: '2026-09-02T00:00:00.000Z',
       windows: { rpmSeconds: 60, tpmSeconds: 60, rpdTimezone: 'America/Los_Angeles' },
@@ -113,12 +123,13 @@ describe('Gemini Rate Limits admin view', () => {
 
     expect((await screen.findAllByText('gemini-3.7-flash')).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('gemini-embedding-001').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('Backend telemetry đang hoạt động')).toBeInTheDocument();
+    expect(await screen.findByText('Telemetry backend đang cập nhật theo sự kiện')).toBeInTheDocument();
     expect(screen.getByText('Fallback và tự phục hồi')).toBeInTheDocument();
     expect(screen.getByText('Đang ưu tiên model cao nhất')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Model ưu tiên đã sẵn sàng' })).toBeDisabled();
-    expect(screen.getByText(/Tự làm mới mỗi 15 giây/)).toBeInTheDocument();
-    expect(screen.getByText('Trực tiếp từ backend')).toBeInTheDocument();
+    expect(screen.getByText(/SSE cập nhật ngay sau request AI/)).toBeInTheDocument();
+    expect(screen.getByText('SSE từ backend')).toBeInTheDocument();
+    expect(screen.getAllByText('BACKEND LIVE')).toHaveLength(2);
     expect(screen.getByText(/Cập nhật cuối:/)).toBeInTheDocument();
     expect(screen.getByText('Đối chiếu Google Cloud Monitoring')).toBeInTheDocument();
     expect(screen.getByText('Chưa kết nối')).toBeInTheDocument();
@@ -136,6 +147,37 @@ describe('Gemini Rate Limits admin view', () => {
     expect(screen.getAllByText('Cửa sổ trượt 60s').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('RPD reset kế tiếp')).toBeInTheDocument();
     expect(screen.getByText(/Giá trị mặc định/)).toBeInTheDocument();
+  });
+
+  it('updates every model card immediately when the backend SSE snapshot changes', async () => {
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Rate Limits Google/i }));
+    await screen.findByText('Telemetry backend đang cập nhật theo sự kiện');
+
+    const currentStatus = await getGeminiRateLimitStatus.mock.results[0].value;
+    const nextStatus = {
+      ...currentStatus,
+      generatedAt: '2026-09-02T00:00:05.000Z',
+      models: currentStatus.models.map((model) => model.model === 'gemini-3.7-flash'
+        ? {
+            ...model,
+            usage: { ...model.usage, rpm: 8 },
+            percentUsed: { ...model.percentUsed, rpm: 80 }
+          }
+        : model)
+    };
+
+    await act(async () => {
+      streamHandlers.onSnapshot(nextStatus);
+    });
+
+    expect(screen.getByRole('progressbar', { name: 'RPM gemini-3.7-flash' })).toHaveAttribute('aria-valuenow', '80');
+    expect(getGeminiRateLimitCaps).toHaveBeenCalledTimes(1);
   });
 
   it('restores the preferred model cooldown without issuing a probe request', async () => {

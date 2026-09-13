@@ -20,6 +20,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import {
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
+  connectGeminiRateLimitStream,
   probeGeminiQuotaLive,
   resetGeminiModelRouting,
   setPreferredGeminiModel,
@@ -43,6 +44,8 @@ const DIMENSIONS = [
 ];
 
 const MIN_MANUAL_REFRESH_MS = 650;
+const FALLBACK_POLL_INTERVAL_MS = 15_000;
+const STREAM_RECONNECT_MS = 10_000;
 
 const waitForVisibleRefreshState = async (startedAt) => {
   const remainingMs = MIN_MANUAL_REFRESH_MS - (Date.now() - startedAt);
@@ -78,6 +81,7 @@ const makeDraft = (model, saved) => {
 const AIRateLimitsView = ({ canManageCaps }) => {
   const targetModel = new URLSearchParams(window.location.search).get('model');
   const deepLinkHandledRef = useRef(false);
+  const fetchInFlightRef = useRef(false);
   const showToast = useToast();
   const { language, t } = useLanguage();
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
@@ -98,6 +102,8 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [savingModel, setSavingModel] = useState(null);
   const [probingQuota, setProbingQuota] = useState(false);
   const [error, setError] = useState(null);
+  const [streamState, setStreamState] = useState('connecting');
+  const isStreamConnecting = streamState === 'connecting' || streamState === 'delayed';
   const latestTelemetryAt = getValidDate(status?.guard?.checkedAt || status?.generatedAt);
   const routing = status?.routing || null;
   const preferredModelCooldown = routing?.coolingDown?.find(
@@ -106,7 +112,9 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const preferredModelCoolingDown = Boolean(preferredModelCooldown);
   const preferredModelRpdExhausted = preferredModelCooldown?.dimension === 'rpd';
 
-  const fetchData = useCallback(async ({ background = false, manual = false, fresh = false } = {}) => {
+  const fetchData = useCallback(async ({ background = false, manual = false, fresh = false, includeCaps = !background } = {}) => {
+    if (fetchInFlightRef.current) return false;
+    fetchInFlightRef.current = true;
     const manualStartedAt = manual ? Date.now() : 0;
     try {
       if (manual) setRefreshing(true);
@@ -115,10 +123,10 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
       const [nextStatus, nextCaps] = await Promise.all([
         getGeminiRateLimitStatus({ fresh }),
-        getGeminiRateLimitCaps({ fresh })
+        includeCaps ? getGeminiRateLimitCaps({ fresh }) : Promise.resolve(null)
       ]);
       setStatus(nextStatus);
-      setSavedCaps(nextCaps);
+      if (nextCaps) setSavedCaps(nextCaps);
       if (manual) {
         await waitForVisibleRefreshState(manualStartedAt);
         showToast(t('Đã cập nhật dữ liệu Gemini lúc {{time}}.', {
@@ -136,6 +144,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       else if (!background) setError(t('Không thể tải Rate Limits. Kiểm tra backend và thử lại.'));
       return false;
     } finally {
+      fetchInFlightRef.current = false;
       if (!background && !manual) setLoading(false);
       if (manual) setRefreshing(false);
     }
@@ -143,8 +152,86 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
   useEffect(() => {
     fetchData();
-    const refreshTimer = window.setInterval(() => fetchData({ background: true }), 15000);
-    return () => window.clearInterval(refreshTimer);
+
+    let disposed = false;
+    let stream = null;
+    let reconnectTimer = null;
+    let fallbackTimer = null;
+    let connectionGeneration = 0;
+
+    const stopFallback = () => {
+      if (fallbackTimer) window.clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    };
+
+    const startFallback = () => {
+      if (disposed || document.visibilityState !== 'visible' || fallbackTimer) return;
+      setStreamState('fallback');
+      fetchData({ background: true, fresh: true });
+      fallbackTimer = window.setInterval(
+        () => fetchData({ background: true, fresh: true }),
+        FALLBACK_POLL_INTERVAL_MS
+      );
+    };
+
+    const disconnect = () => {
+      connectionGeneration += 1;
+      stream?.close();
+      stream = null;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      stopFallback();
+    };
+
+    const connect = () => {
+      if (disposed || document.visibilityState !== 'visible') return;
+      disconnect();
+      setStreamState('connecting');
+      const generation = connectionGeneration;
+
+      stream = connectGeminiRateLimitStream({
+        onStatus: () => {
+          if (disposed || generation !== connectionGeneration) return;
+          stopFallback();
+          setStreamState('live');
+        },
+        onSnapshot: (nextStatus) => {
+          if (disposed || generation !== connectionGeneration) return;
+          setStatus(nextStatus);
+          stopFallback();
+          setStreamState('live');
+        },
+        onStreamError: () => {
+          if (!disposed && generation === connectionGeneration) setStreamState('delayed');
+        }
+      });
+
+      stream.done.catch((streamError) => {
+        if (disposed || generation !== connectionGeneration) return;
+        console.warn('Gemini rate-limit SSE bị gián đoạn, chuyển sang polling:', streamError);
+        startFallback();
+        reconnectTimer = window.setTimeout(connect, STREAM_RECONNECT_MS);
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        disconnect();
+        setStreamState('paused');
+      } else {
+        fetchData({ background: true, fresh: true });
+        connect();
+      }
+    };
+
+    connect();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      disconnect();
+    };
   }, [fetchData]);
 
   useEffect(() => {
@@ -215,7 +302,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
       setSavingModel(model);
       await updateGeminiRateLimitCaps(payload);
       showToast(t('Đã lưu hạn mức cho {{model}}.', { model }), 'success');
-      await fetchData({ background: true, fresh: true });
+      await fetchData({ background: true, fresh: true, includeCaps: true });
     } catch (saveError) {
       console.error('Không thể lưu Gemini Rate Limits:', saveError);
       showToast(saveError.response?.data?.message || t('Không thể lưu hạn mức. Vui lòng thử lại.'), 'error');
@@ -361,21 +448,37 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
       <section className="ai-rate-sync-status" aria-labelledby="ai-rate-sync-title" aria-live="polite">
         <div className="ai-rate-sync-status__summary">
-          <span className={`ai-rate-sync-status__icon${refreshing ? ' is-refreshing' : ''}`}>
-            {refreshing
+          <span className={`ai-rate-sync-status__icon${refreshing || isStreamConnecting ? ' is-refreshing' : ''}`}>
+            {refreshing || isStreamConnecting
               ? <Spinner aria-hidden="true" />
               : <FiActivity aria-hidden="true" />}
           </span>
           <div>
             <strong id="ai-rate-sync-title">
-              {refreshing ? t('Đang đồng bộ telemetry từ backend...') : t('Backend telemetry đang hoạt động')}
+              {refreshing
+                ? t('Đang đồng bộ telemetry từ backend...')
+                : streamState === 'live'
+                  ? t('Telemetry backend đang cập nhật theo sự kiện')
+                  : streamState === 'paused'
+                    ? t('Telemetry tạm dừng khi tab bị ẩn')
+                    : streamState === 'fallback'
+                      ? t('SSE gián đoạn — đang dùng polling dự phòng')
+                      : streamState === 'delayed'
+                        ? t('Luồng telemetry đang phục hồi')
+                        : t('Đang kết nối telemetry backend...')}
             </strong>
-            <p>{t('Tự làm mới mỗi 15 giây · RPM/TPM là cửa sổ trượt 60s · RPD đặt lại lúc 00:00 Pacific (14:00/15:00 VN).')}</p>
+            <p>{t('SSE cập nhật ngay sau request AI · polling 15 giây chỉ dùng dự phòng · RPM/TPM là cửa sổ trượt 60s · RPD đặt lại lúc 00:00 Pacific.')}</p>
           </div>
         </div>
 
         <div className="ai-rate-sync-status__freshness">
-          <span><i aria-hidden="true" />{t('Trực tiếp từ backend')}</span>
+          <span className={`is-${streamState}`}><i aria-hidden="true" />{
+            streamState === 'live'
+              ? t('SSE từ backend')
+              : streamState === 'fallback'
+                ? t('Polling từ backend')
+                : t('Telemetry backend')
+          }</span>
           <small>
             <FiClock aria-hidden="true" />
             {latestTelemetryAt
@@ -609,7 +712,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     {item.configured ? t('Đã xác nhận cap') : t('Chưa cấu hình cap')}
                   </span>
                 </div>
-                <span className="ai-model-live"><i /> LIVE</span>
+                <span className={`ai-model-live is-${streamState}`}><i /> {streamState === 'live' ? 'BACKEND LIVE' : 'BACKEND'}</span>
               </div>
 
               <div className="ai-model-metrics">

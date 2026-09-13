@@ -14,6 +14,7 @@ const {
   probeGeminiModelsLive
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
+const { notifyAiRateLimitsChanged } = require('../../../utils/aiRateLimitEvents');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
 const { getGeminiUsageTrend } = require('./geminiUsageTrend.service');
 
@@ -1249,6 +1250,8 @@ const updateAiRateLimitCaps = async ({ model, rpmCap, tpmCap, rpdCap, updatedBy 
       updated_by = EXCLUDED.updated_by
     RETURNING model, rpm_cap, tpm_cap, rpd_cap, updated_at, updated_by
   `, [normalizedModel, safeRpmCap, safeTpmCap, safeRpdCap, updatedBy || null]);
+
+  notifyAiRateLimitsChanged('ai-rate-limit-config');
 
   return normalizeRateLimitSetting(result.rows[0]);
 };

@@ -62,6 +62,24 @@ const makeLiveRefreshConfig = (fresh) => fresh ? {
   }
 } : undefined;
 
+const getApiBaseUrl = () => String(
+  apiClient.defaults.baseURL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+).replace(/\/+$/, '');
+
+const parseSseBlock = (block) => {
+  let eventName = 'message';
+  const dataLines = [];
+
+  for (const line of block.split('\n')) {
+    if (!line || line.startsWith(':')) continue;
+    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+  }
+
+  if (dataLines.length === 0) return null;
+  return { eventName, data: JSON.parse(dataLines.join('\n')) };
+};
+
 export const getGeminiRateLimitStatus = async ({ fresh = false } = {}) => {
   const response = await apiClient.get(
     '/admin/gemini-rate-limits/status',
@@ -71,6 +89,75 @@ export const getGeminiRateLimitStatus = async ({ fresh = false } = {}) => {
     throw new Error('Dữ liệu Rate Limits trả về không hợp lệ');
   }
   return response.data.data;
+};
+
+export const connectGeminiRateLimitStream = ({
+  onSnapshot,
+  onStatus,
+  onStreamError
+} = {}) => {
+  const controller = new AbortController();
+  const token = localStorage.getItem('token');
+
+  const done = (async () => {
+    if (!token) throw new Error('Không có token xác thực Admin');
+
+    const response = await fetch(`${getApiBaseUrl()}/admin/gemini-rate-limits/stream`, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${token}`,
+        'Cache-Control': 'no-cache'
+      },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Kết nối telemetry bị từ chối (HTTP ${response.status})`);
+    }
+    if (!response.body) {
+      throw new Error('Trình duyệt không hỗ trợ đọc telemetry thời gian thực');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done: streamEnded } = await reader.read();
+      if (streamEnded) break;
+
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+      let boundary = buffer.indexOf('\n\n');
+
+      while (boundary >= 0) {
+        const block = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf('\n\n');
+        if (!block.trim()) continue;
+
+        try {
+          const event = parseSseBlock(block);
+          if (!event) continue;
+          if (event.eventName === 'connected') onStatus?.('live', event.data);
+          if (event.eventName === 'rate-limits') onSnapshot?.(event.data);
+          if (event.eventName === 'stream-error') onStreamError?.(event.data);
+        } catch (error) {
+          console.warn('Không thể đọc bản tin rate limit SSE:', error);
+        }
+      }
+    }
+
+    if (!controller.signal.aborted) {
+      throw new Error('Luồng telemetry đã đóng ngoài dự kiến');
+    }
+  })();
+
+  return {
+    done,
+    close: () => controller.abort()
+  };
 };
 
 export const resetGeminiModelRouting = async () => {
