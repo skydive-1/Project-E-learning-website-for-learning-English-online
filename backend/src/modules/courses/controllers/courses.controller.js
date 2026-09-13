@@ -5,7 +5,7 @@ const coursesService = require('../services/courses.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const { sanitizeLessonMediaForClient } = require('../../../utils/videoSecurity.util');
-const { packageVideoToDash } = require('../../../utils/dashPackager.util');
+const mediaProcessingService = require('../services/mediaProcessing.service');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
 const { buildCourseAssetPrefix } = require('../../../utils/mediaObjectKey.util');
 
@@ -77,7 +77,6 @@ exports.getSubjects = async (req, res, next) => {
 
 exports.uploadFile = async (req, res, next) => {
   let tempFilePath = null;
-  const dashTempPaths = [];
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -143,89 +142,55 @@ exports.uploadFile = async (req, res, next) => {
       }
 
       if (dashEnabled) {
-        const packageResult = await packageVideoToDash(req.file.path, assetId);
-        if (!packageResult.success) {
-          await orphanCleanupService.rollbackUploadedAssetBundle([uploadResult]);
-          return res.status(500).json({
-            success: false,
-            code: 'DASH_PACKAGING_FAILED',
-            message: `Không thể đóng gói video DASH: ${packageResult.error}`
-          });
-        }
-
-        dashTempPaths.push(
-          packageResult.mpdPath,
-          packageResult.videoPath,
-          packageResult.audioPath
-        );
-        const rawManifest = await fs.promises.readFile(packageResult.mpdPath, 'utf8');
-        const rewrittenManifest = rawManifest
-          .replaceAll(path.basename(packageResult.videoPath), 'video.mp4')
-          .replaceAll(path.basename(packageResult.audioPath), 'audio.mp4');
-
-        const videoUpload = await supabaseStorage.uploadPrivateObject(
-          packageResult.videoPath,
-          `${assetPrefix}/video.mp4`,
-          'videos',
-          'video/mp4'
-        );
-        const audioUpload = videoUpload.success
-          ? await supabaseStorage.uploadPrivateObject(
-              packageResult.audioPath,
-              `${assetPrefix}/audio.mp4`,
-              'videos',
-              'audio/mp4'
-            )
-          : { success: false, error: videoUpload.error };
-        const manifestUpload = audioUpload.success
-          ? await supabaseStorage.uploadPrivateObject(
-              Buffer.from(rewrittenManifest, 'utf8'),
-              `${assetPrefix}/manifest.mpd`,
-              'videos',
-              'application/dash+xml'
-            )
-          : { success: false, error: audioUpload.error };
-
-        const uploadedAssets = [uploadResult, videoUpload, audioUpload, manifestUpload]
-          .filter(item => item?.storageKey);
-        if (!videoUpload.success || !audioUpload.success || !manifestUpload.success) {
-          await orphanCleanupService.rollbackUploadedAssetBundle(uploadedAssets);
-          return res.status(500).json({
-            success: false,
-            code: 'DASH_STORAGE_UPLOAD_FAILED',
-            message: manifestUpload.error || audioUpload.error || videoUpload.error || 'Upload asset DASH thất bại.'
-          });
-        }
-
-        let pendingUploadId;
+        let pendingUploadId = null;
         try {
           pendingUploadId = await registerUploadedObject(
             req,
-            manifestUpload,
+            uploadResult,
             'videos',
-            'application/dash+xml',
+            'video/mp4',
             { cleanupOnFailure: false }
           );
+          const markedProcessing = await orphanCleanupService.markPendingUploadProcessing(
+            pendingUploadId,
+            'queued'
+          );
+          if (!markedProcessing) {
+            const error = new Error('Không thể khởi tạo trạng thái xử lý video.');
+            error.code = 'MEDIA_PROCESSING_STATE_FAILED';
+            throw error;
+          }
+          await mediaProcessingService.enqueueDashPackaging({
+            uploadId: pendingUploadId,
+            sourceStorageKey: uploadResult.storageKey,
+            storageBucket: uploadResult.storageBucket,
+            assetPrefix,
+            assetId
+          });
         } catch (error) {
-          await orphanCleanupService.rollbackUploadedAssetBundle(uploadedAssets);
+          if (pendingUploadId) {
+            await orphanCleanupService.markPendingUploadProcessingFailure(
+              pendingUploadId,
+              error,
+              { terminal: true }
+            );
+          }
+          await orphanCleanupService.rollbackUploadedAssetBundle([uploadResult]);
           throw error;
         }
 
-        return res.status(200).json({
+        return res.status(202).json({
           success: true,
-          message: 'Tải lên và đóng gói video DASH thành công',
+          message: 'Đã tải video nguồn lên R2. Hệ thống đang đóng gói DASH trong nền.',
           pendingUploadId,
-          fileUrl: manifestUpload.storageKey,
-          storageKey: manifestUpload.storageKey,
+          processingStatus: 'processing',
+          processingStage: 'queued',
+          statusUrl: `/courses/uploads/${pendingUploadId}/status`,
           storageProvider: 'r2',
-          storageBucket: manifestUpload.storageBucket,
-          mimeType: 'application/dash+xml',
-          sizeBytes: manifestUpload.sizeBytes,
-          checksumSha256: manifestUpload.checksumSha256,
-          mediaStatus: 'PENDING',
+          storageBucket: uploadResult.storageBucket,
+          mediaStatus: 'PROCESSING',
           playbackType: 'dash',
           originalName: req.file.originalname,
-          mimetype: 'application/dash+xml',
           isDrmProtected: false
         });
       }
@@ -368,15 +333,59 @@ exports.uploadFile = async (req, res, next) => {
         console.warn('⚠️ Lỗi dọn dẹp file tạm Multer:', cleanupErr.message);
       }
     }
-    for (const dashPath of dashTempPaths) {
-      if (dashPath && dashPath !== tempFilePath && fs.existsSync(dashPath)) {
-        try {
-          fs.unlinkSync(dashPath);
-        } catch (cleanupErr) {
-          console.warn('⚠️ Lỗi dọn dẹp asset DASH tạm:', cleanupErr.message);
-        }
-      }
+  }
+};
+
+exports.getUploadStatus = async (req, res, next) => {
+  try {
+    const { uploadId } = req.params;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uploadId || '')) {
+      return res.status(400).json({ success: false, code: 'INVALID_UPLOAD_ID', message: 'Mã phiên tải lên không hợp lệ.' });
     }
+    const pending = await orphanCleanupService.getPendingUploadStatus(
+      uploadId,
+      req.user?.id || req.user?.userId,
+      req.user?.roleId || req.user?.role
+    );
+    if (!pending) {
+      return res.status(404).json({ success: false, code: 'UPLOAD_NOT_FOUND', message: 'Không tìm thấy phiên tải lên.' });
+    }
+
+    if (pending.status === 'EXPIRED') {
+      return res.status(410).json({ success: false, code: 'UPLOAD_EXPIRED', message: 'Phiên tải lên đã hết hạn.' });
+    }
+
+    const ready = ['PENDING', 'CLAIMING', 'COMMITTED'].includes(pending.status)
+      && pending.processing_stage === 'ready';
+    const failed = pending.status === 'FAILED' || pending.job_status === 'failed';
+    return res.status(200).json({
+      success: true,
+      data: {
+        pendingUploadId: pending.upload_id,
+        status: ready ? 'ready' : (failed ? 'failed' : 'processing'),
+        stage: pending.processing_stage || 'queued',
+        attempts: Number(pending.job_attempts) || 0,
+        maxAttempts: Number(pending.job_max_attempts) || 5,
+        errorCode: pending.processing_error_code || pending.job_error_code || null,
+        errorMessage: pending.processing_error_message || pending.job_error_message || null,
+        ...(ready ? {
+          fileUrl: pending.storage_key,
+          storageKey: pending.storage_key,
+          storageProvider: pending.storage_provider,
+          storageBucket: pending.storage_bucket,
+          mimeType: pending.mime_type,
+          sizeBytes: Number(pending.size_bytes),
+          checksumSha256: pending.checksum_sha256,
+          mediaStatus: 'PENDING',
+          playbackType: 'dash',
+          originalName: pending.original_filename,
+          mimetype: pending.mime_type,
+          isDrmProtected: false
+        } : {})
+      }
+    });
+  } catch (error) {
+    next(error);
   }
 };
 

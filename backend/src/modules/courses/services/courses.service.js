@@ -166,7 +166,9 @@ class CoursesService {
           status: isPublished ? 1 : (isPendingReview ? 'pending_review' : 0),
           transcript_summary: {
             total: totalMedia,
+            total_video_lessons: totalMedia,
             ready: readyTranscripts,
+            ready_transcripts: readyTranscripts,
             processing: Number(course.processing_transcripts) || 0,
             failed: Number(course.failed_transcripts) || 0,
             missing: Number(course.missing_transcripts) || 0,

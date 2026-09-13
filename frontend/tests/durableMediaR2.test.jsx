@@ -7,7 +7,11 @@ import { AuthProvider } from '../src/context/AuthContext';
 import * as lessonsService from '../src/modules/lessons/services/lessons.service';
 import apiClient from '../src/config/api.config';
 import LessonDetailPage from '../src/modules/lessons/pages/LessonDetailPage';
-import { applySuccessfulUploadToLesson, isMediaReadyForPublish } from '../src/modules/instructor/pages/CourseEditor';
+import {
+  applySuccessfulUploadToLesson,
+  getMediaProcessingStageLabel,
+  isMediaReadyForPublish
+} from '../src/modules/instructor/pages/CourseEditor';
 
 // Mock Shaka Player
 vi.mock('shaka-player', () => {
@@ -104,6 +108,13 @@ describe('🚀 Frontend Durable Media Pipeline R2.1 Test Suite', () => {
     expect(isMediaReadyForPublish({ ...pending, pendingUploadId: null })).toBe(false);
     expect(isMediaReadyForPublish({ ...pending, checksumSha256: null })).toBe(false);
     expect(isMediaReadyForPublish({ contentUrl: 'https://project.supabase.co/storage/v1/object/public/videos/a.mp4', mediaStatus: 'READY', uploadVerified: false })).toBe(false);
+  });
+
+  it('hiển thị đúng giai đoạn upload và đóng gói thay vì giữ giả ở 100%', () => {
+    expect(getMediaProcessingStageLabel('uploading_source', 47)).toContain('47%');
+    expect(getMediaProcessingStageLabel('packaging_dash', 100)).toContain('đóng gói luồng DASH');
+    expect(getMediaProcessingStageLabel('verifying', 100)).toContain('xác minh tính toàn vẹn');
+    expect(getMediaProcessingStageLabel('retrying', 100)).toContain('tự thử lại');
   });
 
   it('cho phép khóa đã xuất bản lưu sửa chữa từng lesson mất nguồn, nhưng không nới lỏng cho lesson mới', () => {

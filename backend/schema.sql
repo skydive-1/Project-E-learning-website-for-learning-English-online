@@ -580,17 +580,22 @@ CREATE TABLE IF NOT EXISTS pending_media_uploads (
   mime_type VARCHAR(100) NOT NULL,
   size_bytes BIGINT NOT NULL DEFAULT 0,
   checksum_sha256 VARCHAR(64) NOT NULL,
-  status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'CLAIMING', 'CLEANING', 'COMMITTED', 'EXPIRED')),
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PROCESSING', 'PENDING', 'CLAIMING', 'CLEANING', 'COMMITTED', 'FAILED', 'EXPIRED')),
+  processing_stage VARCHAR(50),
+  processing_error_code VARCHAR(100),
+  processing_error_message VARCHAR(1000),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP WITH TIME ZONE DEFAULT (CURRENT_TIMESTAMP + INTERVAL '24 hours'),
   claimed_at TIMESTAMP WITH TIME ZONE
   ,cleaning_started_at TIMESTAMP WITH TIME ZONE
   ,media_id UUID REFERENCES media_assets(media_id) ON DELETE SET NULL
+  ,updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_status_expires ON pending_media_uploads(status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_instructor ON pending_media_uploads(instructor_id);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_course ON pending_media_uploads(course_id);
 CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_key ON pending_media_uploads(storage_key);
+CREATE INDEX IF NOT EXISTS idx_pending_media_uploads_processing ON pending_media_uploads(status, updated_at) WHERE status IN ('PROCESSING', 'FAILED');
 
 -- 21. Bảng Hàng đợi Thử lại Xóa Storage Thất bại (failed_storage_deletions) - TASK-DURABLE-MEDIA-R2.1
 CREATE TABLE IF NOT EXISTS failed_storage_deletions (

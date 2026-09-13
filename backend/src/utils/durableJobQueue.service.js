@@ -299,6 +299,7 @@ class DurableJobWorker {
     handlers,
     pollMs = DEFAULT_POLL_MS,
     leaseMs = DEFAULT_LEASE_MS,
+    concurrency = clampInteger(Number(process.env.BACKGROUND_JOB_CONCURRENCY || 1), 1, 1, 4),
     retention = {},
     classifyError = () => true,
     onJobFailed = null,
@@ -308,6 +309,7 @@ class DurableJobWorker {
     this.handlers = handlers || {};
     this.pollMs = clampInteger(pollMs, DEFAULT_POLL_MS, 1_000, 5 * 60 * 1000);
     this.leaseMs = clampInteger(leaseMs, DEFAULT_LEASE_MS, 30_000, 2 * 60 * 60 * 1000);
+    this.concurrency = clampInteger(concurrency, 1, 1, 4);
     this.retention = retention;
     this.classifyError = classifyError;
     this.onJobFailed = onJobFailed;
@@ -316,7 +318,19 @@ class DurableJobWorker {
     this.running = false;
     this.stopped = true;
     this.lastPurgeAt = 0;
-    this.currentJob = null;
+    this.currentJobs = new Map();
+    this._currentJob = null;
+  }
+
+  get currentJob() {
+    return this._currentJob || this.currentJobs.values().next().value || null;
+  }
+
+  set currentJob(job) {
+    this._currentJob = job || null;
+    if (job?.job_id) {
+      this.currentJobs.set(job.job_id, job);
+    }
   }
 
   start() {
@@ -332,8 +346,8 @@ class DurableJobWorker {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    const activeJob = this.currentJob;
-    if (activeJob) {
+    const activeJobs = Array.from(this.currentJobs.values());
+    for (const activeJob of activeJobs) {
       try {
         await this.queue.release(
           activeJob.job_id,
@@ -344,6 +358,7 @@ class DurableJobWorker {
         this.logger.warn(`[DurableJobs] Không thể trả job ${activeJob.job_id} về hàng đợi: ${error.message}`);
       }
     }
+    this.currentJobs.clear();
   }
 
   wake() {
@@ -358,12 +373,24 @@ class DurableJobWorker {
     this.running = true;
     let processed = 0;
     try {
-      while (!this.stopped) {
-        const job = await this.queue.claimNext(Object.keys(this.handlers), { leaseMs: this.leaseMs });
-        if (!job) break;
-        await this.process(job);
-        processed += 1;
-      }
+      // Chạy song song các slot worker (concurrency mặc định = 2)
+      // claimNext sử dụng PostgreSQL 'FOR UPDATE SKIP LOCKED' nên an toàn tuyệt đối
+      const runWorkerSlot = async () => {
+        while (!this.stopped) {
+          const job = await this.queue.claimNext(Object.keys(this.handlers), { leaseMs: this.leaseMs });
+          if (!job) break;
+          this.currentJobs.set(job.job_id, job);
+          try {
+            await this.process(job);
+            processed += 1;
+          } finally {
+            this.currentJobs.delete(job.job_id);
+          }
+        }
+      };
+
+      const workerSlots = Array.from({ length: this.concurrency }, () => runWorkerSlot());
+      await Promise.all(workerSlots);
 
       const now = Date.now();
       if (now - this.lastPurgeAt >= 24 * 60 * 60 * 1000) {

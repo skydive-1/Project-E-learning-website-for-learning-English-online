@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../src/context/LanguageContext';
 import AIQuotaUsageBoard from '../src/modules/admin/components/AIQuotaUsageBoard';
 import { getAiQuotaAnalytics, getGeminiUsageTrends } from '../src/modules/admin/services/adminAnalytics.service';
@@ -187,5 +187,81 @@ describe('AI quota management translations', () => {
     renderBoard();
     expect(await screen.findByText('Tổng token mô hình đã dùng')).toBeInTheDocument();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('does not show the RAG popup if the incident has already been resolved', async () => {
+    getAiQuotaAnalytics.mockResolvedValue({
+      ...dashboardFixture,
+      ragIncidents: [{
+        incidentId: 47,
+        purpose: 'rag_answer_generation',
+        model: 'gemini-3.7-flash',
+        errorCode: 'GEMINI_QUOTA_EXHAUSTED',
+        httpStatus: 429,
+        message: 'Dịch vụ Gemini hiện đã chạm hạn mức sử dụng tạm thời.',
+        retryAfterMs: 4000,
+        occurrenceCount: 1,
+        lastSeenAt: '2026-09-13T07:28:56.662Z',
+        resolvedAt: '2026-09-13T07:32:07.730Z',
+      }],
+    });
+
+    renderBoard();
+    expect(await screen.findByText('Tổng token mô hình đã dùng')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('closes the modal when clicking the Đóng button', async () => {
+    getAiQuotaAnalytics.mockResolvedValue({
+      ...dashboardFixture,
+      ragIncidents: [{
+        incidentId: 99,
+        purpose: 'rag_answer_generation',
+        model: 'gemini-3.7-flash',
+        errorCode: 'GEMINI_QUOTA_EXHAUSTED',
+        httpStatus: 429,
+        message: 'Dịch vụ Gemini hiện đã chạm hạn mức sử dụng tạm thời.',
+        retryAfterMs: 4000,
+        occurrenceCount: 1,
+        lastSeenAt: '2026-09-13T07:28:56.662Z',
+        resolvedAt: null,
+      }],
+    });
+
+    renderBoard();
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    const closeBtn = screen.getByRole('button', { name: 'Đóng' });
+    closeBtn.click();
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('closes the modal even when targetIncidentId was specified in search params', async () => {
+    window.history.replaceState({}, '', '/admin/dashboard?tab=ai-quota&incidentId=47');
+
+    getAiQuotaAnalytics.mockResolvedValue({
+      ...dashboardFixture,
+      ragIncidents: [{
+        incidentId: 47,
+        purpose: 'rag_answer_generation',
+        model: 'gemini-3.7-flash',
+        errorCode: 'GEMINI_QUOTA_EXHAUSTED',
+        httpStatus: 429,
+        message: 'Dịch vụ Gemini hiện đã chạm hạn mức sử dụng tạm thời.',
+        retryAfterMs: 4000,
+        occurrenceCount: 1,
+        lastSeenAt: '2026-09-13T07:28:56.662Z',
+        resolvedAt: null,
+      }],
+    });
+
+    renderBoard();
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    const closeBtn = screen.getByRole('button', { name: 'Đóng' });
+    closeBtn.click();
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
   });
 });

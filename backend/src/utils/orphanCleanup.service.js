@@ -97,6 +97,149 @@ class OrphanCleanupService {
     return res.rows[0];
   }
 
+  async markPendingUploadProcessing(uploadId, stage = 'queued') {
+    const result = await db.query(
+      `WITH updated_upload AS (
+         UPDATE pending_media_uploads
+         SET status = 'PROCESSING', processing_stage = $2,
+             processing_error_code = NULL, processing_error_message = NULL,
+             expires_at = GREATEST(expires_at, CURRENT_TIMESTAMP + INTERVAL '24 hours'),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE upload_id = $1 AND status = 'PENDING'
+         RETURNING media_id
+       )
+       UPDATE media_assets
+       SET status = 'PROCESSING', updated_at = CURRENT_TIMESTAMP
+       WHERE media_id IN (SELECT media_id FROM updated_upload)
+       RETURNING media_id`,
+      [uploadId, stage]
+    );
+    return result.rows.length > 0;
+  }
+
+  async updatePendingUploadStage(uploadId, stage) {
+    const result = await db.query(
+      `UPDATE pending_media_uploads
+       SET processing_stage = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE upload_id = $1 AND status = 'PROCESSING'
+       RETURNING upload_id`,
+      [uploadId, stage]
+    );
+    return result.rows.length > 0;
+  }
+
+  async finalizeProcessedUpload(uploadId, uploadResult, { sourceStorageKey = null } = {}) {
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `UPDATE pending_media_uploads
+         SET storage_provider = $2, storage_bucket = $3, storage_key = $4,
+             mime_type = $5, size_bytes = $6, checksum_sha256 = $7,
+             status = 'PENDING', processing_stage = 'ready',
+             processing_error_code = NULL, processing_error_message = NULL,
+             expires_at = CURRENT_TIMESTAMP + ($8 || ' minutes')::interval,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE upload_id = $1 AND status = 'PROCESSING'
+         RETURNING *`,
+        [
+          uploadId,
+          uploadResult.storageProvider || 'r2',
+          uploadResult.storageBucket,
+          uploadResult.storageKey,
+          uploadResult.mimeType,
+          uploadResult.sizeBytes,
+          uploadResult.checksumSha256,
+          Math.max(Number(process.env.PENDING_UPLOAD_TTL_MINUTES || 30), 5)
+        ]
+      );
+      const pending = result.rows[0];
+      if (!pending) {
+        const error = new Error(`Phiên upload ${uploadId} không còn ở trạng thái xử lý.`);
+        error.code = 'MEDIA_UPLOAD_NOT_PROCESSING';
+        throw error;
+      }
+
+      await client.query(
+        `UPDATE media_assets
+         SET storage_provider = $2, storage_bucket = $3, object_key = $4,
+             mime_type = $5, size_bytes = $6, checksum_sha256 = $7,
+             status = 'UPLOADING',
+             metadata = metadata || jsonb_build_object('sourceStorageKey', $8::text),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE media_id = $1`,
+        [
+          pending.media_id,
+          pending.storage_provider,
+          pending.storage_bucket,
+          pending.storage_key,
+          pending.mime_type,
+          pending.size_bytes,
+          pending.checksum_sha256,
+          sourceStorageKey
+        ]
+      );
+      await client.query('COMMIT');
+      return pending;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markPendingUploadProcessingFailure(uploadId, error, { terminal = false } = {}) {
+    const code = String(error?.code || 'MEDIA_PROCESSING_FAILED').slice(0, 100);
+    const message = String(error?.message || 'Không thể xử lý video.').slice(0, 1000);
+    const status = terminal ? 'FAILED' : 'PROCESSING';
+    const stage = terminal ? 'failed' : 'retrying';
+    const result = await db.query(
+      `WITH updated_upload AS (
+         UPDATE pending_media_uploads
+         SET status = $2, processing_stage = $3,
+             processing_error_code = $4, processing_error_message = $5,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE upload_id = $1 AND status = 'PROCESSING'
+         RETURNING media_id
+       )
+       UPDATE media_assets
+       SET status = CASE WHEN $2 = 'FAILED' THEN 'FAILED' ELSE status END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE media_id IN (SELECT media_id FROM updated_upload)
+       RETURNING media_id`,
+      [uploadId, status, stage, code, message]
+    );
+    return result.rows.length > 0;
+  }
+
+  async getPendingUploadStatus(uploadId, instructorId, userRole) {
+    const result = await db.query(
+      `SELECT p.*, a.original_filename,
+              j.status AS job_status, j.attempts AS job_attempts,
+              j.max_attempts AS job_max_attempts,
+              j.last_error_code AS job_error_code,
+              j.last_error_message AS job_error_message
+       FROM pending_media_uploads p
+       LEFT JOIN media_assets a ON a.media_id = p.media_id
+       LEFT JOIN background_jobs j
+         ON j.job_type = 'dash_packaging'
+        AND j.dedupe_key = 'upload:' || p.upload_id::text
+       WHERE p.upload_id = $1`,
+      [uploadId]
+    );
+    const pending = result.rows[0];
+    if (!pending) return null;
+    const isAdmin = userRole === 1 || userRole === '1';
+    if (!isAdmin && String(pending.instructor_id) !== String(instructorId)) {
+      const error = new Error('Bạn không có quyền xem phiên tải lên này.');
+      error.status = 403;
+      error.code = 'PENDING_UPLOAD_FORBIDDEN';
+      throw error;
+    }
+    return pending;
+  }
+
   /**
    * Khóa và xác thực hợp lệ quyền sử dụng tệp tải lên tạm thời (Claim Pending Upload)
    * Sử dụng SELECT ... FOR UPDATE để chống race condition double-claim
@@ -249,7 +392,7 @@ class OrphanCleanupService {
       SET status = 'CLEANING',
           cleaning_started_at = CURRENT_TIMESTAMP,
           expires_at = LEAST(expires_at, CURRENT_TIMESTAMP)
-      WHERE p.status IN ('PENDING', 'CLAIMING', 'CLEANING')
+      WHERE p.status IN ('PROCESSING', 'PENDING', 'CLAIMING', 'CLEANING', 'FAILED')
         AND NOT EXISTS (
           SELECT 1 FROM failed_storage_deletions d
           WHERE d.pending_upload_id = p.upload_id
@@ -348,9 +491,13 @@ class OrphanCleanupService {
       assets.push({ key, bucket, provider });
       seenKeys.add(key);
 
-      if (key.endsWith('/manifest.mpd') || key.endsWith('manifest.mpd')) {
+      if (/\/manifest(?:-clear)?\.mpd$/i.test(key)) {
         const folder = key.substring(0, key.lastIndexOf('/'));
-        for (const sibling of ['audio.mp4', 'video.mp4', 'source.mp4']) {
+        const clearMigrationBundle = /\/manifest-clear\.mpd$/i.test(key);
+        const siblings = clearMigrationBundle
+          ? ['audio-clear.mp4', 'video-clear.mp4', 'source.mp4']
+          : ['audio.mp4', 'video.mp4', 'source.mp4'];
+        for (const sibling of siblings) {
           const siblingKey = `${folder}/${sibling}`;
           if (!seenKeys.has(siblingKey)) {
             assets.push({ key: siblingKey, bucket, provider });
@@ -370,7 +517,9 @@ class OrphanCleanupService {
     if (!storageKey) return { referenced: false, reliable: true };
     try {
       let manifestKey = storageKey;
-      if (/\/(audio|video|source)\.mp4$/i.test(storageKey)) {
+      if (/\/(audio-clear|video-clear)\.mp4$/i.test(storageKey)) {
+        manifestKey = storageKey.replace(/\/(audio-clear|video-clear)\.mp4$/i, '/manifest-clear.mpd');
+      } else if (/\/(audio|video|source)\.mp4$/i.test(storageKey)) {
         manifestKey = storageKey.replace(/\/(audio|video|source)\.mp4$/i, '/manifest.mpd');
       }
       const res = await db.query(`
@@ -609,6 +758,20 @@ class OrphanCleanupService {
             status IN ('CLAIMING', 'CLEANING')
             AND COALESCE(cleaning_started_at, claimed_at, created_at)
               < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+          )
+          OR (
+            status = 'FAILED'
+            AND expires_at < CURRENT_TIMESTAMP
+          )
+          OR (
+            status = 'PROCESSING'
+            AND updated_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'
+            AND NOT EXISTS (
+              SELECT 1 FROM background_jobs job
+              WHERE job.job_type = 'dash_packaging'
+                AND job.dedupe_key = 'upload:' || pending_media_uploads.upload_id::text
+                AND job.status IN ('queued', 'retry', 'processing')
+            )
           )
         )
         AND NOT EXISTS (

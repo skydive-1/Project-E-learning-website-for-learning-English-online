@@ -894,7 +894,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                           <th>Giảng viên</th>
                           <th>Chủ đề</th>
                           <th>Trạng thái</th>
-                          <th>Tiến trình AI</th>
+                          <th>Tiến trình</th>
                           <th>Ngày tạo</th>
                           <th className="course-table__action-heading">Hành động</th>
                         </tr>
@@ -905,8 +905,8 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                           const isPublished = rawStatus === 'published';
                           const isPendingReview = rawStatus === 'pending_review';
                           const ts = course.transcript_summary || {};
-                          const totalVideos = Number(ts.total_video_lessons || 0);
-                          const readySubs = Number(ts.ready_transcripts || 0);
+                          const totalVideos = Number(ts.total_video_lessons ?? ts.total ?? course.total_media_lessons ?? 0);
+                          const readySubs = Number(ts.ready_transcripts ?? ts.ready ?? course.ready_transcripts ?? 0);
                           const progressPct = Number(ts.progress_percent ?? (totalVideos > 0 ? Math.round((readySubs / totalVideos) * 100) : 100));
 
                           return (
@@ -924,7 +924,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                                   {isPublished ? 'Đã xuất bản' : (isPendingReview ? 'Chờ kiểm duyệt' : 'Bản nháp')}
                                 </span>
                               </td>
-                              <td data-label="Tiến trình AI">
+                              <td data-label="Tiến trình">
                                 <div
                                   className="course-ai-progress-widget"
                                   onClick={() => setPipelineModalCourseId(course.course_id)}
@@ -952,47 +952,51 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                                   </div>
                                 </div>
                               </td>
-                              <td data-label="Ngày tạo">{course.created_at ? new Date(course.created_at).toLocaleDateString(locale) : '—'}</td>
-                              <td data-label="Hành động" className="course-table__action-cell" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {isPendingReview ? (
+                              <td data-label="Ngày tạo" className="course-table__date-cell">
+                                {course.created_at ? new Date(course.created_at).toLocaleDateString(locale) : '—'}
+                              </td>
+                              <td data-label="Hành động" className="course-table__action-cell">
+                                <div className="course-table__action-group">
+                                  {isPendingReview ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPipelineModalCourseId(course.course_id)}
+                                      title="Kiểm duyệt & Phê duyệt xuất bản"
+                                      className="course-review-button"
+                                    >
+                                      <FiCheckCircle aria-hidden="true" />
+                                      Kiểm duyệt
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPipelineModalCourseId(course.course_id)}
+                                      title="Xem tiến trình AI & Telemetry"
+                                      className="course-pipeline-button"
+                                    >
+                                      <FiCpu aria-hidden="true" />
+                                      Tiến trình
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
-                                    onClick={() => setPipelineModalCourseId(course.course_id)}
-                                    title="Kiểm duyệt & Phê duyệt xuất bản"
-                                    className="course-review-button"
+                                    onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}
+                                    title="Chỉnh sửa khóa học"
+                                    className="course-edit-button"
                                   >
-                                    <FiCheckCircle aria-hidden="true" />
-                                    Kiểm duyệt
+                                    <FiEdit aria-hidden="true" />
+                                    Sửa
                                   </button>
-                                ) : (
                                   <button
                                     type="button"
-                                    onClick={() => setPipelineModalCourseId(course.course_id)}
-                                    title="Xem tiến trình AI & Telemetry"
-                                    className="course-pipeline-button"
+                                    className="course-delete-button"
+                                    onClick={() => setPendingDeleteCourse(course)}
+                                    aria-label={`Xóa khóa học ${course.course_name}`}
                                   >
-                                    <FiCpu aria-hidden="true" />
-                                    Tiến trình AI
+                                    <FiTrash2 aria-hidden="true" />
+                                    Xóa
                                   </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}
-                                  title="Chỉnh sửa khóa học"
-                                  className="course-edit-button"
-                                >
-                                  <FiEdit aria-hidden="true" />
-                                  Sửa
-                                </button>
-                                <button
-                                  type="button"
-                                  className="course-delete-button"
-                                  onClick={() => setPendingDeleteCourse(course)}
-                                  aria-label={`Xóa khóa học ${course.course_name}`}
-                                >
-                                  <FiTrash2 aria-hidden="true" />
-                                  Xóa
-                                </button>
+                                </div>
                               </td>
                             </tr>
                           );

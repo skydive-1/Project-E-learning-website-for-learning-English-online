@@ -21,11 +21,13 @@ const {
   DurableJobWorker,
   normalizeError
 } = require('../../../utils/durableJobQueue.service');
+const mediaProcessingService = require('../../courses/services/mediaProcessing.service');
 
 const DURABLE_JOB_TYPES = Object.freeze({
   SUBTITLE: 'subtitle_generation',
   RAG: 'rag_ingestion',
-  QUESTIONS: 'suggested_questions'
+  QUESTIONS: 'suggested_questions',
+  DASH_PACKAGING: 'dash_packaging'
 });
 
 const TERMINAL_SUBTITLE_ERROR_CODES = new Set([
@@ -102,9 +104,31 @@ class SubtitlesService {
    */
   async getSubtitleStatus(lessonId) {
     const queryText = `
-      SELECT subtitle_status, error_code, error_message, updated_at
-      FROM lesson_subtitles
-      WHERE lesson_id = $1
+      WITH ls AS (
+        SELECT lesson_id, subtitle_status, error_code, error_message, updated_at
+        FROM lesson_subtitles
+        WHERE lesson_id = $1
+      )
+      SELECT subtitle_status, error_code, error_message, ls.updated_at,
+             job.status AS job_status, job.attempts, job.max_attempts,
+             CASE
+               WHEN job.status IN ('queued', 'retry') THEN 1 + (
+                 SELECT COUNT(*)::int
+                 FROM background_jobs ahead
+                 WHERE ahead.job_type = 'subtitle_generation'
+                   AND ahead.status IN ('queued', 'retry')
+                   AND (
+                     ahead.priority > job.priority
+                     OR (ahead.priority = job.priority AND ahead.available_at < job.available_at)
+                     OR (ahead.priority = job.priority AND ahead.available_at = job.available_at AND ahead.job_id < job.job_id)
+                   )
+               )
+               ELSE NULL
+             END AS queue_position
+      FROM ls
+      LEFT JOIN background_jobs job
+        ON job.job_type = 'subtitle_generation'
+       AND job.dedupe_key = 'lesson:' || ls.lesson_id
       LIMIT 1;
     `;
     const { rows } = await db.query(queryText, [lessonId]);
@@ -114,10 +138,19 @@ class SubtitlesService {
         status,
         code: status === 'failed' ? (rows[0].error_code || null) : null,
         message: status === 'failed' ? (rows[0].error_message || null) : null,
-        updatedAt: rows[0].updated_at
+        updatedAt: rows[0].updated_at,
+        stage: status === 'processing'
+          ? 'transcribing'
+          : (rows[0].job_status === 'retry' ? 'retrying' : (status === 'pending' ? 'queued' : status)),
+        queuePosition: rows[0].queue_position === null ? null : Number(rows[0].queue_position),
+        attempts: Number(rows[0].attempts) || 0,
+        maxAttempts: Number(rows[0].max_attempts) || 5
       };
     }
-    return { status: 'none', code: null, message: null, updatedAt: null };
+    return {
+      status: 'none', code: null, message: null, updatedAt: null,
+      stage: 'none', queuePosition: null, attempts: 0, maxAttempts: 5
+    };
   }
 
   /**
@@ -364,7 +397,7 @@ class SubtitlesService {
 
   /**
    * Chọn object tốt nhất để bóc transcript. Video DASH giữ manifest để phát,
-   * còn pipeline ưu tiên MP4 gốc và tự dùng audio DRM khi MP4 gốc đã bị dọn.
+   * còn pipeline ưu tiên MP4 gốc và tự dùng audio DASH/legacy khi MP4 gốc đã bị dọn.
    */
   async resolveStorageMediaForTranscription(rawLesson) {
     const sourceKey = rawLesson?.storage_key || rawLesson?.content_url || '';
@@ -637,6 +670,9 @@ class SubtitlesService {
   }
 
   isDurableJobErrorRetryable(error, job) {
+    if (job?.job_type === DURABLE_JOB_TYPES.DASH_PACKAGING) {
+      return mediaProcessingService.isRetryable(error);
+    }
     const code = String(error?.code || '');
     if (job?.job_type === DURABLE_JOB_TYPES.SUBTITLE && TERMINAL_SUBTITLE_ERROR_CODES.has(code)) {
       return false;
@@ -651,7 +687,19 @@ class SubtitlesService {
   }
 
   async handleDurableJobFailure(job, error, { leaseUpdated } = {}) {
-    if (!leaseUpdated || job.job_type !== DURABLE_JOB_TYPES.SUBTITLE) return;
+    if (!leaseUpdated) return;
+    if (job.job_type === DURABLE_JOB_TYPES.DASH_PACKAGING) {
+      const uploadId = job.payload?.uploadId;
+      if (uploadId) {
+        await require('../../../utils/orphanCleanup.service').markPendingUploadProcessingFailure(
+          uploadId,
+          error,
+          { terminal: job.status !== 'retry' }
+        );
+      }
+      return;
+    }
+    if (job.job_type !== DURABLE_JOB_TYPES.SUBTITLE) return;
     const lessonId = Number(job.lesson_id || job.payload?.lessonId);
     const sourceContentUrl = job.payload?.sourceContentUrl || null;
     const normalized = normalizeError(error);
@@ -712,6 +760,9 @@ class SubtitlesService {
             error.code = 'SUGGESTED_QUESTIONS_NOT_PERSISTED';
             throw error;
           }
+        },
+        [DURABLE_JOB_TYPES.DASH_PACKAGING]: async job => {
+          await mediaProcessingService.processDashPackaging(job);
         }
       },
       classifyError: (error, job) => this.isDurableJobErrorRetryable(error, job),
@@ -723,6 +774,7 @@ class SubtitlesService {
     if (this.recoveryTimer || this.durableWorker) return this.recoveryTimer || this.durableWorker;
 
     this.durableWorker = this.createDurableWorker().start();
+    mediaProcessingService.setWorkerWakeHandler(() => this.durableWorker?.wake());
 
     const recover = () => this.recoverStalledAutoGeneration(staleMs).catch((error) => {
       console.warn(`[Auto-Subtitle Recovery] Không thể đối soát durable jobs: ${error.message}`);
@@ -1377,11 +1429,17 @@ ${JSON.stringify(translationInput)}
       const rawResult = await db.query(
         `SELECT l.lesson_id, l.content_type, l.content_url, l.storage_key,
                 l.storage_bucket, l.storage_provider,
-                ma.object_key AS legacy_storage_key,
-                ma.storage_bucket AS legacy_storage_bucket,
-                ma.storage_provider AS legacy_storage_provider
+                COALESCE(ma.metadata->>'legacyStorageKey', legacy_ma.object_key) AS legacy_storage_key,
+                COALESCE(ma.metadata->>'legacyStorageBucket', legacy_ma.storage_bucket) AS legacy_storage_bucket,
+                COALESCE(ma.metadata->>'legacyStorageProvider', legacy_ma.storage_provider) AS legacy_storage_provider
          FROM lessons l
          LEFT JOIN media_assets ma ON ma.media_id = l.media_asset_id
+         LEFT JOIN media_assets legacy_ma
+           ON legacy_ma.media_id::text = substring(
+                COALESCE(l.storage_key, l.content_url, '')
+                FROM '/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/'
+              )
+          AND legacy_ma.storage_provider = 'supabase'
          WHERE l.lesson_id = $1 /* FROM lessons WHERE lesson_id */`,
         [parseInt(lessonId, 10)]
       );
@@ -1400,7 +1458,7 @@ ${JSON.stringify(translationInput)}
       }
 
       if (expectedSourceUrl && rawContentUrl !== expectedSourceUrl) {
-        // Nguồn media có thể được đổi từ MP4 sang manifest DRM (hoặc được
+        // Nguồn media có thể được đổi từ MP4 sang manifest DASH (hoặc được
         // tái tổ chức trong R2) sau lúc job được tạo. Đồng bộ lại lease thay
         // vì trả null và để drain loop nạp mãi source cũ.
         await db.query(
@@ -1647,30 +1705,34 @@ ${JSON.stringify(translationInput)}
       // giữ row pending để scheduler chạy source mới.
       if (!savedResult) return null;
 
-      // PostgreSQL là nguồn dữ liệu phụ đề chính. Lỗi Pinecone/embedding không được
-      // đổi một bộ phụ đề đã lưu thành "failed"; RAG có quota và vòng đời retry riêng.
+      // Chạy song song RAG Vector (Pinecone) và Bộ câu hỏi gợi ý (Gemini) để tránh nghẽn luồng xử lý
       const { ingestLessonTranscript } = require('./ragIngestion.service');
-      try {
-        await ingestLessonTranscript(lessonId, generatedCues);
-        await this.acknowledgeDownstreamJob(DURABLE_JOB_TYPES.RAG, lessonId, rawContentUrl);
-      } catch (ragError) {
-        console.warn(
-          `[Subtitles RAG] Phụ đề lessonId=${lessonId} đã sẵn sàng nhưng chưa nạp được RAG: ${ragError.message}`
-        );
-      }
+      const { generateAndSaveSuggestedQuestions } = require('./suggestedQuestions.service');
 
-      // Tự động sinh và lưu 4 câu hỏi gợi ý bám sát 100% video cho học viên
-      try {
-        const { generateAndSaveSuggestedQuestions } = require('./suggestedQuestions.service');
-        const questions = await generateAndSaveSuggestedQuestions(lessonId, generatedCues);
-        if (questions?.generatedByAi) {
-          await this.acknowledgeDownstreamJob(DURABLE_JOB_TYPES.QUESTIONS, lessonId, rawContentUrl);
-        }
-      } catch (suggestErr) {
-        console.warn(
-          `[Subtitles AI Questions] ⚠️ Lỗi sinh câu hỏi gợi ý cho lessonId=${lessonId}: ${suggestErr.message}`
-        );
-      }
+      await Promise.allSettled([
+        (async () => {
+          try {
+            await ingestLessonTranscript(lessonId, generatedCues);
+            await this.acknowledgeDownstreamJob(DURABLE_JOB_TYPES.RAG, lessonId, rawContentUrl);
+          } catch (ragError) {
+            console.warn(
+              `[Subtitles RAG] Phụ đề lessonId=${lessonId} đã sẵn sàng nhưng chưa nạp được RAG: ${ragError.message}`
+            );
+          }
+        })(),
+        (async () => {
+          try {
+            const questions = await generateAndSaveSuggestedQuestions(lessonId, generatedCues);
+            if (questions?.generatedByAi) {
+              await this.acknowledgeDownstreamJob(DURABLE_JOB_TYPES.QUESTIONS, lessonId, rawContentUrl);
+            }
+          } catch (suggestErr) {
+            console.warn(
+              `[Subtitles AI Questions] ⚠️ Lỗi sinh câu hỏi gợi ý cho lessonId=${lessonId}: ${suggestErr.message}`
+            );
+          }
+        })()
+      ]);
 
       return savedResult;
     } catch (pipelineErr) {

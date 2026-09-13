@@ -52,13 +52,13 @@ const MODE_CONFIG = {
     ]
   },
   processing_media: {
-    badge: 'Xử lý media đa tầng',
+    badge: 'Xử lý video nền',
     title: 'Đang xử lý media bài giảng',
-    subtitle: 'Tải lên Cloudflare R2, đóng gói DRM và bóc tách phụ đề tự động...',
+    subtitle: 'Lưu video nguồn lên Cloudflare R2, đóng gói DASH và xác minh tính toàn vẹn...',
     steps: [
       { label: 'Tải lên Cloudflare R2 (Multipart 64MiB/part)', icon: FiHardDrive },
-      { label: 'Đóng gói bảo mật CENC / DRM video', icon: FiLock },
-      { label: 'Tự động trích xuất phụ đề AI (Speech-to-Text)', icon: FiZap }
+      { label: 'Đóng gói luồng MPEG-DASH không mã hóa', icon: FiLayers },
+      { label: 'Xác minh đầy đủ manifest, hình và tiếng', icon: FiCheckCircle }
     ]
   },
   default: {

@@ -729,7 +729,7 @@ const getAiQuotaDashboard = async (days = 30) => {
     LIMIT 25
   `;
 
-  // Chỉ sự cố provider phát sinh từ purpose RAG trong 30 phút gần nhất mới được gửi tới popup Admin.
+  // Chỉ sự cố provider phát sinh từ purpose RAG trong 15 phút gần nhất và CHƯA được phục hồi (resolved_at IS NULL) mới được gửi tới popup Admin.
   const recentRagIncidentsQuery = `
     SELECT
       incident_id,
@@ -746,7 +746,8 @@ const getAiQuotaDashboard = async (days = 30) => {
     FROM ai_provider_incidents
     WHERE workload = 'rag'
       AND LEFT(purpose, 4) = 'rag_'
-      AND last_seen_at >= NOW() - INTERVAL '30 minutes'
+      AND resolved_at IS NULL
+      AND last_seen_at >= NOW() - INTERVAL '15 minutes'
     ORDER BY last_seen_at DESC
     LIMIT 10
   `;

@@ -3,7 +3,11 @@ const assert = require('node:assert');
 
 const db = require('../src/config/database');
 const r2 = require('../src/utils/r2Storage');
-const { reorganizeCourseMedia } = require('../src/utils/r2CourseReorganizer');
+const supabaseConfig = require('../src/config/supabase');
+const {
+  reorganizeCourseMedia,
+  migrateSupabaseMediaToR2
+} = require('../src/utils/r2CourseReorganizer');
 
 describe('📁 R2 auto-organize sau khi tạo khóa học mới', () => {
   const originalDbQuery = db.query;
@@ -11,6 +15,8 @@ describe('📁 R2 auto-organize sau khi tạo khóa học mới', () => {
   const originalGetClient = r2.getClient;
   const originalResolveBucket = r2.resolveBucket;
   const originalInvalidate = r2.invalidateSignedUrlCache;
+  const originalUploadObject = r2.uploadObject;
+  const originalSupabaseAdmin = supabaseConfig.supabaseAdmin;
 
   afterEach(() => {
     db.query = originalDbQuery;
@@ -18,6 +24,8 @@ describe('📁 R2 auto-organize sau khi tạo khóa học mới', () => {
     r2.getClient = originalGetClient;
     r2.resolveBucket = originalResolveBucket;
     r2.invalidateSignedUrlCache = originalInvalidate;
+    r2.uploadObject = originalUploadObject;
+    supabaseConfig.supabaseAdmin = originalSupabaseAdmin;
   });
 
   test('dời video khỏi thư mục draft-<instructorId> về courses/<ten>-<courseId>/... và xóa object cũ', async () => {
@@ -168,5 +176,101 @@ describe('📁 R2 auto-organize sau khi tạo khóa học mới', () => {
   test('courseId rỗng -> không làm gì, không throw', async () => {
     const report = await reorganizeCourseMedia(null);
     assert.deepStrictEqual(report, { total: 0, moved: 0, failed: 0, failures: [] });
+  });
+
+  test('Supabase → R2 chép nguyên bundle DASH và mặc định giữ nguồn legacy', async () => {
+    const sourcePrefix = 'legacy/course-99/asset-abc';
+    const sourceFiles = ['manifest.mpd', 'source.mp4', 'video.mp4', 'audio.mp4'];
+    const sourceBuffers = new Map(sourceFiles.map(name => [
+      `${sourcePrefix}/${name}`,
+      Buffer.from(`content:${name}`)
+    ]));
+    const uploaded = new Map();
+    const removed = [];
+    const txQueries = [];
+
+    db.query = async text => {
+      assert.match(String(text), /storage_provider = 'supabase'/);
+      return { rows: [{
+        ref_type: 'lesson',
+        ref_id: 501,
+        media_asset_id: '25ace9af-7d29-4ab3-8e8c-fca148f568fe',
+        course_id: 99,
+        course_name: 'Khóa học kiểm thử',
+        section_name: 'Chương 1',
+        section_order: 1,
+        lesson_name: 'Bài 1',
+        lesson_order: 1,
+        mime_type: 'application/dash+xml',
+        source_key: `${sourcePrefix}/manifest.mpd`,
+        source_bucket: 'videos',
+        source_provider: 'supabase'
+      }] };
+    };
+    db.pool.connect = async () => ({
+      query: async (text, params) => {
+        txQueries.push({ text: String(text), params });
+        return { rows: [] };
+      },
+      release() {}
+    });
+
+    supabaseConfig.supabaseAdmin = {
+      storage: {
+        from(bucket) {
+          assert.equal(bucket, 'videos');
+          return {
+            async list(prefix) {
+              assert.equal(prefix, sourcePrefix);
+              return { data: sourceFiles.map((name, index) => ({ name, id: `id-${index}` })), error: null };
+            },
+            async download(key) {
+              const buffer = sourceBuffers.get(key);
+              assert.ok(buffer, `Unexpected Supabase download: ${key}`);
+              return { data: new Blob([buffer]), error: null };
+            },
+            async remove(keys) {
+              removed.push(...keys);
+              return { error: null };
+            }
+          };
+        }
+      }
+    };
+
+    r2.resolveBucket = () => 'elearning-media';
+    r2.getClient = () => ({
+      async send(command) {
+        if (command.constructor.name !== 'HeadObjectCommand') {
+          throw new Error(`Unexpected S3 command: ${command.constructor.name}`);
+        }
+        const object = uploaded.get(command.input.Key);
+        if (!object) {
+          const error = new Error('Not Found');
+          error.$metadata = { httpStatusCode: 404 };
+          throw error;
+        }
+        return { ContentLength: object.length, Metadata: {} };
+      }
+    });
+    r2.uploadObject = async (buffer, key) => {
+      uploaded.set(key, Buffer.from(buffer));
+      return { success: true, storageKey: key, sizeBytes: buffer.length };
+    };
+
+    const report = await migrateSupabaseMediaToR2(99);
+
+    assert.equal(report.total, 1);
+    assert.equal(report.migrated, 1);
+    assert.equal(report.failed, 0);
+    assert.deepEqual(
+      [...uploaded.keys()].map(key => key.split('/').at(-1)).sort(),
+      [...sourceFiles].sort()
+    );
+    assert.deepEqual(removed, [], 'legacy source must not be deleted without explicit opt-in');
+    const lessonUpdate = txQueries.find(query => query.text.includes('UPDATE lessons'));
+    assert.ok(lessonUpdate);
+    assert.match(lessonUpdate.params[1], /\/manifest\.mpd$/);
+    assert.ok(txQueries.some(query => query.text.includes('legacyStorageKey')));
   });
 });

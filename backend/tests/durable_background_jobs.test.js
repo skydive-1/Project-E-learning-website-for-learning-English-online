@@ -10,6 +10,18 @@ const {
 } = require('../src/utils/durableJobQueue.service');
 
 describe('PostgreSQL durable background jobs', () => {
+  it('uses one worker by default to protect free AI quota', () => {
+    const previous = process.env.BACKGROUND_JOB_CONCURRENCY;
+    delete process.env.BACKGROUND_JOB_CONCURRENCY;
+    try {
+      const worker = new DurableJobWorker({ queue: {}, handlers: {} });
+      assert.equal(worker.concurrency, 1);
+    } finally {
+      if (previous === undefined) delete process.env.BACKGROUND_JOB_CONCURRENCY;
+      else process.env.BACKGROUND_JOB_CONCURRENCY = previous;
+    }
+  });
+
   it('enqueues one deduplicated job without storing transcript/media payloads', async () => {
     const calls = [];
     const fakeDb = {

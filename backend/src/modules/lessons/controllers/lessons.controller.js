@@ -7,6 +7,7 @@ const lessonsService = require('../services/lessons.service');
 const coursesService = require('../../courses/services/courses.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
 const { isEncryptedDashManifest } = require('../../../utils/dashPackager.util');
+const { isAllowedDashPlaybackObject } = require('../../../utils/mediaAssetGroup.util');
 const lessonStreamCache = require('../../../utils/lessonStreamCache');
 const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
 const {
@@ -408,7 +409,9 @@ exports.streamDashSegment = async (req, res, next) => {
 
   try {
     const segment = req.params.segmentFile;
-    if (!segment || !/^[A-Za-z0-9_.-]+$/.test(segment) || (!segment.endsWith('.m4s') && !segment.endsWith('.mp4'))) {
+    // source.mp4 là bản gốc phục vụ transcript/repackage phía server, tuyệt đối
+    // không được biến endpoint segment thành đường tải trực tiếp file nguồn.
+    if (!isAllowedDashPlaybackObject(segment)) {
       return res.status(400).json({ success: false, code: 'INVALID_DASH_SEGMENT', message: 'Tên segment không hợp lệ' });
     }
     const resolveStartedAt = timing ? Date.now() : null;
