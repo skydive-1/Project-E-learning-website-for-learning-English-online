@@ -58,6 +58,8 @@ class OrphanCleanupService {
       throw new Error('courseId không hợp lệ khi đăng ký pending upload');
     }
 
+    const ttlMinutes = Math.max(Number(process.env.PENDING_UPLOAD_TTL_MINUTES || 30), 5);
+
     const query = `
       WITH new_asset AS (
         INSERT INTO media_assets (
@@ -69,9 +71,10 @@ class OrphanCleanupService {
       )
       INSERT INTO pending_media_uploads (
         upload_id, instructor_id, course_id, storage_provider, storage_bucket,
-        storage_key, mime_type, size_bytes, checksum_sha256, status, media_id
+        storage_key, mime_type, size_bytes, checksum_sha256, status, media_id, expires_at
       )
-      SELECT $1, $2, $11, $8, $3, $4, $5, $6, $7, 'PENDING', media_id
+      SELECT $1, $2, $11, $8, $3, $4, $5, $6, $7, 'PENDING', media_id,
+             CURRENT_TIMESTAMP + ($12 || ' minutes')::interval
       FROM new_asset
       RETURNING *
     `;
@@ -87,7 +90,8 @@ class OrphanCleanupService {
       storageProvider,
       inferMediaKind(mimeType, storageKey),
       originalName,
-      parsedCourseId
+      parsedCourseId,
+      ttlMinutes
     ]);
 
     return res.rows[0];
@@ -594,18 +598,24 @@ class OrphanCleanupService {
         SELECT upload_id, storage_key, storage_bucket, storage_provider
         FROM pending_media_uploads 
         WHERE (
-          (expires_at < CURRENT_TIMESTAMP AND status = 'PENDING')
+          (
+            status = 'PENDING'
+            AND (
+              expires_at < CURRENT_TIMESTAMP
+              OR created_at < CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+            )
+          )
           OR (
             status IN ('CLAIMING', 'CLEANING')
             AND COALESCE(cleaning_started_at, claimed_at, created_at)
               < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
           )
         )
-          AND NOT EXISTS (
-            SELECT 1 FROM failed_storage_deletions d
-            WHERE d.pending_upload_id = pending_media_uploads.upload_id
-              AND d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
-          )
+        AND NOT EXISTS (
+          SELECT 1 FROM failed_storage_deletions d
+          WHERE d.pending_upload_id = pending_media_uploads.upload_id
+            AND d.status IN ('PENDING_RETRY', 'FAILED_PERMANENT')
+        )
         ORDER BY created_at ASC
         LIMIT $1
         FOR UPDATE SKIP LOCKED
