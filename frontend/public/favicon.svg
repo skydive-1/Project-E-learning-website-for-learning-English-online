@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- White Background Container -->
+  <rect width="512" height="512" rx="76" fill="#FFFFFF" />
+  
+  <!-- Interlocking Hexagon Emblem -->
+  <path
+    d="M 256 44 L 432 148 L 432 364 L 256 468 L 80 364 L 80 148 Z M 256 112 L 146 176 L 146 328 L 216 328 L 216 378 L 256 402 L 366 336 L 366 184 L 296 184 L 296 134 Z"
+    fill="#061F00"
+    fill-rule="evenodd"
+    stroke="#061F00"
+    stroke-width="12"
+    stroke-linejoin="round"
+  />
+</svg>

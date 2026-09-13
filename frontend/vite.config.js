@@ -18,7 +18,7 @@ export default defineConfig({
       // chủ động xác nhận cập nhật.
       registerType: 'prompt',
       injectRegister: null,
-      includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png', 'robots.txt'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'logo192.png', 'logo512.png', 'robots.txt'],
       manifest: {
         name: 'E-Learn Academy',
         short_name: 'E-Learn',
