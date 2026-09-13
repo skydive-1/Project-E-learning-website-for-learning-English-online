@@ -239,6 +239,7 @@ const CourseEditor = () => {
   const targetIssue = searchParams.get('issue') || '';
   const deepLinkHandledRef = useRef(false);
   const fileInputRef = useRef({});
+  const youtubeInputRef = useRef({});
   const isEditMode = Boolean(courseId);
 
   // Modal Cam kết Bản quyền Giảng viên
@@ -582,6 +583,25 @@ const CourseEditor = () => {
     const refKey = `${sIdx}-${lIdx}`;
     if (fileInputRef.current[refKey]) {
       fileInputRef.current[refKey].click();
+    }
+  };
+
+  // Trigger file or source selection for replacing media (Thay đổi nguồn)
+  const handleTriggerChangeSource = (sIdx, lIdx) => {
+    const lesson = sections[sIdx]?.lessons?.[lIdx];
+    if (!lesson) return;
+    const refKey = `${sIdx}-${lIdx}`;
+
+    if (lesson.type === 'youtube') {
+      const inputEl = youtubeInputRef.current[refKey];
+      if (inputEl) {
+        inputEl.focus?.();
+        inputEl.select?.();
+        inputEl.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        showToast('Vui lòng dán hoặc nhập đường dẫn video YouTube mới vào ô liên kết.', 'info', { duration: 4000 });
+      }
+    } else {
+      triggerFileSelect(sIdx, lIdx);
     }
   };
 
@@ -1727,6 +1747,7 @@ const CourseEditor = () => {
                                     <YouTubeIcon className="media-icon" style={{ width: 14, height: 14, flexShrink: 0 }} />
                                     <input
                                       type="url"
+                                      ref={el => youtubeInputRef.current[refKey] = el}
                                       value={lesson.youtubeUrl ?? (isYouTubeUrl(lesson.contentUrl) ? lesson.contentUrl : '')}
                                       onChange={(e) => handleLessonChange(sIdx, lIdx, 'youtubeUrl', e.target.value)}
                                       onBlur={(e) => {
@@ -1747,16 +1768,31 @@ const CourseEditor = () => {
                                     />
                                   </div>
                                   {extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl) ? (
-                                    <a
-                                      href={`https://www.youtube.com/watch?v=${extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl)}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="btn-upload-media uploaded"
-                                      style={{ textDecoration: 'none', padding: '6px 12px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                                      title="Mở video trên YouTube trong tab mới"
-                                    >
-                                      <FiExternalLink /> <span>Xem trên YouTube ↗</span>
-                                    </a>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span 
+                                        className="btn-upload-media uploaded status-badge"
+                                        title="Video YouTube đã được thiết lập thành công"
+                                      >
+                                        <FiCheckCircle /> <span>{t('Đã tải lên')}</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="btn-change-source"
+                                        onClick={() => handleTriggerChangeSource(sIdx, lIdx)}
+                                        title="Thay đổi liên kết video YouTube của bài học"
+                                      >
+                                        <FiRefreshCw className="change-source-icon" /> <span>{t('Thay đổi nguồn')}</span>
+                                      </button>
+                                      <a
+                                        href={`https://www.youtube.com/watch?v=${extractYouTubeVideoId(lesson.youtubeUrl || lesson.contentUrl)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="btn-preview-link"
+                                        title="Mở video trên YouTube trong tab mới"
+                                      >
+                                        <FiExternalLink /> <span>Xem trên YouTube ↗</span>
+                                      </a>
+                                    </div>
                                   ) : (
                                     <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
                                       {lesson.youtubeUrl ? 'Link chưa chuẩn' : 'Chưa nhập link'}
@@ -1772,65 +1808,120 @@ const CourseEditor = () => {
                                     onChange={(e) => handleFileChange(sIdx, lIdx, e)}
                                     accept={lesson.type === 'video' ? 'video/mp4' : 'application/pdf'}
                                   />
-                                   {lesson.type === 'pdf' && (lesson.stagedPdfFile || lesson.localPdfFile) && !lesson.contentUrl ? (
-                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                       <button 
-                                         type="button"
-                                         className="btn-upload-media"
-                                         style={{ background: 'rgba(37, 99, 235, 0.1)', borderColor: '#2563eb', color: '#2563eb', fontWeight: 600 }}
-                                         onClick={() => handlePreviewLessonPdf(lesson)}
-                                         title="Xem trước bài giảng PDF bằng HTML5 Canvas trực tiếp trên website"
-                                       >
-                                         <FiEye /> <span>Xem trước</span>
-                                       </button>
-                                       <button 
-                                         type="button"
-                                         className="btn-upload-media"
-                                         style={{ background: '#16a34a', borderColor: '#16a34a', color: '#ffffff', fontWeight: 600 }}
-                                         onClick={() => handleUploadStagedLessonPdf(sIdx, lIdx)}
-                                         disabled={lesson.uploading}
-                                         title="Tải tệp PDF này lên máy chủ"
-                                       >
-                                         {lesson.uploading ? (
-                                           <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
-                                         ) : (
-                                           <><FiUpload /> <span>Tải lên</span></>
-                                         )}
-                                       </button>
-                                       <button 
-                                         type="button"
-                                         className="btn-upload-media"
-                                         onClick={() => triggerFileSelect(sIdx, lIdx)}
-                                         disabled={lesson.uploading}
-                                         title="Chọn tệp PDF khác"
-                                       >
-                                         <FiRefreshCw /> <span>Đổi tệp</span>
-                                       </button>
-                                     </div>
-                                   ) : (
-                                     <button 
-                                       type="button"
-                                       className={`btn-upload-media ${lesson.contentUrl ? 'uploaded' : ''}`}
-                                       onClick={() => triggerFileSelect(sIdx, lIdx)}
-                                       disabled={lesson.uploading}
-                                       title={lesson.type === 'video'
-                                         ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
-                                         : 'Chỉ nhận PDF — Tối đa 500 MB'
-                                       }
-                                     >
-                                       {lesson.uploading ? (
-                                         <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
-                                       ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
-                                         <><FiUpload /> <span>Cần tải lại</span></>
-                                       ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
-                                         <><FiUpload /> <span>Chờ kiểm định</span></>
-                                       ) : lesson.contentUrl ? (
-                                         <><FiCheckCircle /> <span>Đã tải lên</span></>
-                                       ) : (
-                                         <><FiUpload /> <span>{lesson.type === 'video' ? 'Tải lên Video' : 'Chọn tệp PDF'}</span></>
-                                       )}
-                                     </button>
-                                   )}
+                                  {lesson.type === 'pdf' && (lesson.stagedPdfFile || lesson.localPdfFile) ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <button 
+                                        type="button"
+                                        className="btn-upload-media"
+                                        style={{ background: 'rgba(37, 99, 235, 0.1)', borderColor: '#2563eb', color: '#2563eb', fontWeight: 600 }}
+                                        onClick={() => handlePreviewLessonPdf(lesson)}
+                                        title="Xem trước bài giảng PDF bằng HTML5 Canvas trực tiếp trên website"
+                                      >
+                                        <FiEye /> <span>Xem trước</span>
+                                      </button>
+                                      <button 
+                                        type="button"
+                                        className="btn-upload-media"
+                                        style={{ background: '#16a34a', borderColor: '#16a34a', color: '#ffffff', fontWeight: 600 }}
+                                        onClick={() => handleUploadStagedLessonPdf(sIdx, lIdx)}
+                                        disabled={lesson.uploading}
+                                        title="Tải tệp PDF này lên máy chủ"
+                                      >
+                                        {lesson.uploading ? (
+                                          <><FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span></>
+                                        ) : (
+                                          <><FiUpload /> <span>Tải lên</span></>
+                                        )}
+                                      </button>
+                                      <button 
+                                        type="button"
+                                        className="btn-upload-media"
+                                        onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                        disabled={lesson.uploading}
+                                        title="Chọn tệp PDF khác"
+                                      >
+                                        <FiRefreshCw /> <span>Đổi tệp</span>
+                                      </button>
+                                      {lesson.contentUrl && (
+                                        <button
+                                          type="button"
+                                          className="btn-upload-media"
+                                          onClick={() => {
+                                            setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+                                              ...sec,
+                                              lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+                                                ...les,
+                                                stagedPdfFile: null,
+                                                localPdfFile: null
+                                              })
+                                            }));
+                                          }}
+                                          disabled={lesson.uploading}
+                                          title="Hủy đổi tệp, giữ nguyên PDF hiện tại"
+                                        >
+                                          <FiX /> <span>Hủy</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {lesson.uploading ? (
+                                        <button 
+                                          type="button"
+                                          className="btn-upload-media"
+                                          disabled
+                                        >
+                                          <FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span>
+                                        </button>
+                                      ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
+                                        <button 
+                                          type="button"
+                                          className="btn-upload-media need-reupload"
+                                          onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                          title="Tệp nguồn bị mất hoặc xử lý lỗi. Vui lòng tải lại tệp."
+                                        >
+                                          <FiUpload /> <span>Cần tải lại</span>
+                                        </button>
+                                      ) : lesson.mediaStatus === 'PENDING_AUDIT' ? (
+                                        <span className="btn-upload-media pending-audit" title="Đang trong hàng đợi kiểm định tự động">
+                                          <FiUpload /> <span>Chờ kiểm định</span>
+                                        </span>
+                                      ) : lesson.contentUrl ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span 
+                                            className="btn-upload-media uploaded status-badge"
+                                            title={lesson.type === 'video' 
+                                              ? 'Video bài học đã được tải lên và lưu trữ an toàn trên Cloudflare R2' 
+                                              : 'Tài liệu PDF bài học đã được tải lên và lưu trữ an toàn trên Cloudflare R2'}
+                                          >
+                                            <FiCheckCircle /> <span>{t('Đã tải lên')}</span>
+                                          </span>
+                                          <button 
+                                            type="button"
+                                            className="btn-change-source"
+                                            onClick={() => handleTriggerChangeSource(sIdx, lIdx)}
+                                            title={lesson.type === 'video' 
+                                              ? 'Chọn video MP4 khác để thay thế video hiện tại' 
+                                              : 'Chọn tệp PDF khác để thay thế tài liệu hiện tại'}
+                                          >
+                                            <FiRefreshCw className="change-source-icon" /> <span>{t('Thay đổi nguồn')}</span>
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button 
+                                          type="button"
+                                          className="btn-upload-media"
+                                          onClick={() => triggerFileSelect(sIdx, lIdx)}
+                                          title={lesson.type === 'video'
+                                            ? 'Chỉ nhận MP4 chuẩn (H.264/AAC) — Tối đa 500 MB'
+                                            : 'Chỉ nhận PDF — Tối đa 500 MB'
+                                          }
+                                        >
+                                          <FiUpload /> <span>{lesson.type === 'video' ? 'Tải lên Video' : 'Chọn tệp PDF'}</span>
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
                                 </>
                               )}
 

@@ -480,4 +480,83 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     fireEvent.click(downloadBtn);
     expect(onDownload).toHaveBeenCalledTimes(1);
   });
+
+  it('renders "Đã tải lên" status badge and "Thay đổi nguồn" button for YouTube and Video lessons', async () => {
+    apiClient.get.mockImplementation((url) => {
+      if (url === '/courses/subjects') {
+        return Promise.resolve({
+          data: { subjects: [{ subject_id: 1, name: 'IELTS Masterclass' }] }
+        });
+      }
+      if (url === '/courses/37') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            course: {
+              course_id: 37,
+              course_name: 'IELTS Intensive 6.5+',
+              subject_id: 1,
+              academy_roadmap: 'ielts',
+              status: 'draft',
+              sections: [
+                {
+                  section_id: 10,
+                  title: 'Chương 1: 4 chủ đề',
+                  lessons: [
+                    {
+                      lesson_id: 101,
+                      title: 'IELTS Listening chủ đề Biology',
+                      content_type: 'youtube',
+                      content_url: 'https://www.youtube.com/watch?v=KINV60CeJkc',
+                      media_status: 'READY'
+                    },
+                    {
+                      lesson_id: 102,
+                      title: 'IELTS Speaking Unit 1 Video',
+                      content_type: 'video',
+                      content_url: 'https://r2.example.com/video.mp4',
+                      media_status: 'READY'
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        });
+      }
+      if (url.includes('/materials') || url.includes('/quizzes')) {
+        return Promise.resolve({ data: { success: true, materials: [], quizzes: [] } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(
+      <BrowserRouter>
+        <CourseEditor />
+      </BrowserRouter>
+    );
+
+    // Switch to Curriculum tab
+    await waitFor(() => {
+      expect(screen.getByText(/Chương trình học/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/Chương trình học/i));
+
+    // Verify "Đã tải lên" status badges exist for both uploaded lessons
+    const statusBadges = await screen.findAllByText('Đã tải lên');
+    expect(statusBadges.length).toBe(2);
+    statusBadges.forEach(badge => {
+      expect(badge.closest('.status-badge')).toBeInTheDocument();
+    });
+
+    // Verify "Thay đổi nguồn" buttons exist
+    const changeSourceBtns = screen.getAllByRole('button', { name: /Thay đổi nguồn/i });
+    expect(changeSourceBtns.length).toBe(2);
+
+    // Verify clicking "Thay đổi nguồn" on YouTube lesson focuses on the YouTube input
+    const youtubeInput = screen.getByDisplayValue('https://www.youtube.com/watch?v=KINV60CeJkc');
+    expect(youtubeInput).toBeInTheDocument();
+    fireEvent.click(changeSourceBtns[0]);
+    expect(document.activeElement).toBe(youtubeInput);
+  });
 });
