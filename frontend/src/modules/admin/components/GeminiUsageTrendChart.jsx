@@ -311,7 +311,7 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
             type="button"
             className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-caption-1-semibold shadow-2xs transition-all duration-150 ${
               isWaveActive
-                ? 'border-blue-500/40 bg-blue-500/15 text-blue-400 dark:border-blue-400/40 dark:bg-blue-400/20 dark:text-blue-300'
+                ? 'border-blue-500/40 bg-blue-500/15 text-blue-700 dark:border-blue-400/40 dark:bg-blue-400/20 dark:text-blue-300'
                 : 'border-border-button-default bg-background-primary-default text-text-secondary hover:border-border-button-hover hover:bg-background-primary-hover hover:text-text-primary'
             }`}
             onClick={() => setIsWaveActive((prev) => !prev)}
@@ -319,9 +319,9 @@ const GeminiUsageTrendChart = ({ initialTrends = [] }) => {
             aria-pressed={isWaveActive}
             aria-label={t('Nhịp nhảy biểu đồ')}
           >
-            <Activity className={`size-3.5 ${isWaveActive ? 'animate-pulse text-blue-400' : 'text-text-tertiary'}`} aria-hidden="true" />
+            <Activity className={`size-3.5 ${isWaveActive ? 'animate-pulse text-blue-600 dark:text-blue-400' : 'text-text-tertiary'}`} aria-hidden="true" />
             <span className="hidden sm:inline">{t('Nhịp nhảy biểu đồ')}</span>
-            {isWaveActive && <span className="size-1.5 rounded-full bg-blue-400 animate-ping" aria-hidden="true" />}
+            {isWaveActive && <span className="size-1.5 rounded-full bg-blue-600 dark:bg-blue-400 animate-ping" aria-hidden="true" />}
           </button>
 
           <button
