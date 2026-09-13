@@ -5,6 +5,75 @@ const {
   validateOpenClozeQuestion
 } = require('../utils/openCloze.util');
 
+function isAnswerMatching(correctAnswer, studentAnswer, options = []) {
+  if (!correctAnswer || studentAnswer === undefined || studentAnswer === null) return false;
+
+  let rawStudent = studentAnswer;
+  if (typeof rawStudent === 'object') {
+    rawStudent = rawStudent.answer ?? rawStudent.selected ?? rawStudent.value ?? '';
+  }
+
+  const corr = String(correctAnswer).trim();
+  const stud = String(rawStudent).trim();
+  if (!corr || !stud) return false;
+
+  // 1. So sánh trực tiếp không phân biệt hoa thường
+  if (corr.toUpperCase() === stud.toUpperCase()) return true;
+
+  // 2. So sánh tiền tố chữ cái đáp án: A, B, C, D (ví dụ: "A" so với "A. London" hoặc "A) London")
+  const corrLetterMatch = corr.match(/^([A-D])(?:[.):\-\s]|$)/i);
+  const studLetterMatch = stud.match(/^([A-D])(?:[.):\-\s]|$)/i);
+
+  if (corrLetterMatch && studLetterMatch) {
+    if (corrLetterMatch[1].toUpperCase() === studLetterMatch[1].toUpperCase()) {
+      return true;
+    }
+  }
+
+  // 3. Nếu đáp án đúng là "A" mà học viên chọn nội dung text của option đó (hoặc ngược lại)
+  if (corrLetterMatch && !studLetterMatch && Array.isArray(options)) {
+    const letterIdx = corrLetterMatch[1].toUpperCase().charCodeAt(0) - 65;
+    if (options[letterIdx]) {
+      const optText = String(options[letterIdx]).replace(/^[A-D](?:[.):\-]\s*|\s+)/i, '').trim();
+      if (optText.toUpperCase() === stud.toUpperCase()) return true;
+    }
+  }
+
+  if (!corrLetterMatch && studLetterMatch && Array.isArray(options)) {
+    const letterIdx = studLetterMatch[1].toUpperCase().charCodeAt(0) - 65;
+    if (options[letterIdx]) {
+      const optText = String(options[letterIdx]).replace(/^[A-D](?:[.):\-]\s*|\s+)/i, '').trim();
+      if (optText.toUpperCase() === corr.toUpperCase()) return true;
+    }
+  }
+
+  return false;
+}
+
+function resolveFullCorrectAnswer(correctAnswer, options = []) {
+  if (!correctAnswer) return '';
+  const corr = String(correctAnswer).trim();
+  if (!Array.isArray(options) || options.length === 0) return corr;
+
+  const letterMatch = corr.match(/^([A-D])(?:[.):\-\s]|$)/i);
+  if (letterMatch) {
+    const letter = letterMatch[1].toUpperCase();
+    const idx = letter.charCodeAt(0) - 65;
+    const found = options.find(opt => {
+      if (typeof opt !== 'string') return false;
+      const t = opt.trim().toUpperCase();
+      return t.startsWith(letter + '.') || t.startsWith(letter + ')') || t.startsWith(letter + ' ') || t === letter;
+    });
+    if (found) return found;
+    if (options[idx]) return `${letter}. ${String(options[idx]).replace(/^[A-D](?:[.):\-]\s*|\s+)/i, '').trim()}`;
+  }
+
+  const exactMatch = options.find(opt => String(opt).trim().toUpperCase() === corr.toUpperCase());
+  if (exactMatch) return exactMatch;
+
+  return corr;
+}
+
 class QuizzesService {
   async getQuizzesByCourseId(courseId) {
     try {
@@ -142,10 +211,9 @@ class QuizzesService {
         throw new Error("Không tìm thấy câu hỏi cho đề thi trắc nghiệm này.");
       }
 
-      let correctCount = 0;
       const totalQuestions = questions.length;
 
-      // 2. Tính điểm
+      // 2. Tính điểm và lập bảng chi tiết từng câu
       const questionMap = {};
       questions.forEach(q => {
         questionMap[q.question_id] = q;
@@ -158,19 +226,49 @@ class QuizzesService {
         uniqueAnswers.set(questionId, ans);
       });
 
-      uniqueAnswers.forEach((ans, questionId) => {
-        const question = questionMap[questionId];
-        if (!question) return;
+      const results = questions.map(question => {
+        const qId = question.question_id;
+        const ans = uniqueAnswers.get(qId);
+        const studentAns = ans ? ans.answer : null;
+        const qType = String(question.question_type || 'multiple_choice').toLowerCase();
 
-        if (String(question.question_type || '').toLowerCase() === 'open_cloze') {
-          const clozeAnswers = ans.answer?.answers || ans.answer || {};
-          const result = scoreOpenClozeAnswers(question.options, clozeAnswers);
-          correctCount += result.score / 100;
-        } else if (question.correct_answer && question.correct_answer === ans.answer) {
-          correctCount += 1;
+        let isCorrect = false;
+        let earnedScore = 0;
+
+        if (qType === 'open_cloze') {
+          const clozeAnswers = studentAns?.answers || studentAns || {};
+          const clozeResult = scoreOpenClozeAnswers(question.options, clozeAnswers);
+          earnedScore = Number(clozeResult.score) || 0;
+          isCorrect = earnedScore >= 50;
+        } else if (qType === 'writing' || qType === 'pronunciation') {
+          earnedScore = typeof studentAns === 'object' && studentAns?.score !== undefined
+            ? (Number(studentAns.score) || 0)
+            : (studentAns ? 50 : 0);
+          isCorrect = earnedScore >= 50;
+        } else {
+          isCorrect = isAnswerMatching(question.correct_answer, studentAns, question.options);
+          earnedScore = isCorrect ? 100 : 0;
         }
+
+        const fullCorrectAnswerText = resolveFullCorrectAnswer(question.correct_answer, question.options);
+
+        return {
+          question_id: qId,
+          question_type: qType,
+          is_correct: isCorrect,
+          score: earnedScore,
+          student_answer: studentAns,
+          correct_answer: question.correct_answer || '',
+          full_correct_answer_text: fullCorrectAnswerText,
+          explanation: question.explanation || ''
+        };
       });
 
+      let totalEarnedScore = 0;
+      results.forEach(r => {
+        totalEarnedScore += (r.score / 100);
+      });
+      const correctCount = Number(totalEarnedScore.toFixed(2));
       const score = Math.round((correctCount / totalQuestions) * 100);
       const validUserId = (userId && !isNaN(parseInt(userId, 10))) ? parseInt(userId, 10) : null;
 
@@ -204,14 +302,58 @@ class QuizzesService {
 
       return {
         score,
-        correct_count: Number(correctCount.toFixed(2)),
+        correct_count: correctCount,
         total_questions: totalQuestions,
-        attempt: attemptResult.rows[0]
+        attempt: attemptResult.rows[0],
+        results
       };
     } catch (error) {
       console.error("Lỗi xảy ra tại QuizzesService.submitQuiz:", error);
       throw error;
     }
+  }
+
+  async checkAnswer(quizId, questionId, studentAnswer) {
+    const questionResult = await db.query(`
+      SELECT question_id, quiz_id, question_text, options, correct_answer, explanation, question_type
+      FROM questions
+      WHERE question_id = $1 AND quiz_id = $2
+      LIMIT 1
+    `, [parseInt(questionId, 10), parseInt(quizId, 10)]);
+
+    if (questionResult.rows.length === 0) {
+      const error = new Error('Không tìm thấy câu hỏi trong đề thi này.');
+      error.status = 404;
+      throw error;
+    }
+
+    const question = questionResult.rows[0];
+    const qType = String(question.question_type || 'multiple_choice').toLowerCase();
+    
+    let isCorrect = false;
+    let earnedScore = 0;
+
+    if (qType === 'open_cloze') {
+      const clozeAnswers = typeof studentAnswer === 'object' ? (studentAnswer?.answers || studentAnswer) : {};
+      const clozeResult = scoreOpenClozeAnswers(question.options, clozeAnswers);
+      earnedScore = clozeResult.score;
+      isCorrect = earnedScore >= 50;
+    } else {
+      isCorrect = isAnswerMatching(question.correct_answer, studentAnswer, question.options);
+      earnedScore = isCorrect ? 100 : 0;
+    }
+
+    const fullCorrectAnswerText = resolveFullCorrectAnswer(question.correct_answer, question.options);
+
+    return {
+      questionId: question.question_id,
+      questionType: qType,
+      isCorrect,
+      score: earnedScore,
+      correctAnswer: question.correct_answer || '',
+      fullCorrectAnswerText,
+      explanation: question.explanation || ''
+    };
   }
 
   async getQuizLeaderboard(quizId, limit = 5) {

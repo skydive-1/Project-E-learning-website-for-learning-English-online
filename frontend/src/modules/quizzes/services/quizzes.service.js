@@ -173,6 +173,23 @@ export const submitQuizAttempt = async (quizId, selectedAnswers, nickname = '') 
 };
 
 /**
+ * Kiểm tra đáp án câu hỏi thời gian thực (Zero Leakage)
+ */
+export const checkQuizAnswer = async (quizId, questionId, answer) => {
+  try {
+    const response = await apiClient.post('/quizzes/check-answer', {
+      quizId: Number(quizId),
+      questionId: Number(questionId),
+      answer: String(answer ?? '')
+    });
+    return response.data;
+  } catch (error) {
+    console.error("⚠️ Lỗi kiểm tra đáp án từ server:", error.message);
+    throw error;
+  }
+};
+
+/**
  * Lấy Bảng xếp hạng điểm cao thời gian thực của bài Quiz
  */
 export const getQuizLeaderboard = async (quizId) => {

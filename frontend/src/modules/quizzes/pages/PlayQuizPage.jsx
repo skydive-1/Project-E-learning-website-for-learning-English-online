@@ -39,7 +39,8 @@ import {
   getQuizLeaderboard,
   submitWritingAnswer, 
   submitAudioAnswer,
-  submitOpenClozeAnswer
+  submitOpenClozeAnswer,
+  checkQuizAnswer
 } from '../services/quizzes.service';
 import { getAiQuotaStatus } from '../../chatbot/services/quota.service';
 import useStudyTimeTracker from '../../lessons/hooks/useStudyTimeTracker';
@@ -57,6 +58,7 @@ const PlayQuizPage = () => {
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [answeredFeedback, setAnsweredFeedback] = useState({});
   const [aiQuota, setAiQuota] = useState(null);
   const [quotaLoading, setQuotaLoading] = useState(true);
 
@@ -276,6 +278,7 @@ const PlayQuizPage = () => {
     setAnswersLog([]);
     setTimeLeft(20);
     setSelectedAnswers({});
+    setAnsweredFeedback({});
     setAnimatingOptionKey(null);
     setWritingAnswer('');
     setClozeAnswers({});
@@ -283,7 +286,7 @@ const PlayQuizPage = () => {
     setAiFeedback(null);
   };
 
-  const handleAnswerClick = (optionKey) => {
+  const handleAnswerClick = async (optionKey) => {
     if (gameState !== 'playing' || animatingOptionKey) return;
     if (timerRef.current) clearInterval(timerRef.current);
     
@@ -293,8 +296,26 @@ const PlayQuizPage = () => {
       ...prev,
       [currentQuestion.id]: optionKey
     }));
-    
-    const isCorrect = optionKey === currentQuestion.correctAnswer;
+
+    const startTime = Date.now();
+    let isCorrect = false;
+
+    try {
+      const res = await checkQuizAnswer(quiz.id, currentQuestion.id, optionKey);
+      if (res?.success && res.data) {
+        const answerData = res.data;
+        isCorrect = Boolean(answerData.isCorrect);
+        setAnsweredFeedback(prev => ({
+          ...prev,
+          [currentQuestion.id]: answerData
+        }));
+      }
+    } catch (err) {
+      console.warn("⚠️ Không thể kiểm tra đáp án qua server, sử dụng fallback:", err.message);
+      if (currentQuestion.correctAnswer) {
+        isCorrect = optionKey.toUpperCase() === String(currentQuestion.correctAnswer).trim().toUpperCase();
+      }
+    }
     
     let pts = 0;
     if (isCorrect) {
@@ -311,14 +332,16 @@ const PlayQuizPage = () => {
     setEarnedPoints(pts);
     setAnswersLog(prev => [...prev, { isCorrect, pointsEarned: pts }]);
 
-    // Hold for 420ms for visual micro-feedback on the choice before transition
+    // Giữ micro-delay ~380ms để hiệu ứng animation nhấp nháy diễn ra trơn tru
+    const elapsed = Date.now() - startTime;
+    const remainingDelay = Math.max(0, 380 - elapsed);
     setTimeout(() => {
       setAnimatingOptionKey(null);
       setGameState('feedback');
-    }, 420);
+    }, remainingDelay);
   };
 
-  const handleTimeout = () => {
+  const handleTimeout = async () => {
     setSelectedOptionKey(null);
     setSelectedAnswers(prev => ({
       ...prev,
@@ -328,6 +351,19 @@ const PlayQuizPage = () => {
     setEarnedPoints(0);
     playAudio('incorrect');
     setAnswersLog(prev => [...prev, { isCorrect: false, pointsEarned: 0 }]);
+
+    try {
+      const res = await checkQuizAnswer(quiz.id, currentQuestion.id, '');
+      if (res?.success && res.data) {
+        setAnsweredFeedback(prev => ({
+          ...prev,
+          [currentQuestion.id]: res.data
+        }));
+      }
+    } catch (err) {
+      console.warn("⚠️ Không thể lấy đáp án khi hết giờ:", err.message);
+    }
+
     setGameState('feedback');
   };
 
@@ -343,6 +379,12 @@ const PlayQuizPage = () => {
         const pts = res.data.score || 0;
         setScore(prev => prev + pts);
         
+        // Cập nhật selectedAnswers cho submitQuiz cuối cùng
+        setSelectedAnswers(prev => ({
+          ...prev,
+          [currentQuestion.id]: { type: 'writing', text: writingAnswer, score: pts }
+        }));
+
         // Thêm vào nhật ký làm bài
         setAnswersLog(prev => [...prev, { 
           isCorrect: pts >= 50, 
@@ -480,6 +522,12 @@ const PlayQuizPage = () => {
         const pts = res.data.score || 0;
         setScore(prev => prev + pts);
         
+        // Cập nhật selectedAnswers cho submitQuiz cuối cùng
+        setSelectedAnswers(prev => ({
+          ...prev,
+          [currentQuestion.id]: { type: 'pronunciation', score: pts }
+        }));
+
         // Thêm vào nhật ký làm bài
         setAnswersLog(prev => [...prev, { 
           isCorrect: pts >= 50, 
@@ -821,8 +869,9 @@ const PlayQuizPage = () => {
                           const optKey = String.fromCharCode(65 + oIdx);
                           const shapeInfo = shapes[optKey];
                           const isThisAnimating = animatingOptionKey === optKey;
-                          const isSelectedCorrect = isThisAnimating && optKey === currentQuestion.correctAnswer;
-                          const isSelectedIncorrect = isThisAnimating && optKey !== currentQuestion.correctAnswer;
+                          const currentFb = answeredFeedback[currentQuestion.id];
+                          const isSelectedCorrect = isThisAnimating && (currentFb ? currentFb.isCorrect : (currentQuestion.correctAnswer && optKey === currentQuestion.correctAnswer));
+                          const isSelectedIncorrect = isThisAnimating && (currentFb ? !currentFb.isCorrect : (currentQuestion.correctAnswer && optKey !== currentQuestion.correctAnswer));
 
                           let microFeedbackClass = '';
                           if (isSelectedCorrect) microFeedbackClass = 'quiz-opt-correct-breath';
@@ -1077,8 +1126,8 @@ const PlayQuizPage = () => {
 
               return (
                 <>
-                  {/* Nếu là câu hỏi trắc nghiệm truyền thống */}
-                  {effectiveQuestionType === 'multiple_choice' && (
+                  {/* Nếu là câu hỏi trắc nghiệm truyền thống / bài nghe / bài đọc */}
+                  {['multiple_choice', 'listening', 'reading'].includes(effectiveQuestionType) && (
                     <>
                       {feedbackType === 'correct' ? (
                         <div className="space-y-4">
@@ -1101,19 +1150,33 @@ const PlayQuizPage = () => {
                           <p className="text-sm text-slate-500 dark:text-slate-400 font-bold">
                             Đáp án chính xác là:{' '}
                             <span className="bg-slate-50 dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-750 font-black text-slate-800 dark:text-slate-100 ml-1">
-                              {currentQuestion.options?.find(opt => typeof opt === 'string' && opt.trim().startsWith(currentQuestion.correctAnswer)) || currentQuestion.correctAnswer}
+                              {(() => {
+                                const fb = answeredFeedback[currentQuestion.id];
+                                if (fb?.fullCorrectAnswerText) return fb.fullCorrectAnswerText;
+                                const corr = fb?.correctAnswer || currentQuestion.correctAnswer;
+                                if (corr && Array.isArray(currentQuestion.options)) {
+                                  const found = currentQuestion.options.find(opt => typeof opt === 'string' && (
+                                    opt.trim().toUpperCase() === corr.trim().toUpperCase() ||
+                                    opt.trim().toUpperCase().startsWith(corr.trim().toUpperCase() + '.') ||
+                                    opt.trim().toUpperCase().startsWith(corr.trim().toUpperCase() + ')') ||
+                                    opt.trim().toUpperCase().startsWith(corr.trim().toUpperCase() + ' ')
+                                  ));
+                                  if (found) return found;
+                                }
+                                return corr || 'Chưa cập nhật';
+                              })()}
                             </span>
                           </p>
                         </div>
                       )}
 
                       {/* Explanation box */}
-                      {currentQuestion.explanation && (
+                      {(answeredFeedback[currentQuestion.id]?.explanation || currentQuestion.explanation) && (
                         <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-5 text-left border border-slate-100 dark:border-slate-800 max-w-lg w-full text-xs leading-relaxed font-semibold text-slate-600 dark:text-slate-450 shadow-inner">
                           <span className="font-extrabold text-sm block mb-1.5 text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                             💡 Giải thích ngữ pháp:
                           </span>
-                          {currentQuestion.explanation}
+                          {answeredFeedback[currentQuestion.id]?.explanation || currentQuestion.explanation}
                         </div>
                       )}
                     </>

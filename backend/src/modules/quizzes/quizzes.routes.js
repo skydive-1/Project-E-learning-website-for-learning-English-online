@@ -27,6 +27,9 @@ router.get('/:courseId', quizzesController.getQuizzes);
 // Route: POST /api/quizzes/submit (Yêu cầu đăng nhập)
 router.post('/submit', authenticate, quizLimiter, quizzesController.submitQuiz);
 
+// Route: POST /api/quizzes/check-answer - Kiểm tra đáp án đơn câu theo thời gian thực (Yêu cầu đăng nhập)
+router.post('/check-answer', authenticate, quizLimiter, quizzesController.checkAnswer);
+
 // Route: POST /api/quizzes/submit-writing
 router.post('/submit-writing', authenticate, quizLimiter, aiLimiter, quizzesController.submitWriting);
 
