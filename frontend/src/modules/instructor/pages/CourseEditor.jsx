@@ -45,6 +45,27 @@ const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
 
 const YOUTUBE_NO_CAPTIONS_CODE = 'YOUTUBE_NO_CAPTIONS_AVAILABLE';
 
+const MEDIA_PROCESSING_STAGE_LABELS = Object.freeze({
+  uploading_source: 'Đang tải video nguồn lên máy chủ...',
+  uploading_document: 'Đang tải tài liệu lên Cloudflare R2...',
+  queued: 'Đã lưu nguồn an toàn, đang chờ đóng gói DASH...',
+  downloading_source: 'Đang chuẩn bị video nguồn để xử lý...',
+  packaging_dash: 'Đang đóng gói luồng DASH...',
+  uploading_streams: 'Đang tải luồng hình và tiếng lên R2...',
+  publishing_manifest: 'Đang công bố manifest DASH...',
+  verifying: 'Đang xác minh tính toàn vẹn của video...',
+  retrying: 'Xử lý tạm gián đoạn, hệ thống đang tự thử lại...',
+  connection_retry: 'Mất kết nối theo dõi; video vẫn an toàn và hệ thống đang kết nối lại...',
+  ready: 'Video đã sẵn sàng.'
+});
+
+export const getMediaProcessingStageLabel = (stage, progress = 0) => {
+  if (stage === 'uploading_source' || stage === 'uploading_document') {
+    return `${MEDIA_PROCESSING_STAGE_LABELS[stage]} ${Math.max(0, Math.min(100, Number(progress) || 0))}%`;
+  }
+  return MEDIA_PROCESSING_STAGE_LABELS[stage] || 'Hệ thống đang xử lý video trong nền...';
+};
+
 const ALERT_ISSUE_LABELS = {
   'missing-media-source': 'Tệp nguồn của media này đang bị thiếu.',
   'media-processing-failed': 'Media của bài học này xử lý thất bại.',
@@ -55,10 +76,12 @@ const ALERT_ISSUE_LABELS = {
   'quiz-without-questions': 'Đề quiz này chưa có câu hỏi.'
 };
 
-const YouTubeSubtitleStatus = ({ lessonId }) => {
+const LessonSubtitleStatus = ({ lessonId }) => {
   const [subtitleState, setSubtitleState] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const loadStatusRef = useRef(null);
+  const previousStatusRef = useRef(null);
+  const showToast = useToast();
 
   useEffect(() => {
     if (!lessonId) return undefined;
@@ -70,6 +93,11 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
       try {
         const result = await subtitlesService.getSubtitleStatus(lessonId);
         if (cancelled) return;
+        const previousStatus = previousStatusRef.current;
+        if (['pending', 'processing'].includes(previousStatus) && result.status === 'ready') {
+          showToast('Phụ đề tự động đã sẵn sàng.', 'success');
+        }
+        previousStatusRef.current = result.status;
         setSubtitleState(result);
         if (result.status === 'pending' || result.status === 'processing') {
           pollTimer = window.setTimeout(loadStatus, 5000);
@@ -88,15 +116,16 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
       cancelled = true;
       if (pollTimer) window.clearTimeout(pollTimer);
     };
-  }, [lessonId]);
+  }, [lessonId, showToast]);
 
   const handleRetry = async () => {
     if (retrying) return;
     setRetrying(true);
-    setSubtitleState((prev) => ({ ...(prev || {}), status: 'processing', message: null, code: null }));
+    setSubtitleState((prev) => ({ ...(prev || {}), status: 'pending', message: null, code: null }));
     try {
       await subtitlesService.generateSubtitles(lessonId);
-      setSubtitleState((prev) => ({ ...(prev || {}), status: 'ready', message: null, code: null }));
+      setSubtitleState((prev) => ({ ...(prev || {}), status: 'pending', message: null, code: null }));
+      window.setTimeout(() => loadStatusRef.current?.(), 1000);
     } catch (error) {
       console.warn(`[CourseEditor] Không thể kích hoạt lại tạo phụ đề cho bài học ${lessonId}:`, error?.message);
       const message = error?.response?.data?.message || error?.message || 'Không thể tạo lại phụ đề lúc này.';
@@ -128,7 +157,14 @@ const YouTubeSubtitleStatus = ({ lessonId }) => {
           ? {
               tone: 'working',
               icon: <FiLoader className="subtitle-status-spinner" aria-hidden="true" />,
-              title: 'Đang tạo phụ đề'
+              title: subtitleState.status === 'processing' ? 'Đang tạo phụ đề' : 'Đang chờ tạo phụ đề',
+              detail: subtitleState.status === 'processing'
+                ? 'AI đang phân tích nội dung bài học.'
+                : (subtitleState.queuePosition
+                    ? `Vị trí hiện tại trong hàng đợi: ${subtitleState.queuePosition}.`
+                    : (subtitleState.stage === 'retrying'
+                        ? 'Dịch vụ tạm giới hạn; hệ thống sẽ tự thử lại.'
+                        : 'Yêu cầu đã được lưu an toàn và sẽ tự tiếp tục sau khi server khởi động lại.'))
             }
           : {
               tone: 'empty',
@@ -307,6 +343,17 @@ const CourseEditor = () => {
   const [invalidFieldKey, setInvalidFieldKey] = useState(null);
   const [courseLoadFailure, setCourseLoadFailure] = useState(null);
   const [courseReloadKey, setCourseReloadKey] = useState(0);
+  const hasActiveUploads = sections.some(section => section.lessons.some(lesson => lesson.uploading));
+
+  useEffect(() => {
+    if (!hasActiveUploads) return undefined;
+    const warnBeforeLeaving = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeLeaving);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
+  }, [hasActiveUploads]);
 
   // ── Quizzes Dialog State ──────────────────────────────────────────────────
   const [quizDialogTarget, setQuizDialogTarget] = useState(null); // { sIdx, lIdx }
@@ -845,7 +892,8 @@ const CourseEditor = () => {
         localPdfFile: isPdfFile ? file : null,
         uploading: true,
         uploadError: null,
-        uploadProgress: 0
+        uploadProgress: 0,
+        uploadPhase: isPdfFile ? 'uploading_document' : 'uploading_source'
       })
     }));
     setErrorMsg('');
@@ -861,7 +909,9 @@ const CourseEditor = () => {
 
     try {
       const response = await apiClient.post('/courses/upload', formData, {
-        timeout: 300000,
+        // Video lớn còn phải được chuyển tiếp tới R2. Không để timeout cứng ở
+        // trình duyệt biến một upload vẫn đang chạy thành lỗi giả.
+        timeout: 0,
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
@@ -871,7 +921,8 @@ const CourseEditor = () => {
                 ...sec,
                 lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
                   ...les,
-                  uploadProgress: percent
+                  uploadProgress: percent,
+                  uploadPhase: isPdfFile ? 'uploading_document' : 'uploading_source'
                 })
               });
             });
@@ -880,17 +931,79 @@ const CourseEditor = () => {
       });
 
       if (response.data && response.data.success) {
-        if (!response.data.pendingUploadId || !response.data.storageKey || !response.data.storageBucket ||
-            !response.data.mimeType || !response.data.checksumSha256 || !Number(response.data.sizeBytes)) {
+        let completedUpload = response.data;
+        if (response.status === 202 || response.data.processingStatus === 'processing') {
+          const pendingUploadId = response.data.pendingUploadId;
+          if (!pendingUploadId) throw new Error('Phản hồi xử lý video thiếu mã phiên tải lên.');
+          setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+            ...sec,
+            lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+              ...les,
+              pendingUploadId,
+              uploadProgress: 100,
+              uploadPhase: response.data.processingStage || 'queued'
+            })
+          }));
+
+          const processingDeadline = Date.now() + (2 * 60 * 60 * 1000);
+          while (true) {
+            await new Promise(resolve => window.setTimeout(resolve, 2000));
+            try {
+              const statusResponse = await apiClient.get(`/courses/uploads/${pendingUploadId}/status`, {
+                timeout: 15000
+              });
+              const processing = statusResponse.data?.data;
+              if (!processing) throw new Error('Phản hồi trạng thái xử lý video không hợp lệ.');
+              setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+                ...sec,
+                lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+                  ...les,
+                  uploadPhase: processing.stage || 'queued'
+                })
+              }));
+              if (processing.status === 'ready') {
+                completedUpload = processing;
+                break;
+              }
+              if (processing.status === 'failed') {
+                const terminalError = new Error(processing.errorMessage || 'Không thể đóng gói video DASH.');
+                terminalError.isTerminalMediaProcessing = true;
+                throw terminalError;
+              }
+            } catch (pollError) {
+              if (pollError?.isTerminalMediaProcessing || pollError?.response?.data?.data?.status === 'failed') throw pollError;
+              const responseStatus = Number(pollError?.response?.status || 0);
+              const retryableStatus = !responseStatus || responseStatus === 429 || responseStatus >= 500;
+              if (retryableStatus && Date.now() < processingDeadline) {
+                setSections(prev => prev.map((sec, si) => si !== sIdx ? sec : {
+                  ...sec,
+                  lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
+                    ...les,
+                    uploadPhase: 'connection_retry'
+                  })
+                }));
+                continue;
+              }
+              if (Date.now() >= processingDeadline) {
+                throw new Error('Đã quá thời gian theo dõi. Video nguồn vẫn được lưu an toàn; vui lòng tải lại trang để kiểm tra trạng thái.');
+              }
+              throw pollError;
+            }
+          }
+        }
+
+        if (!completedUpload.pendingUploadId || !completedUpload.storageKey || !completedUpload.storageBucket ||
+            !completedUpload.mimeType || !completedUpload.checksumSha256 || !Number(completedUpload.sizeBytes)) {
           throw new Error('Phản hồi thiếu metadata bắt buộc. Vui lòng thử tải lại.');
         }
         setSections(prev => {
           return prev.map((sec, si) => si !== sIdx ? sec : {
             ...sec,
             lessons: sec.lessons.map((les, li) => li !== lIdx ? les : {
-              ...applySuccessfulUploadToLesson(les, response.data, file),
+              ...applySuccessfulUploadToLesson(les, completedUpload, file),
               stagedPdfFile: null,
               uploadProgress: 100,
+              uploadPhase: 'ready',
               fileSizeFormatted
             })
           });
@@ -911,7 +1024,8 @@ const CourseEditor = () => {
             uploading: false,
             uploadVerified: false,
             uploadError: errMsg,
-            uploadProgress: 0
+            uploadProgress: 0,
+            uploadPhase: 'failed'
           })
         });
       });
@@ -1915,7 +2029,7 @@ const CourseEditor = () => {
                                           className="btn-upload-media"
                                           disabled
                                         >
-                                          <FiLoader className="spin" /> <span>Đang tải ({lesson.uploadProgress || 0}%)...</span>
+                                          <FiLoader className="spin" /> <span>{lesson.uploadPhase === 'uploading_source' ? `Đang tải (${lesson.uploadProgress || 0}%)...` : 'Đang xử lý video...'}</span>
                                         </button>
                                       ) : (lesson.mediaStatus === 'MISSING_SOURCE' || lesson.mediaStatus === 'FAILED') ? (
                                         <button 
@@ -1987,14 +2101,16 @@ const CourseEditor = () => {
                                 width: '100%', height: '4px', background: 'var(--border-color, #e2e8f0)', borderRadius: '4px', overflow: 'hidden'
                               }}>
                                 <div style={{
-                                  width: `${lesson.uploadProgress || 0}%`,
+                                  width: ['uploading_source', 'uploading_document'].includes(lesson.uploadPhase)
+                                    ? `${lesson.uploadProgress || 0}%`
+                                    : '100%',
                                   height: '100%',
-                                  background: '#2563eb',
+                                  background: lesson.uploadPhase === 'retrying' ? '#f59e0b' : '#2563eb',
                                   borderRadius: '4px'
                                 }} />
                               </div>
                               <span style={{ fontSize: '11px', color: 'var(--text-light, #64748b)', marginTop: '2px', display: 'block' }}>
-                                Đang tải lên Cloudflare R2... {lesson.uploadProgress || 0}%
+                                {getMediaProcessingStageLabel(lesson.uploadPhase, lesson.uploadProgress)} Bạn có thể tiếp tục chỉnh sửa các nội dung khác.
                               </span>
                             </div>
                           )}
@@ -2120,7 +2236,7 @@ const CourseEditor = () => {
                                     </a>
                                   )}
                                 </div>
-                                {lesson.isPersisted && <YouTubeSubtitleStatus lessonId={lesson.id} />}
+                                {lesson.isPersisted && <LessonSubtitleStatus lessonId={lesson.id} />}
                               </div>
                             ) : lesson.contentUrl && !lesson.uploading && (
                               <div className="toolbar-right">
@@ -2150,6 +2266,9 @@ const CourseEditor = () => {
                                     </a>
                                   )}
                                 </div>
+                                {lesson.type === 'video' && lesson.isPersisted && (
+                                  <LessonSubtitleStatus lessonId={lesson.id} />
+                                )}
                               </div>
                             )}
                           </div>

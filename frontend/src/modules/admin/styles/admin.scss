@@ -765,6 +765,7 @@
 
   .course-table-wrap {
     overflow-x: auto;
+    border-radius: 12px;
   }
 
   .course-table {
@@ -772,6 +773,7 @@
     border-collapse: collapse;
     text-align: left;
     font-size: 13px;
+    table-layout: fixed; // Khóa cố định tỷ lệ cột, chống méo lệch hàng cột
 
     th {
       padding: 13px 14px;
@@ -779,15 +781,33 @@
       color: var(--text-light);
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
       white-space: nowrap;
+
+      &:nth-child(1) { width: 26%; } // Khóa học
+      &:nth-child(2) { width: 14%; } // Giảng viên
+      &:nth-child(3) { width: 13%; } // Chủ đề
+      &:nth-child(4) { width: 11%; text-align: center; } // Trạng thái
+      &:nth-child(5) { width: 14%; text-align: center; } // Tiến trình
+      &:nth-child(6) { width: 10%; text-align: center; } // Ngày tạo
+      &:nth-child(7) { width: 12%; min-width: 175px; text-align: right; } // Hành động
     }
 
     td {
-      padding: 16px 14px;
+      padding: 14px 14px;
       border-bottom: 1px solid var(--border-color);
       vertical-align: middle;
+
+      &:nth-child(4) { text-align: center; }
+      &:nth-child(5) { text-align: center; }
+      &:nth-child(6) {
+        text-align: center;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-light);
+        font-size: 12px;
+      }
     }
 
     tbody tr:hover td {
@@ -797,6 +817,15 @@
     &__action-heading,
     &__action-cell {
       text-align: right;
+      padding-right: 14px;
+    }
+
+    &__action-group {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+      white-space: nowrap;
     }
   }
 
@@ -941,27 +970,25 @@
 
     .micro-progress-track {
       width: 100%;
-      height: 5px;
+      height: 6px;
       border-radius: 999px;
-      background: var(--border-color);
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.2);
       overflow: hidden;
+      position: relative;
     }
 
     .micro-progress-fill {
       height: 100%;
       border-radius: 999px;
-      transition: width 0.4s ease;
-
-      &.is-done {
-        background: linear-gradient(90deg, #10b981, #059669);
-      }
+      background: linear-gradient(90deg, #059669 0%, #10b981 50%, #34d399 100%);
+      background-size: 200% 100%;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+      transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: emerald-progress-shimmer 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
       &.is-running {
-        background: linear-gradient(90deg, #3b82f6, #6366f1);
-      }
-
-      &.has-error {
-        background: linear-gradient(90deg, #f59e0b, #ef4444);
+        animation: emerald-progress-shimmer 1.4s ease-in-out infinite;
       }
     }
   }
@@ -1869,22 +1896,34 @@
   .progress-track {
     height: 8px;
     border-radius: 999px;
-    background: var(--border-color);
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.2);
     overflow: hidden;
+    position: relative;
   }
 
   .progress-fill {
     height: 100%;
     border-radius: 999px;
+    background: linear-gradient(90deg, #059669 0%, #10b981 50%, #34d399 100%);
+    background-size: 200% 100%;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.45);
     transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: emerald-progress-shimmer 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
     &.is-complete {
       background: linear-gradient(90deg, #10b981, #059669);
+      animation: none;
     }
+  }
+}
 
-    &.is-processing {
-      background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6);
-    }
+@keyframes emerald-progress-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
   }
 }
 
@@ -2015,6 +2054,41 @@
       font-size: 15.5px;
       font-weight: 750;
       color: var(--text-color);
+    }
+
+    .section-header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pipeline-batch-process-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.26));
+      color: #34d399;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.18);
+
+      &:hover:not(:disabled) {
+        border-color: #10b981;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(5, 150, 105, 0.45));
+        color: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
     }
 
     .pipeline-refresh-btn {

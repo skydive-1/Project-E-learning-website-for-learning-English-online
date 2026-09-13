@@ -15,6 +15,9 @@ router.get('/', optionalAuthenticate, coursesController.getAllCourses);
 // GET /api/courses/subjects - Lấy danh sách môn học
 router.get('/subjects', coursesController.getSubjects);
 
+// GET /api/courses/uploads/:uploadId/status - Theo dõi đóng gói DASH nền
+router.get('/uploads/:uploadId/status', authenticate, authorize([1, 2]), coursesController.getUploadStatus);
+
 // GET /api/courses/:courseId - Lấy chi tiết khóa học kèm chương và bài học
 router.get('/:courseId', coursesController.getCourseById);
 

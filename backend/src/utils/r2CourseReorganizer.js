@@ -502,6 +502,18 @@ async function persistSupabaseMigration(row, newKey, newBucket) {
            AND COALESCE(storage_key, content_url) = $4`,
         [newBucket, newKey, row.ref_id, row.source_key]
       );
+      await client.query(
+        `UPDATE media_assets
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+               'legacyStorageProvider', 'supabase',
+               'legacyStorageBucket', $1::text,
+               'legacyStorageKey', $2::text,
+               'migratedAt', CURRENT_TIMESTAMP
+             ),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE media_id = (SELECT media_asset_id FROM lessons WHERE lesson_id = $3)`,
+        [row.source_bucket, row.source_key, row.ref_id]
+      );
     } else {
       await client.query(
         `UPDATE lesson_materials
@@ -514,6 +526,18 @@ async function persistSupabaseMigration(row, newKey, newBucket) {
            AND storage_provider = 'supabase'
            AND COALESCE(storage_key, file_url) = $4`,
         [newBucket, newKey, row.ref_id, row.source_key]
+      );
+      await client.query(
+        `UPDATE media_assets
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+               'legacyStorageProvider', 'supabase',
+               'legacyStorageBucket', $1::text,
+               'legacyStorageKey', $2::text,
+               'migratedAt', CURRENT_TIMESTAMP
+             ),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE media_id = (SELECT media_asset_id FROM lesson_materials WHERE material_id = $3)`,
+        [row.source_bucket, row.source_key, row.ref_id]
       );
     }
     // Cập nhật pending_media_uploads nếu còn tham chiếu cũ

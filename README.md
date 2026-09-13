@@ -301,6 +301,7 @@ FRONTEND_URL=http://localhost:3001
 # Adaptive video & media
 ENABLE_DASH_PACKAGING=true
 ENABLE_SUBTITLE_VAD=true
+BACKGROUND_JOB_CONCURRENCY=1  # bảo vệ quota Gemini miễn phí
 DISABLE_RATE_LIMIT=true  # development only
 ```
 

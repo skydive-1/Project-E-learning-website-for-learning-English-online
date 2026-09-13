@@ -13,7 +13,8 @@ import {
   FiCornerDownLeft,
   FiArrowRight,
   FiPlayCircle,
-  FiLayers
+  FiLayers,
+  FiZap
 } from 'react-icons/fi';
 import apiClient from '../../../config/api.config';
 import { useToast } from '../../../context/ToastContext';
@@ -113,10 +114,41 @@ const CourseTranscriptPipelineModal = ({ courseId, onClose, onCourseUpdated }) =
     }
   };
 
+  // Admin bấm xử lý đồng thời tất cả bài học chưa hoàn tất
+  const handleProcessAllLessons = async () => {
+    const unfinishedLessons = (pipelineData?.lessons || [])
+      .filter((les) => ['video', 'youtube'].includes(String(les.content_type).toLowerCase()) && les.subtitle_status !== 'ready')
+      .map((les) => les.lesson_id);
+
+    if (unfinishedLessons.length === 0) {
+      showToast('Tất cả bài học video trong khóa đều đã hoàn tất phụ đề & AI!', 'info');
+      return;
+    }
+
+    setActionInProgress('recover-all');
+    try {
+      await apiClient.post('/admin/course-transcripts/recover', {
+        courseId,
+        lessonIds: unfinishedLessons,
+        limit: Math.max(10, unfinishedLessons.length),
+        includeFailed: true
+      });
+      showToast(`Đã đưa đồng thời ${unfinishedLessons.length} bài học vào hàng đợi xử lý song song!`, 'success');
+      await fetchPipeline({ quiet: true });
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Không thể kích hoạt xử lý hàng loạt.', 'error');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   const summary = pipelineData?.summary;
   const course = pipelineData?.course;
   const lessons = pipelineData?.lessons || [];
   const isPendingReview = course?.status_name === 'pending_review' || course?.status === 'pending_review';
+  const hasUnfinishedLessons = lessons.some(
+    (les) => ['video', 'youtube'].includes(String(les.content_type).toLowerCase()) && les.subtitle_status !== 'ready'
+  );
 
   return (
     <div className="transcript-pipeline-overlay" role="dialog" aria-modal="true">
@@ -236,13 +268,27 @@ const CourseTranscriptPipelineModal = ({ courseId, onClose, onCourseUpdated }) =
               <div className="pipeline-lessons-section">
                 <div className="section-header">
                   <h3>Chi tiết từng bài giảng trong quy trình bóc tách</h3>
-                  <button 
-                    type="button" 
-                    className="pipeline-refresh-btn" 
-                    onClick={() => fetchPipeline({ quiet: false })}
-                  >
-                    <FiRefreshCw /> Làm mới trạng thái
-                  </button>
+                  <div className="section-header-actions">
+                    {hasUnfinishedLessons && (
+                      <button
+                        type="button"
+                        className="pipeline-batch-process-btn"
+                        onClick={handleProcessAllLessons}
+                        disabled={actionInProgress === 'recover-all'}
+                        title="Đưa đồng thời tất cả các bài học chưa hoàn tất vào hàng đợi xử lý song song"
+                      >
+                        <FiZap className={actionInProgress === 'recover-all' ? 'is-spinning' : ''} />
+                        {actionInProgress === 'recover-all' ? 'Đang kích hoạt...' : 'Xử lý song song tất cả bài học'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="pipeline-refresh-btn"
+                      onClick={() => fetchPipeline({ quiet: false })}
+                    >
+                      <FiRefreshCw /> Làm mới trạng thái
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pipeline-lessons-table-wrap">

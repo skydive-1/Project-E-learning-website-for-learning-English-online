@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { FiAlertTriangle, FiCheckCircle, FiExternalLink, FiX } from 'react-icons/fi';
 
 import { useLanguage } from '../../../context/LanguageContext';
@@ -18,12 +18,31 @@ const RagIncidentAlertModal = ({ incident, onClose, onOpenRateLimits }) => {
   const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
   const previousFocusRef = useRef(null);
+  const [isLocallyDismissed, setIsLocallyDismissed] = useState(false);
+
+  // Reset trạng thái đóng cục bộ khi có sự cố mới
+  useEffect(() => {
+    setIsLocallyDismissed(false);
+  }, [incident?.incidentId]);
+
+  const handleClose = useCallback((event) => {
+    if (event) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    }
+    setIsLocallyDismissed(true);
+    if (typeof onClose === 'function') {
+      onClose();
+    }
+  }, [onClose]);
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement;
     closeButtonRef.current?.focus();
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        handleClose(event);
+      }
       if (event.key === 'Tab') {
         const focusable = dialogRef.current?.querySelectorAll('button:not(:disabled), a[href]') || [];
         const first = focusable[0];
@@ -42,31 +61,44 @@ const RagIncidentAlertModal = ({ incident, onClose, onOpenRateLimits }) => {
       window.removeEventListener('keydown', handleKeyDown);
       previousFocusRef.current?.focus?.();
     };
-  }, [onClose]);
+  }, [handleClose]);
 
+  // 1. Đã đóng cục bộ thì không render
+  if (isLocallyDismissed) return null;
+
+  // 2. Không phải sự cố hoặc không thuộc nghiệp vụ RAG thì không render
   if (!incident || !String(incident.purpose || '').startsWith('rag_')) return null;
+
+  // 3. Chỉ hiển thị popup cảnh báo khi sự cố THỰC SỰ đang diễn ra (chưa được giải quyết/phục hồi)
+  if (incident.resolvedAt) return null;
 
   const isQuota = incident.httpStatus === 429
     || /QUOTA|RESOURCE_EXHAUSTED|429/i.test(String(incident.errorCode || ''));
-  const recovered = Boolean(incident.resolvedAt);
   const taskLabel = PURPOSE_LABELS[incident.purpose] || incident.purpose;
   const locale = language === 'ENG' ? 'en-US' : 'vi-VN';
 
   return (
-    <div className="rag-incident-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
+    <div
+      className="rag-incident-overlay"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          handleClose(event);
+        }
+      }}
+    >
       <section
         ref={dialogRef}
-        className={cn('rag-incident-dialog', !recovered && 'alert-pulse-beacon')}
+        className="rag-incident-dialog alert-pulse-beacon"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="rag-incident-title"
         aria-describedby="rag-incident-description"
+        onClick={(event) => event.stopPropagation()}
       >
-        <div className={`rag-incident-status ${recovered ? 'is-recovered' : 'is-active'}`}>
-          {recovered ? <FiCheckCircle aria-hidden="true" /> : <FiAlertTriangle aria-hidden="true" />}
-          <span>{recovered ? t('Đã tự phục hồi') : t('Đang cần chú ý')}</span>
+        <div className="rag-incident-status is-active">
+          <FiAlertTriangle aria-hidden="true" />
+          <span>{t('Đang cần chú ý')}</span>
         </div>
 
         <button
@@ -74,7 +106,7 @@ const RagIncidentAlertModal = ({ incident, onClose, onOpenRateLimits }) => {
           type="button"
           className="rag-incident-close"
           aria-label={t('Đóng hộp thoại')}
-          onClick={onClose}
+          onClick={handleClose}
         >
           <FiX aria-hidden="true" />
         </button>
@@ -105,11 +137,21 @@ const RagIncidentAlertModal = ({ incident, onClose, onOpenRateLimits }) => {
         <p className="rag-incident-message">{incident.message}</p>
 
         <div className="rag-incident-actions">
-          <button type="button" className="is-secondary" onClick={onClose}>{t('Đóng')}</button>
-          <button type="button" className="is-primary" onClick={() => {
-            onClose();
-            onOpenRateLimits?.();
-          }}>
+          <button
+            type="button"
+            className="is-secondary"
+            onClick={handleClose}
+          >
+            {t('Đóng')}
+          </button>
+          <button
+            type="button"
+            className="is-primary"
+            onClick={(event) => {
+              handleClose(event);
+              onOpenRateLimits?.();
+            }}
+          >
             {t('Kiểm tra Rate Limits')} <FiExternalLink aria-hidden="true" />
           </button>
         </div>

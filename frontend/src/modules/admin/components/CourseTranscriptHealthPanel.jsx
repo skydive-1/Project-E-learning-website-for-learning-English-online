@@ -36,7 +36,7 @@ const getFailureGuidance = (lessons = []) => {
   if (confirmedMissing.length > 0) {
     return {
       title: 'File media đã mất khỏi storage',
-      detail: 'Hệ thống đã dò MP4 gốc, audio DRM, tên file cũ và thư mục cũ theo UUID nhưng không tìm thấy. Cần mở khóa học và tải lại video cho các bài được liệt kê.',
+      detail: 'Hệ thống đã dò MP4 gốc, audio DASH, tên file cũ, thư mục cũ theo UUID và vị trí Supabase legacy nhưng không tìm thấy. Hãy chạy công cụ phục hồi media; chỉ tải lại video nếu nguồn legacy cũng không còn.',
       lessonIds: confirmedMissing.map(lesson => lesson.lessonId),
       requiresReupload: true
     };
@@ -48,7 +48,7 @@ const getFailureGuidance = (lessons = []) => {
   if (storageMissing.length > 0) {
     return {
       title: 'Không truy cập được file media nguồn',
-      detail: 'Bấm “Thử tự khôi phục” một lần: hệ thống sẽ dò MP4 gốc, audio DRM, tên file cũ và vị trí cũ theo UUID.',
+      detail: 'Bấm “Thử tự khôi phục” một lần: hệ thống sẽ dò MP4 gốc, audio DASH, tên file cũ, vị trí cũ theo UUID và nguồn Supabase legacy.',
       lessonIds: storageMissing.map(lesson => lesson.lessonId),
       requiresReupload: false
     };

@@ -55,7 +55,11 @@ exports.getSubtitleStatus = async (req, res, next) => {
         status: result.status,   // none | pending | processing | ready | failed
         code: result.code,
         message: result.message,
-        updatedAt: result.updatedAt
+        updatedAt: result.updatedAt,
+        stage: result.stage,
+        queuePosition: result.queuePosition,
+        attempts: result.attempts,
+        maxAttempts: result.maxAttempts
       }
     });
   } catch (error) {
@@ -64,24 +68,27 @@ exports.getSubtitleStatus = async (req, res, next) => {
 };
 
 /**
- * POST /api/lessons/:lessonId/generate-subtitles - Kích hoạt AI Gemini sinh phụ đề
+ * POST /api/lessons/:lessonId/generate-subtitles - Đưa tác vụ sinh phụ đề vào hàng đợi bền
  */
 exports.generateSubtitles = async (req, res, next) => {
   try {
     const { lessonId } = req.params;
-    const subtitles = await subtitlesService.generateSubtitlesWithGemini(lessonId);
+    const queued = await subtitlesService.queueAutoGeneration(lessonId);
 
-    return res.status(200).json({
+    if (!queued) {
+      return res.status(400).json({
+        success: false,
+        code: 'SUBTITLE_SOURCE_NOT_AVAILABLE',
+        message: 'Bài học chưa có nguồn video hợp lệ để tạo phụ đề.'
+      });
+    }
+
+    return res.status(202).json({
       success: true,
-      message: 'Sinh phụ đề song ngữ bằng AI Gemini thành công',
+      message: 'Đã đưa yêu cầu tạo phụ đề vào hàng đợi. Bạn có thể tiếp tục chỉnh sửa khóa học.',
       data: {
-        subtitleId: subtitles.subtitle_id,
-        lessonId: subtitles.lesson_id,
-        enVtt: subtitles.en_vtt,
-        viVtt: subtitles.vi_vtt,
-        bilingualVtt: subtitles.bilingual_vtt,
-        cues: typeof subtitles.cues === 'string' ? JSON.parse(subtitles.cues) : (subtitles.cues || []),
-        updatedAt: subtitles.updated_at
+        lessonId: Number(lessonId),
+        status: 'pending'
       }
     });
   } catch (error) {

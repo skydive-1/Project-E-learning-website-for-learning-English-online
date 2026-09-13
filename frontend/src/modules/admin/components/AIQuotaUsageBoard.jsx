@@ -57,7 +57,14 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   // State Modal xem lịch sử tương tác AI
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [targetUserHistory, setTargetUserHistory] = useState(null);
-  const [dismissedIncidentIds, setDismissedIncidentIds] = useState([]);
+  const [dismissedIncidentIds, setDismissedIncidentIds] = useState(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? sessionStorage.getItem('admin_dismissed_rag_incidents') : null;
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Tải dữ liệu từ Backend
   const fetchQuotaData = useCallback(async (isSilent = false) => {
@@ -215,20 +222,66 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
     return dashboardData.recentAiLogs.filter(l => l.user_id === targetUserHistory.user_id);
   }, [targetUserHistory, dashboardData?.recentAiLogs]);
 
-  const visibleRagIncident = useMemo(() => (
-    (targetIncidentId
-      ? (dashboardData?.ragIncidents || []).find((incident) => Number(incident.incidentId) === targetIncidentId)
-      : null
-    ) || (dashboardData?.ragIncidents || []).find((incident) => (
-      String(incident.purpose || '').startsWith('rag_')
-      && !dismissedIncidentIds.includes(incident.incidentId)
-    )) || null
-  ), [dashboardData?.ragIncidents, dismissedIncidentIds, targetIncidentId]);
+  const visibleRagIncident = useMemo(() => {
+    const rawIncidents = dashboardData?.ragIncidents || [];
+
+    // Chỉ sự cố RAG thật sự ĐANG diễn ra (chưa được giải quyết) và chưa bị đóng trong session hiện tại
+    const activeUnresolvedIncidents = rawIncidents.filter((incident) => {
+      const isRag = String(incident.purpose || '').startsWith('rag_');
+      const isUnresolved = !incident.resolvedAt;
+      const isNotDismissed = !dismissedIncidentIds.includes(Number(incident.incidentId));
+      return isRag && isUnresolved && isNotDismissed;
+    });
+
+    if (targetIncidentId) {
+      const target = rawIncidents.find((incident) => Number(incident.incidentId) === targetIncidentId);
+      if (target && !target.resolvedAt && !dismissedIncidentIds.includes(targetIncidentId)) {
+        return target;
+      }
+      return null;
+    }
+
+    return activeUnresolvedIncidents[0] || null;
+  }, [dashboardData?.ragIncidents, dismissedIncidentIds, targetIncidentId]);
 
   const dismissRagIncident = useCallback(() => {
-    if (!visibleRagIncident) return;
-    setDismissedIncidentIds((current) => [...new Set([...current, visibleRagIncident.incidentId])]);
-  }, [visibleRagIncident]);
+    // Thu thập tất cả ID sự cố hiện có để đóng dứt điểm, ngăn chuỗi popup liên tiếp
+    const currentIncidentIds = (dashboardData?.ragIncidents || [])
+      .map((item) => Number(item.incidentId))
+      .filter(Boolean);
+
+    if (visibleRagIncident?.incidentId) {
+      currentIncidentIds.push(Number(visibleRagIncident.incidentId));
+    }
+    if (targetIncidentId) {
+      currentIncidentIds.push(Number(targetIncidentId));
+    }
+
+    setDismissedIncidentIds((current) => {
+      const updated = Array.from(new Set([...current, ...currentIncidentIds]));
+      try {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('admin_dismissed_rag_incidents', JSON.stringify(updated));
+        }
+      } catch (storageErr) {
+        console.warn('[AI Quota] Không thể lưu dismissed incidents vào sessionStorage:', storageErr);
+      }
+      return updated;
+    });
+
+    // Xóa tham số incidentId trên URL (nếu có) để tránh re-trigger khi chuyển tab/re-render
+    try {
+      if (typeof window !== 'undefined') {
+        const currentUrl = new URL(window.location.href);
+        if (currentUrl.searchParams.has('incidentId')) {
+          currentUrl.searchParams.delete('incidentId');
+          window.history.replaceState({}, '', currentUrl.pathname + (currentUrl.search ? currentUrl.search : '') + currentUrl.hash);
+        }
+      }
+    } catch {
+      // Ignored
+    }
+  }, [dashboardData?.ragIncidents, targetIncidentId, visibleRagIncident]);
 
   return (
     <div className="users-table-container ai-quota-dashboard-view">

@@ -33,6 +33,36 @@ afterEach(() => {
 });
 
 describe('Automatic subtitle trigger', () => {
+  test('manual subtitle generation returns 202 and only enqueues durable work', async () => {
+    let queuedLessonId = null;
+    let synchronousCalls = 0;
+    subtitlesService.queueAutoGeneration = async lessonId => {
+      queuedLessonId = Number(lessonId);
+      return true;
+    };
+    subtitlesService.generateSubtitlesWithGemini = async () => {
+      synchronousCalls += 1;
+      throw new Error('Manual endpoint must not wait for Gemini');
+    };
+
+    let statusCode = null;
+    let payload = null;
+    const res = {
+      status(code) { statusCode = code; return this; },
+      json(body) { payload = body; return body; }
+    };
+    await subtitlesController.generateSubtitles(
+      { params: { lessonId: '72' } },
+      res,
+      error => { throw error; }
+    );
+
+    assert.equal(statusCode, 202);
+    assert.equal(payload.data.status, 'pending');
+    assert.equal(queuedLessonId, 72);
+    assert.equal(synchronousCalls, 0);
+  });
+
   test('student subtitle GET never starts the AI pipeline', async () => {
     let generationCalls = 0;
     subtitlesService.getSubtitlesByLessonId = async () => null;
