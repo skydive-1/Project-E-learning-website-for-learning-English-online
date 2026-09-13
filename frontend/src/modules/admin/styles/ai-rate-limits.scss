@@ -429,6 +429,33 @@
         }
       }
 
+      &.is-rpd-locked {
+        opacity: 0.72;
+        cursor: not-allowed;
+        background: #fefce8;
+        border-color: #fde047;
+
+        &:hover {
+          transform: none;
+          box-shadow: none;
+        }
+
+        .ai-model-routing__action-hint {
+          color: #b45309;
+          font-weight: 700;
+        }
+      }
+
+      .ai-model-routing__lock-badge {
+        font-size: 8.5px;
+        font-weight: 750;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+      }
+
       .ai-model-routing__badge {
         font-size: 8.5px;
         font-weight: 800;

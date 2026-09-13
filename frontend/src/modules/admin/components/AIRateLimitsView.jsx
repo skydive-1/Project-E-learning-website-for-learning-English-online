@@ -418,11 +418,15 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     disabled={Boolean(settingPreferredModel)}
                     aria-label={t('Chọn model ưu tiên điều phối')}
                   >
-                    {(routing.fallbackOrder || []).map((m) => (
-                      <option key={m} value={m}>
-                        {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''}
-                      </option>
-                    ))}
+                    {(routing.fallbackOrder || []).map((m) => {
+                      const mCooldown = routing.coolingDown?.find((item) => item.model === m);
+                      const isRpdExhausted = mCooldown?.dimension === 'rpd';
+                      return (
+                        <option key={m} value={m} disabled={isRpdExhausted}>
+                          {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''} {isRpdExhausted ? t('(🔒 Hết RPD)') : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
@@ -443,15 +447,16 @@ const AIRateLimitsView = ({ canManageCaps }) => {
             <div className="ai-model-routing__lane" aria-label={t('Thứ tự fallback')}>
               {(routing.fallbackOrder || []).map((model, index) => {
                 const cooldown = routing.coolingDown?.find((item) => item.model === model);
+                const isRpdExhausted = cooldown?.dimension === 'rpd';
                 const isEffective = model === routing.effectiveModel;
                 const isPreferred = model === routing.preferredModel;
-                const isClickable = canManageCaps && !isPreferred && !settingPreferredModel;
+                const isClickable = canManageCaps && !isPreferred && !settingPreferredModel && !isRpdExhausted;
 
                 return (
                   <React.Fragment key={model}>
                     {index > 0 && <span className="ai-model-routing__arrow" aria-hidden="true">→</span>}
                     <div
-                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}`}
+                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isRpdExhausted ? ' is-rpd-locked' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}`}
                       role={isClickable ? 'button' : undefined}
                       tabIndex={isClickable ? 0 : undefined}
                       onClick={isClickable ? () => handleSelectPreferredModel(model) : undefined}
@@ -461,7 +466,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                           handleSelectPreferredModel(model);
                         }
                       } : undefined}
-                      title={isClickable ? t('Nhấp để chọn {{model}} làm model ưu tiên điều phối', { model }) : undefined}
+                      title={isRpdExhausted
+                        ? t('Model {{model}} đã hết 20 RPD trong ngày. Hệ thống tạm khóa và sẽ tự động mở lại vào lúc {{time}}.', {
+                            model,
+                            time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                          })
+                        : isClickable
+                          ? t('Nhấp để chọn {{model}} làm model ưu tiên điều phối', { model })
+                          : undefined}
                     >
                       <div className="ai-model-routing__model-header">
                         <span>{index === 0 ? t('Ưu tiên') : t('Dự phòng {{number}}', { number: index })}</span>
@@ -469,6 +481,11 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                           <span className="ai-model-routing__badge">
                             <FiCheck aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '2px' }} />
                             {t('Đang chọn')}
+                          </span>
+                        )}
+                        {isRpdExhausted && !isPreferred && (
+                          <span className="ai-model-routing__lock-badge" title={t('Hết RPD trong ngày')}>
+                            🔒 {t('Tạm khóa')}
                           </span>
                         )}
                       </div>
@@ -486,7 +503,11 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                       </small>
                       {canManageCaps && !isPreferred && (
                         <span className="ai-model-routing__action-hint">
-                          {settingPreferredModel === model ? t('Đang chuyển...') : t('Bấm để ưu tiên')}
+                          {isRpdExhausted
+                            ? t('Đã khóa RPD')
+                            : settingPreferredModel === model
+                              ? t('Đang chuyển...')
+                              : t('Bấm để ưu tiên')}
                         </span>
                       )}
                     </div>
