@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { FiAlertTriangle, FiClock, FiCpu, FiArrowDown, FiUserCheck } from 'react-icons/fi';
 import LessonCard from './LessonCard';
 import AiThinkingState from './AiThinkingState';
@@ -25,14 +25,98 @@ const MessageList = ({
   onAskInstructor = null
 }) => {
   const containerRef = useRef(null);
+  const isUserScrolledUpRef = useRef(false);
+  const lastUserScrollUpTime = useRef(0);
+  const touchStartY = useRef(0);
+
+  // Khi có tin nhắn mới từ người dùng (bắt đầu câu hỏi mới), tự động reset trạng thái cuộn về đáy
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.sender === 'user') {
+      isUserScrolledUpRef.current = false;
+      lastUserScrollUpTime.current = 0;
+      if (onScrollPosition) {
+        onScrollPosition(true);
+      }
+    }
+  }, [messages?.length]);
+
+  const handleWheel = (e) => {
+    if (e.deltaY < 0) {
+      // Người dùng lăn chuột lên trên -> Ngắt ngay lập tức auto-scroll để người dùng đọc tự do
+      isUserScrolledUpRef.current = true;
+      lastUserScrollUpTime.current = Date.now();
+      if (onScrollPosition) {
+        onScrollPosition(false);
+      }
+    } else if (e.deltaY > 0) {
+      // Người dùng lăn chuột xuống dưới
+      if (containerRef.current) {
+        const el = containerRef.current;
+        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distanceToBottom <= 20) {
+          isUserScrolledUpRef.current = false;
+          if (onScrollPosition) {
+            onScrollPosition(true);
+          }
+        }
+      }
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches && e.touches[0]) {
+      touchStartY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches && e.touches[0]) {
+      const currentY = e.touches[0].clientY;
+      if (currentY > touchStartY.current + 8) {
+        // Vuốt ngón tay xuống (tương đương cuộn xem tin nhắn phía trên)
+        isUserScrolledUpRef.current = true;
+        lastUserScrollUpTime.current = Date.now();
+        if (onScrollPosition) {
+          onScrollPosition(false);
+        }
+      }
+    }
+  };
 
   const handleScroll = () => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isAtBottom = distanceToBottom <= 80;
+
+    // Ngưỡng phát hiện rời khỏi đáy tin nhắn: > 25px
+    if (distanceToBottom > 25) {
+      isUserScrolledUpRef.current = true;
+      if (onScrollPosition) {
+        onScrollPosition(false);
+      }
+    } else if (distanceToBottom <= 15) {
+      // Chỉ kích hoạt lại auto-scroll khi người dùng đã cuộn sát đáy thực sự
+      // và không trong trạng thái vừa lăn chuột lên (< 400ms)
+      const isRecentScrollUp = Date.now() - lastUserScrollUpTime.current < 400;
+      if (!isRecentScrollUp) {
+        isUserScrolledUpRef.current = false;
+        if (onScrollPosition) {
+          onScrollPosition(true);
+        }
+      }
+    }
+  };
+
+  const handleScrollToBottomClick = () => {
+    isUserScrolledUpRef.current = false;
+    lastUserScrollUpTime.current = 0;
     if (onScrollPosition) {
-      onScrollPosition(isAtBottom);
+      onScrollPosition(true);
+    }
+    if (onScrollToBottom) {
+      onScrollToBottom();
     }
   };
 
@@ -65,6 +149,9 @@ const MessageList = ({
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         className="flex-1 overflow-y-auto p-4 space-y-5 bg-slate-50/40 dark:bg-slate-900/40"
       >
       {messages.map((msg) => {
@@ -313,7 +400,7 @@ const MessageList = ({
         <div className="absolute bottom-3 right-4 z-20 animate-fade-in">
           <button
             type="button"
-            onClick={onScrollToBottom}
+            onClick={handleScrollToBottomClick}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/95 dark:bg-slate-800/95 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg rounded-full text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-smart-indigo dark:hover:text-indigo-400 transition-all duration-200 cursor-pointer backdrop-blur-xs active:scale-95"
             title="Cuộn xuống tin nhắn mới nhất"
             aria-label="Cuộn xuống tin nhắn mới nhất"

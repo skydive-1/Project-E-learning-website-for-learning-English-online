@@ -87,6 +87,54 @@ describe('Chatbot Features & Fixes', () => {
 
       expect(screen.queryByRole('button', { name: /Cuộn xuống tin nhắn mới nhất/i })).not.toBeInTheDocument();
     });
+
+    it('notifies onScrollPosition(false) immediately when user wheels up (deltaY < 0)', () => {
+      const onScrollPosition = vi.fn();
+      const { container } = render(
+        <MessageList
+          messages={[{ id: '1', sender: 'ai', text: 'Hello!' }]}
+          isHistoryLoading={false}
+          quizStates={{}}
+          setQuizStates={vi.fn()}
+          onSeekVideo={vi.fn()}
+          onNavigate={vi.fn()}
+          lessonId={1}
+          messagesEndRef={{ current: null }}
+          onScrollPosition={onScrollPosition}
+          showScrollBottomBtn={false}
+          onScrollToBottom={vi.fn()}
+        />
+      );
+
+      const scrollContainer = container.querySelector('.overflow-y-auto');
+      expect(scrollContainer).toBeInTheDocument();
+      fireEvent.wheel(scrollContainer, { deltaY: -50 });
+      expect(onScrollPosition).toHaveBeenCalledWith(false);
+    });
+
+    it('notifies onScrollPosition(false) when user touch drags down to read previous messages', () => {
+      const onScrollPosition = vi.fn();
+      const { container } = render(
+        <MessageList
+          messages={[{ id: '1', sender: 'ai', text: 'Hello!' }]}
+          isHistoryLoading={false}
+          quizStates={{}}
+          setQuizStates={vi.fn()}
+          onSeekVideo={vi.fn()}
+          onNavigate={vi.fn()}
+          lessonId={1}
+          messagesEndRef={{ current: null }}
+          onScrollPosition={onScrollPosition}
+          showScrollBottomBtn={false}
+          onScrollToBottom={vi.fn()}
+        />
+      );
+
+      const scrollContainer = container.querySelector('.overflow-y-auto');
+      fireEvent.touchStart(scrollContainer, { touches: [{ clientY: 100 }] });
+      fireEvent.touchMove(scrollContainer, { touches: [{ clientY: 130 }] });
+      expect(onScrollPosition).toHaveBeenCalledWith(false);
+    });
   });
 
   describe('verified video citation', () => {
