@@ -639,8 +639,10 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
             </div>
           )}
 
-          {/* Question Metadata & Title */}
-          <div className="flex flex-col gap-2">
+          {/* Question Content with smooth 60fps enter transition */}
+          <div key={activeQuestionIdx} className="quiz-card-enter flex flex-col gap-5 flex-1">
+            {/* Question Metadata & Title */}
+            <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="secondary" className="font-bold tracking-wider uppercase text-[10px]">
                 Câu {activeQuestionIdx + 1} / {totalQuestions}
@@ -807,7 +809,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                     type="button"
                     onClick={() => handleSelectOption(currentQuestion.id, optionKey)}
                     disabled={isSubmitted}
-                    className={`flex items-center text-left p-4 rounded-xl border text-sm leading-relaxed transition-all cursor-pointer ${optionClass}`}
+                    className={`flex items-center text-left p-4 rounded-xl border text-sm leading-relaxed transition-all active:scale-[0.985] duration-150 cursor-pointer ${optionClass}`}
                   >
                     <span className={`size-7 rounded-lg flex items-center justify-center text-xs font-bold mr-3.5 shrink-0 transition-colors ${badgeClass}`}>
                       {optionKey}
@@ -1103,6 +1105,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               </AlertDescription>
             </Alert>
           )}
+          </div>
 
           {/* Bottom Navigation controls */}
           <div className="flex justify-between items-center pt-4 border-t border-border mt-auto">

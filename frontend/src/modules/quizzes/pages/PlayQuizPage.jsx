@@ -82,9 +82,12 @@ const PlayQuizPage = () => {
     }
   }, [user]);
 
-  // Feedback states
+  // Feedback & 60fps Transition states (Zero-lag tactile response)
   const [selectedOptionKey, setSelectedOptionKey] = useState(null);
-  const [animatingOptionKey, setAnimatingOptionKey] = useState(null);
+  const [evaluatingOptionKey, setEvaluatingOptionKey] = useState(null);
+  const [revealedOptionKey, setRevealedOptionKey] = useState(null);
+  const [revealedResult, setRevealedResult] = useState(null); // { isCorrect: boolean, correctKey: string }
+  const [isExitingStage, setIsExitingStage] = useState(false);
   const [feedbackType, setFeedbackType] = useState(''); // 'correct', 'incorrect', 'timeout'
   const [earnedPoints, setEarnedPoints] = useState(0);
 
@@ -272,42 +275,50 @@ const PlayQuizPage = () => {
   const handleStartGame = (e) => {
     e.preventDefault();
     if (!nickname.trim()) return;
-    setGameState('playing');
-    setCurrentIdx(0);
-    setScore(0);
-    setAnswersLog([]);
-    setTimeLeft(20);
-    setSelectedAnswers({});
-    setAnsweredFeedback({});
-    setAnimatingOptionKey(null);
-    setWritingAnswer('');
-    setClozeAnswers({});
-    setClozeFeedback(null);
-    setAiFeedback(null);
+    setIsExitingStage(true);
+    setTimeout(() => {
+      setGameState('playing');
+      setCurrentIdx(0);
+      setScore(0);
+      setAnswersLog([]);
+      setTimeLeft(20);
+      setSelectedAnswers({});
+      setAnsweredFeedback({});
+      setEvaluatingOptionKey(null);
+      setRevealedOptionKey(null);
+      setRevealedResult(null);
+      setSelectedOptionKey(null);
+      setWritingAnswer('');
+      setClozeAnswers({});
+      setClozeFeedback(null);
+      setAiFeedback(null);
+      setIsExitingStage(false);
+    }, 180);
   };
 
   const handleAnswerClick = async (optionKey) => {
-    if (gameState !== 'playing' || animatingOptionKey) return;
+    if (gameState !== 'playing' || evaluatingOptionKey || revealedOptionKey || isExitingStage) return;
     if (timerRef.current) clearInterval(timerRef.current);
     
-    setAnimatingOptionKey(optionKey);
+    // Phase 1: Instant tactile feedback on click (0ms perceptual lag)
+    setEvaluatingOptionKey(optionKey);
     setSelectedOptionKey(optionKey);
     setSelectedAnswers(prev => ({
       ...prev,
       [currentQuestion.id]: optionKey
     }));
 
-    const startTime = Date.now();
     let isCorrect = false;
+    let serverData = null;
 
     try {
       const res = await checkQuizAnswer(quiz.id, currentQuestion.id, optionKey);
       if (res?.success && res.data) {
-        const answerData = res.data;
-        isCorrect = Boolean(answerData.isCorrect);
+        serverData = res.data;
+        isCorrect = Boolean(serverData.isCorrect);
         setAnsweredFeedback(prev => ({
           ...prev,
-          [currentQuestion.id]: answerData
+          [currentQuestion.id]: serverData
         }));
       }
     } catch (err) {
@@ -317,6 +328,16 @@ const PlayQuizPage = () => {
       }
     }
     
+    const authoritativeCorrectKey = serverData?.correctAnswer || currentQuestion.correctAnswer || '';
+
+    // Phase 2: Reveal evaluation state with spring breath / shake
+    setEvaluatingOptionKey(null);
+    setRevealedOptionKey(optionKey);
+    setRevealedResult({
+      isCorrect,
+      correctKey: authoritativeCorrectKey
+    });
+
     let pts = 0;
     if (isCorrect) {
       const timePercent = timeLeft / 20;
@@ -332,16 +353,21 @@ const PlayQuizPage = () => {
     setEarnedPoints(pts);
     setAnswersLog(prev => [...prev, { isCorrect, pointsEarned: pts }]);
 
-    // Giữ micro-delay ~380ms để hiệu ứng animation nhấp nháy diễn ra trơn tru
-    const elapsed = Date.now() - startTime;
-    const remainingDelay = Math.max(0, 380 - elapsed);
+    // Phase 3: Give 650ms breathing room for user to clearly absorb result, then smoothly transition out
     setTimeout(() => {
-      setAnimatingOptionKey(null);
-      setGameState('feedback');
-    }, remainingDelay);
+      setIsExitingStage(true);
+      setTimeout(() => {
+        setEvaluatingOptionKey(null);
+        setRevealedOptionKey(null);
+        setRevealedResult(null);
+        setIsExitingStage(false);
+        setGameState('feedback');
+      }, 180);
+    }, 650);
   };
 
   const handleTimeout = async () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     setSelectedOptionKey(null);
     setSelectedAnswers(prev => ({
       ...prev,
@@ -364,7 +390,11 @@ const PlayQuizPage = () => {
       console.warn("⚠️ Không thể lấy đáp án khi hết giờ:", err.message);
     }
 
-    setGameState('feedback');
+    setIsExitingStage(true);
+    setTimeout(() => {
+      setIsExitingStage(false);
+      setGameState('feedback');
+    }, 200);
   };
 
   const handleWritingSubmit = async () => {
@@ -392,7 +422,11 @@ const PlayQuizPage = () => {
           questionType: 'writing'
         }]);
         
-        setGameState('feedback');
+        setIsExitingStage(true);
+        setTimeout(() => {
+          setIsExitingStage(false);
+          setGameState('feedback');
+        }, 180);
       }
     } catch (err) {
       console.error("Lỗi nộp bài tự luận:", err);
@@ -432,7 +466,11 @@ const PlayQuizPage = () => {
           pointsEarned: points,
           questionType: 'open_cloze'
         }]);
-        setGameState('feedback');
+        setIsExitingStage(true);
+        setTimeout(() => {
+          setIsExitingStage(false);
+          setGameState('feedback');
+        }, 180);
       }
     } catch (err) {
       console.error('Lỗi nộp bài điền từ:', err);
@@ -535,7 +573,11 @@ const PlayQuizPage = () => {
           questionType: 'pronunciation'
         }]);
         
-        setGameState('feedback');
+        setIsExitingStage(true);
+        setTimeout(() => {
+          setIsExitingStage(false);
+          setGameState('feedback');
+        }, 180);
       }
     } catch (err) {
       console.error("Lỗi nộp bài phát âm:", err);
@@ -546,29 +588,40 @@ const PlayQuizPage = () => {
   };
 
   const handleNext = async () => {
-    // Reset AI states
-    setWritingAnswer('');
-    setAudioBlob(null);
-    setAudioUrl(null);
-    setAiFeedback(null);
-    setClozeAnswers({});
-    setClozeFeedback(null);
-    setIsRecording(false);
+    if (isExitingStage) return;
+    setIsExitingStage(true);
 
-    if (currentIdx < quiz.questions.length - 1) {
-      setCurrentIdx(prev => prev + 1);
-      setTimeLeft(20);
-      setGameState('playing');
-    } else {
-      setGameState('podium');
-      try {
-        await submitQuizAttempt(quiz.id, selectedAnswers, nickname);
-        const lbData = await getQuizLeaderboard(quiz.id);
-        setLeaderboard(lbData);
-      } catch (err) {
-        console.warn("⚠️ Lỗi lưu kết quả thi lên máy chủ:", err.message);
+    setTimeout(async () => {
+      // Reset AI & question states
+      setWritingAnswer('');
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setAiFeedback(null);
+      setClozeAnswers({});
+      setClozeFeedback(null);
+      setIsRecording(false);
+      setEvaluatingOptionKey(null);
+      setRevealedOptionKey(null);
+      setRevealedResult(null);
+      setSelectedOptionKey(null);
+
+      if (currentIdx < quiz.questions.length - 1) {
+        setCurrentIdx(prev => prev + 1);
+        setTimeLeft(20);
+        setGameState('playing');
+        setIsExitingStage(false);
+      } else {
+        setGameState('podium');
+        setIsExitingStage(false);
+        try {
+          await submitQuizAttempt(quiz.id, selectedAnswers, nickname);
+          const lbData = await getQuizLeaderboard(quiz.id);
+          setLeaderboard(lbData);
+        } catch (err) {
+          console.warn("⚠️ Lỗi lưu kết quả thi lên máy chủ:", err.message);
+        }
       }
-    }
+    }, 180);
   };
 
   const shapes = {
@@ -605,7 +658,7 @@ const PlayQuizPage = () => {
 
         {/* LOGIN REQUIRED SCREEN */}
         {!authLoading && !user ? (
-          <div className="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm text-center space-y-6 animate-fade">
+          <div className={`w-full max-w-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm text-center space-y-6 ${isExitingStage ? 'quiz-card-exit' : 'quiz-card-enter'}`}>
             <div className="w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border-2 border-smart-indigo dark:border-indigo-500 flex items-center justify-center text-3xl text-smart-indigo dark:text-indigo-400 mx-auto shadow-sm">
               🔐
             </div>
@@ -689,7 +742,7 @@ const PlayQuizPage = () => {
               </div>
             )}
         {gameState === 'playing' && (
-          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between animate-fade">
+          <div className={`w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm flex flex-col min-h-[480px] justify-between ${isExitingStage ? 'quiz-card-exit' : 'quiz-card-enter'}`}>
             {(() => {
                 const effectiveQuestionType = getEffectiveQuestionType(currentQuestion);
                 const rawQuestionText = currentQuestion?.question || currentQuestion?.question_text || currentQuestion?.questionText || '';
@@ -868,44 +921,65 @@ const PlayQuizPage = () => {
                         {(currentQuestion.options || []).map((opt, oIdx) => {
                           const optKey = String.fromCharCode(65 + oIdx);
                           const shapeInfo = shapes[optKey];
-                          const isThisAnimating = animatingOptionKey === optKey;
-                          const currentFb = answeredFeedback[currentQuestion.id];
-                          const isSelectedCorrect = isThisAnimating && (currentFb ? currentFb.isCorrect : (currentQuestion.correctAnswer && optKey === currentQuestion.correctAnswer));
-                          const isSelectedIncorrect = isThisAnimating && (currentFb ? !currentFb.isCorrect : (currentQuestion.correctAnswer && optKey !== currentQuestion.correctAnswer));
+                          const isEvaluating = evaluatingOptionKey === optKey;
+                          const isRevealedChosen = revealedOptionKey === optKey;
+                          const isRevealedCorrect = (revealedResult?.isCorrect && isRevealedChosen) || 
+                            (!revealedResult?.isCorrect && Boolean(revealedOptionKey) && (
+                              (revealedResult?.correctKey && optKey.toUpperCase() === revealedResult.correctKey.toUpperCase()) ||
+                              (typeof opt === 'string' && revealedResult?.correctKey && opt.toUpperCase().startsWith(revealedResult.correctKey.toUpperCase()))
+                            ));
+                          const isRevealedIncorrect = !revealedResult?.isCorrect && isRevealedChosen;
+                          const isOtherMuted = Boolean(evaluatingOptionKey || revealedOptionKey) && !isRevealedChosen && !isRevealedCorrect;
 
                           let microFeedbackClass = '';
-                          if (isSelectedCorrect) microFeedbackClass = 'quiz-opt-correct-breath';
-                          else if (isSelectedIncorrect) microFeedbackClass = 'quiz-opt-incorrect-shake';
+                          if (isEvaluating) {
+                            microFeedbackClass = 'quiz-opt-evaluating';
+                          } else if (isRevealedCorrect) {
+                            microFeedbackClass = 'quiz-opt-correct-breath';
+                          } else if (isRevealedIncorrect) {
+                            microFeedbackClass = 'quiz-opt-incorrect-shake';
+                          }
 
-                          const activeBorderColor = isThisAnimating
-                            ? (isSelectedCorrect ? '#10b981' : '#ef4444')
-                            : shapeInfo?.color;
+                          let borderStyle = shapeInfo?.color;
+                          let bgClass = '';
+                          if (isEvaluating) {
+                            borderStyle = '#6366f1';
+                          } else if (isRevealedCorrect) {
+                            borderStyle = '#10b981';
+                            bgClass = 'bg-emerald-50/80 dark:bg-emerald-950/25 border-emerald-500 shadow-sm shadow-emerald-500/20';
+                          } else if (isRevealedIncorrect) {
+                            borderStyle = '#ef4444';
+                            bgClass = 'bg-rose-50/80 dark:bg-rose-950/25 border-rose-500 shadow-sm shadow-rose-500/20';
+                          }
 
-                          const activeBgColor = isThisAnimating
-                            ? (isSelectedCorrect ? '#10b981' : '#ef4444')
-                            : shapeInfo?.color;
+                          let activeBadgeBg = shapeInfo?.color;
+                          if (isEvaluating) activeBadgeBg = '#6366f1';
+                          else if (isRevealedCorrect) activeBadgeBg = '#10b981';
+                          else if (isRevealedIncorrect) activeBadgeBg = '#ef4444';
 
                           return (
                             <button
                               key={oIdx}
-                              disabled={Boolean(animatingOptionKey)}
+                              disabled={Boolean(evaluatingOptionKey || revealedOptionKey || isExitingStage)}
                               onClick={() => handleAnswerClick(optKey)}
-                              style={{ borderColor: activeBorderColor }}
-                              className={`border-2 ${shapeInfo?.hoverBg || ''} ${microFeedbackClass} rounded-xl p-4.5 text-left font-bold text-sm shadow-sm transition-all flex items-center gap-3 cursor-pointer min-h-[72px] md:min-h-[68px] group touch-target`}
+                              style={{ borderColor: borderStyle }}
+                              className={`border-2 ${shapeInfo?.hoverBg || ''} ${microFeedbackClass} ${bgClass} ${isOtherMuted ? 'opacity-35 pointer-events-none scale-[0.98]' : ''} rounded-xl p-4.5 text-left font-bold text-sm shadow-xs transition-all duration-200 flex items-center gap-3 cursor-pointer min-h-[72px] md:min-h-[68px] group touch-target active:scale-[0.985]`}
                             >
                               <span 
-                                style={{ backgroundColor: activeBgColor }}
-                                className="w-8 h-8 md:w-8 md:h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-sm group-hover:scale-105 transition-transform flex-shrink-0"
+                                style={{ backgroundColor: activeBadgeBg }}
+                                className={`w-8 h-8 md:w-8 md:h-8 rounded-lg text-white flex items-center justify-center text-base font-black shadow-xs ${isEvaluating ? 'animate-pulse' : 'group-hover:scale-105'} transition-transform flex-shrink-0`}
                               >
-                                {isSelectedCorrect ? (
+                                {isEvaluating ? (
+                                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : isRevealedCorrect ? (
                                   <FiCheck className="text-base" />
-                                ) : isSelectedIncorrect ? (
+                                ) : isRevealedIncorrect ? (
                                   <FiX className="text-base" />
                                 ) : (
                                   shapeInfo?.char || optKey
                                 )}
                               </span>
-                              <span className="text-slate-700 dark:text-slate-200 font-extrabold">{opt}</span>
+                              <span className="text-slate-700 dark:text-slate-200 font-extrabold flex-1">{opt}</span>
                             </button>
                           );
                         })}
@@ -1107,7 +1181,7 @@ const PlayQuizPage = () => {
 
         {/* FEEDBACK OVERLAY CARD */}
         {gameState === 'feedback' && (
-          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center text-center space-y-6 animate-fade">
+          <div className={`w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center text-center space-y-6 ${isExitingStage ? 'quiz-card-exit' : 'quiz-card-enter'}`}>
             {(() => {
               const effectiveQuestionType = getEffectiveQuestionType(currentQuestion);
               const activeAiFeedback = aiFeedback || (effectiveQuestionType === 'writing'
@@ -1292,7 +1366,8 @@ const PlayQuizPage = () => {
 
             <button
               onClick={handleNext}
-              className="px-8 py-3.5 bg-smart-indigo hover:bg-indigo-650 text-white font-bold text-xs uppercase rounded-xl tracking-widest active:scale-95 transition-all cursor-pointer shadow-md"
+              disabled={isExitingStage}
+              className="px-8 py-3.5 bg-smart-indigo hover:bg-indigo-650 disabled:opacity-50 text-white font-bold text-xs uppercase rounded-xl tracking-widest active:scale-95 transition-all cursor-pointer shadow-md"
             >
               Câu tiếp theo
             </button>
@@ -1301,7 +1376,7 @@ const PlayQuizPage = () => {
 
         {/* PODIUM/LEADERBOARD SCREEN */}
         {gameState === 'podium' && (
-          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center space-y-6 animate-fade">
+          <div className="w-full max-w-3xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-2xl p-8 shadow-sm flex flex-col items-center justify-center space-y-6 quiz-card-enter">
             <div className="text-center">
               <span className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase">
                 🎉 Hoàn thành bài thi trắc nghiệm
@@ -1470,16 +1545,24 @@ const PlayQuizPage = () => {
             <div className="flex gap-4 max-w-sm w-full mx-auto pt-2">
               <button
                 onClick={() => {
-                  setGameState('playing');
-                  setCurrentIdx(0);
-                  setScore(0);
-                  setAnswersLog([]);
-                  setTimeLeft(20);
-                  setSelectedAnswers({});
-                  setWritingAnswer('');
-                  setClozeAnswers({});
-                  setClozeFeedback(null);
-                  setAiFeedback(null);
+                  setIsExitingStage(true);
+                  setTimeout(() => {
+                    setGameState('playing');
+                    setCurrentIdx(0);
+                    setScore(0);
+                    setAnswersLog([]);
+                    setTimeLeft(20);
+                    setSelectedAnswers({});
+                    setEvaluatingOptionKey(null);
+                    setRevealedOptionKey(null);
+                    setRevealedResult(null);
+                    setSelectedOptionKey(null);
+                    setWritingAnswer('');
+                    setClozeAnswers({});
+                    setClozeFeedback(null);
+                    setAiFeedback(null);
+                    setIsExitingStage(false);
+                  }, 180);
                 }}
                 className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-650 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs uppercase rounded-xl tracking-wider active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
