@@ -21,8 +21,10 @@ const validProductionEnvironment = {
   SMTP_HOST: 'smtp.example.test',
   SMTP_USER: 'mailer@example.test',
   SMTP_PASS: 'smtp-secret',
-  ENABLE_DRM_PACKAGING: 'true',
+  ENABLE_DASH_PACKAGING: 'true',
   ENABLE_SUBTITLE_VAD: 'true',
+  VIDEO_ALLOW_QUERY_TICKET: 'false',
+  VIDEO_REQUIRE_SOURCE_HEADERS: 'true',
   DATABASE_URL: 'postgresql://example.invalid/database'
 };
 
@@ -37,7 +39,7 @@ describe('Production environment validation', () => {
       'JWT_SECRET', 'FRONTEND_URL', 'GEMINI_API_KEY', 'PINECONE_API_KEY',
       'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SMTP_HOST', 'SMTP_USER',
       'SMTP_PASS', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
-      'R2_BUCKET', 'ENABLE_DRM_PACKAGING', 'ENABLE_SUBTITLE_VAD',
+      'R2_BUCKET', 'ENABLE_DASH_PACKAGING', 'ENABLE_SUBTITLE_VAD',
       'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'
     ]) {
       assert.ok(missing.includes(requiredName), `${requiredName} must be reported missing`);
@@ -65,13 +67,23 @@ describe('Production environment validation', () => {
     assert.deepEqual(getMissingProductionAiVariables(env), []);
   });
 
-  test('production rejects explicitly disabled DRM or VAD pipelines', () => {
+  test('production rejects explicitly disabled DASH or VAD pipelines', () => {
     const missing = getMissingProductionAiVariables({
       ...validProductionEnvironment,
-      ENABLE_DRM_PACKAGING: 'false',
+      ENABLE_DASH_PACKAGING: 'false',
       ENABLE_SUBTITLE_VAD: 'false'
     });
-    assert.ok(missing.includes('ENABLE_DRM_PACKAGING=true'));
+    assert.ok(missing.includes('ENABLE_DASH_PACKAGING=true'));
     assert.ok(missing.includes('ENABLE_SUBTITLE_VAD=true'));
+  });
+
+  test('production rejects insecure video ticket transport overrides', () => {
+    const missing = getMissingProductionAiVariables({
+      ...validProductionEnvironment,
+      VIDEO_ALLOW_QUERY_TICKET: 'true',
+      VIDEO_REQUIRE_SOURCE_HEADERS: 'false'
+    });
+    assert.ok(missing.includes('VIDEO_ALLOW_QUERY_TICKET=false'));
+    assert.ok(missing.includes('VIDEO_REQUIRE_SOURCE_HEADERS=true'));
   });
 });

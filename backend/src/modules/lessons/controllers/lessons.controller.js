@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const lessonsService = require('../services/lessons.service');
 const coursesService = require('../../courses/services/courses.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
+const { isEncryptedDashManifest } = require('../../../utils/dashPackager.util');
 const lessonStreamCache = require('../../../utils/lessonStreamCache');
 const { resolveSafePath, UPLOADS_ROOT } = require('../../../utils/safePath.util');
 const {
@@ -347,6 +348,13 @@ exports.streamDashManifest = async (req, res, next) => {
     } else {
       manifest = await fs.promises.readFile(resolved.manifestPath, 'utf8');
     }
+    if (isEncryptedDashManifest(manifest)) {
+      return res.status(409).json({
+        success: false,
+        code: 'ENCRYPTED_DASH_REPACKAGE_REQUIRED',
+        message: 'Luồng DASH cũ còn mã hóa ClearKey và cần được đóng gói lại trước khi phát.'
+      });
+    }
     const attributeRefs = [...manifest.matchAll(/(?:media|initialization|sourceURL)=["']([^"']+)["']/gi)].map(m => m[1]);
     const baseUrlRefs = [...manifest.matchAll(/<BaseURL>\s*([^<]+?)\s*<\/BaseURL>/gi)].map(m => m[1]);
     const references = [...attributeRefs, ...baseUrlRefs];
@@ -503,7 +511,8 @@ exports.getVideoTicket = async (req, res, next) => {
       });
     }
 
-    const expiresIn = Number.parseInt(process.env.VIDEO_TICKET_TTL_SECONDS, 10) || 60;
+    const configuredTtl = Number.parseInt(process.env.VIDEO_TICKET_TTL_SECONDS, 10);
+    const expiresIn = Math.min(600, Math.max(60, Number.isFinite(configuredTtl) ? configuredTtl : 300));
 
     const ticket = jwt.sign(
       {

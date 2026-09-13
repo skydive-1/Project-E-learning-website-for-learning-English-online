@@ -33,8 +33,8 @@ const analyticsRoutes = require('./modules/analytic/analytic.routes');
 const gamificationRoutes = require('./modules/gamification/gamification.routes');
 const commentsRoutes = require('./modules/comments/comments.routes');
 const discussionsRoutes = require('./modules/discussions/discussions.routes');
-const drmRoutes = require('./modules/drm/drm.routes');
-const { checkShakaPackagerInstalled } = require('./utils/drmPackager.util');
+const { checkShakaPackagerInstalled } = require('./utils/dashPackager.util');
+const { isAllowedFrontendOrigin } = require('./utils/videoSecurity.util');
 const { blockDirectVideoAccess } = require('./modules/media/directVideoAccess.middleware');
 
 // ===== SWAGGER =====
@@ -71,17 +71,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    const cleanOrigin = origin.replace(/\/+$/, '');
-    const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
-      .split(',')
-      .map(url => url.trim().replace(/\/+$/, ''));
-
-    if (allowedOrigins.includes(cleanOrigin)) {
-      return callback(null, true);
-    }
-
-    // Tự động cho phép các domain preview / production Vercel thuộc dự án này
-    if (/^https:\/\/.*project-e-learning-website.*\.vercel\.app$/i.test(cleanOrigin)) {
+    if (isAllowedFrontendOrigin(origin)) {
       return callback(null, true);
     }
 
@@ -138,7 +128,6 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/discussions', discussionsRoutes);
-app.use('/api/drm', drmRoutes);
 
 // Setup Swagger UI
 
@@ -188,20 +177,19 @@ const server = app.listen(PORT, async () => {
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);
 
-  // Kiểm tra Shaka Packager binary cho DRM Video Protection
+  // Kiểm tra Shaka Packager binary cho luồng DASH không mã hóa.
   const shakaStatus = checkShakaPackagerInstalled();
   if (shakaStatus.installed) {
-    console.log(`🔒 [DRM Infrastructure]: Shaka Packager đã sẵn sàng (${shakaStatus.version})`);
+    console.log(`[DASH Infrastructure]: Shaka Packager đã sẵn sàng (${shakaStatus.version})`);
   } else {
     console.warn(`
     ⚠️ ═══════════════════════════════════════════════════════════════════════════ ⚠️
-    [CẢNH BÁO DRM]: Shaka Packager binary CHƯA được cài đặt trên máy chủ này!
-    - Video tải lên sẽ được lưu ở dạng MP4 gốc (isDrmProtected: false).
-    - Xem hướng dẫn cài đặt chi tiết tại tệp: HUONG_DAN_CAI_DAT_SHAKA_PACKAGER.md
+    [CẢNH BÁO DASH]: Shaka Packager binary CHƯA được cài đặt trên máy chủ này!
+    - Không thể đóng gói video upload mới thành luồng DASH thích ứng.
     ⚠️ ═══════════════════════════════════════════════════════════════════════════ ⚠️
     `);
-    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DRM_PACKAGING === 'true') {
-      console.error('FATAL: ENABLE_DRM_PACKAGING=true nhưng Shaka Packager không khả dụng.');
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DASH_PACKAGING === 'true') {
+      console.error('FATAL: ENABLE_DASH_PACKAGING=true nhưng Shaka Packager không khả dụng.');
       server.close();
       return;
     }
@@ -222,7 +210,6 @@ const server = app.listen(PORT, async () => {
   console.log('   - GET    /api/courses');
   console.log('   - POST   /api/chatbot/ask');
   console.log('   - GET    /api/progress/:userId');
-  console.log('   - GET    /api/drm/license');
   console.log('   - GET    /health/live');
   console.log('   - GET    /health/ready');
   console.log('   - GET    /api/health');

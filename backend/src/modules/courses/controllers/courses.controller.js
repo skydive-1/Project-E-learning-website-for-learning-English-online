@@ -5,7 +5,7 @@ const coursesService = require('../services/courses.service');
 const supabaseStorage = require('../../../utils/supabaseStorage');
 const orphanCleanupService = require('../../../utils/orphanCleanup.service');
 const { sanitizeLessonMediaForClient } = require('../../../utils/videoSecurity.util');
-const { packageVideoToDrmDash } = require('../../../utils/drmPackager.util');
+const { packageVideoToDash } = require('../../../utils/dashPackager.util');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
 const { buildCourseAssetPrefix } = require('../../../utils/mediaObjectKey.util');
 
@@ -77,7 +77,7 @@ exports.getSubjects = async (req, res, next) => {
 
 exports.uploadFile = async (req, res, next) => {
   let tempFilePath = null;
-  const drmTempPaths = [];
+  const dashTempPaths = [];
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -122,11 +122,11 @@ exports.uploadFile = async (req, res, next) => {
         mediaKind: 'video',
         assetId
       });
-      const drmEnabled = process.env.ENABLE_DRM_PACKAGING === 'true';
+      const dashEnabled = process.env.ENABLE_DASH_PACKAGING === 'true';
       const objectKey = `${assetPrefix}/${safeBaseName}.mp4`;
       const uploadResult = await supabaseStorage.uploadVideoToSupabase(
         req.file.path,
-        drmEnabled ? `${assetPrefix}/source.mp4` : objectKey,
+        dashEnabled ? `${assetPrefix}/source.mp4` : objectKey,
         'video/mp4'
       );
 
@@ -142,36 +142,36 @@ exports.uploadFile = async (req, res, next) => {
         });
       }
 
-      if (drmEnabled) {
-        const packageResult = await packageVideoToDrmDash(req.file.path, assetId);
+      if (dashEnabled) {
+        const packageResult = await packageVideoToDash(req.file.path, assetId);
         if (!packageResult.success) {
           await orphanCleanupService.rollbackUploadedAssetBundle([uploadResult]);
           return res.status(500).json({
             success: false,
-            code: 'DRM_PACKAGING_FAILED',
-            message: `Không thể mã hóa video DRM: ${packageResult.error}`
+            code: 'DASH_PACKAGING_FAILED',
+            message: `Không thể đóng gói video DASH: ${packageResult.error}`
           });
         }
 
-        drmTempPaths.push(
+        dashTempPaths.push(
           packageResult.mpdPath,
-          packageResult.encryptedVideoPath,
-          packageResult.encryptedAudioPath
+          packageResult.videoPath,
+          packageResult.audioPath
         );
         const rawManifest = await fs.promises.readFile(packageResult.mpdPath, 'utf8');
         const rewrittenManifest = rawManifest
-          .replaceAll(path.basename(packageResult.encryptedVideoPath), 'video.mp4')
-          .replaceAll(path.basename(packageResult.encryptedAudioPath), 'audio.mp4');
+          .replaceAll(path.basename(packageResult.videoPath), 'video.mp4')
+          .replaceAll(path.basename(packageResult.audioPath), 'audio.mp4');
 
         const videoUpload = await supabaseStorage.uploadPrivateObject(
-          packageResult.encryptedVideoPath,
+          packageResult.videoPath,
           `${assetPrefix}/video.mp4`,
           'videos',
           'video/mp4'
         );
         const audioUpload = videoUpload.success
           ? await supabaseStorage.uploadPrivateObject(
-              packageResult.encryptedAudioPath,
+              packageResult.audioPath,
               `${assetPrefix}/audio.mp4`,
               'videos',
               'audio/mp4'
@@ -192,8 +192,8 @@ exports.uploadFile = async (req, res, next) => {
           await orphanCleanupService.rollbackUploadedAssetBundle(uploadedAssets);
           return res.status(500).json({
             success: false,
-            code: 'DRM_STORAGE_UPLOAD_FAILED',
-            message: manifestUpload.error || audioUpload.error || videoUpload.error || 'Upload asset DRM thất bại.'
+            code: 'DASH_STORAGE_UPLOAD_FAILED',
+            message: manifestUpload.error || audioUpload.error || videoUpload.error || 'Upload asset DASH thất bại.'
           });
         }
 
@@ -213,7 +213,7 @@ exports.uploadFile = async (req, res, next) => {
 
         return res.status(200).json({
           success: true,
-          message: 'Tải lên và mã hóa video DASH DRM thành công',
+          message: 'Tải lên và đóng gói video DASH thành công',
           pendingUploadId,
           fileUrl: manifestUpload.storageKey,
           storageKey: manifestUpload.storageKey,
@@ -226,7 +226,7 @@ exports.uploadFile = async (req, res, next) => {
           playbackType: 'dash',
           originalName: req.file.originalname,
           mimetype: 'application/dash+xml',
-          isDrmProtected: true
+          isDrmProtected: false
         });
       }
 
@@ -368,12 +368,12 @@ exports.uploadFile = async (req, res, next) => {
         console.warn('⚠️ Lỗi dọn dẹp file tạm Multer:', cleanupErr.message);
       }
     }
-    for (const drmPath of drmTempPaths) {
-      if (drmPath && drmPath !== tempFilePath && fs.existsSync(drmPath)) {
+    for (const dashPath of dashTempPaths) {
+      if (dashPath && dashPath !== tempFilePath && fs.existsSync(dashPath)) {
         try {
-          fs.unlinkSync(drmPath);
+          fs.unlinkSync(dashPath);
         } catch (cleanupErr) {
-          console.warn('⚠️ Lỗi dọn dẹp asset DRM tạm:', cleanupErr.message);
+          console.warn('⚠️ Lỗi dọn dẹp asset DASH tạm:', cleanupErr.message);
         }
       }
     }
@@ -427,7 +427,7 @@ exports.getLessonById = async (req, res, next) => {
       lesson: {
         ...safeLesson,
         playbackType,
-        isDrmProtected: isDash
+        isDrmProtected: false
       }
     });
   } catch (error) {

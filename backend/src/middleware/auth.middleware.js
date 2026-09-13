@@ -337,7 +337,7 @@ const authenticateVideoToken = (req, res, next) => {
         success: false,
         code: 'TOKEN_EXPIRED',
         error: 'TokenExpiredError',
-        message: 'Vé xem video đã hết hạn (Short-lived 60s Token). Vui lòng thử lại.'
+        message: 'Vé xem video ngắn hạn đã hết hạn. Vui lòng thử lại.'
       });
     }
     if (error.status === 403) {
@@ -350,7 +350,7 @@ const authenticateVideoToken = (req, res, next) => {
     return res.status(401).json({
       success: false,
       code: 'TOKEN_INVALID',
-      message: 'Token/Ticket video đã hết hạn hoặc không hợp lệ (Short-lived 60s Token)'
+      message: 'Vé xem video ngắn hạn đã hết hạn hoặc không hợp lệ.'
     });
   }
 };

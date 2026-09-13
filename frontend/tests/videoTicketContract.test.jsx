@@ -120,11 +120,11 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
           },
           {
             id: '47',
-            title: 'Lesson 47 DASH DRM',
+            title: 'Lesson 47 DASH',
             type: 'video',
             content_type: 'video',
             playbackType: 'dash',
-            isDrmProtected: true,
+            isDrmProtected: false,
             videoUrl: '/uploads/courses/videos/manifest.mpd',
             content_url: '/uploads/courses/videos/manifest.mpd'
           }
@@ -237,11 +237,11 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
             success: true,
             lesson: {
               lesson_id: 47,
-              title: 'Lesson 47 DASH DRM',
+              title: 'Lesson 47 DASH',
               content_type: 'video',
               content_url: '/uploads/courses/videos/manifest.mpd',
               playbackType: 'dash',
-              isDrmProtected: true,
+              isDrmProtected: false,
               course_id: 5
             }
           }
@@ -461,7 +461,7 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
   });
 
   // Test 9: DASH lesson uses Shaka and does not set .mpd directly into native video src
-  it('9. DASH/DRM lesson uses Shaka Player and does not put .mpd in native video src', async () => {
+  it('9. clear DASH lesson uses Shaka/MSE and does not put .mpd in native video src', async () => {
     // Mock course with DASH lesson 47
     vi.spyOn(apiClient, 'get').mockImplementation(async (url) => {
       if (url.includes('/lessons/video/ticket/47')) {
@@ -480,11 +480,11 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
                   lessons: [
                     {
                       id: '47',
-                      title: 'Lesson 47 DASH DRM',
+                      title: 'Lesson 47 DASH',
                       type: 'video',
                       content_type: 'video',
                       playbackType: 'dash',
-                      isDrmProtected: true,
+                      isDrmProtected: false,
                       videoUrl: '/uploads/courses/videos/manifest.mpd',
                       content_url: '/uploads/courses/videos/manifest.mpd'
                     }
@@ -501,11 +501,11 @@ describe('🎬 Frontend Video Ticket Contract & Playback Test Suite (TASK-VIDEO-
             success: true,
             lesson: {
               lesson_id: 47,
-              title: 'Lesson 47 DASH DRM',
+              title: 'Lesson 47 DASH',
               content_type: 'video',
               content_url: '/uploads/courses/videos/manifest.mpd',
               playbackType: 'dash',
-              isDrmProtected: true,
+              isDrmProtected: false,
               course_id: 5
             }
           }

@@ -8,6 +8,7 @@ const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { EventEmitter } = require('events');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 
@@ -19,8 +20,13 @@ const supabaseStorage = require('../src/utils/supabaseStorage');
 const { isValidMp4 } = supabaseStorage;
 const coursesService = require('../src/modules/courses/services/courses.service');
 const lessonsController = require('../src/modules/lessons/controllers/lessons.controller');
-const drmController = require('../src/modules/drm/drm.controller');
-const { resolveBoundedRange, sanitizeLessonMediaForClient } = require('../src/utils/videoSecurity.util');
+const { buildDashPackagerArgs, isEncryptedDashManifest } = require('../src/utils/dashPackager.util');
+const {
+  isAllowedMediaSource,
+  registerTicketRequest,
+  resolveBoundedRange,
+  sanitizeLessonMediaForClient
+} = require('../src/utils/videoSecurity.util');
 
 describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', () => {
   const sampleMp4Path = path.join(__dirname, '../uploads/videos/valid_test_video.mp4');
@@ -171,9 +177,13 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     assert.strictEqual(fakeValid, false, 'Fake buffer must fail isValidMp4 check');
   });
 
-  test('2. Feature Flag ENABLE_DRM_PACKAGING defaults to false', () => {
-    const enableDrm = process.env.ENABLE_DRM_PACKAGING === 'true';
-    assert.strictEqual(enableDrm, false, 'DRM Packaging should be disabled by default');
+  test('2. DASH packaging never enables raw-key/ClearKey encryption', () => {
+    const args = buildDashPackagerArgs('source.mp4', 'video.mp4', 'audio.mp4', 'manifest.mpd');
+    const serialized = args.join(' ');
+    assert.strictEqual(serialized.includes('--enable_raw_key_encryption'), false);
+    assert.strictEqual(serialized.includes('--keys'), false);
+    assert.strictEqual(isEncryptedDashManifest('<MPD><Period /></MPD>'), false);
+    assert.strictEqual(isEncryptedDashManifest('<MPD><ContentProtection /></MPD>'), true);
   });
 
   test('3. Case 1: Valid Session JWT requests ticket -> 200 OK with short-lived ticket and streamUrl', async () => {
@@ -191,7 +201,7 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     assert.strictEqual(res.status, 200);
     assert.strictEqual(data.success, true);
     assert.strictEqual(typeof data.ticket, 'string');
-    assert.strictEqual(data.expiresIn, 60);
+    assert.strictEqual(data.expiresIn, 300);
     assert.strictEqual(data.streamUrl, '/api/lessons/video/stream/123');
     assert.match(res.headers.get('set-cookie') || '', /video_playback_ticket=.*HttpOnly/i);
     assert.strictEqual(data.streamUrl.includes('ticket='), false);
@@ -394,46 +404,69 @@ describe('🎬 Video Streaming & Ticket Contract Full Integration Test Suite', (
     assert.strictEqual(JSON.stringify(safeLesson).includes('cdn.example.com'), false);
   });
 
-  test('14. DRM info never returns a decryption key and mismatched KID is rejected', async () => {
-    const createRes = () => ({
-      statusCode: 200,
-      headers: {},
-      payload: null,
-      setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
-      status(code) { this.statusCode = code; return this; },
-      json(payload) { this.payload = payload; return this; },
-      end() { return this; }
-    });
-
-    const previousGetLessonById = coursesService.getLessonById;
-    coursesService.getLessonById = async (lessonId) => ({
-      lesson_id: Number(lessonId),
-      content_type: 'video',
-      content_url: '/uploads/videos/test_drm.mpd'
-    });
+  test('14. Parallel request limit also protects DASH manifests and segments', () => {
+    const originalLimit = process.env.VIDEO_MAX_PARALLEL_REQUESTS;
+    process.env.VIDEO_MAX_PARALLEL_REQUESTS = '1';
 
     try {
-      const infoRes = createRes();
-      await drmController.getLessonDrmInfo({
-        params: { lessonId: '123' },
-        user: { id: 1, roleId: 3 }
-      }, infoRes);
-      assert.strictEqual(infoRes.statusCode, 200);
-      assert.strictEqual(JSON.stringify(infoRes.payload).includes('secretKey'), false);
-      assert.strictEqual(JSON.stringify(infoRes.payload).includes('keyIdHex'), false);
+      const ticket = {
+        jti: `dash-parallel-${Date.now()}`,
+        exp: Math.floor(Date.now() / 1000) + 60
+      };
+      const firstResponse = new EventEmitter();
+      const secondResponse = new EventEmitter();
+      const thirdResponse = new EventEmitter();
 
-      const licenseRes = createRes();
-      await drmController.getClearKeyLicense({
-        method: 'POST',
-        params: { lessonId: '123' },
-        query: {},
-        body: { kids: ['not-the-key-for-this-lesson'] },
-        user: { id: 1, roleId: 3, email: 'student@example.com' }
-      }, licenseRes);
-      assert.strictEqual(licenseRes.statusCode, 403);
-      assert.strictEqual(licenseRes.payload.code, 'DRM_KEY_ID_MISMATCH');
+      assert.strictEqual(
+        registerTicketRequest({ path: '/dash/123/manifest.mpd' }, firstResponse, ticket),
+        true
+      );
+      assert.strictEqual(
+        registerTicketRequest({ path: '/dash/123/video_1.m4s' }, secondResponse, ticket),
+        false
+      );
+
+      firstResponse.emit('finish');
+
+      assert.strictEqual(
+        registerTicketRequest({ path: '/dash/123/video_1.m4s' }, thirdResponse, ticket),
+        true
+      );
+      thirdResponse.emit('close');
     } finally {
-      coursesService.getLessonById = previousGetLessonById;
+      if (originalLimit === undefined) delete process.env.VIDEO_MAX_PARALLEL_REQUESTS;
+      else process.env.VIDEO_MAX_PARALLEL_REQUESTS = originalLimit;
     }
   });
+
+  test('15. Production media requests only accept origins configured in FRONTEND_URL', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalFrontendUrl = process.env.FRONTEND_URL;
+    const originalRequireHeaders = process.env.VIDEO_REQUIRE_SOURCE_HEADERS;
+
+    process.env.NODE_ENV = 'production';
+    process.env.FRONTEND_URL = 'https://learning.example.com';
+    process.env.VIDEO_REQUIRE_SOURCE_HEADERS = 'true';
+
+    try {
+      assert.strictEqual(isAllowedMediaSource({
+        headers: { origin: 'https://learning.example.com' }
+      }), true);
+      assert.strictEqual(isAllowedMediaSource({
+        headers: { referer: 'https://learning.example.com/course/123' }
+      }), true);
+      assert.strictEqual(isAllowedMediaSource({
+        headers: { origin: 'https://project-e-learning-website-attacker.vercel.app' }
+      }), false);
+      assert.strictEqual(isAllowedMediaSource({ headers: {} }), false);
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      if (originalFrontendUrl === undefined) delete process.env.FRONTEND_URL;
+      else process.env.FRONTEND_URL = originalFrontendUrl;
+      if (originalRequireHeaders === undefined) delete process.env.VIDEO_REQUIRE_SOURCE_HEADERS;
+      else process.env.VIDEO_REQUIRE_SOURCE_HEADERS = originalRequireHeaders;
+    }
+  });
+
 });

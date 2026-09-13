@@ -12,7 +12,7 @@ const REQUIRED_PRODUCTION_VARIABLES = [
   'SMTP_HOST',
   'SMTP_USER',
   'SMTP_PASS',
-  'ENABLE_DRM_PACKAGING',
+  'ENABLE_DASH_PACKAGING',
   'ENABLE_SUBTITLE_VAD'
 ];
 
@@ -32,11 +32,21 @@ function getMissingProductionVariables(env = process.env) {
     }
   }
 
-  for (const name of ['ENABLE_DRM_PACKAGING', 'ENABLE_SUBTITLE_VAD']) {
+  for (const name of ['ENABLE_DASH_PACKAGING', 'ENABLE_SUBTITLE_VAD']) {
     const value = String(env[name] || '').trim().toLowerCase();
     if (value && value !== 'true' && !missing.includes(`${name}=true`)) {
       missing.push(`${name}=true`);
     }
+  }
+
+  const queryTicketSetting = String(env.VIDEO_ALLOW_QUERY_TICKET || '').trim().toLowerCase();
+  if (queryTicketSetting && queryTicketSetting !== 'false') {
+    missing.push('VIDEO_ALLOW_QUERY_TICKET=false');
+  }
+
+  const sourceHeaderSetting = String(env.VIDEO_REQUIRE_SOURCE_HEADERS || '').trim().toLowerCase();
+  if (sourceHeaderSetting && sourceHeaderSetting !== 'true') {
+    missing.push('VIDEO_REQUIRE_SOURCE_HEADERS=true');
   }
 
   return missing;

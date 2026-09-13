@@ -6,7 +6,7 @@ RUN apk add --no-cache curl libc6-compat gcompat libstdc++ ffmpeg python3 py3-pi
 # 2. Tạo symlink python -> python3 để lệnh spawn('python', ...) trong Node.js chạy bình thường
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-# 3. Tự động tải Shaka Packager binary cho Linux x64 vào /usr/local/bin
+# 3. Tải Shaka Packager để đóng gói DASH không mã hóa cho MSE playback
 RUN curl -fsSL https://github.com/shaka-project/shaka-packager/releases/latest/download/packager-linux-x64 -o /usr/local/bin/shaka-packager \
     && chmod +x /usr/local/bin/shaka-packager
 

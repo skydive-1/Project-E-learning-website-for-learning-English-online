@@ -25,17 +25,22 @@ function getRequestSourceOrigin(req) {
   return normalizeOrigin(req.headers.origin || req.headers.referer || '');
 }
 
-function getAllowedFrontendOrigins() {
-  const configured = (process.env.FRONTEND_URL || 'http://localhost:3000')
+function getAllowedFrontendOrigins(env = process.env) {
+  const configured = (env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')
     .map(normalizeOrigin)
     .filter(Boolean);
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (env.NODE_ENV !== 'production') {
     configured.push('http://localhost:3000', 'http://localhost:5173');
   }
 
   return new Set(configured);
+}
+
+function isAllowedFrontendOrigin(value, env = process.env) {
+  const origin = normalizeOrigin(value);
+  return Boolean(origin && getAllowedFrontendOrigins(env).has(origin));
 }
 
 function isAllowedMediaSource(req) {
@@ -43,10 +48,7 @@ function isAllowedMediaSource(req) {
   if (!sourceOrigin) {
     return process.env.NODE_ENV !== 'production' || process.env.VIDEO_REQUIRE_SOURCE_HEADERS === 'false';
   }
-  if (getAllowedFrontendOrigins().has(sourceOrigin)) {
-    return true;
-  }
-  if (/^https:\/\/.*project-e-learning-website.*\.vercel\.app$/i.test(sourceOrigin)) {
+  if (isAllowedFrontendOrigin(sourceOrigin)) {
     return true;
   }
   return false;
@@ -139,7 +141,9 @@ function isAutomatedDownloader(req) {
 }
 
 function registerTicketRequest(req, res, decodedTicket) {
-  if (!req.path.includes('/video/stream/')) return true;
+  const requestPath = String(req.path || req.originalUrl || '');
+  const isProtectedVideoRequest = requestPath.includes('/video/stream/') || requestPath.includes('/dash/');
+  if (!isProtectedVideoRequest) return true;
 
   const ticketId = decodedTicket.jti;
   if (!ticketId) return true;
@@ -248,6 +252,7 @@ module.exports = {
   getPublicVideoTicketFromRequest,
   getVideoTicketFromRequest,
   isAllowedMediaSource,
+  isAllowedFrontendOrigin,
   isAutomatedDownloader,
   registerTicketRequest,
   resolveBoundedRange,

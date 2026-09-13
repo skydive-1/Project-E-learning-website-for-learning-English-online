@@ -18,6 +18,7 @@
  */
 
 const path = require('path');
+const crypto = require('crypto');
 const {
   CopyObjectCommand,
   DeleteObjectsCommand,
@@ -387,6 +388,99 @@ async function downloadFromSupabase(storageKey, storageBucket) {
   return Buffer.from(arrayBuffer);
 }
 
+function contentTypeForKey(storageKey, fallback = 'application/octet-stream') {
+  const ext = path.posix.extname(String(storageKey || '')).toLowerCase();
+  return ({
+    '.mpd': 'application/dash+xml',
+    '.mp4': 'video/mp4',
+    '.m4s': 'video/iso.segment',
+    '.pdf': 'application/pdf',
+    '.vtt': 'text/vtt',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png'
+  })[ext] || fallback;
+}
+
+/**
+ * Supabase's list API returns names relative to the requested folder. DASH
+ * assets created by this project are intentionally flat, so copying every
+ * file in that folder preserves one complete, self-contained playback bundle.
+ */
+async function listSupabaseFolderObjects(storageKey, storageBucket, { allowMissingManifest = false } = {}) {
+  const prefix = path.posix.dirname(String(storageKey || ''));
+  if (!storageKey || prefix === '.' || prefix === '/') {
+    throw new Error(`Từ chối liệt kê thư mục Supabase không an toàn cho ${storageKey || '(trống)'}`);
+  }
+
+  const { supabaseAdmin } = require('../config/supabase');
+  const folder = supabaseAdmin.storage.from(storageBucket);
+  const keys = [];
+  const pageSize = 100;
+  const maxObjects = 1000;
+  for (let offset = 0; offset < maxObjects; offset += pageSize) {
+    const { data, error } = await folder.list(prefix, {
+      limit: pageSize,
+      offset,
+      sortBy: { column: 'name', order: 'asc' }
+    });
+    if (error) throw new Error(`Không thể liệt kê Supabase (${storageBucket}/${prefix}): ${error.message}`);
+    const page = Array.isArray(data) ? data : [];
+    for (const item of page) {
+      const name = String(item?.name || '');
+      if (!name || name.includes('/') || name === '.' || name === '..') continue;
+      // Folder placeholders do not have an id/metadata in the Supabase API.
+      if (!item.id && !item.metadata) continue;
+      keys.push(path.posix.join(prefix, name));
+    }
+    if (page.length < pageSize) break;
+    if (offset + pageSize >= maxObjects) {
+      throw new Error(`Bundle Supabase vượt giới hạn an toàn ${maxObjects} object: ${prefix}`);
+    }
+  }
+
+  const uniqueKeys = [...new Set(keys)];
+  if (!allowMissingManifest && !uniqueKeys.includes(storageKey)) {
+    throw new Error(`Không tìm thấy manifest nguồn ${storageKey}`);
+  }
+  return uniqueKeys;
+}
+
+async function supabaseSourceObjectsFor(row, options = {}) {
+  if (!isDashManifest(row)) return [row.source_key];
+  return listSupabaseFolderObjects(row.source_key, row.source_bucket, options);
+}
+
+async function copySupabaseObjectToR2(row, sourceKey, destinationKey) {
+  const fileBuffer = await downloadFromSupabase(sourceKey, row.source_bucket);
+  const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  const existing = await headObject(destinationKey);
+  const existingSha = existing?.Metadata?.sha256 || existing?.Metadata?.['checksum-sha256'];
+  const alreadyVerified = existing
+    && Number(existing.ContentLength) === fileBuffer.length
+    && (!existingSha || existingSha === sha256);
+
+  if (!alreadyVerified) {
+    const upload = await r2.uploadObject(
+      fileBuffer,
+      destinationKey,
+      contentTypeForKey(sourceKey, row.mime_type || 'application/octet-stream'),
+      { custom: { migrated_from: 'supabase', source_sha256: sha256 } }
+    );
+    if (!upload?.success) throw new Error(upload?.error || `Không thể upload ${destinationKey} lên R2`);
+  }
+
+  const verified = await headObject(destinationKey);
+  if (!verified || Number(verified.ContentLength) !== fileBuffer.length) {
+    throw new Error(`R2 HEAD verify thất bại cho ${destinationKey}`);
+  }
+  const verifiedSha = verified.Metadata?.sha256 || verified.Metadata?.['checksum-sha256'];
+  if (verifiedSha && verifiedSha !== sha256) {
+    throw new Error(`Checksum R2 không khớp cho ${destinationKey}`);
+  }
+  return { sourceKey, destinationKey, sizeBytes: fileBuffer.length, sha256 };
+}
+
 /**
  * Cập nhật DB sau khi migrate từ Supabase → R2.
  * Cập nhật storage_provider, storage_bucket, storage_key, content_url.
@@ -429,6 +523,13 @@ async function persistSupabaseMigration(row, newKey, newBucket) {
        WHERE storage_provider = 'supabase' AND storage_key = $3 AND status = 'COMMITTED'`,
       [newBucket, newKey, row.source_key]
     );
+    // Cập nhật media_assets nếu còn tham chiếu cũ
+    await client.query(
+      `UPDATE media_assets
+       SET storage_provider = 'r2', storage_bucket = $1, object_key = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE storage_provider = 'supabase' AND object_key = $3`,
+      [newBucket, newKey, row.source_key]
+    );
     await client.query('COMMIT');
     if (row.ref_type === 'lesson') {
       lessonStreamCache.invalidateLessonStreamCache(row.ref_id);
@@ -444,15 +545,17 @@ async function persistSupabaseMigration(row, newKey, newBucket) {
 /**
  * Xóa object cũ trên Supabase (best-effort).
  */
-async function deleteFromSupabase(storageKey, storageBucket) {
+async function deleteFromSupabase(storageKeys, storageBucket) {
   try {
     const { supabaseAdmin } = require('../config/supabase');
-    const { error } = await supabaseAdmin.storage.from(storageBucket).remove([storageKey]);
+    const keys = [...new Set([storageKeys].flat().filter(Boolean))];
+    if (keys.length === 0) return;
+    const { error } = await supabaseAdmin.storage.from(storageBucket).remove(keys);
     if (error) {
-      console.warn(`[R2-Migrate] Không xóa được Supabase object ${storageBucket}/${storageKey}: ${error.message}`);
+      console.warn(`[R2-Migrate] Không xóa được ${keys.length} Supabase object trong ${storageBucket}: ${error.message}`);
     }
   } catch (err) {
-    console.warn(`[R2-Migrate] Lỗi xóa Supabase object ${storageBucket}/${storageKey}: ${err.message}`);
+    console.warn(`[R2-Migrate] Lỗi xóa Supabase object trong ${storageBucket}: ${err.message}`);
   }
 }
 
@@ -467,7 +570,7 @@ async function deleteFromSupabase(storageKey, storageBucket) {
  *
  * Không throw ra ngoài với lỗi từng item — trả về báo cáo để caller tự quyết định.
  */
-async function migrateSupabaseMediaToR2(courseId, { deleteSource = true } = {}) {
+async function migrateSupabaseMediaToR2(courseId, { deleteSource = false } = {}) {
   if (!courseId) return { total: 0, migrated: 0, failed: 0, failures: [] };
 
   const rows = await loadSupabaseMedia({ courseId });
@@ -494,48 +597,30 @@ async function migrateSupabaseMediaToR2(courseId, { deleteSource = true } = {}) 
         assetId: String(assetId).replace(/[^a-zA-Z0-9_-]/g, '')
       });
       const newKey = `${targetPrefix}/${safeBaseName}${ext}`;
-
-      // Kiểm tra xem đã có ở R2 chưa (idempotent)
-      const existing = await headObject(newKey);
-      let fileBuffer;
-
-      if (!existing) {
-        // Download từ Supabase
-        fileBuffer = await downloadFromSupabase(row.source_key, row.source_bucket);
-
-        // Upload lên R2
-        const { Upload } = require('@aws-sdk/lib-storage');
-        const crypto = require('crypto');
-        const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-
-        const uploader = new Upload({
-          client: r2.getClient(),
-          params: {
-            Bucket: bucket,
-            Key: newKey,
-            Body: fileBuffer,
-            ContentLength: fileBuffer.length,
-            ContentType: row.mime_type || 'application/octet-stream',
-            CacheControl: 'private, no-store',
-            Metadata: { sha256, migrated_from: 'supabase' }
-          },
-          queueSize: 1,
-          partSize: 64 * 1024 * 1024,
-          leavePartsOnError: false
-        });
-        await uploader.done();
+      const sourceKeys = await supabaseSourceObjectsFor(row);
+      const copied = [];
+      for (const sourceKey of sourceKeys) {
+        const destinationKey = isDashManifest(row)
+          ? `${targetPrefix}/${path.posix.basename(sourceKey)}`
+          : newKey;
+        copied.push(await copySupabaseObjectToR2(row, sourceKey, destinationKey));
       }
 
-      // Cập nhật DB
-      await persistSupabaseMigration(row, newKey, bucket);
+      const manifestKey = isDashManifest(row)
+        ? `${targetPrefix}/${path.posix.basename(row.source_key)}`
+        : newKey;
 
-      // Xóa Supabase (best-effort)
+      // Cập nhật DB
+      await persistSupabaseMigration(row, manifestKey, bucket);
+
+      // Giữ nguồn legacy theo mặc định. Chỉ xóa khi caller chủ động yêu cầu,
+      // và khi toàn bộ bundle đã copy + verify + cập nhật DB thành công.
       if (deleteSource) {
-        await deleteFromSupabase(row.source_key, row.source_bucket);
+        await deleteFromSupabase(sourceKeys, row.source_bucket);
       }
 
       migrated += 1;
-      console.log(`[R2-Migrate] ✅ ${row.ref_type}#${row.ref_id}: ${row.source_key} → ${newKey}`);
+      console.log(`[R2-Migrate] ✅ ${row.ref_type}#${row.ref_id}: ${copied.length} object → ${manifestKey}`);
     } catch (err) {
       failures.push({
         ref: `${row.ref_type}#${row.ref_id}`,
@@ -610,6 +695,12 @@ module.exports = {
   markOldAssetsDeleted,
   loadReferencedMedia,
   loadSupabaseMedia,
+  contentTypeForKey,
+  listSupabaseFolderObjects,
+  supabaseSourceObjectsFor,
+  copySupabaseObjectToR2,
+  persistSupabaseMigration,
+  deleteFromSupabase,
   reorganizeCourseMedia,
   migrateSupabaseMediaToR2,
   migrateCourseAllMedia
