@@ -153,6 +153,30 @@ exports.resetAiModelRouting = async (req, res, next) => {
   }
 };
 
+exports.setPreferredAiModel = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const { model } = req.body || {};
+    if (!model) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tên model không được để trống.'
+      });
+    }
+    const routing = await adminService.setPreferredAiModel({
+      model,
+      adminUserId: req.user?.id || req.user?.user_id
+    });
+    res.status(200).json({
+      success: true,
+      message: `Đã chọn ${model} làm model ưu tiên điều phối.`,
+      data: { routing }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAiRateLimitCaps = async (req, res, next) => {
   try {
     disableLiveDataCache(res);

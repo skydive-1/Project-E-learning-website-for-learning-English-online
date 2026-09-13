@@ -21,6 +21,7 @@ import {
   getGeminiRateLimitCaps,
   getGeminiRateLimitStatus,
   resetGeminiModelRouting,
+  setPreferredGeminiModel,
   updateGeminiRateLimitCaps
 } from '../services/adminAnalytics.service';
 import FreeTierUsageGuard from './FreeTierUsageGuard';
@@ -92,6 +93,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [resettingRouting, setResettingRouting] = useState(false);
+  const [settingPreferredModel, setSettingPreferredModel] = useState(null);
   const [savingModel, setSavingModel] = useState(null);
   const [error, setError] = useState(null);
   const latestTelemetryAt = getValidDate(status?.guard?.checkedAt || status?.generatedAt);
@@ -220,6 +222,26 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     }
   };
 
+  const handleSelectPreferredModel = async (model) => {
+    if (!model || model === routing?.preferredModel || settingPreferredModel) return;
+    try {
+      setSettingPreferredModel(model);
+      const nextRouting = await setPreferredGeminiModel(model);
+      setStatus((current) => current ? { ...current, routing: nextRouting } : current);
+      showToast(t('Đã chuyển model ưu tiên sang {{model}}. Các tác vụ AI sẽ ưu tiên dùng model này.', {
+        model
+      }), 'success');
+    } catch (selectError) {
+      console.error('Không thể đổi model ưu tiên:', selectError);
+      showToast(
+        selectError.response?.data?.message || t('Không thể đổi model ưu tiên. Vui lòng thử lại.'),
+        'error'
+      );
+    } finally {
+      setSettingPreferredModel(null);
+    }
+  };
+
   const handleResetRouting = async () => {
     try {
       setResettingRouting(true);
@@ -330,12 +352,34 @@ const AIRateLimitsView = ({ canManageCaps }) => {
               <h2 id="ai-model-routing-title">{t('Fallback và tự phục hồi')}</h2>
               <p>{t('Backend bỏ qua model đã hết RPD hoặc đang cooldown, rồi tự chọn model còn quota theo thứ tự ưu tiên.')}</p>
             </div>
-            <span className={`ai-model-routing__state${preferredModelCoolingDown ? ' is-cooling' : ' is-ready'}`}>
-              <i aria-hidden="true" />
-              {preferredModelRpdExhausted
-                ? t('Đang dùng model còn RPD')
-                : preferredModelCoolingDown ? t('Model chính đang chờ') : t('Đang ưu tiên model cao nhất')}
-            </span>
+            <div className="ai-model-routing__heading-actions">
+              {canManageCaps && (
+                <div className="ai-model-routing__selector">
+                  <label htmlFor="ai-preferred-model-select">
+                    {t('Model ưu tiên:')}
+                  </label>
+                  <select
+                    id="ai-preferred-model-select"
+                    value={routing.preferredModel || ''}
+                    onChange={(e) => handleSelectPreferredModel(e.target.value)}
+                    disabled={Boolean(settingPreferredModel)}
+                    aria-label={t('Chọn model ưu tiên điều phối')}
+                  >
+                    {(routing.fallbackOrder || []).map((m) => (
+                      <option key={m} value={m}>
+                        {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <span className={`ai-model-routing__state${preferredModelCoolingDown ? ' is-cooling' : ' is-ready'}`}>
+                <i aria-hidden="true" />
+                {preferredModelRpdExhausted
+                  ? t('Đang dùng model còn RPD')
+                  : preferredModelCoolingDown ? t('Model chính đang chờ') : t('Đang ưu tiên model cao nhất')}
+              </span>
+            </div>
           </div>
 
           <div className="ai-model-routing__body">
@@ -343,11 +387,29 @@ const AIRateLimitsView = ({ canManageCaps }) => {
               {(routing.fallbackOrder || []).map((model, index) => {
                 const cooldown = routing.coolingDown?.find((item) => item.model === model);
                 const isEffective = model === routing.effectiveModel;
+                const isPreferred = model === routing.preferredModel;
+                const isClickable = canManageCaps && !isPreferred && !settingPreferredModel;
+
                 return (
                   <React.Fragment key={model}>
                     {index > 0 && <span className="ai-model-routing__arrow" aria-hidden="true">→</span>}
-                    <div className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isEffective ? ' is-effective' : ''}`}>
-                      <span>{index === 0 ? t('Ưu tiên') : t('Dự phòng {{number}}', { number: index })}</span>
+                    <div
+                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}`}
+                      role={isClickable ? 'button' : undefined}
+                      tabIndex={isClickable ? 0 : undefined}
+                      onClick={isClickable ? () => handleSelectPreferredModel(model) : undefined}
+                      onKeyDown={isClickable ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSelectPreferredModel(model);
+                        }
+                      } : undefined}
+                      title={isClickable ? t('Nhấp để chọn {{model}} làm model ưu tiên điều phối', { model }) : undefined}
+                    >
+                      <div className="ai-model-routing__model-header">
+                        <span>{index === 0 ? t('Ưu tiên') : t('Dự phòng {{number}}', { number: index })}</span>
+                        {isPreferred && <span className="ai-model-routing__badge">{t('Đang chọn')}</span>}
+                      </div>
                       <code>{model}</code>
                       <small>
                         {cooldown
@@ -360,6 +422,11 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                             })
                           : isEffective ? t('Request kế tiếp') : t('Sẵn sàng')}
                       </small>
+                      {canManageCaps && !isPreferred && (
+                        <span className="ai-model-routing__action-hint">
+                          {settingPreferredModel === model ? t('Đang chuyển...') : t('Bấm để ưu tiên')}
+                        </span>
+                      )}
                     </div>
                   </React.Fragment>
                 );

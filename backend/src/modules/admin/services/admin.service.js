@@ -9,7 +9,8 @@ const {
   applyObservedGeminiRpdUsage,
   getGeminiModelRoutingStatus,
   getNextPacificRpdResetAt,
-  resetGeminiModelRouting
+  resetGeminiModelRouting,
+  setPreferredGeminiModel
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
@@ -1204,9 +1205,13 @@ const getRateLimitStatus = async () => {
 const resetAiModelRouting = ({ adminUserId } = {}) => {
   const routing = resetGeminiModelRouting();
   console.info(
-    `[AI Model Routing] Admin ${adminUserId || 'unknown'} đã mở lại model ưu tiên ${routing.preferredModel}; request thật tiếp theo sẽ kiểm tra model này.`
+    `[AI Model Routing] Admin ${adminUserId || "unknown"} đã mở lại model ưu tiên ${routing.preferredModel}; request thật tiếp theo sẽ kiểm tra model này.`
   );
   return routing;
+};
+
+const setPreferredAiModel = async ({ model, adminUserId } = {}) => {
+  return setPreferredGeminiModel(model, { adminUserId });
 };
 
 /**
@@ -1358,6 +1363,7 @@ module.exports = {
   getAiRateLimitCaps,
   getRateLimitStatus,
   resetAiModelRouting,
+  setPreferredAiModel,
   updateAiRateLimitCaps,
   updateUserQuotaLimit,
   migrateCourseMedia
