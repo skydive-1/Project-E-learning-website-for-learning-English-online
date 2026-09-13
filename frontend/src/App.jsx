@@ -137,13 +137,13 @@ function App() {
         <ThemeProvider>
           <LanguageProvider>
             <ToastProvider>
-              <PWAUpdatePrompt />
               <BrowserRouter>
                 <RouteScrollManager />
                 <SecureAuthRedirectHandler />
                 <AuthProvider>
                   <GamificationProvider>
-                  <Suspense fallback={<RouteLoadingFallback />}>
+                    <PWAUpdatePrompt />
+                    <Suspense fallback={<RouteLoadingFallback />}>
                   <Routes>
                     {/* Public Landing Route */}
                     <Route path="/" element={<HomePage />} />
