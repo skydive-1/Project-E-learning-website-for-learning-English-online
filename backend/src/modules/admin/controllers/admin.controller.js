@@ -177,22 +177,6 @@ exports.setPreferredAiModel = async (req, res, next) => {
   }
 };
 
-exports.probeAiModelsLive = async (req, res, next) => {
-  try {
-    disableLiveDataCache(res);
-    const report = await adminService.probeAiModelsLive({
-      adminUserId: req.user?.id || req.user?.user_id
-    });
-    res.status(200).json({
-      success: true,
-      message: 'Đã hoàn tất kiểm tra trạng thái live từ Google AI Studio.',
-      data: report
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 exports.getAiRateLimitCaps = async (req, res, next) => {
   try {
     disableLiveDataCache(res);

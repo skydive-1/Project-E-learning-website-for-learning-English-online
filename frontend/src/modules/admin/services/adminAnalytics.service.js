@@ -176,14 +176,6 @@ export const setPreferredGeminiModel = async (model) => {
   return response.data.data.routing;
 };
 
-export const probeGeminiQuotaLive = async () => {
-  const response = await apiClient.post('/admin/gemini-rate-limits/probe');
-  if (!response.data?.success || !response.data?.data) {
-    throw new Error('Phản hồi kiểm tra Google Quota không hợp lệ');
-  }
-  return response.data.data;
-};
-
 export const getGeminiRateLimitCaps = async ({ fresh = false } = {}) => {
   const response = await apiClient.get(
     '/admin/gemini-rate-limits/caps',
