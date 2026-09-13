@@ -398,8 +398,15 @@
       &.is-cooling { border-color: #f59e0b; background: #fffbeb; small { color: #b45309; font-weight: 600; } }
 
       &.is-preferred {
-        border-color: #3b82f6;
+        border-color: #2563eb;
         background: #f0f7ff;
+        box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.4);
+      }
+
+      &.is-preferred.is-effective {
+        border-color: #2563eb;
+        background: #eff6ff;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.45);
       }
 
       &.is-clickable {
@@ -408,12 +415,12 @@
 
         &:hover {
           transform: translateY(-2px);
-          border-color: #3b82f6;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+          border-color: #94a3b8;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
         }
 
         &:focus-visible {
-          outline: 2px solid #2563eb;
+          outline: 2px solid #94a3b8;
           outline-offset: 2px;
         }
 
@@ -425,12 +432,15 @@
       .ai-model-routing__badge {
         font-size: 8.5px;
         font-weight: 800;
-        padding: 2px 6px;
+        padding: 2px 7px;
         border-radius: 999px;
-        background: #dbeafe;
-        color: #1d4ed8;
+        background: #2563eb;
+        color: #ffffff;
         text-transform: uppercase;
         letter-spacing: 0.04em;
+        display: inline-flex;
+        align-items: center;
+        box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
       }
 
       .ai-model-routing__action-hint {
@@ -970,6 +980,25 @@
         code { color: var(--text-color); }
         small { color: #94a3b8; }
         &.is-effective { border-color: rgba(52, 211, 153, 0.4); background: rgba(16, 185, 129, 0.07); code { color: var(--text-color); } small { color: #94a3b8; } }
+        &.is-preferred {
+          border-color: #3b82f6;
+          background: rgba(59, 130, 246, 0.12);
+          box-shadow: 0 0 0 1.5px rgba(59, 130, 246, 0.45);
+        }
+        &.is-preferred.is-effective {
+          border-color: #60a5fa;
+          background: rgba(59, 130, 246, 0.16);
+          box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.55);
+        }
+        &.is-clickable {
+          &:hover {
+            border-color: rgba(148, 163, 184, 0.4);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+          }
+          &:focus-visible {
+            outline: 2px solid rgba(148, 163, 184, 0.4);
+          }
+        }
         &.is-cooling { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.06); small { color: #fbbf24; } }
       }
       &__facts dt { color: var(--text-muted); }

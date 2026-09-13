@@ -270,11 +270,27 @@ function markModelQuotaExhausted(
   }
 
   modelQuotaCooldown.set(normalizedModel, nextState);
+
+  if (nextState.dimension === 'rpd') {
+    const exhaustedUntil = new Date(nextState.retryAt).toISOString();
+    db.query(
+      `UPDATE ai_model_rate_limit_settings
+       SET rpd_exhausted_until = $1
+       WHERE model = $2`,
+      [exhaustedUntil, normalizedModel]
+    ).catch(() => {});
+  }
 }
 
 function clearModelQuotaCooldown(model) {
   const normalizedModel = String(model || '').trim();
   if (!normalizedModel) return false;
+  db.query(
+    `UPDATE ai_model_rate_limit_settings
+     SET rpd_exhausted_until = NULL
+     WHERE model = $1`,
+    [normalizedModel]
+  ).catch(() => {});
   return modelQuotaCooldown.delete(normalizedModel);
 }
 
@@ -413,6 +429,20 @@ function applyObservedGeminiRpdUsage(models = [], { now = Date.now() } = {}) {
     const model = String(item?.model || '').trim();
     const usage = Number(item?.usage?.rpd ?? item?.rpdCurrent ?? item?.rpd_current);
     const cap = Number(item?.caps?.rpd ?? item?.rpdCap ?? item?.rpd_cap);
+    const rpdExhaustedUntil = item?.rpdExhaustedUntil ?? item?.rpd_exhausted_until;
+
+    if (rpdExhaustedUntil) {
+      const retryAt = new Date(rpdExhaustedUntil).getTime();
+      if (Number.isFinite(retryAt) && retryAt > now) {
+        markModelQuotaExhausted(
+          model,
+          Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, retryAt - now),
+          'db_persisted_rpd_exhaustion',
+          { dimension: 'rpd', observedUsage: usage, cap }
+        );
+      }
+    }
+
     if (!model || !Number.isFinite(cap) || cap <= 0 || !Number.isFinite(usage) || usage < 0) {
       continue;
     }
@@ -482,6 +512,7 @@ async function refreshObservedGeminiRpdRouting(models) {
         SELECT
           s.model,
           s.rpd_cap,
+          s.rpd_exhausted_until,
           COUNT(e.id)::int AS rpd_current
         FROM ai_model_rate_limit_settings s
         CROSS JOIN bounds b
@@ -489,8 +520,22 @@ async function refreshObservedGeminiRpdRouting(models) {
           ON e.model = s.model
          AND date_trunc('day', e.created_at AT TIME ZONE '${PACIFIC_TIME_ZONE}') = b.pacific_today
         WHERE s.model = ANY($1::text[])
-        GROUP BY s.model, s.rpd_cap
+        GROUP BY s.model, s.rpd_cap, s.rpd_exhausted_until
       `, [normalizedModels]);
+
+      for (const row of result.rows || []) {
+        if (row.rpd_exhausted_until) {
+          const retryAt = new Date(row.rpd_exhausted_until).getTime();
+          if (Number.isFinite(retryAt) && retryAt > now) {
+            markModelQuotaExhausted(
+              row.model,
+              Math.max(MIN_MODEL_QUOTA_COOLDOWN_MS, retryAt - now),
+              'db_persisted_rpd_exhaustion',
+              { dimension: 'rpd', cap: row.rpd_cap }
+            );
+          }
+        }
+      }
 
       applyObservedGeminiRpdUsage(result.rows || [], { now: Date.now() });
       rpdRoutingRefreshModelsKey = modelsKey;
@@ -733,9 +778,12 @@ function parseGeminiQuotaViolation(error, fallbackModel = null) {
   else if (/rpd|requests?perday|dailyrequests?|generatecontentfreetierrequests/.test(normalized)) dimension = 'rpd';
   if (!dimension) return null;
 
-  const modelEntry = entries.find((entry) => /(^|\.)model(name)?$/i.test(entry.path));
-  const modelMatch = searchable.match(/gemini-[a-z0-9._-]+/i);
-  const model = String(modelEntry?.value || modelMatch?.[0] || fallbackModel || '').trim();
+  const knownModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-embedding-001'];
+  const matchedKnownModel = knownModels.find((km) => new RegExp(`\\b${km.replace(/\./g, '\\.')}\\b`, 'i').test(searchable));
+  const modelEntry = entries.find((entry) => /(^|\.)model(name)?$/i.test(entry.path) && String(entry.value).toLowerCase() !== 'gemini-api');
+  const modelMatch = searchable.match(/gemini-(?!api\b)[a-z0-9._-]+/i);
+  const rawModel = String(matchedKnownModel || modelEntry?.value || modelMatch?.[0] || fallbackModel || '').trim();
+  const model = rawModel.toLowerCase() === 'gemini-api' ? (fallbackModel || '') : rawModel;
   if (!model) return null;
 
   const limitEntry = entries.find((entry) => (
@@ -743,11 +791,13 @@ function parseGeminiQuotaViolation(error, fallbackModel = null) {
     && /^\d+$/.test(entry.value)
     && Number(entry.value) > 0
   ));
+  const messageLimitMatch = searchable.match(/limit:\s*(\d+)/i);
+  const providerLimit = limitEntry ? Number(limitEntry.value) : (messageLimitMatch ? Number(messageLimitMatch[1]) : null);
 
   return {
     model,
     dimension,
-    providerLimit: limitEntry ? Number(limitEntry.value) : null,
+    providerLimit,
     rawDetail
   };
 }
@@ -787,6 +837,15 @@ async function recordGeminiQuotaSignal({ error, model }) {
     if (!parsed) {
       console.warn('[Gemini Quota 429] Không xác định được model/dimension; bỏ qua notice.');
       return;
+    }
+
+    // Tự động căn chỉnh rpd_cap trong DB nếu Google báo giới hạn thực tế (vd 20 RPD)
+    if (parsed.dimension === 'rpd' && parsed.providerLimit > 0) {
+      await db.query(`
+        UPDATE ai_model_rate_limit_settings
+        SET rpd_cap = LEAST(rpd_cap, $1)
+        WHERE model = $2
+      `, [parsed.providerLimit, parsed.model]).catch(() => {});
     }
 
     const settingsResult = await db.query(
@@ -871,6 +930,71 @@ function getAiClient() {
     return ai;
   }
   throw new Error("Chưa cấu hình GEMINI_API_KEY trong file .env. Vui lòng lấy key miễn phí từ https://aistudio.google.com/app/apikey và dán vào backend/.env");
+}
+
+/**
+ * Thực hiện quét trực tiếp (Live Probe) tới Google Gemini API để cập nhật chính xác
+ * trạng thái quota, RPD và độ trễ của các model theo thời gian thực (0 VND).
+ */
+async function probeGeminiModelsLive({ adminUserId = null } = {}) {
+  const modelsToProbe = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+  const results = [];
+  const client = getAiClient();
+
+  for (const model of modelsToProbe) {
+    const startTime = Date.now();
+    try {
+      await client.models.generateContent({
+        model,
+        contents: 'ping'
+      });
+      const latencyMs = Date.now() - startTime;
+      clearModelQuotaCooldown(model);
+      recordSuccessfulGeminiModel(model);
+      results.push({
+        model,
+        status: 'healthy',
+        statusCode: 200,
+        latencyMs,
+        dimension: null,
+        providerLimit: null,
+        message: 'Sẵn sàng hoạt động (200 OK)'
+      });
+    } catch (error) {
+      const latencyMs = Date.now() - startTime;
+      const isQuota = isGeminiQuotaError(error);
+      const parsed = parseGeminiQuotaViolation(error, model);
+      const cooldown = getGeminiQuotaCooldown(error, model);
+
+      if (isQuota) {
+        await recordGeminiQuotaSignal({ error, model });
+      } else {
+        markModelQuotaExhausted(model, cooldown.durationMs, 'probe_error', { dimension: 'error' });
+      }
+
+      results.push({
+        model,
+        status: isQuota ? (parsed?.dimension === 'rpd' ? 'rpd_exhausted' : 'quota_exhausted') : 'error',
+        statusCode: error?.status || 429,
+        latencyMs,
+        dimension: parsed?.dimension || 'unknown',
+        providerLimit: parsed?.providerLimit || null,
+        message: error?.message?.slice(0, 300) || 'Lỗi hạn mức hoặc kết nối'
+      });
+    }
+  }
+
+  const updatedRouting = getGeminiModelRoutingStatus();
+  console.info(
+    `[AI Quota Prober] Admin ${adminUserId || 'system'} đã quét live ${modelsToProbe.length} model. Kết quả: `
+    + results.map((r) => `${r.model}: ${r.status}`).join(', ')
+  );
+
+  return {
+    probedAt: new Date().toISOString(),
+    results,
+    routing: updatedRouting
+  };
 }
 
 /**
@@ -1397,6 +1521,7 @@ module.exports = {
   resetGeminiModelRouting,
   setPreferredGeminiModel,
   getActivePreferredModel,
+  probeGeminiModelsLive,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
   geminiModel,
