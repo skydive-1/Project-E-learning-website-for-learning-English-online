@@ -156,9 +156,31 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
 
 // ─── Gemini Client Initialization ──────────────────────────────────────────
 
+let activePreferredModel = null;
+
+async function initPreferredGeminiModelFromDb() {
+  try {
+    const res = await db.query(
+      `SELECT model FROM ai_model_rate_limit_settings WHERE is_preferred = TRUE LIMIT 1`
+    );
+    if (res.rows?.[0]?.model) {
+      activePreferredModel = String(res.rows[0].model).trim();
+      console.log(`[AI Model Routing] Khởi tạo model ưu tiên từ DB: ${activePreferredModel}`);
+    }
+  } catch (_err) {
+    // Non-fatal if column or table not available
+  }
+}
+initPreferredGeminiModelFromDb();
+
+function getActivePreferredModel() {
+  return activePreferredModel || GEMINI_MODELS.routingPrimary;
+}
+
 function getGeminiFallbackModels(preferredModel) {
+  const primaryModel = preferredModel || getActivePreferredModel();
   return Array.from(new Set([
-    preferredModel,
+    primaryModel,
     GEMINI_MODELS.routingPrimary,
     GEMINI_MODELS.primary,
     ...GEMINI_MODELS.fallbacks
@@ -304,8 +326,9 @@ function getPrioritizedFallbackModels(preferredModel) {
 function getGeminiModelRoutingStatus() {
   const now = Date.now();
   pruneExpiredModelCooldowns(now);
-  const fallbackOrder = getGeminiFallbackModels(GEMINI_MODELS.routingPrimary);
-  const effectiveOrder = getPrioritizedFallbackModels(GEMINI_MODELS.routingPrimary);
+  const preferred = getActivePreferredModel();
+  const fallbackOrder = getGeminiFallbackModels(preferred);
+  const effectiveOrder = getPrioritizedFallbackModels(preferred);
   const coolingDown = fallbackOrder
     .map((model) => ({ model, ...modelQuotaCooldown.get(model) }))
     .filter((item) => Number.isFinite(item.retryAt) && item.retryAt > now)
@@ -323,18 +346,21 @@ function getGeminiModelRoutingStatus() {
 
   return {
     scope: 'process_instance',
-    preferredModel: GEMINI_MODELS.routingPrimary,
-    effectiveModel: effectiveOrder[0] || GEMINI_MODELS.routingPrimary,
+    preferredModel: preferred,
+    effectiveModel: effectiveOrder[0] || preferred,
     fallbackOrder,
     effectiveOrder,
     lastSuccessfulModel: lastSuccessfulGeminiModel,
     lastSuccessfulAt: lastSuccessfulGeminiAt,
     lastManualResetAt: lastManualRoutingResetAt,
+    isCustomPreferred: Boolean(activePreferredModel && activePreferredModel !== GEMINI_MODELS.routingPrimary),
+    defaultPreferredModel: GEMINI_MODELS.routingPrimary,
     coolingDown
   };
 }
 
 function resetGeminiModelRouting({ all = false } = {}) {
+  const preferred = getActivePreferredModel();
   if (all) {
     modelQuotaCooldown.clear();
     observedRpdUsage.clear();
@@ -342,12 +368,40 @@ function resetGeminiModelRouting({ all = false } = {}) {
     rpdRoutingRefreshModelsKey = '';
   }
   else {
-    const preferredState = modelQuotaCooldown.get(GEMINI_MODELS.routingPrimary);
+    const preferredState = modelQuotaCooldown.get(preferred);
     if (preferredState?.dimension !== 'rpd') {
-      clearModelQuotaCooldown(GEMINI_MODELS.routingPrimary);
+      clearModelQuotaCooldown(preferred);
     }
   }
   lastManualRoutingResetAt = new Date().toISOString();
+  return getGeminiModelRoutingStatus();
+}
+
+async function setPreferredGeminiModel(model, { adminUserId = null } = {}) {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) {
+    const error = new Error('Tên model không được để trống.');
+    error.status = 400;
+    throw error;
+  }
+
+  activePreferredModel = normalizedModel;
+
+  const currentState = modelQuotaCooldown.get(normalizedModel);
+  if (currentState && currentState.dimension !== 'rpd') {
+    clearModelQuotaCooldown(normalizedModel);
+  }
+
+  try {
+    await db.query(
+      `UPDATE ai_model_rate_limit_settings SET is_preferred = (model = $1)`,
+      [normalizedModel]
+    );
+  } catch (dbErr) {
+    console.warn('[AI Model Routing] Không thể lưu is_preferred vào DB (non-fatal):', dbErr.message);
+  }
+
+  console.info(`[AI Model Routing] Admin ${adminUserId || 'unknown'} đã chọn model ưu tiên điều phối: ${normalizedModel}`);
   return getGeminiModelRoutingStatus();
 }
 
@@ -507,12 +561,15 @@ const getGeminiQuotaCooldown = (error, fallbackModel = null) => {
 
   if (isRpdExhausted) {
     const now = Date.now();
-    const resetAt = Number.isFinite(retryAfterMs) && retryAfterMs > 0
-      ? now + retryAfterMs + 1000
-      : getNextPacificRpdResetAt(now) + 1000;
+    const pacificResetAt = getNextPacificRpdResetAt(now) + 1000;
+    // Google thường gửi retryDelay mặc định (49s-60s) ngay cả khi đã chạm trần RPD ngày.
+    // Lỗi RPD chỉ thực sự hết hiệu lực sau mốc đặt lại 00:00 Pacific (14:00 VN).
+    // Chỉ tôn trọng retryAfterMs nếu nó đại diện cho một khoảng tạm dừng dài hơn 1 giờ.
+    const isExtendedRetryAfter = Number.isFinite(retryAfterMs) && retryAfterMs > 3600_000;
+    const resetAt = isExtendedRetryAfter ? now + retryAfterMs + 1000 : pacificResetAt;
     return {
       durationMs: normalizeModelCooldownDuration(resetAt - now),
-      source: Number.isFinite(retryAfterMs) && retryAfterMs > 0
+      source: isExtendedRetryAfter
         ? 'provider_rpd_retry_after'
         : 'provider_rpd_pacific_reset',
       dimension: 'rpd',
@@ -656,11 +713,15 @@ const flattenQuotaDetail = (value, path = '', output = []) => {
 function parseGeminiQuotaViolation(error, fallbackModel = null) {
   if (!isGeminiQuotaError(error)) return null;
 
-  const source = error?.response?.data
-    ?? error?.body
-    ?? error?.details
-    ?? error?.error
-    ?? { message: error?.message, status: error?.status, code: error?.code };
+  const source = {
+    message: error?.message,
+    status: error?.status,
+    code: error?.code,
+    ...(error?.response?.data && typeof error?.response?.data === 'object' ? error.response.data : {}),
+    ...(Array.isArray(error?.errorDetails) ? { errorDetails: error.errorDetails } : {}),
+    ...(Array.isArray(error?.details) ? { details: error.details } : (error?.details && typeof error?.details === 'object' ? error.details : {})),
+    ...(error?.body && typeof error?.body === 'object' ? error.body : {})
+  };
   const rawDetail = sanitizeQuotaDetail(source);
   const entries = flattenQuotaDetail(rawDetail);
   const searchable = entries.map((entry) => `${entry.path}=${entry.value}`).join('\n');
@@ -668,8 +729,8 @@ function parseGeminiQuotaViolation(error, fallbackModel = null) {
 
   let dimension = null;
   if (/tpm|tokens?perminute/.test(normalized)) dimension = 'tpm';
-  else if (/rpd|requests?perday|dailyrequests?/.test(normalized)) dimension = 'rpd';
   else if (/rpm|requests?perminute/.test(normalized)) dimension = 'rpm';
+  else if (/rpd|requests?perday|dailyrequests?|generatecontentfreetierrequests/.test(normalized)) dimension = 'rpd';
   if (!dimension) return null;
 
   const modelEntry = entries.find((entry) => /(^|\.)model(name)?$/i.test(entry.path));
@@ -868,7 +929,7 @@ function normalizeRequest(request) {
  * Sau khi gọi thành công, tự động ghi nhận usageMetadata vào ai_usage_events.
  */
 async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
-  const preferredModel = modelOverride || GEMINI_MODELS.routingPrimary;
+  const preferredModel = modelOverride || getActivePreferredModel();
   const fallbackModels = await getQuotaAwareFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
@@ -926,7 +987,7 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
  * after the stream is fully consumed.
  */
 async function executeGenerateStream(client, contents, config, modelOverride = null, customCtx = {}) {
-  const preferredModel = modelOverride || GEMINI_MODELS.routingPrimary;
+  const preferredModel = modelOverride || getActivePreferredModel();
   const fallbackModels = await getQuotaAwareFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
@@ -1065,7 +1126,7 @@ const geminiModel = {
 
     try {
       const client = getAiClient();
-      const modelName = GEMINI_MODELS.routingPrimary;
+      const modelName = getActivePreferredModel();
       const response = await client.models.countTokens({
         model: modelName,
         contents
@@ -1075,7 +1136,8 @@ const geminiModel = {
         totalTokens: response.totalTokens !== undefined ? response.totalTokens : 0
       };
     } catch (error) {
-      recordGeminiQuotaSignal({ error, model: GEMINI_MODELS.routingPrimary });
+      const modelName = getActivePreferredModel();
+      recordGeminiQuotaSignal({ error, model: modelName });
       // Fallback an toàn ước lượng token (1 token ~ 4 ký tự)
       const strLength = typeof contents === "string" ? contents.length : JSON.stringify(contents).length;
       return { totalTokens: Math.max(1, Math.ceil(strLength / 4)) };
@@ -1333,6 +1395,8 @@ module.exports = {
   getNextPacificRpdResetAt,
   applyObservedGeminiRpdUsage,
   resetGeminiModelRouting,
+  setPreferredGeminiModel,
+  getActivePreferredModel,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
   geminiModel,

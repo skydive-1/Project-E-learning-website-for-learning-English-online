@@ -16,7 +16,8 @@ const {
   applyObservedGeminiRpdUsage,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
-  resetGeminiModelRouting
+  resetGeminiModelRouting,
+  setPreferredGeminiModel
 } = require('../src/utils/ai-clients');
 
 describe('Admin Gemini rate-limit status', () => {
@@ -413,6 +414,26 @@ describe('Best-effort Gemini 429 calibration', () => {
       assert.equal(queries[0].params[5], 9250);
     } finally {
       db.query = originalQuery;
+    }
+  });
+  test('allows admin to set preferred model and immediately updates routing', async () => {
+    const originalQuery = db.query;
+    let updatedModel = null;
+    db.query = async (text, params) => {
+      if (text.includes('UPDATE ai_model_rate_limit_settings SET is_preferred')) {
+        updatedModel = params[0];
+      }
+      return { rows: [] };
+    };
+
+    try {
+      const routing = await setPreferredGeminiModel('gemini-3.5-flash-lite', { adminUserId: 7 });
+      assert.equal(routing.preferredModel, 'gemini-3.5-flash-lite');
+      assert.equal(routing.fallbackOrder[0], 'gemini-3.5-flash-lite');
+      assert.equal(updatedModel, 'gemini-3.5-flash-lite');
+    } finally {
+      db.query = originalQuery;
+      await setPreferredGeminiModel('gemini-3.7-flash', { adminUserId: 7 });
     }
   });
 });

@@ -4,6 +4,12 @@
  * Module: FFmpeg Audio Extraction, Multimodal Gemini 3.7 Flash Speech-to-Text & Bilingual Cues
  */
 
+/**
+ * Subtitles Service - Hệ thống Tự động Trích xuất Audio & Sinh Phụ đề Song ngữ bằng Gemini 3.7 Flash
+ * Author: NGUYỄN THANH LIÊM (Backend & Security Developer)
+ * Module: FFmpeg Audio Extraction, Multimodal Gemini 3.7 Flash Speech-to-Text & Bilingual Cues
+ */
+
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
@@ -11,7 +17,7 @@ const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const db = require('../../../config/database');
-const { geminiModel } = require('../../../utils/ai-clients');
+const { geminiModel, getActivePreferredModel } = require('../../../utils/ai-clients');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
 const youtubeTranscript = require('../../../utils/youtubeTranscript.util');
 const lessonsService = require('./lessons.service');
@@ -919,10 +925,15 @@ class SubtitlesService {
         '--output', outputJsonPath
       ];
 
+      const currentActiveModel = typeof getActivePreferredModel === 'function'
+        ? getActivePreferredModel()
+        : (process.env.GEMINI_SUBTITLE_MODEL || 'gemini-3.7-flash');
+
       const pyProcess = spawn('python', args, {
         cwd: path.dirname(pythonScript),
         env: { 
           ...process.env, 
+          GEMINI_SUBTITLE_MODEL: currentActiveModel,
           PYTHONIOENCODING: 'utf-8',
           PYTHONUNBUFFERED: '1',
           FFMPEG_PATH: ffmpegInstaller.path
