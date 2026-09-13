@@ -143,6 +143,24 @@ exports.submitQuiz = async (req, res, next) => {
   }
 };
 
+exports.checkAnswer = async (req, res, next) => {
+  try {
+    const { quizId, questionId, answer } = req.body;
+    if (!quizId || !questionId) {
+      const err = new Error("Thiếu quizId hoặc questionId");
+      err.status = 400;
+      throw err;
+    }
+    const result = await quizzesService.checkAnswer(quizId, questionId, answer);
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getLeaderboard = async (req, res, next) => {
   try {
     const { quizId } = req.params;

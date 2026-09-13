@@ -70,6 +70,13 @@ export const formatQuizOption = (option) => {
   return String(displayValue).replace(/^[A-D](?:[.):\-]\s*|\s+)/i, '').trim();
 };
 
+export const isOptionMatching = (correct, optKey) => {
+  if (!correct || !optKey) return false;
+  const c = String(correct).trim().toUpperCase();
+  const k = String(optKey).trim().toUpperCase();
+  return c === k || c.startsWith(k + '.') || c.startsWith(k + ')') || c.startsWith(k + ' ');
+};
+
 const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const { triggerBadgeUnlock } = useGamification() || {};
   const showToast = useToast();
@@ -80,6 +87,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
   // Common Quiz states
   const [selectedAnswers, setSelectedAnswers] = useState({});
+  const [submissionResults, setSubmissionResults] = useState(null);
   const [activeQuestionIdx, setActiveQuestionIdx] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [score, setScore] = useState(0);
@@ -271,6 +279,9 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     if (targetQuizId) {
       try {
         const result = await submitQuizAttempt(targetQuizId, selectedAnswers);
+        if (result?.data?.results) {
+          setSubmissionResults(result.data.results);
+        }
         const authoritativeCount = Number(result?.data?.correct_count);
         if (Number.isFinite(authoritativeCount)) correctCount = authoritativeCount;
       } catch (err) {
@@ -293,6 +304,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
   const handleRetake = () => {
     setSelectedAnswers({});
+    setSubmissionResults(null);
     setActiveQuestionIdx(0);
     setIsSubmitted(false);
     setScore(0);
@@ -766,7 +778,9 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                 const optionKey = String.fromCharCode(65 + idx); // A, B, C, D
                 const optionLabel = formatQuizOption(option);
                 const isSelected = selectedAnswers[currentQuestion.id] === optionKey;
-                const isCorrect = currentQuestion.correctAnswer === optionKey;
+                const questionResult = submissionResults?.find(r => r.question_id === currentQuestion.id);
+                const authoritativeCorrect = questionResult?.correct_answer || currentQuestion.correctAnswer || '';
+                const isCorrect = isSubmitted && isOptionMatching(authoritativeCorrect, optionKey);
 
                 let optionClass = "border-border bg-card hover:bg-muted text-foreground hover:border-primary/40";
                 let badgeClass = "bg-muted text-muted-foreground border-border";
@@ -811,6 +825,18 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                     Câu hỏi này chưa có danh sách phương án trả lời hợp lệ.
                   </AlertDescription>
                 </Alert>
+              )}
+
+              {isSubmitted && (submissionResults?.find(r => r.question_id === currentQuestion.id)?.explanation || currentQuestion.explanation) && (
+                <div className="mt-2 p-4 rounded-xl border border-primary/25 bg-primary/5 text-foreground animate-fade">
+                  <div className="flex items-center gap-2 text-xs font-bold text-primary mb-1">
+                    <Sparkles className="size-4" />
+                    <span>💡 Giải thích chi tiết:</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                    {submissionResults?.find(r => r.question_id === currentQuestion.id)?.explanation || currentQuestion.explanation}
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -1123,9 +1149,11 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                 const isAnswered = selectedAnswers[q.id] !== undefined;
                 const qType = getEffectiveQuestionType(q);
                 const isCorrect = isSubmitted && (
-                  qType === 'multiple_choice' 
-                    ? selectedAnswers[q.id] === q.correctAnswer 
-                    : (Number(questionScores[q.id]) || 0) >= 50
+                  submissionResults
+                    ? Boolean(submissionResults.find(r => r.question_id === q.id)?.is_correct)
+                    : (['multiple_choice', 'listening', 'reading'].includes(qType)
+                        ? isOptionMatching(q.correctAnswer, selectedAnswers[q.id])
+                        : (Number(questionScores[q.id]) || 0) >= 50)
                 );
 
                 let btnClass = "border-border text-foreground hover:border-primary/50 bg-card";
