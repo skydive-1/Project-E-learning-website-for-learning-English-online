@@ -211,7 +211,7 @@ const PlayQuizPage = () => {
 
     const currentQuestion = quiz?.questions?.[currentIdx];
     const effectiveType = getEffectiveQuestionType(currentQuestion);
-    const isUntimedQuestion = ['writing', 'pronunciation', 'open_cloze'].includes(effectiveType);
+    const isUntimedQuestion = ['writing', 'pronunciation', 'open_cloze', 'reading'].includes(effectiveType);
 
     if (isUntimedQuestion) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -340,7 +340,8 @@ const PlayQuizPage = () => {
 
     let pts = 0;
     if (isCorrect) {
-      const timePercent = timeLeft / 20;
+      const isReadingQuestion = getEffectiveQuestionType(currentQuestion) === 'reading';
+      const timePercent = isReadingQuestion ? 1 : (timeLeft / 20);
       pts = Math.round(500 + (500 * timePercent));
       setScore(prev => prev + pts);
       setFeedbackType('correct');
@@ -888,7 +889,7 @@ const PlayQuizPage = () => {
                     )}
 
                     {/* Elegant Circular Timer or AI badge */}
-                    {['multiple_choice', 'listening', 'reading'].includes(effectiveQuestionType) ? (
+                    {['multiple_choice', 'listening'].includes(effectiveQuestionType) ? (
                       <div className="flex justify-center items-center my-4">
                         <div 
                           style={{
@@ -908,6 +909,8 @@ const PlayQuizPage = () => {
                             <><FiEdit3 aria-hidden="true" /><span>Trợ lý AI sẵn sàng chấm điểm bài viết</span></>
                           ) : effectiveQuestionType === 'pronunciation' ? (
                             <><FiMic aria-hidden="true" /><span>Micro và Trợ lý AI sẵn sàng chấm điểm bài nói</span></>
+                          ) : effectiveQuestionType === 'reading' ? (
+                            <><FiBookOpen aria-hidden="true" /><span>Đọc hiểu: Không giới hạn thời gian (Đọc kỹ đoạn văn để chọn đáp án)</span></>
                           ) : (
                             <><FiGrid aria-hidden="true" /><span>Hệ thống sẽ chấm chính xác từng chỗ trống</span></>
                           )}
