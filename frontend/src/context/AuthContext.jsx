@@ -285,3 +285,8 @@ export const useAuth = () => {
   }
   return context;
 };
+
+export const useOptionalAuth = () => {
+  const context = useContext(AuthContext);
+  return context || { user: null, isAuthenticated: false };
+};
