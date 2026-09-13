@@ -18,7 +18,9 @@ import {
   FiTrendingUp,
   FiEdit,
   FiCpu,
-  FiBell
+  FiBell,
+  FiCheckCircle,
+  FiCheck
 } from 'react-icons/fi';
 import '../styles/admin.scss';
 import { useAuth } from '../../../context/AuthContext';
@@ -29,6 +31,7 @@ import UserAnalyticsDashboard from '../components/UserAnalyticsDashboard';
 import AIQuotaControlCenter from '../components/AIQuotaControlCenter';
 import AdminAlertsPanel from '../components/AdminAlertsPanel';
 import CourseTranscriptHealthPanel from '../components/CourseTranscriptHealthPanel';
+import CourseTranscriptPipelineModal from '../components/CourseTranscriptPipelineModal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -99,6 +102,7 @@ const AdminDashboard = () => {
   const [errorCourses, setErrorCourses] = useState('');
   const [courseSearch, setCourseSearch] = useState('');
   const [courseStatusFilter, setCourseStatusFilter] = useState('all');
+  const [pipelineModalCourseId, setPipelineModalCourseId] = useState(null);
   const [pendingDeleteCourse, setPendingDeleteCourse] = useState(null);
   const [deletingCourseId, setDeletingCourseId] = useState(null);
   const [selectedCourseId, setSelectedCourseId] = useState('');
@@ -537,6 +541,11 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
     return true;
   });
 
+  const pendingReviewCoursesCount = courses.filter((c) => {
+    const rawStatus = c.status_name || (c.status === 'pending_review' ? 'pending_review' : (Number(c.status) === 1 || c.status === 'published' ? 'published' : 'draft'));
+    return rawStatus === 'pending_review';
+  }).length;
+
   const normalizedCourseSearch = courseSearch.trim().toLowerCase();
   const filteredAdminCourses = courses.filter((course) => {
     const matchesSearch = !normalizedCourseSearch || [
@@ -544,10 +553,16 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
       course.instructor_name,
       course.subject_name
     ].some((value) => String(value || '').toLowerCase().includes(normalizedCourseSearch));
-    const isPublished = Number(course.status) === 1 || course.status === 'published';
+
+    const rawStatus = course.status_name || (course.status === 'pending_review' ? 'pending_review' : (Number(course.status) === 1 || course.status === 'published' ? 'published' : 'draft'));
+    const isPublished = rawStatus === 'published';
+    const isPendingReview = rawStatus === 'pending_review';
+    const isDraft = rawStatus === 'draft';
+
     const matchesStatus = courseStatusFilter === 'all' ||
       (courseStatusFilter === 'published' && isPublished) ||
-      (courseStatusFilter === 'draft' && !isPublished);
+      (courseStatusFilter === 'pending_review' && isPendingReview) ||
+      (courseStatusFilter === 'draft' && isDraft);
     return matchesSearch && matchesStatus;
   });
 
@@ -579,6 +594,11 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
               onClick={() => setActiveTab('courses')}
             >
               <FiFolder className="inline mr-2" /> {t('adminCourses')}
+              {pendingReviewCoursesCount > 0 && (
+                <span className="tab-counter-badge pulse-badge" title={`${pendingReviewCoursesCount} khóa học đang chờ duyệt`}>
+                  {pendingReviewCoursesCount}
+                </span>
+              )}
             </button>
             <button 
               className={`admin-tab ${activeTab === 'security' ? 'active' : ''}`}
@@ -831,9 +851,10 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                   <label className="course-status-filter">
                     <span>Trạng thái</span>
                     <select value={courseStatusFilter} onChange={(event) => setCourseStatusFilter(event.target.value)}>
-                      <option value="all">Tất cả</option>
-                      <option value="published">Đã xuất bản</option>
-                      <option value="draft">Bản nháp</option>
+                      <option value="all">Tất cả ({courses.length})</option>
+                      <option value="published">Đã xuất bản ({courses.filter(c => Number(c.status) === 1 || c.status === 'published' || c.status_name === 'published').length})</option>
+                      <option value="pending_review">Chờ kiểm duyệt {pendingReviewCoursesCount > 0 ? `(${pendingReviewCoursesCount})` : '(0)'}</option>
+                      <option value="draft">Bản nháp ({courses.filter(c => (c.status === 'draft' || c.status_name === 'draft' || Number(c.status) === 0) && c.status_name !== 'pending_review' && c.status !== 'pending_review').length})</option>
                     </select>
                   </label>
                   <div className="course-result-count" aria-live="polite">
@@ -873,15 +894,23 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                           <th>Giảng viên</th>
                           <th>Chủ đề</th>
                           <th>Trạng thái</th>
+                          <th>Tiến trình AI</th>
                           <th>Ngày tạo</th>
                           <th className="course-table__action-heading">Hành động</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredAdminCourses.map((course) => {
-                          const isPublished = Number(course.status) === 1 || course.status === 'published';
+                          const rawStatus = course.status_name || (course.status === 'pending_review' ? 'pending_review' : (Number(course.status) === 1 || course.status === 'published' ? 'published' : 'draft'));
+                          const isPublished = rawStatus === 'published';
+                          const isPendingReview = rawStatus === 'pending_review';
+                          const ts = course.transcript_summary || {};
+                          const totalVideos = Number(ts.total_video_lessons || 0);
+                          const readySubs = Number(ts.ready_transcripts || 0);
+                          const progressPct = Number(ts.progress_percent ?? (totalVideos > 0 ? Math.round((readySubs / totalVideos) * 100) : 100));
+
                           return (
-                            <tr key={course.course_id}>
+                            <tr key={course.course_id} className={isPendingReview ? 'row-pending-review' : ''}>
                               <td data-label="Khóa học">
                                 <div className="course-identity">
                                   <strong>{course.course_name}</strong>
@@ -891,12 +920,61 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                               <td data-label="Giảng viên">{course.instructor_name || 'Chưa phân công'}</td>
                               <td data-label="Chủ đề">{course.subject_name || 'Chưa phân loại'}</td>
                               <td data-label="Trạng thái">
-                                <span className={`course-status ${isPublished ? 'is-published' : 'is-draft'}`}>
-                                  {isPublished ? 'Đã xuất bản' : 'Bản nháp'}
+                                <span className={`course-status ${isPublished ? 'is-published' : (isPendingReview ? 'is-pending-review' : 'is-draft')}`}>
+                                  {isPublished ? 'Đã xuất bản' : (isPendingReview ? 'Chờ kiểm duyệt' : 'Bản nháp')}
                                 </span>
+                              </td>
+                              <td data-label="Tiến trình AI">
+                                <div
+                                  className="course-ai-progress-widget"
+                                  onClick={() => setPipelineModalCourseId(course.course_id)}
+                                  title="Nhấn để xem telemetry tiến trình tự động hóa AI"
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      setPipelineModalCourseId(course.course_id);
+                                    }
+                                  }}
+                                >
+                                  <div className="progress-info-row">
+                                    <span className="progress-fraction">
+                                      <FiCpu className="widget-icon" />
+                                      {readySubs}/{totalVideos} video
+                                    </span>
+                                    <span className="progress-pct">{progressPct}%</span>
+                                  </div>
+                                  <div className="micro-progress-track">
+                                    <div
+                                      className={`micro-progress-fill ${progressPct === 100 ? 'is-done' : (ts.failed_transcripts > 0 ? 'has-error' : 'is-running')}`}
+                                      style={{ width: `${progressPct}%` }}
+                                    />
+                                  </div>
+                                </div>
                               </td>
                               <td data-label="Ngày tạo">{course.created_at ? new Date(course.created_at).toLocaleDateString(locale) : '—'}</td>
                               <td data-label="Hành động" className="course-table__action-cell" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {isPendingReview ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPipelineModalCourseId(course.course_id)}
+                                    title="Kiểm duyệt & Phê duyệt xuất bản"
+                                    className="course-review-button"
+                                  >
+                                    <FiCheckCircle aria-hidden="true" />
+                                    Kiểm duyệt
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPipelineModalCourseId(course.course_id)}
+                                    title="Xem tiến trình AI & Telemetry"
+                                    className="course-pipeline-button"
+                                  >
+                                    <FiCpu aria-hidden="true" />
+                                    Tiến trình AI
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/instructor/edit-course/${course.course_id}`)}
@@ -960,6 +1038,14 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {pipelineModalCourseId && (
+                  <CourseTranscriptPipelineModal
+                    courseId={pipelineModalCourseId}
+                    onClose={() => setPipelineModalCourseId(null)}
+                    onCourseUpdated={fetchCourses}
+                  />
                 )}
               </section>
             )}

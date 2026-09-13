@@ -505,3 +505,63 @@ exports.deleteCourse = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.submitForReview = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user?.id || req.user?.userId;
+    const userRole = req.user?.roleId || req.user?.role || 2;
+    const result = await coursesService.submitCourseForReview(courseId, userId, userRole);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.approveCourse = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const adminUserId = req.user?.id || req.user?.userId;
+    const result = await coursesService.approveCourse(courseId, adminUserId);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.rejectCourse = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const adminUserId = req.user?.id || req.user?.userId;
+    const { reason } = req.body || {};
+    const result = await coursesService.rejectCourse(courseId, adminUserId, reason);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getCourseTranscriptPipeline = async (req, res, next) => {
+  try {
+    const { courseId } = req.params;
+    const result = await coursesService.getCourseTranscriptPipeline(courseId);
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};

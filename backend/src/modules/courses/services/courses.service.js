@@ -124,10 +124,28 @@ class CoursesService {
           c.thumbnail_url, c.price, c.status, c.created_at, c.updated_at,
           c.start_date, c.end_date,
           u.full_name as instructor_name,
-          s.subject_name
+          s.subject_name,
+          COALESCE(ts.total_media_lessons, 0)::int AS total_media_lessons,
+          COALESCE(ts.ready_transcripts, 0)::int AS ready_transcripts,
+          COALESCE(ts.processing_transcripts, 0)::int AS processing_transcripts,
+          COALESCE(ts.failed_transcripts, 0)::int AS failed_transcripts,
+          COALESCE(ts.missing_transcripts, 0)::int AS missing_transcripts
         FROM courses c
         LEFT JOIN users u ON c.instructor_id = u.user_id
         LEFT JOIN subjects s ON c.subject_id = s.subject_id
+        LEFT JOIN (
+          SELECT 
+            sec.course_id,
+            COUNT(l.lesson_id) FILTER (WHERE l.content_type IN ('video', 'youtube')) AS total_media_lessons,
+            COUNT(l.lesson_id) FILTER (WHERE l.content_type IN ('video', 'youtube') AND ls.subtitle_status = 'ready') AS ready_transcripts,
+            COUNT(l.lesson_id) FILTER (WHERE l.content_type IN ('video', 'youtube') AND ls.subtitle_status IN ('pending', 'processing')) AS processing_transcripts,
+            COUNT(l.lesson_id) FILTER (WHERE l.content_type IN ('video', 'youtube') AND ls.subtitle_status = 'failed') AS failed_transcripts,
+            COUNT(l.lesson_id) FILTER (WHERE l.content_type IN ('video', 'youtube') AND (ls.subtitle_status IS NULL OR ls.subtitle_status = 'none')) AS missing_transcripts
+          FROM sections sec
+          JOIN lessons l ON l.section_id = sec.section_id
+          LEFT JOIN lesson_subtitles ls ON ls.lesson_id = l.lesson_id
+          GROUP BY sec.course_id
+        ) ts ON ts.course_id = c.course_id
       `;
 
       const values = [];
@@ -137,10 +155,25 @@ class CoursesService {
       queryText += ` ORDER BY c.created_at DESC`;
 
       const result = await db.query(queryText, values);
-      return result.rows.map(course => ({
-        ...course,
-        status: course.status === 'published' ? 1 : 0
-      }));
+      return result.rows.map(course => {
+        const isPublished = course.status === 'published';
+        const isPendingReview = course.status === 'pending_review';
+        const totalMedia = Number(course.total_media_lessons) || 0;
+        const readyTranscripts = Number(course.ready_transcripts) || 0;
+        return {
+          ...course,
+          status_name: course.status,
+          status: isPublished ? 1 : (isPendingReview ? 'pending_review' : 0),
+          transcript_summary: {
+            total: totalMedia,
+            ready: readyTranscripts,
+            processing: Number(course.processing_transcripts) || 0,
+            failed: Number(course.failed_transcripts) || 0,
+            missing: Number(course.missing_transcripts) || 0,
+            progress_percent: totalMedia > 0 ? Math.round((readyTranscripts / totalMedia) * 100) : 100
+          }
+        };
+      });
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy danh sách khóa học');
     }
@@ -507,8 +540,15 @@ class CoursesService {
       }
 
       let finalStatus = 'draft';
-      if (status === 1 || status === '1' || status === 'published') {
-        finalStatus = 'published';
+      if (status === 'pending_review') {
+        finalStatus = 'pending_review';
+      } else if (status === 1 || status === '1' || status === 'published') {
+        // Chỉ Admin mới có quyền publish trực tiếp lúc khởi tạo; Giảng viên phải qua Cổng kiểm duyệt
+        if (userRole === 1) {
+          finalStatus = 'published';
+        } else {
+          finalStatus = 'pending_review';
+        }
       } else if (status === 2 || status === '2' || status === 'archived') {
         finalStatus = 'archived';
       }
@@ -806,8 +846,16 @@ class CoursesService {
 
       let finalStatus = undefined;
       if (status !== undefined) {
-        if (status === 1 || status === '1' || status === 'published') {
-          finalStatus = 'published';
+        if (status === 'pending_review') {
+          finalStatus = 'pending_review';
+        } else if (status === 1 || status === '1' || status === 'published') {
+          // Bảo vệ khóa học cũ: Nếu khóa học đã từng published hoặc người thực hiện là Admin, cho phép tiếp tục giữ/cập nhật published
+          if (existingCourse.status === 'published' || userRole === 1) {
+            finalStatus = 'published';
+          } else {
+            // Khóa học chưa từng xuất bản mà gửi publish -> chuyển sang hàng đợi kiểm duyệt
+            finalStatus = 'pending_review';
+          }
         } else if (status === 2 || status === '2' || status === 'archived') {
           finalStatus = 'archived';
         } else if (status === null) {
@@ -1266,6 +1314,298 @@ class CoursesService {
       console.error('[canUserAccessLesson] Lỗi xác thực quyền bài học:', error);
       return false;
     }
+  }
+
+  /**
+   * Giảng viên hoặc Admin gửi khóa học vào Cổng kiểm duyệt (Publishing Gate)
+   */
+  async submitCourseForReview(courseId, userId, userRole) {
+    const cleanCourseId = parseInt(courseId, 10);
+    if (!cleanCourseId) {
+      const err = new Error('Mã khóa học không hợp lệ');
+      err.status = 400;
+      throw err;
+    }
+
+    const { rows } = await db.query(
+      'SELECT course_id, instructor_id, status, course_name FROM courses WHERE course_id = $1',
+      [cleanCourseId]
+    );
+    if (rows.length === 0) {
+      const err = new Error('Không tìm thấy khóa học');
+      err.status = 404;
+      throw err;
+    }
+    const course = rows[0];
+
+    // Chỉ Admin hoặc chính Giảng viên sở hữu khóa học mới được gửi duyệt
+    if (userRole !== 1 && Number(course.instructor_id) !== Number(userId)) {
+      const err = new Error('Bạn không có quyền gửi kiểm duyệt khóa học này');
+      err.status = 403;
+      throw err;
+    }
+
+    // Kiểm tra cấu trúc: Phải có ít nhất 1 bài học
+    const lessonRes = await db.query(`
+      SELECT l.lesson_id, l.title, l.content_type, l.media_status
+      FROM lessons l
+      JOIN sections s ON s.section_id = l.section_id
+      WHERE s.course_id = $1
+    `, [cleanCourseId]);
+
+    if (lessonRes.rows.length === 0) {
+      const err = new Error('Khóa học phải có ít nhất một bài học trước khi gửi kiểm duyệt.');
+      err.status = 400;
+      err.code = 'INVALID_COURSE_STRUCTURE';
+      throw err;
+    }
+
+    // Cập nhật trạng thái sang pending_review
+    await db.query(
+      "UPDATE courses SET status = 'pending_review', updated_at = CURRENT_TIMESTAMP WHERE course_id = $1",
+      [cleanCourseId]
+    );
+
+    // Kích hoạt tự động xếp hàng bóc tách phụ đề và câu hỏi cho tất cả bài giảng video
+    const mediaLessonIds = lessonRes.rows
+      .filter(l => ['video', 'youtube'].includes(String(l.content_type).toLowerCase()))
+      .map(l => Number(l.lesson_id));
+
+    if (mediaLessonIds.length > 0) {
+      this._queueAutoSubtitles(mediaLessonIds).catch(err => {
+        console.warn(`[PublishingGate] Lỗi kích hoạt hàng đợi phụ đề cho course ${cleanCourseId}:`, err.message);
+      });
+    }
+
+    return {
+      courseId: cleanCourseId,
+      status: 'pending_review',
+      message: 'Khóa học đã được gửi tới Cổng kiểm duyệt. Hệ thống AI đang tự động bóc tách phụ đề và chuẩn bị câu hỏi thảo luận.',
+      queuedLessonsCount: mediaLessonIds.length
+    };
+  }
+
+  /**
+   * Admin phê duyệt và chính thức xuất bản khóa học (Publishing Gate Approve)
+   */
+  async approveCourse(courseId, adminUserId) {
+    const cleanCourseId = parseInt(courseId, 10);
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        'SELECT course_id, status, course_name, academy_roadmap FROM courses WHERE course_id = $1 FOR UPDATE',
+        [cleanCourseId]
+      );
+      if (rows.length === 0) {
+        const err = new Error('Không tìm thấy khóa học');
+        err.status = 404;
+        throw err;
+      }
+      const course = rows[0];
+
+      // Kiểm tra lộ trình Academy bắt buộc
+      if (!course.academy_roadmap) {
+        const err = new Error('Khóa học cần có lộ trình Academy trước khi xuất bản.');
+        err.status = 400;
+        err.code = 'ACADEMY_ROADMAP_REQUIRED';
+        throw err;
+      }
+
+      // Kiểm định toàn vẹn file media trên storage R2
+      await this._validateStoredCourseForPublish(client, cleanCourseId);
+
+      // Cập nhật sang published
+      await client.query(
+        "UPDATE courses SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE course_id = $1",
+        [cleanCourseId]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        courseId: cleanCourseId,
+        status: 'published',
+        message: `Khóa học "${course.course_name}" đã được phê duyệt và chính thức xuất bản!`
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Admin từ chối phê duyệt khóa học (Publishing Gate Reject)
+   */
+  async rejectCourse(courseId, adminUserId, reason = '') {
+    const cleanCourseId = parseInt(courseId, 10);
+    const { rows } = await db.query(
+      'SELECT course_id, status, course_name FROM courses WHERE course_id = $1',
+      [cleanCourseId]
+    );
+    if (rows.length === 0) {
+      const err = new Error('Không tìm thấy khóa học');
+      err.status = 404;
+      throw err;
+    }
+    const course = rows[0];
+
+    await db.query(
+      "UPDATE courses SET status = 'draft', updated_at = CURRENT_TIMESTAMP WHERE course_id = $1",
+      [cleanCourseId]
+    );
+
+    return {
+      courseId: cleanCourseId,
+      status: 'draft',
+      message: `Khóa học "${course.course_name}" đã được chuyển về bản nháp để giảng viên hoàn thiện thêm.`,
+      reason: reason || 'Cần bổ sung hoặc hoàn thiện thêm nội dung bài học.'
+    };
+  }
+
+  /**
+   * Lấy chi tiết toàn bộ tiến trình Transcript Automation của khóa học cho Admin Pipeline Modal
+   */
+  async getCourseTranscriptPipeline(courseId) {
+    const cleanCourseId = parseInt(courseId, 10);
+    if (!cleanCourseId) {
+      const err = new Error('Mã khóa học không hợp lệ');
+      err.status = 400;
+      throw err;
+    }
+
+    const courseRes = await db.query(`
+      SELECT c.course_id, c.course_name, c.status, c.created_at, c.updated_at,
+             u.full_name AS instructor_name, u.email AS instructor_email,
+             s.subject_name
+      FROM courses c
+      LEFT JOIN users u ON u.user_id = c.instructor_id
+      LEFT JOIN subjects s ON s.subject_id = c.subject_id
+      WHERE c.course_id = $1
+    `, [cleanCourseId]);
+
+    if (courseRes.rows.length === 0) {
+      const err = new Error('Không tìm thấy khóa học');
+      err.status = 404;
+      throw err;
+    }
+    const course = courseRes.rows[0];
+
+    const { rows: lessons } = await db.query(`
+      SELECT 
+        l.lesson_id,
+        l.title AS lesson_title,
+        l.content_type,
+        l.content_url,
+        l.storage_key,
+        l.media_status,
+        s.section_id,
+        s.title AS section_title,
+        s.order_index AS section_order,
+        l.order_index AS lesson_order,
+        ls.subtitle_status,
+        ls.error_code,
+        ls.error_message,
+        ls.updated_at AS subtitle_updated_at,
+        CASE
+          WHEN jsonb_typeof(COALESCE(ls.cues, '[]'::jsonb)) = 'array'
+          THEN jsonb_array_length(COALESCE(ls.cues, '[]'::jsonb))
+          ELSE 0
+        END AS cue_count,
+        CASE 
+          WHEN q.questions IS NOT NULL AND jsonb_typeof(q.questions) = 'array' AND jsonb_array_length(q.questions) > 0
+          THEN true ELSE false 
+        END AS has_suggested_questions,
+        COALESCE(jsonb_array_length(q.questions), 0) AS suggested_questions_count,
+        job_sub.status AS subtitle_job_status,
+        job_sub.attempts AS subtitle_job_attempts,
+        job_sub.max_attempts AS subtitle_job_max_attempts,
+        job_sub.last_error_code AS subtitle_job_error_code,
+        job_sub.last_error_message AS subtitle_job_error_message
+      FROM lessons l
+      JOIN sections s ON s.section_id = l.section_id
+      LEFT JOIN lesson_subtitles ls ON ls.lesson_id = l.lesson_id
+      LEFT JOIN lesson_suggested_questions q ON q.lesson_id = l.lesson_id
+      LEFT JOIN background_jobs job_sub 
+        ON job_sub.job_type = 'subtitle_generation' AND job_sub.dedupe_key = 'lesson:' || l.lesson_id
+      WHERE s.course_id = $1
+      ORDER BY s.order_index, l.order_index, l.lesson_id
+    `, [cleanCourseId]);
+
+    const totalMediaLessons = lessons.filter(l => ['video', 'youtube'].includes(String(l.content_type).toLowerCase()));
+    const readyTranscripts = totalMediaLessons.filter(l => l.subtitle_status === 'ready');
+    const processingTranscripts = totalMediaLessons.filter(l => ['pending', 'processing'].includes(l.subtitle_status));
+    const failedTranscripts = totalMediaLessons.filter(l => l.subtitle_status === 'failed');
+
+    const totalLessons = lessons.length;
+    const mediaReadyCount = totalMediaLessons.filter(l => l.media_status === 'READY' || l.content_type === 'youtube').length;
+    const questionsReadyCount = totalMediaLessons.filter(l => l.has_suggested_questions).length;
+
+    const totalMedia = totalMediaLessons.length;
+    const stage1Percent = totalMedia > 0 ? Math.round((mediaReadyCount / totalMedia) * 100) : 100;
+    const stage2Percent = totalMedia > 0 ? Math.round((readyTranscripts.length / totalMedia) * 100) : 100;
+    const stage3Percent = stage2Percent;
+    const stage4Percent = totalMedia > 0 ? Math.round((questionsReadyCount / totalMedia) * 100) : 100;
+
+    const overallProgress = totalMedia > 0 
+      ? Math.round((stage1Percent + stage2Percent + stage3Percent + stage4Percent) / 4)
+      : 100;
+
+    return {
+      course: {
+        ...course,
+        status_name: course.status,
+        status: course.status === 'published' ? 1 : (course.status === 'pending_review' ? 'pending_review' : 0)
+      },
+      summary: {
+        totalLessons,
+        totalMediaLessons: totalMedia,
+        mediaReadyCount,
+        readyTranscripts: readyTranscripts.length,
+        processingTranscripts: processingTranscripts.length,
+        failedTranscripts: failedTranscripts.length,
+        questionsReadyCount,
+        overallProgress,
+        isFullyReady: totalMedia === 0 || (readyTranscripts.length === totalMedia && mediaReadyCount === totalMedia),
+        stages: [
+          {
+            stage: 1,
+            id: 'media_dash',
+            title: 'Media & Luồng DASH',
+            description: 'Đóng gói MPD và kiểm tra file trên Cloudflare R2',
+            percent: stage1Percent,
+            status: stage1Percent === 100 ? 'ready' : (mediaReadyCount > 0 ? 'processing' : 'pending')
+          },
+          {
+            stage: 2,
+            id: 'ai_transcription',
+            title: 'AI Speech-to-Text & Phụ đề song ngữ',
+            description: 'Gemini 3.7 Flash bóc tách Audio và dịch Anh - Việt chuẩn mili-giây',
+            percent: stage2Percent,
+            status: stage2Percent === 100 ? 'ready' : (processingTranscripts.length > 0 ? 'processing' : (failedTranscripts.length > 0 ? 'failed' : 'pending'))
+          },
+          {
+            stage: 3,
+            id: 'rag_ingestion',
+            title: 'Nạp Cơ sở tri thức Vector RAG',
+            description: 'Lưu ngữ cảnh bài học phục vụ AI Chatbot hỏi đáp tức thời',
+            percent: stage3Percent,
+            status: stage3Percent === 100 ? 'ready' : (stage2Percent > 0 ? 'processing' : 'pending')
+          },
+          {
+            stage: 4,
+            id: 'suggested_questions',
+            title: 'Bộ câu hỏi thảo luận gợi ý',
+            description: 'AI tạo 4 câu hỏi thảo luận sư phạm bám sát nội dung video',
+            percent: stage4Percent,
+            status: stage4Percent === 100 ? 'ready' : (questionsReadyCount > 0 ? 'processing' : 'pending')
+          }
+        ]
+      },
+      lessons
+    };
   }
 }
 

@@ -5,7 +5,7 @@ import {
   FiArrowLeft, FiSave, FiUpload, FiTrash2, 
   FiPlus, FiMove, FiVideo, FiFileText, FiAlertCircle, FiLoader,
   FiCheckCircle, FiEdit, FiSearch, FiLayers, FiBook, FiZap,
-  FiEye, FiX, FiExternalLink, FiRefreshCw
+  FiEye, FiX, FiExternalLink, FiRefreshCw, FiClock
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
@@ -266,6 +266,11 @@ const CourseEditor = () => {
   const isPublishedCourse = isEditMode && (
     courseStatus === 1 || courseStatus === '1' || courseStatus === 'published'
   );
+  const isPendingReviewCourse = isEditMode && (
+    courseStatus === 'pending_review'
+  );
+  const currentUserRole = getRoleFromToken();
+  const isAdminUser = currentUserRole === 1;
   
   const [sections, setSections] = useState([
     {
@@ -1380,13 +1385,21 @@ const CourseEditor = () => {
         : await apiClient.post('/courses', payload);
 
       if (response.data && response.data.success) {
-        if (status === 1) setCourseStatus('published');
+        if (status === 1 || status === 'published') {
+          setCourseStatus(isAdminUser ? 'published' : 'pending_review');
+        } else if (status === 'pending_review') {
+          setCourseStatus('pending_review');
+        } else {
+          setCourseStatus('draft');
+        }
         setSuccessMsg(
           status === 0
             ? 'Đã lưu bản nháp khóa học thành công!'
             : (isPublishedCourse
                 ? 'Đã lưu thay đổi khóa học thành công!'
-                : (isEditMode ? 'Cập nhật & Xuất bản khóa học thành công!' : 'Tạo & Xuất bản khóa học thành công!'))
+                : (isAdminUser
+                    ? 'Xuất bản khóa học thành công!'
+                    : 'Đã gửi khóa học vào hàng đợi kiểm duyệt! Hệ thống AI đang tự động bóc tách phụ đề và chuẩn bị câu hỏi.'))
         );
         setTimeout(() => {
           navigate('/instructor/dashboard');
@@ -1530,11 +1543,42 @@ const CourseEditor = () => {
               >
                 {loading
                   ? <FiLoader className="spin" />
-                  : (isPublishedCourse ? <FiSave /> : <FiUpload />)}
-                {isPublishedCourse ? 'Lưu thay đổi' : 'Xuất bản khóa học'}
+                  : (isPublishedCourse 
+                      ? <FiSave /> 
+                      : (isPendingReviewCourse ? <FiRefreshCw /> : (isAdminUser ? <FiUpload /> : <FiClock />)))}
+                {isPublishedCourse 
+                  ? 'Lưu thay đổi' 
+                  : (isPendingReviewCourse 
+                      ? 'Cập nhật & Chờ duyệt' 
+                      : (isAdminUser ? 'Xuất bản khóa học' : 'Gửi kiểm duyệt xuất bản'))}
               </button>
             </div>
           </header>
+
+          {/* Banner Thông báo Khóa học Chờ kiểm duyệt & Tự động hóa */}
+          {isPendingReviewCourse && (
+            <div className="pending-review-banner" style={{
+              background: '#fffbeb',
+              border: '1px solid #fef3c7',
+              color: '#92400e',
+              padding: '16px 20px',
+              borderRadius: '12px',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <FiClock style={{ fontSize: '20px', flexShrink: 0, color: '#d97706' }} />
+              <div>
+                <strong style={{ display: 'block', fontSize: '14px', marginBottom: '2px', color: '#78350f' }}>
+                  Khóa học đang trong hàng đợi kiểm duyệt xuất bản (Publishing Gate)
+                </strong>
+                <span style={{ fontSize: '13px', color: '#92400e' }}>
+                  Hệ thống AI đang tiền xử lý tự động bóc tách phụ đề song ngữ và chuẩn bị cơ sở dữ liệu câu hỏi. Quản trị viên sẽ phê duyệt sau khi quá trình hoàn tất.
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Feedback Messages */}
           {errorMsg && (
