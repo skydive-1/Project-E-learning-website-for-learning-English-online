@@ -328,7 +328,7 @@ describe('Automatic subtitle trigger', () => {
     assert.deepEqual(scheduled, [{ lessonId: 131, source: 'courses/43/manifest.mpd' }]);
   });
 
-  test('DASH transcript source falls back to encrypted audio when source MP4 is missing', async () => {
+  test('DASH transcript source falls back to audio when source MP4 is missing', async () => {
     const checked = [];
     supabaseStorage.checkObjectExists = async key => {
       checked.push(key);
@@ -347,9 +347,35 @@ describe('Automatic subtitle trigger', () => {
     ]);
     assert.deepEqual(resolved, {
       storageKey: 'courses/43/videos/asset/audio.mp4',
-      encrypted: true,
-      audioOnly: true
+      encrypted: false,
+      audioOnly: true,
+      storageBucket: 'elearning-media',
+      storageProvider: 'r2'
     });
+  });
+
+  test('DASH transcript source falls back to encrypted audio for legacy encrypted manifests', async () => {
+    supabaseStorage.checkObjectExists = async key => key.endsWith('/audio.mp4');
+    const originalIsEncrypted = subtitlesService.isEncryptedDashObject;
+    subtitlesService.isEncryptedDashObject = async () => true;
+
+    try {
+      const resolved = await subtitlesService.resolveStorageMediaForTranscription({
+        storage_key: 'courses/43/videos/asset/manifest.mpd',
+        storage_bucket: 'elearning-media',
+        storage_provider: 'r2'
+      });
+
+      assert.deepEqual(resolved, {
+        storageKey: 'courses/43/videos/asset/audio.mp4',
+        encrypted: true,
+        audioOnly: true,
+        storageBucket: 'elearning-media',
+        storageProvider: 'r2'
+      });
+    } finally {
+      subtitlesService.isEncryptedDashObject = originalIsEncrypted;
+    }
   });
 
   test('DASH transcript source discovers an older source filename in the same asset folder', async () => {
@@ -371,7 +397,9 @@ describe('Automatic subtitle trigger', () => {
     assert.deepEqual(resolved, {
       storageKey: 'courses/43/videos/asset/lesson-original-source.mp4',
       encrypted: false,
-      audioOnly: false
+      audioOnly: false,
+      storageBucket: 'elearning-media',
+      storageProvider: 'r2'
     });
   });
 
@@ -392,8 +420,10 @@ describe('Automatic subtitle trigger', () => {
 
     assert.deepEqual(resolved, {
       storageKey: `courses/legacy/videos/${assetId}/audio.mp4`,
-      encrypted: true,
-      audioOnly: true
+      encrypted: false,
+      audioOnly: true,
+      storageBucket: 'elearning-media',
+      storageProvider: 'r2'
     });
   });
 

@@ -169,7 +169,7 @@
 ### 2.5 Error Handling ✅ Đã Đồng Nhất
 
 **Trạng thái (đã kiểm tra thực tế):**
-- `backend/src/modules/drm/drm.controller.js` — **Đã dùng `return next(error)`** đúng chuẩn ở cả 2 function: `getClearKeyLicense` (line 111) và `getLessonDrmInfo` (line 163)
+- Module ClearKey/license trước đây tại `backend/src/modules/drm/` đã được loại bỏ; DASH hiện được bảo vệ bằng playback ticket ở các endpoint manifest/segment.
 - `backend/src/modules/gamification/controllers/gamification.controller.js` — **Đã dùng `return next(error)`** đúng chuẩn ở cả `getStreak` và `getBadges`
 - Error middleware chung đã được áp dụng nhất quán trên toàn bộ controller
 

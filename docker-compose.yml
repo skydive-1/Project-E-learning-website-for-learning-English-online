@@ -44,7 +44,7 @@ services:
       - DB_NAME=elearning_db
       - DB_SSL=false
       - ENABLE_MEDIA_CLEANUP_WORKER=${ENABLE_MEDIA_CLEANUP_WORKER:-true}
-      - ENABLE_DRM_PACKAGING=${ENABLE_DRM_PACKAGING:-true}
+      - ENABLE_DASH_PACKAGING=${ENABLE_DASH_PACKAGING:-true}
       - MEDIA_CLEANUP_INTERVAL_MS=${MEDIA_CLEANUP_INTERVAL_MS:-300000}
       # Local Docker development: avoid one shared localhost IP exhausting the
       # API-wide quota while React StrictMode/HMR remount application providers.

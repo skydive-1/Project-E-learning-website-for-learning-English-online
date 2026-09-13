@@ -63,7 +63,7 @@ Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 
 
 - Mỗi request có ID, response header và log gồm status, thời gian, user và path: `backend/src/middleware/logger.middleware.js:1`, `:14`. Logger được gắn trước các route tại `backend/src/server.js:89`.
 - Error middleware log stack ở server, trả `requestId`, và không trả nội dung lỗi nội bộ cho client khi status là 500: `backend/src/middleware/error.middleware.js:58`, `:71`. Test PDF notes kiểm tra việc không rò thông tin nội bộ và đã đạt trong bộ 325 test.
-- Production startup kiểm tra JWT, URL frontend, Gemini, Pinecone, Supabase, SMTP, database, `ENABLE_DRM_PACKAGING` và `ENABLE_SUBTITLE_VAD`: `backend/src/config/environment.js:1`. Có năm test cho validator này và cả năm đều đạt.
+- Production startup kiểm tra JWT, URL frontend, Gemini, Pinecone, Supabase, SMTP, database, `ENABLE_DASH_PACKAGING` và `ENABLE_SUBTITLE_VAD`: `backend/src/config/environment.js:1`. Có năm test cho validator này và cả năm đều đạt.
 - Khi database không kết nối được ở production, server đóng thay vì tiếp tục chạy nửa vời: `backend/src/server.js:152`.
 - CORS không còn chấp nhận tùy ý mọi subdomain `vercel.app`: `backend/src/server.js:76`.
 - Global limiter và API limiter được gắn tại `backend/src/server.js:86`, `:107`; các route đăng nhập, reset mật khẩu, AI, upload, media và stream có limiter theo chức năng. Route lấy phụ đề nay yêu cầu xác thực và `aiLimiter`: `backend/src/modules/lessons/lessons.routes.js:42`.
@@ -72,7 +72,7 @@ Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 
 
 ### 1.7. Đường đi DRM/DASH, watermark và phần lớn chuỗi RAG có kết nối thật trong code
 
-- Upload video gọi Shaka packager và đánh dấu nội dung được bảo vệ: `backend/src/modules/courses/controllers/courses.controller.js:124`, `:210`. Manifest, segment và license đi qua route được bảo vệ: `backend/src/modules/lessons/lessons.routes.js:28`, `:31`, `backend/src/modules/drm/drm.routes.js:20`.
+- Upload video gọi Shaka Packager để tạo DASH không mã hóa cho MSE. Manifest và segment đều đi qua route có playback ticket: `backend/src/modules/lessons/lessons.routes.js:28`, `:31`; ClearKey/license endpoint đã được loại bỏ để tránh lỗi EME và giảm ảnh hưởng UX.
 - Frontend khởi tạo Shaka Player, gắn ticket header, cấu hình ClearKey và render watermark theo user/thời gian: `frontend/src/modules/lessons/pages/LessonDetailPage.jsx:972`, `:990`, `:1016`, `:1561`.
 - Máy kiểm tra có `backend/bin/shaka-packager.exe`, phiên bản 3.9.3. Truy vấn chỉ đọc cho thấy 4/4 video lesson hiện có đều dùng DASH. Bộ backend có 14 test video/streaming đạt; test hợp đồng ticket frontend cũng đạt.
 - Với RAG, request thật đi qua history, intent router, query rewriter/contextualizer, retrieval và source verification: `backend/src/modules/chatbot/services/chatbot.service.js:771`, `:795`, `:825`, `:832`, `:885`. Hybrid search trộn semantic và PostgreSQL rồi áp ngưỡng 0.58 ở `backend/src/modules/chatbot/services/hybridSearch.service.js:16`, `:147`, `:235`. Query lịch sử lọc theo `student_id` và `lesson_id` trong `backend/src/modules/chatbot/services/queryRewriter.service.js:69`. Test cách ly owner/history đã đạt trong bộ backend.

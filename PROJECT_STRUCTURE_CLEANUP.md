@@ -84,7 +84,7 @@ Không có top-level folder nào ngoài `docs/`, `_archive/` và `_needs-review/
 | `backend/export_prod_data.js` | `backend/tools/data/export-production-data.js` |
 | `backend/migrate_quizzes.js` | `backend/tools/migrations-adhoc/migrate-quizzes.js` |
 | `backend/migrate_supabase_to_docker.js` | `backend/tools/migrations-adhoc/migrate-supabase-to-docker.js` |
-| `backend/package_drm_video.js` | `backend/tools/media/package-drm-video.js` |
+| `backend/package_drm_video.js` | Đã loại bỏ cùng pipeline ClearKey; upload mới dùng `dashPackager.util.js`. |
 | `seed_free_creative_quiz.js` | `backend/tools/seed/seed-free-creative-quiz.js` |
 | `backend/seed_full_7min_subtitles.js` | `backend/tools/seed/seed-full-7min-subtitles.js` |
 | `backend/seed_subtitles.js` | `backend/tools/seed/seed-subtitles.js` |

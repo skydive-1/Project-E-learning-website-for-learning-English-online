@@ -15,6 +15,7 @@ const { geminiModel } = require('../../../utils/ai-clients');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
 const youtubeTranscript = require('../../../utils/youtubeTranscript.util');
 const lessonsService = require('./lessons.service');
+const { isEncryptedDashManifest } = require('../../../utils/dashPackager.util');
 const {
   durableJobQueue,
   DurableJobWorker,
@@ -375,45 +376,91 @@ class SubtitlesService {
     }
 
     const storage = require('../../../utils/supabaseStorage');
+    const provider = rawLesson.storage_provider || 'r2';
+    const bucket = rawLesson.storage_bucket || 'videos';
     const prefix = path.posix.dirname(sourceKey);
+    const encryptedAudio = await this.isEncryptedDashObject(sourceKey, bucket, provider);
     const candidates = [
       { storageKey: path.posix.join(prefix, 'source.mp4'), encrypted: false, audioOnly: false },
-      { storageKey: path.posix.join(prefix, 'audio.mp4'), encrypted: true, audioOnly: true }
+      { storageKey: path.posix.join(prefix, 'audio.mp4'), encrypted: encryptedAudio, audioOnly: true }
     ];
     for (const candidate of candidates) {
       const exists = await storage.checkObjectExists(
         candidate.storageKey,
-        rawLesson.storage_bucket || 'videos',
-        rawLesson.storage_provider || 'r2'
+        bucket,
+        provider
       );
-      if (exists) return candidate;
+      if (exists) return { ...candidate, storageBucket: bucket, storageProvider: provider };
     }
 
     // Một số asset cũ dùng tên file khác source.mp4/audio.mp4. Liệt kê đúng
     // thư mục trước để phục hồi mà không quét cả bucket.
-    if ((rawLesson.storage_provider || 'r2') === 'r2') {
+    if (provider === 'r2') {
       const localObjects = await this.listR2Objects(prefix);
-      const localCandidate = this.pickTranscriptionObject(localObjects);
-      if (localCandidate) return localCandidate;
+      const localCandidate = this.pickTranscriptionObject(localObjects, { encryptedAudio });
+      if (localCandidate) return { ...localCandidate, storageBucket: bucket, storageProvider: provider };
 
       // Nếu DB đã đổi đường dẫn nhưng object vẫn còn ở thư mục cũ, UUID asset
       // là định danh ổn định. Cache index 10 phút để 28 lesson chỉ tốn một lần LIST.
       const assetId = sourceKey.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\//i)?.[1];
       if (assetId) {
         const indexedObjects = await this.findR2ObjectsByAssetId(assetId);
-        const indexedCandidate = this.pickTranscriptionObject(indexedObjects);
-        if (indexedCandidate) return indexedCandidate;
+        const indexedCandidate = this.pickTranscriptionObject(indexedObjects, { encryptedAudio });
+        if (indexedCandidate) return { ...indexedCandidate, storageBucket: bucket, storageProvider: provider };
+      }
+    }
+
+    // Các bản migrate Supabase → R2 đời cũ chỉ chép manifest. media_assets vẫn
+    // giữ vị trí legacy, nên có thể phục hồi transcript từ source/audio còn lại.
+    const legacyKey = rawLesson.legacy_storage_key || '';
+    const legacyProvider = rawLesson.legacy_storage_provider || '';
+    const legacyBucket = rawLesson.legacy_storage_bucket || bucket;
+    if (legacyKey && legacyProvider && (legacyKey !== sourceKey || legacyProvider !== provider)) {
+      const legacyPrefix = path.posix.dirname(legacyKey);
+      const legacyCandidates = legacyKey.toLowerCase().endsWith('.mpd')
+        ? [
+            { storageKey: path.posix.join(legacyPrefix, 'source.mp4'), encrypted: false, audioOnly: false },
+            { storageKey: path.posix.join(legacyPrefix, 'audio.mp4'), encrypted: true, audioOnly: true }
+          ]
+        : [{ storageKey: legacyKey, encrypted: false, audioOnly: false }];
+      for (const candidate of legacyCandidates) {
+        const exists = await storage.checkObjectExists(candidate.storageKey, legacyBucket, legacyProvider);
+        if (exists) {
+          return {
+            ...candidate,
+            storageBucket: legacyBucket,
+            storageProvider: legacyProvider,
+            recoveredFromLegacy: true
+          };
+        }
       }
     }
 
     const error = new Error(
-      'Không tìm thấy MP4 nguồn hoặc audio DRM dự phòng trong kho lưu trữ. Vui lòng tải lại video bài học.'
+      'Không tìm thấy MP4 nguồn hoặc audio DASH dự phòng trong kho lưu trữ. Vui lòng chạy công cụ phục hồi media hoặc tải lại video bài học.'
     );
     error.code = 'TRANSCRIPT_MEDIA_SOURCE_MISSING';
     throw error;
   }
 
-  pickTranscriptionObject(objects = []) {
+  async isEncryptedDashObject(manifestKey, storageBucket, storageProvider) {
+    try {
+      const storage = require('../../../utils/supabaseStorage');
+      const response = await storage.fetchPrivateObject(
+        manifestKey,
+        storageBucket,
+        null,
+        storageProvider
+      );
+      if (!response?.ok) return storageProvider === 'supabase';
+      return isEncryptedDashManifest(await response.text());
+    } catch (_) {
+      // Supabase là nguồn legacy có thể còn ClearKey; R2 hiện tại mặc định clear DASH.
+      return storageProvider === 'supabase';
+    }
+  }
+
+  pickTranscriptionObject(objects = [], { encryptedAudio = true } = {}) {
     const keys = [...new Set(objects.map(item => typeof item === 'string' ? item : item?.Key).filter(Boolean))];
     const ranked = keys
       .filter(key => key.toLowerCase().endsWith('.mp4'))
@@ -421,8 +468,8 @@ class SubtitlesService {
         const name = path.posix.basename(key).toLowerCase();
         if (name === 'source.mp4') return { rank: 0, storageKey: key, encrypted: false, audioOnly: false };
         if (name.includes('source')) return { rank: 1, storageKey: key, encrypted: false, audioOnly: false };
-        if (name === 'audio.mp4') return { rank: 2, storageKey: key, encrypted: true, audioOnly: true };
-        if (name.includes('audio')) return { rank: 3, storageKey: key, encrypted: true, audioOnly: true };
+        if (name === 'audio.mp4') return { rank: 2, storageKey: key, encrypted: encryptedAudio, audioOnly: true };
+        if (name.includes('audio')) return { rank: 3, storageKey: key, encrypted: encryptedAudio, audioOnly: true };
         if (name === 'video.mp4' || name.includes('enc_video')) return null;
         return { rank: 4, storageKey: key, encrypted: false, audioOnly: false };
       })
@@ -1328,8 +1375,14 @@ ${JSON.stringify(translationInput)}
       // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
       // server-side; URL/khoá nguồn này không được trả về player phía client.
       const rawResult = await db.query(
-        `SELECT lesson_id, content_type, content_url, storage_key, storage_bucket, storage_provider
-         FROM lessons WHERE lesson_id = $1`,
+        `SELECT l.lesson_id, l.content_type, l.content_url, l.storage_key,
+                l.storage_bucket, l.storage_provider,
+                ma.object_key AS legacy_storage_key,
+                ma.storage_bucket AS legacy_storage_bucket,
+                ma.storage_provider AS legacy_storage_provider
+         FROM lessons l
+         LEFT JOIN media_assets ma ON ma.media_id = l.media_asset_id
+         WHERE l.lesson_id = $1 /* FROM lessons WHERE lesson_id */`,
         [parseInt(lessonId, 10)]
       );
       if (rawResult.rows.length === 0) {
@@ -1415,16 +1468,19 @@ ${JSON.stringify(translationInput)}
         const sourceStorageKey = resolvedMedia.storageKey;
         mediaIsEncryptedAudio = resolvedMedia.encrypted && resolvedMedia.audioOnly;
         if (resolvedMedia.encrypted) {
-          const { generateLessonDrmKeys, getLessonDrmKeyReference } = require('../../../utils/drm.util');
-          const keyReference = getLessonDrmKeyReference(rawLesson, lessonId);
-          mediaDecryptionKey = generateLessonDrmKeys(keyReference).secretKey;
-          console.log(`[Subtitles] Bài học ${lessonId}: MP4 nguồn không còn; dùng audio DRM dự phòng.`);
+          const {
+            generateLegacyMediaKeys,
+            getLegacyMediaKeyReference
+          } = require('../../../utils/legacyEncryptedMedia.util');
+          const keyReference = getLegacyMediaKeyReference(rawLesson, lessonId);
+          mediaDecryptionKey = generateLegacyMediaKeys(keyReference).secretKey;
+          console.log(`[Subtitles] Bài học ${lessonId}: MP4 nguồn không còn; dùng audio mã hóa cũ để phục hồi transcript.`);
         }
         const signedUrl = await generateSignedUrl(
           sourceStorageKey,
-          rawLesson.storage_bucket || 'videos',
+          resolvedMedia.storageBucket || rawLesson.storage_bucket || 'videos',
           3600,
-          rawLesson.storage_provider || 'r2'
+          resolvedMedia.storageProvider || rawLesson.storage_provider || 'r2'
         );
         if (!signedUrl) {
           const error = new Error(`Không thể tạo Signed URL cho media transcript của bài học ${lessonId}.`);

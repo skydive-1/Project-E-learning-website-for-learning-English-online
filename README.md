@@ -160,7 +160,7 @@ Project-E-learning-website-for-learning-English-online/
 │   │   │   └── ...other modules
 │   │   ├── utils/
 │   │   │   ├── speakingScorer.js              # Speech evaluation
-│   │   │   ├── drmPackager.util.js            # Shaka integration
+│   │   │   ├── dashPackager.util.js           # Clear DASH packaging for Shaka/MSE
 │   │   │   └── mediaCleanup.worker.js         # Orphan file cleanup
 │   │   └── server.js                          # App initialization & mount routes
 │   ├── tests/                                 # 325 passing tests
@@ -295,11 +295,11 @@ SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
 SMTP_PASSWORD=your_app_password
 
-# Frontend URL
+# Frontend URL (liệt kê chính xác, phân tách bằng dấu phẩy nếu có preview domain)
 FRONTEND_URL=http://localhost:3001
 
-# Optional: DRM & Media
-ENABLE_DRM_PACKAGING=true
+# Adaptive video & media
+ENABLE_DASH_PACKAGING=true
 ENABLE_SUBTITLE_VAD=true
 DISABLE_RATE_LIMIT=true  # development only
 ```

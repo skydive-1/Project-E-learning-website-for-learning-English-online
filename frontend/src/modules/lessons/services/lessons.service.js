@@ -17,7 +17,7 @@ export const getLessonPdfUrl = (lessonId) => {
 };
 
 /**
- * Lấy vé xem video bài học ngắn hạn (Short-lived 60s Ticket - TASK-VIDEO-TICKET-CONTRACT-HOTFIX-01)
+ * Lấy vé xem video bài học ngắn hạn.
  * Session JWT được truyền an toàn qua Authorization header của axios, không gắn vào query string.
  */
 export const getVideoTicket = async (lessonId) => {
@@ -144,7 +144,7 @@ export const getCourseDetails = async (courseId = 1) => {
             duration: isSpeakingType ? 'Luyện phát âm AI' : (isYouTube && !duration ? 'YouTube' : duration),
             type: isYouTube ? 'youtube' : (l.content_type || 'video'),
             playbackType: isYouTube ? 'youtube' : (l.playbackType || (l.content_url && l.content_url.includes('.mpd') ? 'dash' : 'mp4')),
-            isDrmProtected: isYouTube ? false : (l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd'))),
+            isDrmProtected: false,
             videoUrl: isYouTube ? null : (l.content_type === 'video' ? resolvedUrl : null),
             youtubeUrl: isYouTube ? (l.content_url || resolvedUrl) : null,
             contentUrl: l.content_url,
@@ -391,7 +391,7 @@ export const getLessonById = async (lessonId) => {
       videoUrl: isYouTube ? null : (l.content_type === 'video' ? resolvedUrl : null),
       youtubeUrl: isYouTube ? (l.content_url || resolvedUrl) : null,
       contentUrl: l.content_url,
-      isDrmProtected: isYouTube ? false : (l.isDrmProtected !== undefined ? l.isDrmProtected : (l.content_url && l.content_url.includes('.mpd'))),
+      isDrmProtected: false,
       pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
       description: description,
       content: content,

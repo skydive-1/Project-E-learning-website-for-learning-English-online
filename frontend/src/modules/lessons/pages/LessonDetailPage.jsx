@@ -42,7 +42,7 @@ import {
   deletePdfNote
 } from '../services/pdfNotes.service';
 import { withPdfAuthToken } from '../utils/pdfAuthUrl';
-// Shaka Player is dynamically imported only when needed for DASH/DRM videos
+// Shaka Player is dynamically imported only when needed for DASH/MSE playback.
 let shakaPlayerModule = null;
 const loadShakaPlayer = async () => {
   if (!shakaPlayerModule) {
@@ -272,7 +272,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   }, [isVideoPlaying]);
 
   /**
-   * ⚡ ĐỘNG CƠ CÔ LẬP MÀN HÌNH ĐEN DRM PHẢN HỒI TỨC THÌ CHUẨN APPLE / NETFLIX (Real-Time Reactive DRM Engine)
+   * Lớp blackout phản hồi theo các tín hiệu trình duyệt hiện có.
+   * Đây là cơ chế răn đe phía giao diện, không phải DRM hay bảo vệ chụp màn hình tuyệt đối.
    * 
    * [PHẠM VI BẢO VỆ]:
    * - Phát hiện một số phím chụp màn hình khi trang vẫn nhận được sự kiện bàn phím
@@ -298,7 +299,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   const executeBlackout = (reason, { pausePlayback = false } = {}) => {
     // Phủ đen đồng bộ nhưng luôn giữ media bên dưới được mount. Nhờ vậy
     // Alt+Tab/phím Windows không làm gián đoạn MP4 hoặc YouTube đang phát.
-    const shield = document.getElementById('netflix-drm-blackout-shield');
+    const shield = document.getElementById('protected-media-blackout-shield');
     if (shield) shield.style.display = 'block';
 
     if (pausePlayback) {
@@ -321,9 +322,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     blackoutReasonRef.current = reason || '';
   };
 
-  const restoreDrmVideo = () => {
+  const restoreProtectedMedia = () => {
     // Gỡ lớp đen và chỉ phát lại nếu chính thao tác đổi tab đã pause video.
-    const shield = document.getElementById('netflix-drm-blackout-shield');
+    const shield = document.getElementById('protected-media-blackout-shield');
     if (shield) shield.style.display = 'none';
 
     if (resumePlaybackAfterTabRef.current) {
@@ -349,7 +350,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
         // Chỉ tự động khôi phục nếu lý do là do chuyển tab/mất focus, KHÔNG can thiệp nếu đang bấm phím chụp màn hình
         if (isTabActive && isBlurOrTabHidden && isCapturingKeysRef.current.size === 0) {
-          restoreDrmVideo();
+          restoreProtectedMedia();
         }
       }
 }, 200); // Reduced from 1000ms to 200ms for faster recovery
@@ -452,7 +453,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         if (isCaptureAttempt || isPrtScn) {
           isCapturingKeysRef.current.clear();
           // Small delay to ensure capture is complete before restoring
-          setTimeout(() => restoreDrmVideo(), 500);
+          setTimeout(() => restoreProtectedMedia(), 500);
         }
       }
     };
@@ -470,7 +471,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       preservePlaybackWhileHiddenRef.current = false;
       isCapturingKeysRef.current.clear();
       if (!document.hidden) {
-        restoreDrmVideo();
+        restoreProtectedMedia();
       }
     };
 
@@ -487,7 +488,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       } else if (document.hasFocus()) {
         preservePlaybackWhileHiddenRef.current = false;
         isCapturingKeysRef.current.clear();
-        restoreDrmVideo();
+        restoreProtectedMedia();
       }
     };
 
@@ -1102,8 +1103,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   const renewalPromiseRef = useRef(null);
   const dashGenerationRef = useRef(0);
 
-  // Mọi video đều qua ticket; DASH dùng Shaka, MP4 dùng cookie HttpOnly.
-  // 🛡️ BỘ NẠP VIDEO BẢO MẬT (Short-Lived 60s Video Ticket & W3C ClearKey DASH DRM)
+  // Mọi video đều qua ticket; DASH dùng Shaka/MSE, MP4 dùng cookie HttpOnly.
+  // ClearKey/EME intentionally is not configured: access control lives at the
+  // protected manifest and segment endpoints.
   useEffect(() => {
     const rawVideoUrl = currentLesson?.videoUrl;
     const dashGeneration = ++dashGenerationRef.current;
@@ -1140,9 +1142,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     setVideoLoading(true);
     let active = true;
     let shakaErrorHandler = null;
-    const isDash = currentLesson?.playbackType === 'dash' ||
-      currentLesson?.isDrmProtected === true ||
-      rawVideoUrl.includes('.mpd');
+    const isDash = currentLesson?.playbackType === 'dash' || rawVideoUrl.includes('.mpd');
 
     const loadVideo = async () => {
 
@@ -1159,11 +1159,12 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
             const ticketRes = await getVideoTicket(rawLessonId);
             if (active && dashGenerationRef.current === dashGeneration && ticketRes?.ticket) {
               activeDashTicketRef.current = ticketRes.ticket;
-              // Lên lịch gia hạn trước 15s (ở giây thứ 45 của vé 60s)
+              const expiresIn = Math.max(30, Number(ticketRes.expiresIn) || 60);
+              // Gia hạn trước 15 giây để việc buffer/seek không bị ngắt giữa chừng.
               if (renewalTimerRef.current) clearTimeout(renewalTimerRef.current);
               renewalTimerRef.current = setTimeout(() => {
                 if (active) fetchOrRenewTicket().catch(() => {});
-              }, 45000);
+              }, Math.max(15000, (expiresIn - 15) * 1000));
               return ticketRes.ticket;
             }
           } catch (e) {
@@ -1196,16 +1197,10 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
           const MANIFEST = shaka?.net?.NetworkingEngine?.RequestType?.MANIFEST ?? 0;
           const SEGMENT = shaka?.net?.NetworkingEngine?.RequestType?.SEGMENT ?? 2;
-          const LICENSE = shaka?.net?.NetworkingEngine?.RequestType?.LICENSE ?? 1;
 
           player.getNetworkingEngine().registerRequestFilter((type, request) => {
             request.allowCrossSiteCredentials = true;
-            if (type === LICENSE) {
-              const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
-              if (token) {
-                request.headers['Authorization'] = `Bearer ${token}`;
-              }
-            } else if (type === MANIFEST || type === SEGMENT) {
+            if (type === MANIFEST || type === SEGMENT) {
               const currentTicket = activeDashTicketRef.current || ticket;
               if (currentTicket) {
                 request.headers['X-Video-Ticket'] = currentTicket;
@@ -1253,18 +1248,16 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
             setVideoError({
               code: detail?.code || 4,
               message: isAuthError
-                ? 'Không có quyền truy cập luồng video hoặc DRM license bị từ chối.'
+                ? 'Không có quyền truy cập luồng video hoặc vé xem đã hết hạn.'
                 : isNetworkError
                   ? 'Không thể tải luồng video do lỗi mạng. Vui lòng kiểm tra kết nối internet và thử lại.'
-                  : 'Không thể giải mã hoặc phát luồng video DRM DASH.'
+                  : 'Không thể phát luồng video DASH.'
             });
           };
           player.addEventListener?.('error', shakaErrorHandler);
         }
 
-        const licenseUrl = `${API_BASE_URL}/drm/license/${rawLessonId}`;
         shakaPlayerRef.current?.configure({
-          drm: { servers: { 'org.w3.clearkey': licenseUrl } },
           streaming: {
             // Retry aggressively cho segment requests — backend/R2 đôi khi trả lỗi thoáng qua
             retryParameters: {
@@ -1300,11 +1293,11 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
           })
           .catch((err) => {
             if (!active) return;
-            console.warn('⚠️ [Shaka DRM Error]:', err?.message || err);
+            console.warn('⚠️ [Shaka DASH Error]:', err?.message || err);
             setVideoLoading(false);
             setVideoError({
               code: 4,
-              message: 'Không thể giải mã hoặc phát luồng video DRM DASH.',
+              message: 'Không thể phát luồng video DASH.',
               sanitizedUrl: sanitizeUrl(manifestUrl)
             });
           });
@@ -1333,7 +1326,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         setVideoLoading(false);
         setVideoError({
           code: 4,
-          message: 'Trình duyệt hiện tại không hỗ trợ giải mã DRM DASH qua Shaka Player.'
+          message: 'Trình duyệt hiện tại không hỗ trợ phát DASH qua Shaka Player.'
         });
       });
 
@@ -1354,7 +1347,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       };
     }
 
-    // Nếu không phải luồng DASH DRM -> Hủy Shaka Player instance nếu đang tồn tại
+    // Nếu không phải luồng DASH -> hủy Shaka Player instance nếu đang tồn tại.
     if (shakaPlayerRef.current) {
       shakaPlayerRef.current.destroy().catch(() => {});
       shakaPlayerRef.current = null;
@@ -1756,7 +1749,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                     >
                       {/* Blackout Surface Layer (#000000 Pitch Black Box - Che mờ video khi phát hiện chia sẻ màn hình ở tầng trình duyệt) */}
                       <div
-                        id="netflix-drm-blackout-shield"
+                        id="protected-media-blackout-shield"
                         style={{ display: isScreenRecordingDetected ? 'block' : 'none' }}
                         className="absolute inset-0 bg-black z-[9999] select-none pointer-events-auto"
                       />
