@@ -561,6 +561,7 @@ export const externalUiTranslations = {
   "Đã soạn": "Prepared",
   "Đã tải": "Loaded",
   "Đã tải lên": "Uploaded",
+  "Thay đổi nguồn": "Change source",
   "Đã tải lên tài liệu \"{{0}}\" thành công! Hệ thống AI đã tự động nạp nội dung để hỗ trợ học viên.": "Document \"{{0}}\" uploaded successfully! The AI ​​system automatically loaded content to support students.",
   "Đã tải lên tệp \"{{0}}\" thành công!": "File \"{{0}}\" uploaded successfully!",
   "Đã tạo đề thi thành công!": "Test created successfully!",

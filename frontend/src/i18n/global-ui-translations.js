@@ -33,6 +33,7 @@ export const globalUiTranslations = {
   'Xem chi tiết': 'View details',
   'Thu gọn chi tiết': 'Collapse details',
   'Tải lên': 'Upload',
+  'Thay đổi nguồn': 'Change source',
   'Tải xuống': 'Download',
   'Xuất CSV': 'Export CSV',
   'Xuất báo cáo CSV': 'Export CSV report',

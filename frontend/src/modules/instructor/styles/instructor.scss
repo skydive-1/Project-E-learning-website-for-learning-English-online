@@ -765,6 +765,97 @@ $border-light: var(--border-color, #e2e8f0);
               background: rgba(16, 185, 129, 0.08);
               border-color: rgba(16, 185, 129, 0.3);
               color: #047857;
+
+              &.status-badge {
+                cursor: default;
+                user-select: none;
+
+                &:hover {
+                  border-color: rgba(16, 185, 129, 0.3);
+                  color: #047857;
+                }
+              }
+            }
+
+            &.need-reupload {
+              background: rgba(239, 68, 68, 0.08);
+              border-color: rgba(239, 68, 68, 0.3);
+              color: #dc2626;
+
+              &:hover {
+                border-color: #ef4444;
+                color: #ef4444;
+              }
+            }
+
+            &.pending-audit {
+              cursor: default;
+              user-select: none;
+              background: rgba(245, 158, 11, 0.08);
+              border-color: rgba(245, 158, 11, 0.3);
+              color: #d97706;
+            }
+          }
+
+          .btn-change-source {
+            height: 32px;
+            padding: 0 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #334155;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            user-select: none;
+
+            .change-source-icon {
+              font-size: 13px;
+              transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            &:hover {
+              border-color: $primary-blue;
+              color: $primary-blue;
+              background: #ffffff;
+              box-shadow: 0 2px 6px rgba(37, 99, 235, 0.12);
+              transform: translateY(-1px);
+
+              .change-source-icon {
+                transform: rotate(180deg);
+              }
+            }
+
+            &:active {
+              transform: translateY(0);
+              transition: transform 0.08s ease;
+            }
+          }
+
+          .btn-preview-link {
+            height: 32px;
+            padding: 0 10px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            text-decoration: none;
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+            background: rgba(0, 0, 0, 0.02);
+            color: #475569;
+            transition: all 0.18s ease;
+
+            &:hover {
+              border-color: #3b82f6;
+              color: #2563eb;
+              background: #ffffff;
             }
           }
 
@@ -1833,6 +1924,52 @@ html.dark {
             background: rgba(16, 185, 129, 0.15) !important;
             border-color: rgba(16, 185, 129, 0.35) !important;
             color: #6ee7b7 !important;
+
+            &.status-badge {
+              cursor: default !important;
+              user-select: none;
+              &:hover {
+                color: #6ee7b7 !important;
+                border-color: rgba(16, 185, 129, 0.35) !important;
+              }
+            }
+          }
+
+          &.need-reupload {
+            background: rgba(239, 68, 68, 0.15) !important;
+            border-color: rgba(239, 68, 68, 0.35) !important;
+            color: #fca5a5 !important;
+          }
+
+          &.pending-audit {
+            background: rgba(245, 158, 11, 0.15) !important;
+            border-color: rgba(245, 158, 11, 0.35) !important;
+            color: #fcd34d !important;
+          }
+        }
+
+        .btn-change-source {
+          background: rgba(30, 41, 59, 0.7) !important;
+          border-color: rgba(148, 163, 184, 0.22) !important;
+          color: #e2e8f0 !important;
+
+          &:hover {
+            background: rgba(51, 65, 85, 0.9) !important;
+            border-color: #60a5fa !important;
+            color: #93c5fd !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+          }
+        }
+
+        .btn-preview-link {
+          background: rgba(255, 255, 255, 0.04) !important;
+          border-color: rgba(255, 255, 255, 0.1) !important;
+          color: #cbd5e1 !important;
+
+          &:hover {
+            border-color: #60a5fa !important;
+            color: #93c5fd !important;
+            background: rgba(255, 255, 255, 0.08) !important;
           }
         }
       }
