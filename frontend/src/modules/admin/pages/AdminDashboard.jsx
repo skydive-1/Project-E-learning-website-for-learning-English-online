@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
@@ -108,6 +108,7 @@ const AdminDashboard = () => {
   const [isSyncingCourses, setIsSyncingCourses] = useState(false);
   const [courseSyncError, setCourseSyncError] = useState('');
   const [coursesUpdatedAt, setCoursesUpdatedAt] = useState(null);
+  const courseFetchInFlightRef = useRef(false);
   const [courseSearch, setCourseSearch] = useState('');
   const [courseStatusFilter, setCourseStatusFilter] = useState('all');
   const [pipelineModalCourseId, setPipelineModalCourseId] = useState(null);
@@ -135,6 +136,9 @@ const AdminDashboard = () => {
   ]);
 
   const fetchCourses = useCallback(async ({ quiet = false } = {}) => {
+    if (courseFetchInFlightRef.current) return;
+    courseFetchInFlightRef.current = true;
+
     if (quiet) {
       setIsSyncingCourses(true);
     } else {
@@ -162,6 +166,7 @@ const AdminDashboard = () => {
         setErrorCourses(err.response?.data?.message || 'Không thể kết nối máy chủ để tải khóa học.');
       }
     } finally {
+      courseFetchInFlightRef.current = false;
       if (quiet) {
         setIsSyncingCourses(false);
       } else {

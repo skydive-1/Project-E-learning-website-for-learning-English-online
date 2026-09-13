@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('./controllers/admin.controller');
 const adminAlertsController = require('./controllers/adminAlerts.controller');
+const adminRateLimitsController = require('./controllers/adminRateLimits.controller');
 const { authenticate, authorize } = require('../../middleware/auth.middleware');
 const { aiLimiter } = require('../../middleware/rateLimit.middleware');
 
@@ -36,6 +37,7 @@ router.get('/gemini-usage/trends', adminController.getGeminiUsageTrend);
 
 // Hạn mức thật của Gemini theo model (tách biệt với middleware rate-limit nội bộ)
 router.get('/gemini-rate-limits/status', adminController.getAiRateLimitStatus);
+router.get('/gemini-rate-limits/stream', adminRateLimitsController.streamAiRateLimits);
 router.post('/gemini-rate-limits/routing/reset', adminController.resetAiModelRouting);
 router.post('/gemini-rate-limits/routing/preferred', adminController.setPreferredAiModel);
 router.post('/gemini-rate-limits/probe', adminController.probeAiModelsLive);

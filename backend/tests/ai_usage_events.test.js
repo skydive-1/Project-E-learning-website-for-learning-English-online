@@ -11,6 +11,7 @@ const {
 const db = require('../src/config/database');
 const adminService = require('../src/modules/admin/services/admin.service');
 const { subscribeOperationalAlertsChanged } = require('../src/utils/operationalAlertEvents');
+const { subscribeAiRateLimitsChanged } = require('../src/utils/aiRateLimitEvents');
 
 describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
   let dbQueries = [];
@@ -299,6 +300,36 @@ describe('AI Usage Tracking and Recording (ai_usage_events)', () => {
 
       assert.deepEqual(observedSources, ['ai-usage-error', 'ai-usage-success']);
       assert.equal(dbQueries.length, 2);
+    } finally {
+      unsubscribe();
+      db.query = originalQuery;
+    }
+  });
+
+  test('notifies the rate-limit SSE stream when an AI request starts and finishes', async () => {
+    const observedSources = [];
+    const unsubscribe = subscribeAiRateLimitsChanged(({ source }) => observedSources.push(source));
+    db.query = async (text) => {
+      dbQueries.push({ text });
+      if (/RETURNING id/i.test(text)) return { rows: [{ id: 501 }] };
+      return { rows: [] };
+    };
+
+    try {
+      const eventId = await beginAiUsageEvent({
+        userId: null,
+        purpose: 'chat',
+        model: 'gemini-3.7-flash'
+      });
+      await recordAiUsage({
+        eventId,
+        userId: null,
+        purpose: 'chat',
+        model: 'gemini-3.7-flash',
+        usageMetadata: null
+      });
+
+      assert.deepEqual(observedSources, ['ai-usage-started', 'ai-usage-success']);
     } finally {
       unsubscribe();
       db.query = originalQuery;

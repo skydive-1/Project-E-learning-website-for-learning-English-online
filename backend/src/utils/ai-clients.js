@@ -18,6 +18,7 @@ dotenv.config();
 
 const db = require('../config/database');
 const { notifyOperationalAlertsChanged } = require('./operationalAlertEvents');
+const { notifyAiRateLimitsChanged } = require('./aiRateLimitEvents');
 const {
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODELS
@@ -85,6 +86,7 @@ async function beginAiUsageEvent({ userId = null, purpose, model }) {
        RETURNING id`,
       [userId || null, purpose || 'unknown', model]
     );
+    notifyAiRateLimitsChanged('ai-usage-started');
     return result.rows?.[0]?.id || null;
   } catch (err) {
     console.error('[AI Usage Recording] Failed to open usage event (non-fatal):', err.message);
@@ -150,7 +152,10 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
   } catch (err) {
     console.error('[AI Usage Recording] Failed to record usage (non-fatal):', err.message);
   } finally {
-    if (eventPersisted) notifyOperationalAlertsChanged('ai-usage-success');
+    if (eventPersisted) {
+      notifyOperationalAlertsChanged('ai-usage-success');
+      notifyAiRateLimitsChanged('ai-usage-success');
+    }
   }
 }
 
@@ -687,6 +692,7 @@ async function failAiUsageEvent({ eventId, error }) {
       [eventId, errorCode]
     );
     notifyOperationalAlertsChanged('ai-usage-error');
+    notifyAiRateLimitsChanged('ai-usage-error');
   } catch (err) {
     console.error('[AI Usage Recording] Failed to close failed event (non-fatal):', err.message);
   }
