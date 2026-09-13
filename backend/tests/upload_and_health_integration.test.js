@@ -309,12 +309,14 @@ describe('🛡️ Comprehensive Video Upload & Transcript Health End-to-End Test
 
     const r2 = require('../src/utils/r2Storage');
     const origClient = r2.getClient;
+    const origResolveBucket = r2.resolveBucket;
     r2.getClient = () => ({
       send: async () => ({
         Contents: listObjects,
         IsTruncated: false
       })
     });
+    r2.resolveBucket = () => 'elearning-media';
 
     try {
       const objects = await sourceObjectsFor({ source_key: manifestKey });
@@ -327,6 +329,7 @@ describe('🛡️ Comprehensive Video Upload & Transcript Health End-to-End Test
       assert.ok(objectKeys.includes(`${folder}/manifest.mpd`));
     } finally {
       r2.getClient = origClient;
+      r2.resolveBucket = origResolveBucket;
     }
   });
 });
