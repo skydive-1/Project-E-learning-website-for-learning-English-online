@@ -132,15 +132,18 @@ const ProfilePage = () => {
     setIsSaving(true);
 
     try {
-      await changePasswordApi({
+      const res = await changePasswordApi({
         oldPassword: passwordData.oldPassword,
         newPassword: passwordData.newPassword
       });
 
-      setPasswordMessage({ type: 'success', text: 'Đổi mật khẩu thành công!' });
+      setPasswordMessage({
+        type: 'success',
+        text: res?.message || 'Đổi mật khẩu thành công! Email xác nhận đã được gửi đến hộp thư của bạn.'
+      });
       setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
 
-      setTimeout(() => setPasswordMessage({ type: '', text: '' }), 3000);
+      setTimeout(() => setPasswordMessage({ type: '', text: '' }), 5000);
     } catch (error) {
       const errMsg = error.response?.data?.message || 'Đổi mật khẩu thất bại. Vui lòng kiểm tra mật khẩu cũ.';
       setPasswordMessage({ type: 'error', text: errMsg });

@@ -125,6 +125,8 @@ class CoursesService {
           c.start_date, c.end_date,
           u.full_name as instructor_name,
           s.subject_name,
+          (SELECT COUNT(*)::int FROM sections s2 WHERE s2.course_id = c.course_id) AS sections_count,
+          (SELECT COUNT(l2.lesson_id)::int FROM lessons l2 JOIN sections s3 ON l2.section_id = s3.section_id WHERE s3.course_id = c.course_id) AS lessons_count,
           COALESCE(ts.total_media_lessons, 0)::int AS total_media_lessons,
           COALESCE(ts.ready_transcripts, 0)::int AS ready_transcripts,
           COALESCE(ts.processing_transcripts, 0)::int AS processing_transcripts,
@@ -164,6 +166,8 @@ class CoursesService {
           ...course,
           status_name: course.status,
           status: isPublished ? 1 : (isPendingReview ? 'pending_review' : 0),
+          sections_count: Number(course.sections_count) || 0,
+          lessons_count: Number(course.lessons_count) || 0,
           transcript_summary: {
             total: totalMedia,
             total_video_lessons: totalMedia,

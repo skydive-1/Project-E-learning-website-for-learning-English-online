@@ -67,6 +67,7 @@ const RoadmapCourseCard = ({ course, locale, t }) => {
             <Link to={`/lessons?courseId=${course.course_id}`}>{course.course_name}</Link>
           </h3>
           <p>{course.instructor_name || 'E-Learn Academy'}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '4px' }}><span>{course.sections_count || 0} {locale === 'en-US' ? 'chapters' : 'chương'}</span><span>•</span><span>{course.lessons_count || 0} {locale === 'en-US' ? 'lessons' : 'bài học'}</span></div>
         </div>
 
         <div className="roadmap-course-footer">

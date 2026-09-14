@@ -982,7 +982,7 @@ const handleRoleChange = async (userId, targetRoleId, targetRoleName) => {
                               <td data-label="Khóa học">
                                 <div className="course-identity">
                                   <strong>{course.course_name}</strong>
-                                  <span>#{course.course_id} · {Number(course.price || 0).toLocaleString(locale)}₫</span>
+                                  <span>#{course.course_id} · {Number(course.price || 0).toLocaleString(locale)}₫ · {course.sections_count || 0} chương ({course.lessons_count || 0} bài)</span>
                                 </div>
                               </td>
                               <td data-label="Giảng viên">{course.instructor_name || 'Chưa phân công'}</td>

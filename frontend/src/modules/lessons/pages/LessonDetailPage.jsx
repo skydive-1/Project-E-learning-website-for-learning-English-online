@@ -1575,6 +1575,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       queryClient.invalidateQueries({ queryKey: ['lesson', id] });
       queryClient.invalidateQueries({ queryKey: ['lesson', cleanId] });
       queryClient.invalidateQueries({ queryKey: ['course', courseIdToLoad] });
+      queryClient.invalidateQueries({ queryKey: ['my-courses-progress'] });
+      queryClient.invalidateQueries({ queryKey: ['courses-raw'] });
     } catch (error) {
       console.error("Lỗi cập nhật trạng thái bài học:", error);
     }

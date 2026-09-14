@@ -49,22 +49,35 @@ export const normalizeYouTubeUrl = (url = '') => {
 };
 
 
-// Hàm giải mã JWT token để lấy userId
+// Hàm giải mã JWT token hoặc lấy từ cache để lấy userId
 export const getUserIdFromToken = () => {
   const token = localStorage.getItem('token');
-  if (!token) return null;
-  try {
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    // Giải mã Base64URL an toàn chống thiếu padding và ký tự đặc biệt
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
-    const decoded = JSON.parse(atob(padded));
-    return decoded.id;
-  } catch (e) {
-    console.error('Lỗi giải mã token:', e);
-    return null;
+  if (token) {
+    try {
+      const payload = token.split('.')[1];
+      if (payload) {
+        // Giải mã Base64URL an toàn chống thiếu padding và ký tự đặc biệt
+        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+        const decoded = JSON.parse(atob(padded));
+        const resolvedId = decoded.id ?? decoded.userId ?? decoded.user_id ?? decoded.sub;
+        if (resolvedId) return resolvedId;
+      }
+    } catch (e) {
+      console.error('Lỗi giải mã token:', e);
+    }
   }
+
+  try {
+    const cachedUserStr = localStorage.getItem('auth_user_cache') || localStorage.getItem('user');
+    if (cachedUserStr) {
+      const cachedUser = JSON.parse(cachedUserStr);
+      const cachedId = cachedUser.userId ?? cachedUser.user_id ?? cachedUser.id;
+      if (cachedId) return cachedId;
+    }
+  } catch {}
+
+  return null;
 };
 
 export const getCourseDetails = async (courseId = 1) => {
@@ -88,20 +101,34 @@ export const getCourseDetails = async (courseId = 1) => {
       };
     }
 
-    // 2. Lấy userId từ JWT token
+    // 2. Lấy userId từ JWT token hoặc cache
     const userId = getUserIdFromToken();
     let completedLessonIds = [];
 
-    // 3. Nếu có user, lấy danh sách tiến trình hoàn thành từ backend
-    if (userId) {
+    // 3. Lấy danh sách tiến trình hoàn thành từ backend (sử dụng /progress/:userId hoặc /progress/me)
+    const token = localStorage.getItem('token');
+    if (userId || token) {
       try {
-        const progressResponse = await apiClient.get(`/progress/${userId}`);
-        const progressList = progressResponse.data.progress || [];
+        const progressEndpoint = userId ? `/progress/${userId}` : '/progress/me';
+        const progressResponse = await apiClient.get(progressEndpoint);
+        const progressList = progressResponse.data?.progress || [];
         completedLessonIds = progressList
           .filter(p => p.is_completed)
           .map(p => p.lesson_id);
       } catch (err) {
-        console.error("Lỗi lấy tiến trình từ backend:", err);
+        if (userId) {
+          try {
+            const fallbackResponse = await apiClient.get('/progress/me');
+            const progressList = fallbackResponse.data?.progress || [];
+            completedLessonIds = progressList
+              .filter(p => p.is_completed)
+              .map(p => p.lesson_id);
+          } catch (fbErr) {
+            console.error("Lỗi lấy tiến trình từ backend:", fbErr);
+          }
+        } else {
+          console.error("Lỗi lấy tiến trình từ backend:", err);
+        }
       }
     }
 
@@ -216,9 +243,11 @@ export const getCourseDetails = async (courseId = 1) => {
     return {
       id: String(dbCourse.course_id),
       title: dbCourse.course_name,
-      instructor: "Dr. Alexander Wright",
+      instructor: dbCourse.instructor_name || "Dr. Alexander Wright",
       progress: progressPercent,
       sections: mappedSections,
+      sectionsCount: mappedSections.length,
+      lessonsCount: allLessons.length,
       startDate: dbCourse.start_date,
       instructorId: dbCourse.instructor_id
     };
@@ -244,18 +273,25 @@ export const toggleLessonCompletion = async (lessonId) => {
   try {
     const cleanId = String(lessonId).replace('quiz-', '').replace('speaking-', '');
     const userId = getUserIdFromToken();
-    if (!userId) throw new Error("Chưa đăng nhập");
+    const token = localStorage.getItem('token');
+    if (!userId && !token) throw new Error("Chưa đăng nhập");
 
     // Lấy tiến trình hiện tại để tìm trạng thái hoàn thành hiện tại
-    const progressResponse = await apiClient.get(`/progress/${userId}`);
-    const progressList = progressResponse.data.progress || [];
-    const currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
+    const progressEndpoint = userId ? `/progress/${userId}` : '/progress/me';
+    let currentProgress = null;
+    try {
+      const progressResponse = await apiClient.get(progressEndpoint);
+      const progressList = progressResponse.data?.progress || [];
+      currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
+    } catch (err) {
+      console.warn("Không thể tải danh sách tiến trình trước đó:", err.message);
+    }
     
     const newCompletedState = currentProgress ? !currentProgress.is_completed : true;
 
     // Gửi cập nhật lên backend
     await apiClient.post('/progress', {
-      userId: userId,
+      userId: userId || undefined,
       lessonId: parseInt(cleanId, 10),
       isCompleted: newCompletedState
     });

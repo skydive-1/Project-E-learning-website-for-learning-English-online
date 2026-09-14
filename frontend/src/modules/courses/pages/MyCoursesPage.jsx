@@ -4,8 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import AnimatedStatNumber from '../../../components/common/AnimatedStatNumber';
-import { getCourseDetails } from '../../lessons/services/lessons.service';
+import { getCourseDetails, getUserIdFromToken } from '../../lessons/services/lessons.service';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useOptionalAuth } from '../../../context/AuthContext';
 import { 
   FiSearch, FiBookOpen, FiAward, FiClock,
   FiCheckCircle, FiRefreshCw, FiAlertCircle, FiArrowRight,
@@ -50,6 +51,8 @@ const MyCourseCardSkeleton = () => {
 const MyCoursesPage = () => {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { user } = useOptionalAuth();
+  const currentUserId = user?.userId ?? user?.user_id ?? user?.id ?? getUserIdFromToken() ?? 'guest';
   const isEn = language === 'ENG';
   const locale = isEn ? 'en-US' : 'vi-VN';
 
@@ -68,7 +71,10 @@ const MyCoursesPage = () => {
     queryFn: async () => {
       const response = await apiClient.get('/courses');
       return response.data.courses || [];
-    }
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true
   });
 
   // 2. Fetch details for each course to calculate the progress dynamically
@@ -79,22 +85,25 @@ const MyCoursesPage = () => {
     isError: isProgressError,
     refetch: refetchProgress
   } = useQuery({
-    queryKey: ['my-courses-progress', rawCourses.map(c => c.course_id).join(',')],
+    queryKey: ['my-courses-progress', currentUserId, rawCourses.map(c => c.course_id).join(',')],
     queryFn: async () => {
       const coursesWithProgress = await Promise.all(
         rawCourses.map(async (c) => {
           try {
             const details = await getCourseDetails(c.course_id);
+            const calculatedSections = details.sectionsCount ?? details.sections?.length ?? (c.sections_count || 0);
+            const calculatedLessons = details.lessonsCount ?? (details.sections?.reduce((sum, s) => sum + (s.lessons?.length || 0), 0)) ?? (c.lessons_count || 0);
+
             return {
               id: `db-${c.course_id}`,
               title: c.course_name,
-              instructor: c.instructor_name || 'Hệ thống E-Learning',
+              instructor: c.instructor_name || details.instructor || 'Hệ thống E-Learning',
               image: c.thumbnail_url || '/images/hero_illustration.png',
               level: getCourseLevel(c.course_name, c.subject_name),
               subjectName: c.subject_name || 'Tiếng Anh',
               progress: details.progress || 0,
-              lessonsCount: c.lessons_count || 0,
-              sectionsCount: c.sections_count || 0,
+              lessonsCount: calculatedLessons,
+              sectionsCount: calculatedSections,
               startDate: details.startDate || c.start_date,
               instructorId: details.instructorId || c.instructor_id
             };
@@ -106,7 +115,10 @@ const MyCoursesPage = () => {
       );
       return coursesWithProgress;
     },
-    enabled: rawCourses.length > 0
+    enabled: rawCourses.length > 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true
   });
 
   const isLoading = isCoursesLoading || isProgressLoading;
@@ -171,9 +183,24 @@ const MyCoursesPage = () => {
               <span>{isEn ? 'My Learning Dashboard' : 'Không gian học tập cá nhân'}</span>
             </div>
             
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              {isEn ? 'My Courses' : 'Bài học của tôi'}
-            </h1>
+            <div className="flex items-center justify-between gap-4">
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+                {isEn ? 'My Courses' : 'Bài học của tôi'}
+              </h1>
+              <button
+                type="button"
+                onClick={() => {
+                  refetchCourses();
+                  refetchProgress();
+                }}
+                disabled={isFetching}
+                title={isEn ? 'Refresh learning progress' : 'Làm mới tiến độ học tập'}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
+              >
+                <FiRefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-blue-600' : ''}`} />
+                <span className="hidden sm:inline">{isEn ? 'Refresh' : 'Làm mới'}</span>
+              </button>
+            </div>
             <p className="mt-2 text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
               {isEn
                 ? 'Track your personalized learning path, resume in-progress lessons, and master English step by step.'
