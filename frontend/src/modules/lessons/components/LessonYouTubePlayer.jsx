@@ -1,4 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState
+} from 'react';
 import { ExternalLink, Copy, Check, ShieldCheck, Info } from 'lucide-react';
 import { extractYouTubeVideoId } from '../services/lessons.service';
 
@@ -18,21 +25,163 @@ const YouTubeIcon = ({ className = 'size-4 text-red-500' }) => (
  * - Clean metadata bar with YouTube attribution and external action buttons
  * - Transparent copyright citation & fair use disclaimer
  */
-const LessonYouTubePlayer = ({
+let youtubeIframeApiPromise = null;
+
+const loadYouTubeIframeApi = () => {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeIframeApiPromise) return youtubeIframeApiPromise;
+
+  youtubeIframeApiPromise = new Promise((resolve, reject) => {
+    const previousReadyHandler = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      previousReadyHandler?.();
+      resolve(window.YT);
+    };
+
+    const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+    if (existingScript) return;
+
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.async = true;
+    script.onerror = () => {
+      youtubeIframeApiPromise = null;
+      reject(new Error('Không thể tải YouTube IFrame Player API'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return youtubeIframeApiPromise;
+};
+
+const LessonYouTubePlayer = forwardRef(({
   lesson,
   title = '',
   onEnded,
+  onTimeUpdate,
   className = ''
-}) => {
+}, forwardedRef) => {
   const [copied, setCopied] = useState(false);
   const [isIframeLoaded, setIsIframeLoaded] = useState(false);
+  const iframeRef = useRef(null);
+  const playerApiRef = useRef(null);
+  const currentTimeRef = useRef(0);
+  const durationRef = useRef(0);
+  const playerStateRef = useRef(-1);
+  const pendingSeekRef = useRef(null);
+  const onEndedRef = useRef(onEnded);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
 
   const rawUrl = lesson?.youtubeUrl || lesson?.contentUrl || lesson?.content_url || lesson?.videoUrl || '';
   const videoId = extractYouTubeVideoId(rawUrl);
   const displayTitle = title || lesson?.title || 'Video bài giảng';
 
   useEffect(() => {
+    onEndedRef.current = onEnded;
+    onTimeUpdateRef.current = onTimeUpdate;
+  }, [onEnded, onTimeUpdate]);
+
+  const seekTo = useCallback((seconds) => {
+    const target = Number(seconds);
+    if (!Number.isFinite(target) || target < 0) return;
+
+    currentTimeRef.current = target;
+    onTimeUpdateRef.current?.(target);
+    if (!playerApiRef.current?.seekTo) {
+      pendingSeekRef.current = target;
+      return;
+    }
+    playerApiRef.current.seekTo(target, true);
+  }, []);
+
+  useImperativeHandle(forwardedRef, () => ({
+    get currentTime() {
+      return currentTimeRef.current;
+    },
+    set currentTime(seconds) {
+      seekTo(seconds);
+    },
+    get duration() {
+      return durationRef.current;
+    },
+    get paused() {
+      return playerStateRef.current !== 1;
+    },
+    play() {
+      playerApiRef.current?.playVideo?.();
+      return Promise.resolve();
+    },
+    pause() {
+      playerApiRef.current?.pauseVideo?.();
+    },
+    seekTo
+  }), [seekTo]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let player = null;
+
     setIsIframeLoaded(false);
+    playerApiRef.current = null;
+    currentTimeRef.current = 0;
+    durationRef.current = 0;
+    playerStateRef.current = -1;
+    pendingSeekRef.current = null;
+    onTimeUpdateRef.current?.(0);
+
+    if (!videoId) return undefined;
+
+    loadYouTubeIframeApi()
+      .then((YT) => {
+        if (cancelled || !YT?.Player || !iframeRef.current) return;
+
+        player = new YT.Player(iframeRef.current, {
+          events: {
+            onReady: (event) => {
+              if (cancelled) return;
+              playerApiRef.current = event.target;
+              const duration = Number(event.target.getDuration?.());
+              if (Number.isFinite(duration) && duration > 0) durationRef.current = duration;
+              if (pendingSeekRef.current !== null) {
+                event.target.seekTo(pendingSeekRef.current, true);
+                pendingSeekRef.current = null;
+              }
+            },
+            onStateChange: (event) => {
+              if (cancelled) return;
+              const previousState = playerStateRef.current;
+              playerStateRef.current = Number(event.data);
+              if (playerStateRef.current === 0 && previousState !== 0) {
+                onEndedRef.current?.();
+              }
+            }
+          }
+        });
+      })
+      .catch((error) => {
+        if (!cancelled) console.warn('[YouTube Player] Không thể khởi tạo API điều khiển:', error);
+      });
+
+    const intervalId = window.setInterval(() => {
+      const playerApi = playerApiRef.current;
+      if (!playerApi?.getCurrentTime) return;
+
+      const currentTime = Number(playerApi.getCurrentTime());
+      if (Number.isFinite(currentTime) && currentTime >= 0) {
+        currentTimeRef.current = currentTime;
+        onTimeUpdateRef.current?.(currentTime);
+      }
+
+      const duration = Number(playerApi.getDuration?.());
+      if (Number.isFinite(duration) && duration > 0) durationRef.current = duration;
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      if (playerApiRef.current === player) playerApiRef.current = null;
+      player?.destroy?.();
+    };
   }, [videoId]);
 
   const handleCopyLink = () => {
@@ -131,6 +280,7 @@ const LessonYouTubePlayer = ({
 
         <iframe
           key={videoId}
+          ref={iframeRef}
           src={embedUrl}
           title={displayTitle}
           onLoad={() => setIsIframeLoaded(true)}
@@ -154,6 +304,6 @@ const LessonYouTubePlayer = ({
       </div>
     </div>
   );
-};
+});
 
 export default LessonYouTubePlayer;

@@ -104,6 +104,7 @@ const LessonDetailPage = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const videoRef = useRef(null);
+  const pendingVideoSeekRef = useRef(null);
   const containerRef = useRef(null);
   const shakaPlayerRef = useRef(null);
   const shakaAttachedToRef = useRef(null); // theo dõi element nào Shaka đang attach vào
@@ -360,9 +361,12 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
   // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
   const handleSeekVideo = (seconds) => {
-    if (!videoRef.current) return;
     const targetSec = Number(seconds);
     if (isNaN(targetSec) || !isFinite(targetSec) || targetSec < 0) return;
+    if (!videoRef.current) {
+      pendingVideoSeekRef.current = targetSec;
+      return;
+    }
 
     const duration = videoRef.current.duration;
     const safeTime = (duration && isFinite(duration) && duration > 0)
@@ -370,6 +374,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       : Math.max(0, targetSec);
 
     videoRef.current.currentTime = safeTime;
+    pendingVideoSeekRef.current = null;
     setVideoCurrentTime(safeTime);
 
     if (videoRef.current.paused) {
@@ -382,16 +387,24 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const seekParam = params.get('seek');
-    if (seekParam) {
-      const seekSec = parseFloat(seekParam);
-      if (!isNaN(seekSec) && seekSec >= 0) {
-        const timer = setTimeout(() => {
-          handleSeekVideo(seekSec);
-        }, 600);
-        return () => clearTimeout(timer);
-      }
+    if (seekParam === null) {
+      pendingVideoSeekRef.current = null;
+      return;
+    }
+
+    const seekSec = Number(seekParam);
+    if (Number.isFinite(seekSec) && seekSec >= 0) {
+      handleSeekVideo(seekSec);
     }
   }, [location.search, lessonId]);
+
+  // Nếu dữ liệu bài học/player tải chậm hơn URL, áp dụng mốc đang chờ ngay sau
+  // render đầu tiên mà media ref đã sẵn sàng.
+  useEffect(() => {
+    if (videoRef.current && pendingVideoSeekRef.current !== null) {
+      handleSeekVideo(pendingVideoSeekRef.current);
+    }
+  });
 
   // Hệ thống phát hiện phím tắt chụp/chia sẻ màn hình ở tầng trình duyệt phục vụ răn đe bản quyền (Browser Deterrence & Blackout)
   useEffect(() => {
@@ -1787,8 +1800,10 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                         ) : (currentLesson?.type === 'youtube' || (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0) || (typeof currentLesson?.contentUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.contentUrl)) || (typeof currentLesson?.videoUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.videoUrl))) ? (
                           <LessonYouTubePlayer
                             key={currentLesson?.id || 'yt-player'}
+                            ref={videoRef}
                             lesson={currentLesson}
                             title={currentLesson?.title}
+                            onTimeUpdate={setVideoCurrentTime}
                             onEnded={() => {
                               if (!currentLesson?.completed) {
                                 handleToggleComplete(null, currentLesson?.id);

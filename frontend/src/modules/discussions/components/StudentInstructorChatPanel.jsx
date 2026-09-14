@@ -210,21 +210,19 @@ const StudentInstructorChatPanel = ({
 
         {/* Nút thao tác nhanh bên phải */}
         <div className="flex items-center gap-1">
-          {currentTime > 5 && (
-            <button
-              type="button"
-              onClick={() => setIsAttachingTime((prev) => !prev)}
-              className={`px-2 py-1 rounded-lg text-[10.5px] font-semibold transition-all flex items-center gap-1 cursor-pointer ${
-                isAttachingTime
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-smart-indigo dark:text-blue-400 border border-indigo-200 dark:border-indigo-800'
-                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-              title="Gắn mốc bài giảng hiện tại"
-            >
-              <FiClock className="text-[11px]" />
-              <span>{formatSeconds(currentTime)}</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsAttachingTime((prev) => !prev)}
+            className={`px-2 py-1 rounded-lg text-[10.5px] font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+              isAttachingTime
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-smart-indigo dark:text-blue-400 border border-indigo-200 dark:border-indigo-800'
+                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+            title="Gắn mốc bài giảng hiện tại"
+          >
+            <FiClock className="text-[11px]" />
+            <span>{formatSeconds(currentTime)}</span>
+          </button>
 
           <button
             type="button"

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   FiMessageSquare, FiBell, FiSearch, FiCheck, 
   FiClock, FiUser, FiSend, FiArrowLeft, FiPlus, 
@@ -15,6 +16,26 @@ import {
   replyToDiscussion,
   updateDiscussionStatus
 } from '../services/discussions.service';
+
+export const buildDiscussionTimestampPath = (discussion, timestampSeconds) => {
+  const courseId = Number.parseInt(discussion?.courseId, 10);
+  const lessonId = Number.parseInt(discussion?.lessonId, 10);
+  const seekSeconds = Number(timestampSeconds);
+
+  if (
+    !Number.isSafeInteger(courseId) || courseId <= 0
+    || !Number.isSafeInteger(lessonId) || lessonId <= 0
+    || !Number.isFinite(seekSeconds) || seekSeconds < 0
+  ) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    courseId: String(courseId),
+    seek: String(Math.floor(seekSeconds))
+  });
+  return `/lessons/${lessonId}?${params.toString()}`;
+};
 
 /**
  * InstructorInteractionHub Component
@@ -489,7 +510,20 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                       {activeDiscussion.timestampFormatted && (
                         <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 text-xs flex items-center gap-1.5 text-smart-indigo dark:text-blue-400">
                           <FiClock className="text-xs" />
-                          <span>Học viên gắn mốc bài giảng: {activeDiscussion.timestampFormatted}</span>
+                          <span>Học viên gắn mốc bài giảng:</span>
+                          {buildDiscussionTimestampPath(activeDiscussion, activeDiscussion.timestampSeconds) ? (
+                            <Link
+                              to={buildDiscussionTimestampPath(activeDiscussion, activeDiscussion.timestampSeconds)}
+                              className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 font-bold hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-smart-indigo dark:bg-blue-950/60 dark:hover:bg-blue-900/70"
+                              title={`Mở ${activeDiscussion.lessonTitle} tại ${activeDiscussion.timestampFormatted}`}
+                              aria-label={`Mở bài học tại ${activeDiscussion.timestampFormatted}`}
+                            >
+                              <FiPlay className="text-[10px]" />
+                              {activeDiscussion.timestampFormatted}
+                            </Link>
+                          ) : (
+                            <span>{activeDiscussion.timestampFormatted}</span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -529,14 +563,23 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                               }`}>
                                 <FiClock className="text-[10px] shrink-0" />
                                 <span className="font-medium">Mốc bài giảng:</span>
-                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] ${
-                                  isInst
-                                    ? 'bg-white/20 text-white'
-                                    : 'bg-blue-50 dark:bg-blue-950/60 text-smart-indigo dark:text-blue-400'
-                                }`}>
-                                  <FiPlay className="text-[9px]" />
+                                {buildDiscussionTimestampPath(activeDiscussion, rep.timestampSeconds) ? (
+                                  <Link
+                                    to={buildDiscussionTimestampPath(activeDiscussion, rep.timestampSeconds)}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ${
+                                      isInst
+                                        ? 'bg-white/20 text-white hover:bg-white/30'
+                                        : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/70 text-smart-indigo dark:text-blue-400'
+                                    }`}
+                                    title={`Mở ${activeDiscussion.lessonTitle} tại ${rep.timestampFormatted}`}
+                                    aria-label={`Mở bài học tại ${rep.timestampFormatted}`}
+                                  >
+                                    <FiPlay className="text-[9px]" />
+                                    <span>{rep.timestampFormatted}</span>
+                                  </Link>
+                                ) : (
                                   <span>{rep.timestampFormatted}</span>
-                                </span>
+                                )}
                               </div>
                             )}
                           </div>
