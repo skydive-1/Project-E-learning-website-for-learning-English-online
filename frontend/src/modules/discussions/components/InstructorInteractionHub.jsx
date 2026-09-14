@@ -525,7 +525,7 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                           <span>Khóa học: {activeDiscussion.courseName} •</span>
                           {activeDiscussion.lessonId ? (
                             <Link
-                              to={`/lessons/${activeDiscussion.lessonId}?courseId=${activeDiscussion.courseId || ''}${activeDiscussion.timestampSeconds ? `&seek=${Math.floor(activeDiscussion.timestampSeconds)}` : ''}`}
+                              to={buildDiscussionTimestampPath(activeDiscussion, activeDiscussion.timestampSeconds) || `/lessons/${activeDiscussion.lessonId}?courseId=${activeDiscussion.courseId || ''}`}
                               className="font-medium text-slate-600 dark:text-slate-300 hover:text-smart-indigo dark:hover:text-blue-400 underline underline-offset-2"
                               title={`Mở bài học ${activeDiscussion.lessonTitle}`}
                             >

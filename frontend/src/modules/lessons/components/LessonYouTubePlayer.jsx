@@ -57,6 +57,7 @@ const loadYouTubeIframeApi = () => {
 const LessonYouTubePlayer = forwardRef(({
   lesson,
   title = '',
+  initialSeek = null,
   onEnded,
   onTimeUpdate,
   onReady,
@@ -69,7 +70,12 @@ const LessonYouTubePlayer = forwardRef(({
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
   const playerStateRef = useRef(-1);
-  const pendingSeekRef = useRef(null);
+
+  const validInitialSeek = (initialSeek !== null && Number.isFinite(Number(initialSeek)) && Number(initialSeek) > 0)
+    ? Math.floor(Number(initialSeek))
+    : null;
+
+  const pendingSeekRef = useRef(validInitialSeek);
   const onEndedRef = useRef(onEnded);
   const onTimeUpdateRef = useRef(onTimeUpdate);
   const onReadyRef = useRef(onReady);
@@ -129,7 +135,7 @@ const LessonYouTubePlayer = forwardRef(({
     currentTimeRef.current = 0;
     durationRef.current = 0;
     playerStateRef.current = -1;
-    pendingSeekRef.current = null;
+    pendingSeekRef.current = validInitialSeek;
     onTimeUpdateRef.current?.(0);
 
     if (!videoId) return undefined;
@@ -145,8 +151,9 @@ const LessonYouTubePlayer = forwardRef(({
               playerApiRef.current = event.target;
               const duration = Number(event.target.getDuration?.());
               if (Number.isFinite(duration) && duration > 0) durationRef.current = duration;
-              if (pendingSeekRef.current !== null) {
-                event.target.seekTo(pendingSeekRef.current, true);
+              const target = pendingSeekRef.current ?? validInitialSeek;
+              if (target !== null && Number.isFinite(target) && target > 0) {
+                event.target.seekTo(target, true);
                 pendingSeekRef.current = null;
               }
               onReadyRef.current?.(event);
@@ -186,7 +193,13 @@ const LessonYouTubePlayer = forwardRef(({
       if (playerApiRef.current === player) playerApiRef.current = null;
       player?.destroy?.();
     };
-  }, [videoId]);
+  }, [videoId, validInitialSeek]);
+
+  useEffect(() => {
+    if (validInitialSeek !== null && playerApiRef.current?.seekTo) {
+      playerApiRef.current.seekTo(validInitialSeek, true);
+    }
+  }, [validInitialSeek]);
 
   const handleCopyLink = () => {
     if (!rawUrl) return;
@@ -223,7 +236,8 @@ const LessonYouTubePlayer = forwardRef(({
     );
   }
 
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
+  const startQuery = validInitialSeek ? `&start=${validInitialSeek}` : '';
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}${startQuery}`;
 
   return (
     <div className={`flex flex-col w-full bg-zinc-950 select-none overflow-hidden rounded-xl border border-zinc-800/80 ${className}`}>
