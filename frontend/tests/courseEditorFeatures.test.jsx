@@ -120,7 +120,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 });
 
 import apiClient from '../src/config/api.config';
-import CourseEditor from '../src/modules/instructor/pages/CourseEditor';
+import CourseEditor, {
+  getCourseSavePlan,
+  reconcilePersistedCourseSections
+} from '../src/modules/instructor/pages/CourseEditor';
 import { BrowserRouter } from 'react-router-dom';
 
 describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)', () => {
@@ -558,5 +561,68 @@ describe('CourseEditor Curriculum Screen (Replacing Speaking with PDF Materials)
     expect(youtubeInput).toBeInTheDocument();
     fireEvent.click(changeSourceBtns[0]);
     expect(document.activeElement).toBe(youtubeInput);
+  });
+});
+
+describe('CourseEditor safe review submission plan', () => {
+  it('persists an instructor course as draft before calling the review gate', () => {
+    expect(getCourseSavePlan({
+      requestedStatus: 1,
+      isAdminUser: false,
+      isPublishedCourse: false
+    })).toEqual({
+      submitThroughReviewGate: true,
+      serverSaveStatus: 0
+    });
+  });
+
+  it('does not demote an already published course or an admin publication', () => {
+    expect(getCourseSavePlan({
+      requestedStatus: 1,
+      isAdminUser: false,
+      isPublishedCourse: true
+    })).toEqual({ submitThroughReviewGate: false, serverSaveStatus: 1 });
+
+    expect(getCourseSavePlan({
+      requestedStatus: 1,
+      isAdminUser: true,
+      isPublishedCourse: false
+    })).toEqual({ submitThroughReviewGate: false, serverSaveStatus: 1 });
+  });
+
+  it('replaces temporary IDs and clears claimed upload IDs before a retry', () => {
+    const temporaryLessonId = 1760000000001;
+    const result = reconcilePersistedCourseSections(
+      [{
+        id: 1760000000000,
+        title: 'Chương 1',
+        lessons: [{
+          id: temporaryLessonId,
+          title: 'Bài nghe 1',
+          contentUrl: 'courses/draft/listening.mp4',
+          pendingUploadId: 'pending-upload-1'
+        }]
+      }],
+      [{
+        section_id: 81,
+        title: 'Chương 1',
+        lessons: [{
+          lesson_id: 901,
+          title: 'Bài nghe 1',
+          content_url: 'courses/draft/listening.mp4',
+          storage_key: 'courses/draft/listening.mp4',
+          media_status: 'READY'
+        }]
+      }]
+    );
+
+    expect(result.sections[0].id).toBe(81);
+    expect(result.sections[0].lessons[0]).toMatchObject({
+      id: 901,
+      pendingUploadId: null,
+      isPersisted: true,
+      mediaStatus: 'READY'
+    });
+    expect(result.lessonIdMap[String(temporaryLessonId)]).toBe('901');
   });
 });

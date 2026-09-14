@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@internationalized/date": "^3.12.3",

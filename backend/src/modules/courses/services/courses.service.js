@@ -503,6 +503,7 @@ class CoursesService {
     const newlyUploadedKeys = [];
     const claimedUploadIds = [];
     const subtitleLessonIds = [];
+    let transactionCommitted = false;
 
     try {
       await client.query('BEGIN');
@@ -617,6 +618,7 @@ class CoursesService {
       }
       if (finalStatus === 'published') await this._validateStoredCourseForPublish(client, courseId);
       await client.query('COMMIT');
+      transactionCommitted = true;
 
       // Chuẩn hóa media (best-effort, async): chỉ chạy migrate Supabase → R2 đầy đủ khi
       // khóa học được PUBLISH ngay từ lúc tạo; nếu lưu draft thì chỉ tổ chức lại thư mục
@@ -626,12 +628,39 @@ class CoursesService {
       } else {
         this._reorganizeCourseMediaFolders(courseId).catch(() => {});
       }
-      await this._queueAutoSubtitles(subtitleLessonIds);
+      try {
+        await this._queueAutoSubtitles(subtitleLessonIds);
+      } catch (postCommitError) {
+        console.warn(
+          `[CoursesService.createCourse] Khóa học #${courseId} đã được lưu, ` +
+          `nhưng chưa thể xếp hàng phụ đề: ${postCommitError.message}`
+        );
+      }
 
-      newCourse.status = newCourse.status === 'published' ? 1 : 0;
+      try {
+        const fullCourse = await this.getCourseById(courseId);
+        if (fullCourse) return fullCourse;
+      } catch (postCommitError) {
+        // Không biến một lần lưu DB đã COMMIT thành lỗi 500 ở phía trình duyệt.
+        // Client vẫn nhận được course_id và có thể tiếp tục upload/gửi kiểm duyệt.
+        console.warn(
+          `[CoursesService.createCourse] Khóa học #${courseId} đã được lưu, ` +
+          `nhưng chưa thể hydrate response: ${postCommitError.message}`
+        );
+      }
+
+      newCourse.status = newCourse.status === 'published'
+        ? 1
+        : (newCourse.status === 'pending_review' ? 'pending_review' : 0);
       return newCourse;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (!transactionCommitted) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('[CoursesService.createCourse] Không thể rollback transaction:', rollbackError.message);
+        }
+      }
       handleServiceError(error, 'Lỗi tạo khóa học');
     } finally {
       client.release();
@@ -751,7 +780,9 @@ class CoursesService {
 
       const course = {
         ...courseData,
-        status: courseData.status === 'published' ? 1 : 0,
+        status: courseData.status === 'published'
+          ? 1
+          : (courseData.status === 'pending_review' ? 'pending_review' : 0),
         sections: []
       };
 
@@ -806,6 +837,7 @@ class CoursesService {
     const subtitleLessonIds = [];
     const lessonIdsToInvalidate = new Set();
     const repairableExistingSources = new Map();
+    let transactionCommitted = false;
 
     try {
       await client.query('BEGIN');
@@ -1161,12 +1193,20 @@ class CoursesService {
         });
       }
       await client.query('COMMIT');
+      transactionCommitted = true;
 
       for (const lessonId of lessonIdsToInvalidate) {
         lessonStreamCache.invalidateLessonStreamCache(lessonId);
       }
 
-      await this._queueAutoSubtitles(subtitleLessonIds);
+      try {
+        await this._queueAutoSubtitles(subtitleLessonIds);
+      } catch (postCommitError) {
+        console.warn(
+          `[CoursesService.updateCourse] Khóa học #${courseId} đã được lưu, ` +
+          `nhưng chưa thể xếp hàng phụ đề: ${postCommitError.message}`
+        );
+      }
 
       // Khi PUBLISH: tự động chuẩn hóa toàn bộ media về Cloudflare R2 (async, best-effort)
       if (resultingStatus === 'published') {
@@ -1183,9 +1223,30 @@ class CoursesService {
         });
       }
 
-      return await this.getCourseById(courseId);
+      try {
+        const fullCourse = await this.getCourseById(courseId);
+        if (fullCourse) return fullCourse;
+      } catch (postCommitError) {
+        console.warn(
+          `[CoursesService.updateCourse] Khóa học #${courseId} đã được lưu, ` +
+          `nhưng chưa thể hydrate response: ${postCommitError.message}`
+        );
+      }
+
+      return {
+        course_id: Number(courseId),
+        status: resultingStatus === 'published'
+          ? 1
+          : (resultingStatus === 'pending_review' ? 'pending_review' : 0)
+      };
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (!transactionCommitted) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('[CoursesService.updateCourse] Không thể rollback transaction:', rollbackError.message);
+        }
+      }
       handleServiceError(error, 'Lỗi cập nhật khóa học');
     } finally {
       client.release();

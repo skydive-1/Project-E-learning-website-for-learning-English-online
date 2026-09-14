@@ -23,6 +23,7 @@ const LoginPage = () => {
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
 
   // Đồng bộ trạng thái tương tác với cụm nhân vật hình khối
   useEffect(() => {
@@ -46,6 +47,7 @@ const LoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage({ type: '', text: '' });
+    setUnverifiedEmail('');
     setIsLoading(true);
 
     try {
@@ -63,6 +65,9 @@ const LoginPage = () => {
     } catch (error) {
       const errMsg = error.response?.data?.message || 'Email hoặc mật khẩu không chính xác';
       setMessage({ type: 'error', text: errMsg });
+      if (error.response?.data?.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(formData.email.trim().toLowerCase());
+      }
     } finally {
       setIsLoading(false);
     }
@@ -147,9 +152,19 @@ const LoginPage = () => {
       </div>
 
       {message.text && (
-        <div className={`auth-message ${message.type}`}>
+        <div className={`auth-message ${message.type}`} role={message.type === 'error' ? 'alert' : 'status'}>
           {message.text}
         </div>
+      )}
+
+      {unverifiedEmail && (
+        <button
+          type="button"
+          className="auth-inline-action"
+          onClick={() => navigate('/verify-email', { state: { email: unverifiedEmail } })}
+        >
+          Gửi lại email xác minh
+        </button>
       )}
 
       <form onSubmit={handleSubmit}>
@@ -163,6 +178,8 @@ const LoginPage = () => {
               placeholder="Email"
               value={formData.email}
               onChange={handleChange}
+              autoComplete="email"
+              maxLength={255}
               onFocus={() => setIsEmailFocused(true)}
               onBlur={() => setIsEmailFocused(false)}
               required
@@ -180,6 +197,7 @@ const LoginPage = () => {
               placeholder="Mật khẩu"
               value={formData.password}
               onChange={handleChange}
+              autoComplete="current-password"
               onFocus={() => setIsPasswordFocused(true)}
               onBlur={() => setIsPasswordFocused(false)}
               required

@@ -4,6 +4,7 @@
 
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('node:crypto');
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { supabaseAdmin, supabaseClient } = require('../../../config/supabase');
@@ -41,15 +42,96 @@ const escapeHtml = (value) => String(value || '')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#039;');
 
+const getFrontendUrl = () => String(process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')[0]
+  .trim()
+  .replace(/\/$/, '');
+
+const getEmailVerificationTtlHours = () => {
+  const configured = Number.parseInt(process.env.EMAIL_VERIFICATION_TTL_HOURS || '', 10);
+  return Number.isSafeInteger(configured) && configured >= 1 && configured <= 168
+    ? configured
+    : 24;
+};
+
+const hashEmailVerificationToken = (token) => crypto
+  .createHash('sha256')
+  .update(String(token || ''))
+  .digest('hex');
+
 class AuthService {
+  async sendVerificationEmail(user) {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashEmailVerificationToken(rawToken);
+    const expiresAt = new Date(Date.now() + getEmailVerificationTtlHours() * 60 * 60 * 1000);
+
+    await db.query(
+      `UPDATE users
+       SET email_verification_token_hash = $1,
+           email_verification_expires_at = $2
+       WHERE user_id = $3`,
+      [tokenHash, expiresAt, user.user_id]
+    );
+
+    const verificationLink = `${getFrontendUrl()}/verify-email?token=${encodeURIComponent(rawToken)}`;
+    const safeDisplayName = escapeHtml(user.full_name || user.username || 'bạn');
+    const safeVerificationLink = escapeHtml(verificationLink);
+    const ttlHours = getEmailVerificationTtlHours();
+
+    const html = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 32px; border-radius: 16px; border: 1px solid #1e293b;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #38bdf8; font-size: 24px; font-weight: 700; margin: 0;">E-LEARN ACADEMY</h1>
+          <p style="color: #94a3b8; font-size: 14px; margin-top: 6px;">Xác minh địa chỉ email của bạn</p>
+        </div>
+        <div style="background-color: #1e293b; padding: 24px; border-radius: 12px;">
+          <h2 style="color: #f1f5f9; font-size: 18px; margin-top: 0;">Chào ${safeDisplayName},</h2>
+          <p style="color: #cbd5e1; font-size: 14px; line-height: 1.65;">
+            Nhấn nút bên dưới để xác minh email và kích hoạt tài khoản E-Learn Academy của bạn.
+          </p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${safeVerificationLink}" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 700; font-size: 14px; display: inline-block;">
+              XÁC MINH EMAIL
+            </a>
+          </div>
+          <p style="color: #94a3b8; font-size: 12px; line-height: 1.55;">
+            Hoặc sao chép liên kết này vào trình duyệt:<br />
+            <a href="${safeVerificationLink}" style="color: #7dd3fc; word-break: break-all;">${safeVerificationLink}</a>
+          </p>
+        </div>
+        <p style="color: #64748b; font-size: 12px; line-height: 1.55; margin: 20px 0 0; text-align: center;">
+          Liên kết có hiệu lực trong ${ttlHours} giờ. Nếu bạn không đăng ký tài khoản, hãy bỏ qua email này.
+        </p>
+      </div>
+    `;
+
+    const { sendEmail } = require('../../../utils/email.util');
+    const sent = await sendEmail({
+      to: user.email,
+      subject: '[E-Learn Academy] Xác minh địa chỉ email của bạn',
+      text: `Chào ${user.full_name || user.username || 'bạn'}, xác minh email tại: ${verificationLink}. Liên kết có hiệu lực trong ${ttlHours} giờ.`,
+      html
+    });
+
+    if (!sent) {
+      console.error(`[Email Verification]: Không thể gửi email xác minh cho user_id=${user.user_id}`);
+    }
+
+    return { sent, expiresAt };
+  }
+
   async register({ email, username, password, fullName, roleId }) {
     try {
       if (!supabaseAdmin) {
         throw new Error('Supabase Admin client chưa được cấu hình. Vui lòng kiểm tra file .env.');
       }
 
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const cleanUsername = String(username || '').trim();
+      const cleanFullName = String(fullName || cleanUsername).trim();
+
       // 1. Kiểm tra email trùng lặp trong PostgreSQL cục bộ
-      const existingUser = await db.query('SELECT user_id FROM users WHERE email = $1', [email]);
+      const existingUser = await db.query('SELECT user_id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
       if (existingUser.rows.length > 0) {
         const error = new Error('Email đã được sử dụng bởi một tài khoản khác');
         error.name = 'ValidationError';
@@ -58,7 +140,7 @@ class AuthService {
       }
 
       // Kiểm tra username trùng lặp
-      const existingUsername = await db.query('SELECT user_id FROM users WHERE username = $1', [username]);
+      const existingUsername = await db.query('SELECT user_id FROM users WHERE username = $1', [cleanUsername]);
       if (existingUsername.rows.length > 0) {
         const error = new Error('Tên đăng nhập (username) đã tồn tại');
         error.name = 'ValidationError';
@@ -69,20 +151,21 @@ class AuthService {
       // Tự động gán Admin cho email được ủy quyền hoặc giới hạn vai trò công khai
       let finalRoleId = parseInt(roleId, 10);
       const adminEmails = ['quocanh26012004@gmail.com', 'bte290904@gmail.com'];
-      if (adminEmails.includes(email.toLowerCase())) {
+      if (adminEmails.includes(cleanEmail)) {
         finalRoleId = 1; // Admin
       } else if (finalRoleId !== 2 && finalRoleId !== 3) {
         finalRoleId = 3; // Chỉ cho phép đăng ký trực tiếp vai trò Student hoặc Instructor
       }
 
-      // 2. Tạo tài khoản trong Supabase Auth bằng Admin SDK (tự động kích hoạt email)
+      // 2. Tạo tài khoản Supabase ở trạng thái chưa xác minh.
+      // Email chỉ được xác nhận sau khi người dùng mở liên kết một lần do hệ thống gửi.
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email,
+        email: cleanEmail,
         password,
-        email_confirm: true,
+        email_confirm: false,
         user_metadata: {
-          username,
-          full_name: fullName || username,
+          username: cleanUsername,
+          full_name: cleanFullName,
           role_id: finalRoleId
         }
       });
@@ -99,10 +182,11 @@ class AuthService {
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING user_id, email, username, full_name, role_id, created_date, supabase_uid
       `;
-      const values = [email, '', username, fullName || username, finalRoleId, supabaseUser.id];
+      const values = [cleanEmail, '', cleanUsername, cleanFullName, finalRoleId, supabaseUser.id];
       const result = await db.query(queryText, values);
 
       const newUser = result.rows[0];
+      const delivery = await this.sendVerificationEmail(newUser);
 
       return {
         userId: newUser.user_id,
@@ -111,7 +195,9 @@ class AuthService {
         fullName: newUser.full_name,
         roleId: newUser.role_id,
         createdDate: newUser.created_date,
-        supabaseUid: newUser.supabase_uid
+        requiresEmailVerification: true,
+        emailDeliveryAccepted: delivery.sent,
+        verificationExpiresAt: delivery.expiresAt.toISOString()
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi đăng ký trong AuthService');
@@ -124,12 +210,26 @@ class AuthService {
         throw new Error('Supabase Client chưa được cấu hình. Vui lòng kiểm tra file .env.');
       }
 
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const localAccount = await db.query(
+        'SELECT user_id, email_verified_at FROM users WHERE LOWER(email) = $1',
+        [cleanEmail]
+      );
+
+      if (localAccount.rows.length > 0 && !localAccount.rows[0].email_verified_at) {
+        const error = new Error('Email chưa được xác minh. Vui lòng kiểm tra hộp thư hoặc gửi lại email xác minh.');
+        error.name = 'EmailVerificationError';
+        error.status = 403;
+        error.code = 'EMAIL_NOT_VERIFIED';
+        throw error;
+      }
+
       // 1. Đăng nhập qua Supabase Auth
       let authData;
       let authError;
       try {
         const res = await supabaseClient.auth.signInWithPassword({
-          email,
+          email: cleanEmail,
           password
         });
         authData = res.data;
@@ -142,10 +242,18 @@ class AuthService {
       let user;
 
       if (authError) {
+        if (/email\s+(?:not\s+confirmed|not\s+verified)/i.test(authError.message || '')) {
+          const error = new Error('Email chưa được xác minh. Vui lòng kiểm tra hộp thư hoặc gửi lại email xác minh.');
+          error.name = 'EmailVerificationError';
+          error.status = 403;
+          error.code = 'EMAIL_NOT_VERIFIED';
+          throw error;
+        }
+
         // Tự động di trú người dùng cũ (Lazy Migration / Shadow Migration):
         // Nếu không đăng nhập được qua Supabase, kiểm tra xem user có tồn tại ở PostgreSQL cục bộ với mật khẩu cũ không
-        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid FROM users WHERE email = $1';
-        const localUserResult = await db.query(localUserQuery, [email]);
+        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at FROM users WHERE LOWER(email) = $1';
+        const localUserResult = await db.query(localUserQuery, [cleanEmail]);
 
         if (localUserResult.rows.length > 0) {
           const matchedUser = localUserResult.rows[0];
@@ -153,10 +261,10 @@ class AuthService {
           if (matchedUser.password_hash) {
             const isMatch = await bcrypt.compare(password, matchedUser.password_hash);
             if (isMatch) {
-              console.log(`[Lazy Migration] Đang di trú tài khoản cũ sang Supabase Auth: ${email}`);
+              console.log(`[Lazy Migration] Đang di trú tài khoản cũ sang Supabase Auth: ${cleanEmail}`);
               // Tạo tài khoản trên Supabase Auth bằng Admin SDK
               const { data: migratedData, error: migrateError } = await supabaseAdmin.auth.admin.createUser({
-                email,
+                email: cleanEmail,
                 password,
                 email_confirm: true,
                 user_metadata: {
@@ -202,21 +310,21 @@ class AuthService {
         supabaseUser = authData.user;
 
         // 2. Tìm kiếm thông tin user cục bộ bằng supabase_uid hoặc email để liên kết
-        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid FROM users WHERE supabase_uid = $1 OR email = $2';
-        const result = await db.query(queryText, [supabaseUser.id, email]);
+        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at FROM users WHERE supabase_uid = $1 OR LOWER(email) = $2';
+        const result = await db.query(queryText, [supabaseUser.id, cleanEmail]);
 
         if (result.rows.length === 0) {
           // Tự động đồng bộ nếu user tồn tại trên Supabase nhưng chưa có ở DB của mình
           const roleId = supabaseUser.user_metadata?.role_id || 3;
-          const username = supabaseUser.user_metadata?.username || email.split('@')[0];
+          const username = supabaseUser.user_metadata?.username || cleanEmail.split('@')[0];
           const fullName = supabaseUser.user_metadata?.full_name || username;
 
           const insertQuery = `
-            INSERT INTO users (email, password_hash, username, full_name, role_id, supabase_uid)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING user_id, email, username, full_name, role_id, supabase_uid
+            INSERT INTO users (email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at)
+            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+            RETURNING user_id, email, username, full_name, role_id, supabase_uid, email_verified_at
           `;
-          const insertRes = await db.query(insertQuery, [email, '', username, fullName, roleId, supabaseUser.id]);
+          const insertRes = await db.query(insertQuery, [cleanEmail, '', username, fullName, roleId, supabaseUser.id]);
           user = insertRes.rows[0];
         } else {
           user = result.rows[0];
@@ -257,6 +365,108 @@ class AuthService {
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi đăng nhập trong AuthService');
+    }
+  }
+
+  async verifyEmail(token) {
+    try {
+      const cleanToken = String(token || '').trim();
+      if (!/^[a-f0-9]{64}$/i.test(cleanToken)) {
+        const error = new Error('Liên kết xác minh email không hợp lệ.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        error.code = 'EMAIL_VERIFICATION_INVALID';
+        throw error;
+      }
+
+      const tokenHash = hashEmailVerificationToken(cleanToken);
+      const result = await db.query(
+        `SELECT user_id, email, username, full_name, supabase_uid,
+                email_verified_at, email_verification_expires_at
+         FROM users
+         WHERE email_verification_token_hash = $1`,
+        [tokenHash]
+      );
+
+      if (result.rows.length === 0) {
+        const error = new Error('Liên kết xác minh email không hợp lệ hoặc đã được sử dụng.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        error.code = 'EMAIL_VERIFICATION_INVALID';
+        throw error;
+      }
+
+      const user = result.rows[0];
+      if (!user.email_verification_expires_at || new Date(user.email_verification_expires_at).getTime() <= Date.now()) {
+        const error = new Error('Liên kết xác minh email đã hết hạn. Vui lòng yêu cầu gửi lại email.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        error.code = 'EMAIL_VERIFICATION_EXPIRED';
+        throw error;
+      }
+
+      if (!user.supabase_uid) {
+        const error = new Error('Tài khoản chưa được liên kết với hệ thống xác thực.');
+        error.status = 500;
+        error.code = 'AUTH_ACCOUNT_LINK_MISSING';
+        throw error;
+      }
+
+      const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
+        user.supabase_uid,
+        { email_confirm: true }
+      );
+
+      if (confirmError) {
+        const error = new Error('Không thể xác minh email lúc này. Vui lòng thử lại sau.');
+        error.status = 503;
+        error.code = 'EMAIL_VERIFICATION_PROVIDER_UNAVAILABLE';
+        throw error;
+      }
+
+      const updateResult = await db.query(
+        `UPDATE users
+         SET email_verified_at = CURRENT_TIMESTAMP,
+             email_verification_token_hash = NULL,
+             email_verification_expires_at = NULL
+         WHERE user_id = $1 AND email_verification_token_hash = $2
+         RETURNING user_id, email, username, full_name, role_id, email_verified_at`,
+        [user.user_id, tokenHash]
+      );
+
+      if (updateResult.rows.length === 0) {
+        const error = new Error('Liên kết xác minh email đã được sử dụng.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        error.code = 'EMAIL_VERIFICATION_INVALID';
+        throw error;
+      }
+
+      return updateResult.rows[0];
+    } catch (error) {
+      handleServiceError(error, 'Lỗi xác minh email trong AuthService');
+    }
+  }
+
+  async resendVerificationEmail(email) {
+    try {
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const result = await db.query(
+        `SELECT user_id, email, username, full_name, supabase_uid, email_verified_at
+         FROM users
+         WHERE LOWER(email) = $1`,
+        [cleanEmail]
+      );
+
+      // Luôn trả cùng một kết quả cho email không tồn tại/đã xác minh để tránh dò tài khoản.
+      if (result.rows.length === 0 || result.rows[0].email_verified_at) {
+        return true;
+      }
+
+      await this.sendVerificationEmail(result.rows[0]);
+      return true;
+    } catch (error) {
+      handleServiceError(error, 'Lỗi gửi lại email xác minh trong AuthService');
     }
   }
 
@@ -448,7 +658,17 @@ class AuthService {
           const { data: listData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
           if (!listError) {
             const found = listData.users.find(u => u.email === email);
-            if (found) return found;
+            if (found) {
+              if (!found.email_confirmed_at) {
+                const { data: confirmedData, error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
+                  found.id,
+                  { email_confirm: true }
+                );
+                if (confirmError) throw confirmError;
+                return confirmedData.user;
+              }
+              return found;
+            }
           }
         }
         throw error;
@@ -532,7 +752,7 @@ class AuthService {
       }
 
       const result = await db.query(
-        'SELECT user_id, email, username, full_name, role_id, supabase_uid FROM users WHERE email = $1',
+        'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at FROM users WHERE email = $1',
         [email]
       );
 
@@ -543,6 +763,17 @@ class AuthService {
         if (!user.supabase_uid && supabaseUser) {
           await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, user.user_id]);
           user.supabase_uid = supabaseUser.id;
+        }
+
+        if (!user.email_verified_at) {
+          await db.query(
+            `UPDATE users
+             SET email_verified_at = CURRENT_TIMESTAMP,
+                 email_verification_token_hash = NULL,
+                 email_verification_expires_at = NULL
+             WHERE user_id = $1`,
+            [user.user_id]
+          );
         }
 
         const jwtPayload = {
@@ -640,8 +871,8 @@ class AuthService {
       const supabaseUser = await this.syncGoogleUserWithSupabase(email, fullName, profilePictureUrl);
 
       const queryText = `
-        INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url, supabase_uid)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO users (email, password_hash, username, full_name, role_id, profile_picture_url, supabase_uid, email_verified_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
         RETURNING user_id, email, username, full_name, role_id, profile_picture_url, created_date
       `;
       const values = [email, '', username, fullName, targetRoleId, profilePictureUrl, supabaseUser ? supabaseUser.id : null];

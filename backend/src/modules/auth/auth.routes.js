@@ -30,6 +30,18 @@ const loginSchema = {
   }
 };
 
+const verifyEmailSchema = {
+  body: {
+    token: { required: true, type: 'string', minLength: 64, maxLength: 64 }
+  }
+};
+
+const resendVerificationSchema = {
+  body: {
+    email: { required: true, type: 'string', isEmail: true, maxLength: 255 }
+  }
+};
+
 const changePasswordSchema = {
   body: {
     oldPassword: { required: true },
@@ -81,6 +93,8 @@ const updateProfileSchema = {
  */
 // Routes
 router.post('/register', registrationLimiter, validate(registerSchema), authController.register);
+router.post('/verify-email', authLimiter, validate(verifyEmailSchema), authController.verifyEmail);
+router.post('/resend-verification', registrationLimiter, validate(resendVerificationSchema), authController.resendVerificationEmail);
 
 /**
  * @swagger
@@ -121,4 +135,3 @@ router.post('/exchange', authLimiter, authController.exchangeToken);
 router.get('/stats', authenticate, authController.getUserStats);
 
 module.exports = router;
-

@@ -406,15 +406,19 @@ function calculateQuestionDistribution(totalCount, questionTypes) {
 const TYPE_SPECIFICATIONS = {
   multiple_choice: `- "multiple_choice":
   A standard multiple-choice question testing vocabulary or grammar.
+  CRITICAL: NEVER refer to an unseen image, picture, diagram, or chart (e.g. "Look at the picture..."). The question must be 100% self-contained text.
   options: exactly 4 items starting with "A. ", "B. ", "C. ", "D. ".
   correctAnswer: only the capital letter ("A", "B", "C", or "D").
   explanation: in Vietnamese explaining the grammatical/lexical reason.`,
 
   writing: `- "writing":
-  Sentence transformation/rewriting prompt (e.g. "Finish the second sentence so that it means the same as the first...") or short essay prompt (2-3 sentences).
+  A self-contained English writing prompt. It can be an essay prompt (e.g. opinion, discussion, problem-solution, advantages/disadvantages) OR a sentence transformation/rewriting prompt.
+  CRITICAL REQUIREMENT (STRICT): NEVER write "The chart below shows...", "The graph below...", "Look at the image below...", or refer to any unseen charts, maps, or diagrams.
+  All writing prompts MUST be 100% complete and self-contained so that a student can read the prompt and write their response immediately without needing any external visual material.
+  If a data comparison prompt is ever generated, all data points, categories, and numbers MUST be explicitly provided right inside the text as a structured markdown table.
   options: empty array ([]).
   correctAnswer: empty string ("").
-  explanation: in Vietnamese providing the model answer and scoring criteria for AI grading.`,
+  explanation: in Vietnamese providing a clear model answer/outline and key scoring criteria for AI grading.`,
 
   pronunciation: `- "pronunciation":
   A direct read-aloud sentence prompt or phonetics exercise (stress/vowel difference).
@@ -446,6 +450,38 @@ const TYPE_SPECIFICATIONS = {
   explanation: in Vietnamese citing supporting sentences from the passage.`
 };
 
+function sanitizePhantomVisuals(text, topic = '', type = '') {
+  let cleaned = String(text || '').trim();
+  if (!cleaned) return '';
+
+  const phantomVisualRegex = /\b(?:the|this)\s+(?:chart|line\s+graph|bar\s+chart|pie\s+chart|graph|diagram|table|figure|image|picture|illustration|map)\s+(?:below|above|attached|provided)\b/i;
+  const lookAtVisualRegex = /\blook\s+at\s+the\s+(?:chart|graph|diagram|image|picture|table|figure)\b/i;
+  const accordingToVisualRegex = /\baccording\s+to\s+the\s+(?:chart|graph|diagram|image|picture|table|figure)\s+(?:below|above)?\b/i;
+
+  const hasPhantomVisual = phantomVisualRegex.test(cleaned) || lookAtVisualRegex.test(cleaned) || accordingToVisualRegex.test(cleaned);
+  if (!hasPhantomVisual) return cleaned;
+
+  const cleanTopic = topic ? String(topic).trim() : 'the given topic';
+
+  if (type === 'writing') {
+    if (cleaned.includes('|') && cleaned.includes('---')) {
+      return cleaned;
+    }
+    return `Write an essay of at least 150 words presenting your perspective on ${cleanTopic}. Discuss the main advantages, potential challenges, and conclude with your personal viewpoint. Support your arguments with specific reasons and relevant examples.`;
+  }
+
+  cleaned = cleaned
+    .replace(/\b(?:According to|Based on|Look at)\s+the\s+(?:chart|graph|diagram|table|figure|image|picture)\s+(?:below|above|attached)?,?\s*/gi, '')
+    .replace(/\bthe\s+(?:chart|graph|diagram|table|figure|image|picture)\s+(?:below|above|attached)\s+(?:shows|illustrates|indicates|reveals|presents)\s+(?:that\s+)?/gi, '')
+    .trim();
+
+  if (!cleaned || cleaned.length < 10) {
+    return `Based on your understanding of ${cleanTopic}, answer the following question:`;
+  }
+
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
 function buildTypeSpecsPrompt(types) {
   const allowedSpecs = types
     .map(t => TYPE_SPECIFICATIONS[t])
@@ -460,8 +496,12 @@ DO NOT generate any question belonging to the following unrequested question typ
 Under NO circumstances should you output questions of these forbidden types. Only generate questions of types [${types.join(', ')}].`;
   }
 
+  const visualConstraint = `\n\nCRITICAL CONSTRAINT - NO PHANTOM CHARTS OR INVISIBLE VISUALS:
+Under NO circumstances should you output questions that instruct the student to look at an unseen image, chart, graph, map, or picture (e.g. NEVER write "The chart below shows...", "The graph illustrates...", "Look at the picture below...", "According to the diagram...").
+Every question MUST be completely self-contained in text. All context, data, or narrative needed by the learner must be fully present in questionText or passageText.`;
+
   return {
-    specsText: allowedSpecs,
+    specsText: allowedSpecs + visualConstraint,
     forbiddenClause,
     schemaTypes: types.join(' | ')
   };
@@ -702,11 +742,12 @@ function adaptQuestionToType(q, targetType, topic) {
   }
 
   if (targetType === 'writing') {
+    const sanitizedWritingText = sanitizePhantomVisuals(originalText, cleanTopic, 'writing');
     return {
       questionType: 'writing',
       question_type: 'writing',
-      questionText: originalText.includes('Write') ? originalText : `Write 2-3 sentences explaining your view on ${cleanTopic}.`,
-      question_text: originalText.includes('Write') ? originalText : `Write 2-3 sentences explaining your view on ${cleanTopic}.`,
+      questionText: sanitizedWritingText.includes('Write') ? sanitizedWritingText : `Write 2-3 sentences explaining your view on ${cleanTopic}.`,
+      question_text: sanitizedWritingText.includes('Write') ? sanitizedWritingText : `Write 2-3 sentences explaining your view on ${cleanTopic}.`,
       passageText: null,
       passage_text: null,
       options: [],
@@ -778,10 +819,19 @@ function enforceAndNormalizeQuestions(rawQuestions, distribution = {}, requested
     else if (['listening', 'listen', 'audio_choice'].includes(rawType)) type = 'listening';
     else if (['reading', 'read', 'passage', 'comprehension'].includes(rawType)) type = 'reading';
 
-    const text = String(q.questionText || q.question_text || q.question || '').trim();
+    let text = String(q.questionText || q.question_text || q.question || '').trim();
+    let explanation = String(q.explanation || '').trim();
+
+    const sanitizedText = sanitizePhantomVisuals(text, topic, type);
+    if (sanitizedText !== text) {
+      text = sanitizedText;
+      if (type === 'writing' && (/chart|graph|table/i.test(explanation))) {
+        explanation = `Dàn ý bài viết về ${topic || 'chủ đề đã cho'}: Mở bài nêu vấn đề và quan điểm; Thân bài phân tích các luận điểm và ví dụ; Kết bài tổng kết. Đánh giá dựa trên độ mạch lạc, từ vựng học thuật và ngữ pháp.`;
+      }
+    }
+
     const passage = q.passageText || q.passage_text || null;
     const answer = q.correctAnswer ?? q.correct_answer ?? '';
-    const explanation = String(q.explanation || '').trim();
     const options = Array.isArray(q.options) ? q.options : [];
 
     return {

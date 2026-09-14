@@ -71,8 +71,17 @@ export const normalizeQuestion = (q) => {
     type = 'reading';
   }
 
-  const text = String(q.question_text || q.questionText || q.question || '').trim();
-  const explanation = String(q.explanation || '').trim();
+  let text = String(q.question_text || q.questionText || q.question || '').trim();
+  let explanation = String(q.explanation || '').trim();
+
+  // Strip phantom visual artifacts from multiple choice, reading, listening:
+  if (['multiple_choice', 'reading', 'listening', 'open_cloze'].includes(type)) {
+    text = text
+      .replace(/\b(?:According to|Based on|Look at)\s+the\s+(?:chart|graph|diagram|table|figure|image|picture)\s+(?:below|above|attached)?,?\s*/gi, '')
+      .replace(/\bthe\s+(?:chart|graph|diagram|table|figure|image|picture)\s+(?:below|above|attached)\s+(?:shows|illustrates|indicates|reveals|presents)\s+(?:that\s+)?/gi, '')
+      .trim();
+    if (text) text = text.charAt(0).toUpperCase() + text.slice(1);
+  }
 
   if (type === 'multiple_choice' || type === 'listening' || type === 'reading') {
     // Clean and normalize options
@@ -153,17 +162,29 @@ export const normalizeQuestion = (q) => {
   }
 
   if (type === 'writing') {
+    let cleanText = text;
+    let cleanExplanation = explanation;
+    const hasPhantomChart = /\b(?:the|this)\s+(?:chart|line\s+graph|bar\s+chart|pie\s+chart|graph|diagram|table|figure|image|picture)\s+(?:below|above|attached)\b/i.test(cleanText)
+      || /\blook\s+at\s+the\s+(?:chart|graph|diagram|image|picture|table)\b/i.test(cleanText);
+
+    if (hasPhantomChart && !cleanText.includes('|')) {
+      cleanText = `Write an essay of at least 150 words discussing your perspective on the given topic. Present the key advantages, discuss potential challenges, and conclude with your personal viewpoint. Support your arguments with specific reasons and examples.`;
+      if (/chart|graph|table/i.test(cleanExplanation)) {
+        cleanExplanation = 'Dàn ý bài viết: Mở bài nêu vấn đề và quan điểm; Thân bài phân tích các luận điểm và ví dụ; Kết bài tổng kết. Đánh giá dựa trên độ mạch lạc, từ vựng học thuật và ngữ pháp.';
+      }
+    }
+
     return {
       id: q.id ? String(q.id) : undefined,
-      question_text: text,
-      questionText: text,
-      question: text,
+      question_text: cleanText,
+      questionText: cleanText,
+      question: cleanText,
       question_type: 'writing',
       questionType: 'writing',
       options: [],
       correct_answer: '',
       correctAnswer: '',
-      explanation,
+      explanation: cleanExplanation,
       audio_url: null,
       audioUrl: null,
       passage_text: null,

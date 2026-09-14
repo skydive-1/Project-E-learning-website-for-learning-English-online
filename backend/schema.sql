@@ -29,9 +29,19 @@ CREATE TABLE IF NOT EXISTS users (
   gender VARCHAR(10) CHECK (gender IN ('Male','Female','Other')),
   profile_picture_url VARCHAR(255),
   supabase_uid UUID UNIQUE,
+  email_verified_at TIMESTAMPTZ,
+  email_verification_token_hash VARCHAR(64),
+  email_verification_expires_at TIMESTAMPTZ,
   longest_streak INTEGER DEFAULT 0,
   CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(role_id)
 );
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS email_verification_token_hash VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_verification_token_hash
+  ON users(email_verification_token_hash)
+  WHERE email_verification_token_hash IS NOT NULL;
 
 -- Canonical metadata cho mọi media; payload nhị phân luôn nằm ngoài PostgreSQL.
 CREATE TABLE IF NOT EXISTS media_assets (
@@ -355,7 +365,6 @@ CREATE TABLE IF NOT EXISTS course_discussions (
   CONSTRAINT chk_course_discussions_content_nonempty CHECK (length(btrim(content)) > 0),
   CONSTRAINT chk_course_discussions_video_time CHECK (video_timestamp_seconds IS NULL OR video_timestamp_seconds >= 0)
 );
-
 CREATE TABLE IF NOT EXISTS course_discussion_replies (
   reply_id BIGSERIAL PRIMARY KEY,
   discussion_id BIGINT NOT NULL REFERENCES course_discussions(discussion_id) ON DELETE CASCADE,
