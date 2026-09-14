@@ -241,13 +241,13 @@ class DurableJobQueue {
     const normalized = normalizeError(error);
     const result = await this.db.query(
       `UPDATE background_jobs
-       SET status = $3,
+       SET status = $3::varchar,
            available_at = CASE
-             WHEN $3 = 'retry' THEN CURRENT_TIMESTAMP + ($4 * INTERVAL '1 millisecond')
+             WHEN $3::varchar = 'retry' THEN CURRENT_TIMESTAMP + ($4 * INTERVAL '1 millisecond')
              ELSE available_at
            END,
            lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
-           completed_at = CASE WHEN $3 = 'failed' THEN CURRENT_TIMESTAMP ELSE NULL END,
+           completed_at = CASE WHEN $3::varchar = 'failed' THEN CURRENT_TIMESTAMP ELSE NULL END,
            last_error_code = $5, last_error_message = $6,
            updated_at = CURRENT_TIMESTAMP
        WHERE job_id = $1 AND lease_token = $2 AND status = 'processing'

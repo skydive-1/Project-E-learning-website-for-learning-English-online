@@ -95,6 +95,9 @@ describe('PostgreSQL durable background jobs', () => {
     );
 
     assert.equal(retry.status, 'retry');
+    assert.match(updates[0].sql, /SET status = \$3::varchar/);
+    assert.match(updates[0].sql, /WHEN \$3::varchar = 'retry'/);
+    assert.match(updates[0].sql, /CASE WHEN \$3::varchar = 'failed'/);
     assert.equal(updates[0].params[3], 2_000);
     assert.equal(terminal.status, 'failed');
     assert.equal(updates[1].params[3], 0);
