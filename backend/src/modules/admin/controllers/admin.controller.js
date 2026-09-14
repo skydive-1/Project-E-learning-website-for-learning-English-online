@@ -140,8 +140,10 @@ exports.getAiRateLimitStatus = async (req, res, next) => {
 exports.resetAiModelRouting = async (req, res, next) => {
   try {
     disableLiveDataCache(res);
+    const { all } = req.body || {};
     const routing = adminService.resetAiModelRouting({
-      adminUserId: req.user?.id || req.user?.user_id
+      adminUserId: req.user?.id || req.user?.user_id,
+      ...(all !== undefined ? { all: Boolean(all) } : {})
     });
     res.status(200).json({
       success: true,
@@ -170,6 +172,35 @@ exports.setPreferredAiModel = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `Đã chọn ${model} làm model ưu tiên điều phối.`,
+      data: { routing }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.toggleAiModelLock = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const { model, locked, reason } = req.body || {};
+    if (!model) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tên model không được để trống.'
+      });
+    }
+    const isLocking = Boolean(locked);
+    const routing = await adminService.toggleAiModelLock({
+      model,
+      locked: isLocking,
+      reason,
+      adminUserId: req.user?.id || req.user?.user_id
+    });
+    res.status(200).json({
+      success: true,
+      message: isLocking
+        ? `Đã khóa model ${model}. Hệ thống sẽ tạm dừng điều phối vào model này.`
+        : `Đã mở khóa model ${model}. Model đã sẵn sàng hoạt động trở lại.`,
       data: { routing }
     });
   } catch (error) {

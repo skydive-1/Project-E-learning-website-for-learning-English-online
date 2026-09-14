@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone VARCHAR(15) UNIQUE,
   role_id INT NOT NULL DEFAULT 3,
   gender VARCHAR(10) CHECK (gender IN ('Male','Female','Other')),
-  profile_picture_url VARCHAR(255),
+  profile_picture_url TEXT,
   supabase_uid UUID UNIQUE,
   email_verified_at TIMESTAMPTZ,
   email_verification_token_hash VARCHAR(64),
@@ -305,7 +305,13 @@ CREATE TABLE IF NOT EXISTS ai_model_rate_limit_settings (
   tpm_cap INTEGER NOT NULL CHECK (tpm_cap > 0),
   rpd_cap INTEGER NOT NULL CHECK (rpd_cap > 0),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_by INT REFERENCES users(user_id) ON DELETE SET NULL
+  updated_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+  is_preferred BOOLEAN NOT NULL DEFAULT FALSE,
+  rpd_exhausted_until TIMESTAMPTZ,
+  is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+  locked_at TIMESTAMPTZ,
+  locked_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+  lock_reason TEXT
 );
 
 -- 12f. Tín hiệu 429 cho thấy cap cấu hình có thể lệch so với quota thật.

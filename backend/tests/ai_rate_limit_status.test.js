@@ -20,7 +20,9 @@ const {
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
   resetGeminiModelRouting,
-  setPreferredGeminiModel
+  setPreferredGeminiModel,
+  setAiModelManualLock,
+  isAiModelManuallyLocked
 } = require('../src/utils/ai-clients');
 
 describe('Admin Gemini rate-limit status', () => {
@@ -644,6 +646,88 @@ describe('Best-effort Gemini 429 calibration', () => {
     } finally {
       db.query = originalQuery;
       await setPreferredGeminiModel('gemini-3.7-flash', { adminUserId: 7 });
+    }
+  });
+
+  test('allows admin to manually lock and unlock a model, skipping locked models in fallback', async () => {
+    const originalQuery = db.query;
+    let lockQueries = [];
+    db.query = async (text, params) => {
+      if (/UPDATE ai_model_rate_limit_settings\s+SET is_locked/i.test(text)) {
+        lockQueries.push({ text, params });
+      }
+      return { rows: [] };
+    };
+
+    try {
+      // 1. Lock model
+      const lockedRouting = await setAiModelManualLock('gemini-3.7-flash', true, {
+        adminUserId: 12,
+        reason: 'Hết quota trên Google AI Studio'
+      });
+      assert.equal(isAiModelManuallyLocked('gemini-3.7-flash'), true);
+      assert.ok(lockedRouting.lockedModels.includes('gemini-3.7-flash'));
+      assert.equal(lockQueries.length, 1);
+      assert.equal(lockQueries[0].params[0], true);
+      assert.equal(lockQueries[0].params[1], 12);
+      assert.equal(lockQueries[0].params[2], 'Hết quota trên Google AI Studio');
+      assert.equal(lockQueries[0].params[3], 'gemini-3.7-flash');
+
+      // 2. Fallback order must skip the locked model
+      const fallback = getPrioritizedFallbackModels('gemini-3.7-flash');
+      assert.notEqual(fallback[0], 'gemini-3.7-flash');
+      assert.equal(fallback[0], 'gemini-3.6-flash');
+
+      // 3. Unlock model
+      const unlockedRouting = await setAiModelManualLock('gemini-3.7-flash', false, {
+        adminUserId: 12
+      });
+      assert.equal(isAiModelManuallyLocked('gemini-3.7-flash'), false);
+      assert.ok(!unlockedRouting.lockedModels.includes('gemini-3.7-flash'));
+      assert.equal(lockQueries.length, 2);
+      assert.equal(lockQueries[1].params[0], false);
+
+      // 4. Fallback order includes model again
+      const fallbackRestored = getPrioritizedFallbackModels('gemini-3.7-flash');
+      assert.equal(fallbackRestored[0], 'gemini-3.7-flash');
+    } finally {
+      db.query = originalQuery;
+      await setAiModelManualLock('gemini-3.7-flash', false);
+    }
+  });
+
+  test('toggleAiModelLock controller responds with success message and updated routing', async () => {
+    const originalToggleAiModelLock = adminService.toggleAiModelLock;
+    let calledOptions = null;
+    adminService.toggleAiModelLock = async (opts) => {
+      calledOptions = opts;
+      return { preferredModel: 'gemini-3.7-flash', lockedModels: ['gemini-3.7-flash'] };
+    };
+
+    let responsePayload = null;
+    const res = {
+      setHeader: () => {},
+      status: () => res,
+      json: (data) => { responsePayload = data; return res; }
+    };
+
+    try {
+      await adminController.toggleAiModelLock({
+        body: { model: 'gemini-3.7-flash', locked: true, reason: 'Test lock' },
+        user: { id: 5 }
+      }, res, (err) => { throw err; });
+
+      assert.deepEqual(calledOptions, {
+        model: 'gemini-3.7-flash',
+        locked: true,
+        reason: 'Test lock',
+        adminUserId: 5
+      });
+      assert.equal(responsePayload.success, true);
+      assert.match(responsePayload.message, /Đã khóa model gemini-3.7-flash/);
+      assert.ok(responsePayload.data.routing.lockedModels.includes('gemini-3.7-flash'));
+    } finally {
+      adminService.toggleAiModelLock = originalToggleAiModelLock;
     }
   });
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   FiMessageSquare, FiBell, FiSearch, FiCheck, 
   FiClock, FiUser, FiSend, FiArrowLeft, FiPlus, 
-  FiX, FiEye, FiCheckCircle, FiBookOpen, FiFilter 
+  FiX, FiEye, FiCheckCircle, FiBookOpen, FiFilter, FiPlay
 } from 'react-icons/fi';
 import { useToast } from '../../../context/ToastContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -519,6 +519,26 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                             }`}
                           >
                             {rep.content}
+
+                            {/* Mốc video kèm theo (nếu học viên đính kèm timestamp) */}
+                            {rep.timestampFormatted && (
+                              <div className={`mt-2 pt-1.5 border-t flex items-center gap-1 text-[11px] ${
+                                isInst
+                                  ? 'border-white/20 text-white/90'
+                                  : 'border-slate-100 dark:border-slate-700/60 text-smart-indigo dark:text-blue-400'
+                              }`}>
+                                <FiClock className="text-[10px] shrink-0" />
+                                <span className="font-medium">Mốc bài giảng:</span>
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                                  isInst
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-blue-50 dark:bg-blue-950/60 text-smart-indigo dark:text-blue-400'
+                                }`}>
+                                  <FiPlay className="text-[9px]" />
+                                  <span>{rep.timestampFormatted}</span>
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

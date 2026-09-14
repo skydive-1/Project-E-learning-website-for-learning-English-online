@@ -753,9 +753,12 @@ No markdown, no backticks, no extra keys.`;
 
   async getAllQuizzesForManagement() {
     try {
+      // Chỉ lấy các đề thi tự do (standalone / practice quizzes ở trang Courses & Quizzes),
+      // KHÔNG lấy các đề thi thuộc bài học trong khóa học (course_id IS NOT NULL hoặc lesson_id IS NOT NULL)
       const quizzesQuery = `
-        SELECT quiz_id, course_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
+        SELECT quiz_id, course_id, lesson_id, title, description, difficulty, time_limit, is_private, pin_code, created_at
         FROM quizzes
+        WHERE course_id IS NULL AND lesson_id IS NULL
         ORDER BY created_at DESC, quiz_id DESC
       `;
       const quizzesResult = await db.query(quizzesQuery);
@@ -781,6 +784,7 @@ No markdown, no backticks, no extra keys.`;
       return quizzes.map(q => ({
         quiz_id: q.quiz_id,
         course_id: q.course_id,
+        lesson_id: q.lesson_id,
         title: q.title,
         description: q.description,
         difficulty: q.difficulty,
@@ -799,7 +803,20 @@ No markdown, no backticks, no extra keys.`;
 
   async deleteQuiz(quizId) {
     try {
-      await db.query('DELETE FROM quizzes WHERE quiz_id = $1', [parseInt(quizId, 10)]);
+      const parsedId = parseInt(quizId, 10);
+      const checkRes = await db.query(
+        'SELECT course_id, lesson_id FROM quizzes WHERE quiz_id = $1',
+        [parsedId]
+      );
+      if (checkRes.rows.length === 0) {
+        throw new Error('Đề thi không tồn tại');
+      }
+      if (checkRes.rows[0].course_id !== null || checkRes.rows[0].lesson_id !== null) {
+        const error = new Error('Không thể xóa đề thi thuộc bài học khóa học từ mục này');
+        error.statusCode = 400;
+        throw error;
+      }
+      await db.query('DELETE FROM quizzes WHERE quiz_id = $1', [parsedId]);
       return true;
     } catch (error) {
       console.error("Lỗi QuizzesService.deleteQuiz:", error);

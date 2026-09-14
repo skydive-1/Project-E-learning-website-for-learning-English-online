@@ -26,6 +26,11 @@ Nền tảng **E-learning tiếng Anh** là một hệ thống học tập trự
 
 **Live Demo**: https://project-e-learning-website-for-lear-iota.vercel.app
 
+### 👥 Thành viên nhóm thực hiện Đồ án (Graduation Project Team)
+1. **NGUYỄN DŨNG QUỐC ANH** - Vai trò: *Frontend & AI UI Integration Developer*
+2. **NGUYỄN THANH LIÊM** - Vai trò: *Backend & Security Developer*
+3. **LÊ ĐÌNH CHƯƠNG** - Vai trò: *Database Administrator & Infrastructure Specialist*
+
 ---
 
 ## ✨ Tính năng chính
@@ -73,16 +78,18 @@ Nền tảng **E-learning tiếng Anh** là một hệ thống học tập trự
 
 ### **Stack Tổng quát**
 
-| Thành phần | Công nghệ | Phiên bản | Chi chú |
+| Thành phần | Công nghệ | Phiên bản | Ghi chú |
 |-----------|-----------|----------|--------|
-| **Backend** | Node.js + Express | v18+ | Modular Monolith |
-| **Database** | PostgreSQL | 15+ | Supabase-compatible |
-| **Frontend** | React 19 + Vite | 2024 | ESM, TailwindCSS |
+| **Backend** | Node.js + Express | v24 LTS / Express 5 | Modular Monolith, Zero-cost Architecture |
+| **Database** | PostgreSQL | 16 | Transactional Migrations & Durable Background Jobs |
+| **Storage** | Cloudflare R2 | S3-Compatible | Lưu trữ video DASH, source MP4, PDF (0 VND Egress) |
+| **Frontend** | React 19 + Vite 5 | 2026 | ESM, TailwindCSS, Shadcn/UI, PWA |
+| **Job Queue** | DurableJobQueue | PostgreSQL-backed | ACID, SKIP LOCKED, Renewable Leases, Auto-recovery |
 | **RAG Pipeline** | Python 3.9+ | - | LangChain, Pinecone |
-| **Vector DB** | Pinecone | Cloud | 768-dim embeddings |
-| **LLM** | Google Gemini | API | Generative AI |
-| **Video** | DASH + ClearKey | - | Shaka Packager |
-| **Deployment** | Vercel + Docker | - | Cloud-native |
+| **Vector DB** | Pinecone | Cloud Free Tier | 768-dim embeddings |
+| **LLM** | Google Gemini | API Free Tier | Fallback Routing (`3.7-flash` → `3.6-flash` → `3.5-flash-lite`) |
+| **Video** | DASH Streaming | Shaka / FFmpeg | Short-lived streaming tickets, media security |
+| **Deployment** | Railway + Vercel | Production | Cloud-native CI/CD, Zero-cost |
 
 ### **Thư viện chính**
 
@@ -163,7 +170,7 @@ Project-E-learning-website-for-learning-English-online/
 │   │   │   ├── dashPackager.util.js           # Clear DASH packaging for Shaka/MSE
 │   │   │   └── mediaCleanup.worker.js         # Orphan file cleanup
 │   │   └── server.js                          # App initialization & mount routes
-│   ├── tests/                                 # 325 passing tests
+│   ├── tests/                                 # 415 passing tests (71 suites)
 │   │   ├── auth_middleware.test.js
 │   │   ├── progress_completion_threshold.test.js
 │   │   ├── rate_limit.test.js
@@ -245,9 +252,9 @@ Project-E-learning-website-for-learning-English-online/
 
 ### **Yêu cầu hệ thống**
 
-- **Node.js**: v18 or higher
+- **Node.js**: v24.x LTS
 - **Python**: 3.9+
-- **PostgreSQL**: 15+ (hoặc Supabase)
+- **PostgreSQL**: 16 (hoặc 15+)
 - **FFmpeg**: cho auto-subtitle (optional)
 - **Docker** (optional, để dùng docker-compose)
 
@@ -410,12 +417,14 @@ python main.py --lesson-id 20 --data-folder ./data
 - ✅ **Error Handling**: Global middleware, proper HTTP status codes, request tracking (requestId)
 - ✅ **Rate Limiting**: API-wide & endpoint-specific limiters active
 - ✅ **Logging**: Structured JSON logging with timestamps, requestId, user context
-- ✅ **Testing**: Backend 325/325 và frontend 236/236 test pass (đối soát ngày 12/09/2026)
-- ✅ **Documentation**: README, DESIGN.md, PRODUCT.md, PRODUCTION_READINESS_AUDIT.md
-- ✅ **Deployment**: Docker-compose ready, live on Vercel
-- ✅ **Video Protection**: DASH + ClearKey DRM fully implemented
-- ✅ **RAG Grounding**: Policy validation ensures AI responses are grounded in course materials
-- ✅ **Gemini RPD Fallback**: Router bỏ qua model đã chạm cap theo telemetry backend, chuyển sang model còn quota và tự mở lại sau 00:00 Pacific (14:00 PDT / 15:00 PST giờ Việt Nam); RPM/TPM tính theo cửa sổ trượt 60 giây; Google AI Studio/429 vẫn là nguồn đối chiếu cuối
+- ✅ **Testing**: Backend 415/415 và frontend 303/303 test pass (đối soát ngày 14/09/2026)
+- ✅ **Documentation**: README, DESIGN.md, PRODUCT.md, PRODUCTION_READINESS_AUDIT.md, RELEASE_CHECKLIST.md
+- ✅ **Deployment**: Docker-compose ready, live on Vercel + Railway
+- ✅ **Video Protection**: DASH + ClearKey DRM, token streaming bảo mật
+- ✅ **RAG Grounding**: Policy validation đảm bảo câu trả lời bám sát 100% tài liệu bài học
+- ✅ **Durable Background Jobs**: Hàng đợi tác vụ nền bền vững trên PostgreSQL (SKIP LOCKED, renewable lease tokens, bounded backoff, type safety $n::varchar trên Postgres 16), tự động xử lý phụ đề, RAG ingestion và DASH packaging
+- ✅ **Cloudflare R2 Storage**: Quản lý tài nguyên đa phương tiện (video DASH, source MP4, audio, PDF) theo khóa học, dọn dẹp orphan media định kỳ với chi phí băng thông 0 VND
+- ✅ **Gemini RPD Fallback & Quota Guard**: Router điều phối model tự động (`gemini-3.7-flash` → `gemini-3.6-flash` → `gemini-3.5-flash-lite`), tự động cooldown khi Google trả 429 và tự hồi phục lúc 00:00 Pacific (14:00 PDT / 15:00 PST giờ Việt Nam); RPM/TPM tính theo cửa sổ trượt 60 giây; cảnh báo lệch telemetry giúp Admin giám sát quota miễn phí minh bạch
 
 ### ⚠️ **Cần chú ý trước production**
 
@@ -424,7 +433,7 @@ python main.py --lesson-id 20 --data-folder ./data
    - `database.js` vẫn giữ một số DDL idempotent lúc khởi động để tương thích database cũ. Việc còn lại là chuyển hết các DDL này sang migration versioned rồi bỏ lớp tương thích.
 
 2. **Frontend Bundle**
-   - Production build ngày 12/09/2026: main JS 690.56 kB (gzip 226.41 kB), không còn cảnh báo chunk vượt ngưỡng cấu hình.
+   - Production build ngày 14/09/2026: main JS 715.86 kB (gzip 234.01 kB), không còn cảnh báo chunk vượt ngưỡng cấu hình.
    - Shaka, PDF và charts đã tách thành chunk riêng; PDF worker 1,046.21 kB chỉ tải cùng luồng PDF.
 
 3. **Rate Limiting theo chế độ triển khai**
@@ -502,7 +511,7 @@ python main.py --lesson-id 20 --data-folder ./data
 ## 👨‍💻 Công nghệ & Tiếp cận
 
 - **Architecture**: Modular Monolith (backend), Module-based (frontend)
-- **Code Quality**: Linting, formatting, backend 325/325 và frontend 236/236 test pass
+- **Code Quality**: Linting, formatting, backend 415/415 và frontend 303/303 test pass
 - **Security**: JWT + Bcrypt, CORS, rate limiting, input validation
 - **Performance**: Caching (@tanstack/react-query), database connection pooling
 - **Scalability**: Docker-ready, stateless design (session via JWT)
@@ -522,5 +531,5 @@ Bất kỳ câu hỏi nào về dự án, vui lòng liên hệ hoặc mở issue
 
 ---
 
-**Last Updated**: September 2026  
-**Status**: Production-ready with known considerations (see PRODUCTION_READINESS_AUDIT.md)
+**Last Updated**: 14/09/2026  
+**Status**: Production-ready & Fully Verified (xem chi tiết tại PRODUCTION_READINESS_AUDIT.md)

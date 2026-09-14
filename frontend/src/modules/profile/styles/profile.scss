@@ -113,6 +113,15 @@ $hover-orange: #ea580c;
           font-weight: 700;
         }
 
+        &.is-uploading {
+          pointer-events: none;
+          
+          .avatar-edit-overlay {
+            opacity: 1;
+            background-color: rgba(15, 23, 42, 0.75);
+          }
+        }
+
         .avatar-edit-overlay {
           position: absolute;
           top: 0;
@@ -129,6 +138,10 @@ $hover-orange: #ea580c;
           .edit-icon {
             color: $text-white;
             font-size: 24px;
+
+            &.spin {
+              animation: spin-avatar 1s linear infinite;
+            }
           }
         }
       }
@@ -151,6 +164,53 @@ $hover-orange: #ea580c;
         padding: 6px 14px;
         border-radius: 20px;
         border: 1px solid rgba(29, 78, 216, 0.1);
+      }
+
+      .avatar-action-links {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+        font-size: 13px;
+
+        .dot-sep {
+          color: $text-light;
+          opacity: 0.5;
+          user-select: none;
+        }
+
+        .avatar-action-btn {
+          background: none;
+          border: none;
+          padding: 2px 4px;
+          color: $primary-blue;
+          font-size: 12.5px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+
+          &:hover:not(:disabled) {
+            color: $hover-blue;
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            text-decoration: none;
+          }
+
+          &.btn-danger-link {
+            color: #ef4444;
+
+            &:hover:not(:disabled) {
+              color: #dc2626;
+            }
+          }
+        }
       }
     }
 
@@ -745,6 +805,15 @@ html.dark {
         }
       }
     }
+  }
+}
+
+@keyframes spin-avatar {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

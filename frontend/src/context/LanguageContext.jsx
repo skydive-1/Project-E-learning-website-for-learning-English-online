@@ -434,7 +434,18 @@ const directPhraseMap = {
   "Rèn luyện Chi tiết 4 Kỹ năng Nghe - Nói - Đọc - Viết": "In-depth 4-Skills Training (Listening, Speaking, Reading, Writing)",
   "Luyện Viết Essay Task 2 (Opinion, Discussion), luyện Nói Speaking Part 2-3 với AI chấm câu và từ vựng.": "Practice Task 2 Essay Writing (Opinion, Discussion), and Speaking Part 2-3 with AI sentence and vocabulary scoring.",
   "Luyện đề Cam-IELTS & Mock Test Thực tế": "Cambridge IELTS Practice & Real Mock Tests",
-  "Giải đề Cambridge IELTS mới nhất, canh thời gian áp lực thực tế và hoàn thiện kỹ năng đạt Band 6.5+ - 7.5+.": "Solve latest Cambridge IELTS tests under real timed pressure to achieve Band 6.5+ - 7.5+."
+  "Giải đề Cambridge IELTS mới nhất, canh thời gian áp lực thực tế và hoàn thiện kỹ năng đạt Band 6.5+ - 7.5+.": "Solve latest Cambridge IELTS tests under real timed pressure to achieve Band 6.5+ - 7.5+.",
+  "Bấm để đổi ảnh đại diện từ máy": "Click to change avatar from device",
+  "Tải ảnh từ máy": "Upload from device",
+  "Dán link ảnh": "Paste image URL",
+  "Gỡ ảnh": "Remove avatar",
+  "Vui lòng chọn tệp hình ảnh hợp lệ (JPG, PNG, WEBP, GIF).": "Please select a valid image file (JPG, PNG, WEBP, GIF).",
+  "Kích thước ảnh không được vượt quá 5MB.": "Image size cannot exceed 5MB.",
+  "Cập nhật ảnh đại diện thành công!": "Avatar updated successfully!",
+  "Không thể tải ảnh đại diện lên. Vui lòng thử lại.": "Failed to upload avatar. Please try again.",
+  "Không thể lưu ảnh đại diện.": "Failed to save avatar.",
+  "Đã gỡ ảnh đại diện.": "Avatar removed.",
+  "Không thể gỡ ảnh đại diện.": "Failed to remove avatar."
 };
 
 const supportedLanguages = new Set(['VIE', 'ENG']);

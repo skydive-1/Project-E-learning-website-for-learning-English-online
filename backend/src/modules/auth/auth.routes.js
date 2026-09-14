@@ -7,6 +7,7 @@ const router = express.Router();
 const authController = require('./controllers/auth.controller');
 const { authenticate } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validation.middleware');
+const upload = require('../../middleware/upload.middleware');
 const {
   authLimiter,
   passwordResetLimiter,
@@ -53,6 +54,7 @@ const updateProfileSchema = {
   body: {
     username: { minLength: 3 },
     fullName: { minLength: 2 },
+    profilePictureUrl: { required: false },
     phone: { required: false },
     gender: { required: false },
     birthDate: { required: false }
@@ -122,6 +124,7 @@ router.post('/logout', authenticate, authController.logout);
 router.get('/profile', authenticate, authController.getProfile);
 router.put('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.put('/profile', authenticate, validate(updateProfileSchema), authController.updateProfile);
+router.post('/profile/avatar', authenticate, upload.memory.single('avatar'), authController.uploadAvatar);
 
 // Google Sign-In Endpoints
 router.post('/google', authLimiter, authController.googleLogin);

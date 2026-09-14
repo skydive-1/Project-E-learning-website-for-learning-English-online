@@ -1,70 +1,90 @@
-# Getting Started with Create React App
+# 🌐 E-Learn Academy Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Giao diện người dùng hiện đại của nền tảng **E-Learn Academy**, được xây dựng trên nền tảng **React 19**, **Vite 5**, **TailwindCSS**, và **Shadcn/UI**, hỗ trợ **PWA (Progressive Web App)** và phát trực tuyến video bảo mật chuẩn công nghiệp.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## 👥 Thành viên nhóm phát triển (Graduation Project Team)
 
-### `npm start`
+1. **NGUYỄN DŨNG QUỐC ANH** - Vai trò: *Frontend & AI UI Integration Developer*
+2. **NGUYỄN THANH LIÊM** - Vai trò: *Backend & Security Developer*
+3. **LÊ ĐÌNH CHƯƠNG** - Vai trò: *Database Administrator & Infrastructure Specialist*
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 🚀 Công nghệ & Thư viện chủ đạo
 
-### `npm test`
+| Thành phần | Công nghệ | Chi tiết |
+| :--- | :--- | :--- |
+| **Core Framework** | React 19 + Vite 5 | Bundle siêu tốc với ESM, HMR tức thì |
+| **Styling & UI** | TailwindCSS + Shadcn/UI + SASS | Thiết kế hiện đại, Dark/Light mode, tương thích chuẩn tiếp cận |
+| **State & Fetching** | TanStack React Query v5 | Server state caching, tự động refetch và đồng bộ ngầm |
+| **Client Routing** | React Router DOM v7 | Dynamic routing, route protection và code-splitting |
+| **Video Player** | Shaka Player + Plyr | Dynamic Adaptive Streaming (DASH), token streaming bảo mật |
+| **Tài liệu học tập** | React PDF (pdf.worker ESM) | Trình đọc PDF tích hợp, ghi chú và highlight trang |
+| **Testing** | Vitest + Testing Library | **299/299 tests passed** trên 66 test suites |
+| **Offline & PWA** | Vite Plugin PWA | Service worker precache, cài đặt trên thiết bị di động |
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+---
 
-### `npm run build`
+## 🛠️ Cài đặt & Khởi chạy
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Yêu cầu hệ thống
+- **Node.js**: v24.x LTS (khuyến nghị)
+- **npm**: v10+
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Các lệnh thực thi
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+# 1. Cài đặt dependencies
+npm ci
 
-### `npm run eject`
+# 2. Khởi chạy môi trường phát triển (Dev Server)
+npm run dev
+# Mặc định chạy tại: http://localhost:5173
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+# 3. Chạy toàn bộ bộ kiểm thử (Vitest)
+npm test
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+# 4. Kiểm tra audit bảo mật dependencies
+npm audit --omit=dev --audit-level=high
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+# 5. Build mã nguồn cho môi trường Production
+npm run build
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+# 6. Xem trước bản build Production (Preview)
+npm run preview
+```
 
-## Learn More
+---
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## 📁 Cấu trúc thư mục nguồn (`src/`)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```
+frontend/src/
+├── components/          # Các component dùng chung (UI primitives, Layout, Modals)
+├── context/             # React Contexts (AuthContext, ThemeContext, LanguageContext, ToastContext)
+├── hooks/               # Custom hooks (useAudioRecorder, useScrollLock, useStudyTimeTracker,...)
+├── i18n/                # Hệ thống đa ngôn ngữ (tiếng Việt & tiếng Anh)
+├── modules/             # Cấu trúc module hóa theo tính năng nghiệp vụ:
+│   ├── academy/         # Lộ trình học (Roadmap), chi tiết lộ trình
+│   ├── admin/           # Dashboard quản trị, quản lý token AI, cảnh báo vận hành
+│   ├── auth/            # Đăng nhập, đăng ký, xác thực email, quên mật khẩu
+│   ├── chatbot/         # Trợ lý AI học tập, streaming SSE, suggested questions
+│   ├── courses/         # Danh sách khóa học, chi tiết khóa học, Course Editor
+│   ├── homepage/        # Trang chủ, landing page giới thiệu tính năng
+│   ├── instructor/      # Dashboard giảng viên, thống kê khóa học
+│   ├── lessons/         # Học bài học, video player, PDF study viewer, bài tập nói
+│   └── quizzes/         # Trắc nghiệm, bài tập Open Cloze, chấm điểm tức thì
+├── services/            # API client (Axios instance, cấu hình interceptor gắn JWT)
+└── utils/               # Tiện ích định dạng, xử lý token, mã hóa
+```
 
-### Code Splitting
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## 🔒 Kiểm soát chất lượng & Kiểm thử (Quality Gate)
 
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Trước mỗi lần triển khai, mã nguồn frontend phải vượt qua 100% các tiêu chí chất lượng nghiêm ngặt:
+- **Unit & Integration Tests**: 100% pass với Vitest (`npm test`).
+- **Production Build**: `npm run build` không phát sinh lỗi biên dịch hay cảnh báo chunk vượt ngưỡng.
+- **Bảo mật**: Không chứa secret key, token nhạy cảm hay API key trong mã nguồn client.

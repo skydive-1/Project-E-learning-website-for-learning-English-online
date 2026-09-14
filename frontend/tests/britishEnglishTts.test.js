@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   configureBritishEnglishUtterance,
   getPreferredBritishVoice,
+  getBritishVoiceByGender,
   getRandomBritishVoice
 } from '../src/utils/britishEnglishTts';
 
@@ -40,5 +41,35 @@ describe('British English TTS', () => {
 
     expect(getRandomBritishVoice(speechSynthesis, () => 0)).toBe(voices[0]);
     expect(getRandomBritishVoice(speechSynthesis, () => 0.75)).toBe(voices[2]);
+  });
+
+  it('correctly selects female and male British voices by gender', () => {
+    const voices = [
+      { name: 'Microsoft Ryan Online (Natural)', lang: 'en-GB' },
+      { name: 'Microsoft Sonia Online (Natural)', lang: 'en-GB' },
+      { name: 'Google US English', lang: 'en-US' }
+    ];
+    const speechSynthesis = { getVoices: () => voices };
+
+    expect(getBritishVoiceByGender(speechSynthesis, 'female')).toBe(voices[1]);
+    expect(getBritishVoiceByGender(speechSynthesis, 'male')).toBe(voices[0]);
+  });
+
+  it('configures utterance with distinct female and male British settings', () => {
+    const voices = [
+      { name: 'Microsoft Sonia Online (Natural)', lang: 'en-GB' },
+      { name: 'Microsoft Ryan Online (Natural)', lang: 'en-GB' }
+    ];
+    const speechSynthesis = { getVoices: () => voices };
+
+    const femaleUtterance = {};
+    configureBritishEnglishUtterance(femaleUtterance, speechSynthesis, { gender: 'female', rate: 0.88 });
+    expect(femaleUtterance.voice).toBe(voices[0]);
+    expect(femaleUtterance.pitch).toBe(1.05);
+
+    const maleUtterance = {};
+    configureBritishEnglishUtterance(maleUtterance, speechSynthesis, { gender: 'male', rate: 0.88 });
+    expect(maleUtterance.voice).toBe(voices[1]);
+    expect(maleUtterance.pitch).toBe(0.92);
   });
 });

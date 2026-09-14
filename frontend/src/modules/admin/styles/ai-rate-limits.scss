@@ -469,6 +469,32 @@
         }
       }
 
+      &.is-manually-locked {
+        opacity: 0.88;
+        cursor: default;
+        background: #fdf2f8;
+        border-color: #f472b6;
+
+        code {
+          color: #9d174d;
+        }
+
+        small {
+          color: #be185d;
+          font-weight: 650;
+        }
+
+        &:hover {
+          transform: none;
+          box-shadow: none;
+        }
+
+        .ai-model-routing__action-hint {
+          color: #be185d;
+          font-weight: 700;
+        }
+      }
+
       .ai-model-routing__lock-badge {
         font-size: 8.5px;
         font-weight: 750;
@@ -477,6 +503,19 @@
         background: #fef3c7;
         color: #92400e;
         border: 1px solid #fde68a;
+      }
+
+      .ai-model-routing__admin-lock-badge {
+        font-size: 8.5px;
+        font-weight: 800;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: #fce7f3;
+        color: #be185d;
+        border: 1px solid #fbcfe8;
+        display: inline-flex;
+        align-items: center;
+        letter-spacing: 0.02em;
       }
 
       .ai-model-routing__badge {
@@ -494,7 +533,7 @@
       }
 
       .ai-model-routing__action-hint {
-        margin-top: 4px;
+        margin-top: 0;
         font-size: 9.5px;
         font-weight: 650;
         color: #2563eb;
@@ -502,6 +541,61 @@
         display: inline-flex;
         align-items: center;
         gap: 3px;
+      }
+
+      .ai-model-routing__model-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px dashed #e2e8f0;
+      }
+
+      .ai-model-routing__lock-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 3px 8px;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 6px;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        line-height: 1.2;
+        margin-left: auto;
+
+        &:hover:not(:disabled) {
+          background: #f1f5f9;
+          border-color: #94a3b8;
+          color: #0f172a;
+        }
+
+        &:active:not(:disabled) {
+          transform: scale(0.97);
+        }
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        &.is-unlock {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          color: #1d4ed8;
+
+          &:hover:not(:disabled) {
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: #1e40af;
+          }
+        }
       }
     }
 

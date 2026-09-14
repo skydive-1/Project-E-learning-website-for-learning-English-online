@@ -11,6 +11,7 @@ import {
   getGeminiRateLimitStatus,
   connectGeminiRateLimitStream,
   resetGeminiModelRouting,
+  toggleAiModelLock,
   updateGeminiRateLimitCaps
 } from '../src/modules/admin/services/adminAnalytics.service';
 
@@ -21,6 +22,7 @@ vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
   getGeminiRateLimitStatus: vi.fn(),
   connectGeminiRateLimitStream: vi.fn(),
   resetGeminiModelRouting: vi.fn(),
+  toggleAiModelLock: vi.fn(),
   updateGeminiRateLimitCaps: vi.fn(),
   updateUserQuota: vi.fn(),
   resetUserAiToken: vi.fn(),
@@ -333,6 +335,106 @@ describe('Gemini Rate Limits admin view', () => {
         tpmCap: 250000,
         rpdCap: 500
       }));
+    });
+  });
+
+  it('allows admin to manually lock a model from the fallback lane', async () => {
+    toggleAiModelLock.mockResolvedValue({
+      scope: 'process_instance',
+      preferredModel: 'gemini-3.7-flash',
+      effectiveModel: 'gemini-3.7-flash',
+      fallbackOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+      effectiveOrder: ['gemini-3.7-flash', 'gemini-3.5-flash-lite'],
+      lastSuccessfulModel: 'gemini-3.7-flash',
+      lastSuccessfulAt: '2026-09-02T00:00:00.000Z',
+      coolingDown: [],
+      lockedModels: ['gemini-3.6-flash']
+    });
+
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Lượt gọi Gemini từ backend/i }));
+    await screen.findAllByText('gemini-3.7-flash');
+
+    const lockButtons = screen.getAllByRole('button', { name: /Khóa model/i });
+    expect(lockButtons.length).toBeGreaterThan(0);
+
+    fireEvent.click(lockButtons[0]);
+
+    await waitFor(() => {
+      expect(toggleAiModelLock).toHaveBeenCalledWith({
+        model: expect.any(String),
+        locked: true,
+        reason: 'Admin manually locked model from dashboard'
+      });
+    });
+  });
+
+  it('allows admin to manually unlock a previously locked model', async () => {
+    getGeminiRateLimitStatus.mockResolvedValueOnce({
+      generatedAt: '2026-09-02T00:00:00.000Z',
+      windows: { rpmSeconds: 60, tpmSeconds: 60, rpdTimezone: 'America/Los_Angeles' },
+      routing: {
+        scope: 'process_instance',
+        preferredModel: 'gemini-3.7-flash',
+        effectiveModel: 'gemini-3.7-flash',
+        fallbackOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+        effectiveOrder: ['gemini-3.7-flash', 'gemini-3.5-flash-lite'],
+        lastSuccessfulModel: 'gemini-3.7-flash',
+        lastSuccessfulAt: '2026-09-02T00:00:00.000Z',
+        coolingDown: [],
+        lockedModels: ['gemini-3.6-flash']
+      },
+      models: [{
+        model: 'gemini-3.7-flash',
+        usage: { rpm: 0, tpm: 0, rpd: 0 },
+        caps: { rpm: 10, tpm: 250000, rpd: 250 },
+        percentUsed: { rpm: 0, tpm: 0, rpd: 0 },
+        headroom: { rpm: 10, tpm: 250000, rpd: 250 },
+        requestStatus: { rpm: { success: 0, error: 0, pending: 0 }, rpd: { success: 0, error: 0, pending: 0 } },
+        riskLevel: 'healthy',
+        configured: true,
+        updatedAt: '2026-09-02T00:00:00.000Z',
+        updatedByName: 'Admin'
+      }]
+    });
+
+    toggleAiModelLock.mockResolvedValue({
+      scope: 'process_instance',
+      preferredModel: 'gemini-3.7-flash',
+      effectiveModel: 'gemini-3.7-flash',
+      fallbackOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+      effectiveOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+      lastSuccessfulModel: 'gemini-3.7-flash',
+      lastSuccessfulAt: '2026-09-02T00:00:00.000Z',
+      coolingDown: [],
+      lockedModels: []
+    });
+
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Lượt gọi Gemini từ backend/i }));
+    expect(await screen.findByText('Admin đã khóa')).toBeInTheDocument();
+
+    const unlockButton = screen.getByRole('button', { name: /Mở khóa model gemini-3.6-flash/i });
+    expect(unlockButton).toBeInTheDocument();
+
+    fireEvent.click(unlockButton);
+
+    await waitFor(() => {
+      expect(toggleAiModelLock).toHaveBeenCalledWith({
+        model: 'gemini-3.6-flash',
+        locked: false,
+        reason: null
+      });
     });
   });
 });

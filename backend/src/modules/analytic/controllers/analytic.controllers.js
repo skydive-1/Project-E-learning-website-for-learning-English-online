@@ -3,7 +3,7 @@ const analyticsService = require('../services/analytic.service');
 const getUserHeatmap = async (req, res) => {
     try {
         const userId = req.user?.user_id || req.user?.id || req.query.user_id;
-        const { year } = req.query;
+        const { year, range } = req.query;
 
         if (!userId) {
             return res.status(400).json({
@@ -11,7 +11,7 @@ const getUserHeatmap = async (req, res) => {
             });
         }
 
-        const data = await analyticsService.getUserHeatmap(userId, year);
+        const data = await analyticsService.getUserHeatmap(userId, year, range);
         return res.status(200).json({ data, heatmap: data });
     } catch (error) {
         console.error(error);
@@ -22,12 +22,13 @@ const getUserHeatmap = async (req, res) => {
 const getUserAnalyticsSummary = async (req, res) => {
     try {
         const userId = req.user?.user_id || req.user?.id || req.query.user_id;
+        const { range } = req.query;
 
         if (!userId) {
             return res.status(400).json({ message: 'user_id is required' });
         }
 
-        const summary = await analyticsService.getUserAnalyticsSummary(userId);
+        const summary = await analyticsService.getUserAnalyticsSummary(userId, range);
         return res.status(200).json(summary);
     } catch (error) {
         console.error(error);

@@ -10,7 +10,7 @@ const PREFERRED_BRITISH_NAMES = [
 
 // SpeechSynthesisVoice does not expose a standardized gender field. These
 // patterns cover the common free en-GB voices bundled with major browsers/OSes.
-const FEMALE_BRITISH_NAMES = /(?:Sonia|Libby|Maisie|Serena|Kate|Hazel|Susan|Google UK English Female)/i;
+const FEMALE_BRITISH_NAMES = /(?:Sonia|Libby|Maisie|Serena|Kate|Hazel|Susan|Victoria|Fiona|Google UK English Female)/i;
 const MALE_BRITISH_NAMES = /(?:Ryan|Daniel|Oliver|George|Arthur|Google UK English Male)/i;
 
 const getVoiceScore = (voice) => {
@@ -31,6 +31,32 @@ export const getPreferredBritishVoice = (speechSynthesis) => {
     .filter(voice => BRITISH_LANGUAGE_PATTERN.test(String(voice?.lang || '')))
     .sort((left, right) => getVoiceScore(right) - getVoiceScore(left));
 
+  return britishVoices[0] || null;
+};
+
+export const getBritishVoiceByGender = (speechSynthesis, gender = 'female') => {
+  if (!speechSynthesis?.getVoices) return null;
+
+  const britishVoices = speechSynthesis
+    .getVoices()
+    .filter(voice => BRITISH_LANGUAGE_PATTERN.test(String(voice?.lang || '')))
+    .sort((left, right) => getVoiceScore(right) - getVoiceScore(left));
+
+  if (britishVoices.length === 0) return null;
+
+  const isFemale = gender === 'female';
+  const targetPattern = isFemale ? FEMALE_BRITISH_NAMES : MALE_BRITISH_NAMES;
+  const oppositePattern = isFemale ? MALE_BRITISH_NAMES : FEMALE_BRITISH_NAMES;
+
+  // 1. Exact match with preferred British names of this gender
+  const exactGenderMatch = britishVoices.find(voice => targetPattern.test(String(voice?.name || '')));
+  if (exactGenderMatch) return exactGenderMatch;
+
+  // 2. Candidate that is not explicitly of the opposite gender
+  const nonOpposite = britishVoices.find(voice => !oppositePattern.test(String(voice?.name || '')));
+  if (nonOpposite) return nonOpposite;
+
+  // 3. Fallback to top-ranked British voice
   return britishVoices[0] || null;
 };
 
@@ -59,16 +85,26 @@ export const getRandomBritishVoice = (speechSynthesis, random = Math.random) => 
 export const configureBritishEnglishUtterance = (
   utterance,
   speechSynthesis,
-  { rate = 0.88, pitch = 1, random = Math.random } = {}
+  { gender = null, rate = 0.88, pitch = null, random = Math.random } = {}
 ) => {
   if (!utterance) return utterance;
 
   utterance.lang = 'en-GB';
   utterance.rate = rate;
-  utterance.pitch = pitch;
 
-  const preferredVoice = getRandomBritishVoice(speechSynthesis, random);
-  if (preferredVoice) utterance.voice = preferredVoice;
+  if (gender === 'female') {
+    utterance.pitch = pitch !== null ? pitch : 1.05;
+    const femaleVoice = getBritishVoiceByGender(speechSynthesis, 'female');
+    if (femaleVoice) utterance.voice = femaleVoice;
+  } else if (gender === 'male') {
+    utterance.pitch = pitch !== null ? pitch : 0.92;
+    const maleVoice = getBritishVoiceByGender(speechSynthesis, 'male');
+    if (maleVoice) utterance.voice = maleVoice;
+  } else {
+    utterance.pitch = pitch !== null ? pitch : 1;
+    const preferredVoice = getRandomBritishVoice(speechSynthesis, random);
+    if (preferredVoice) utterance.voice = preferredVoice;
+  }
 
   return utterance;
 };

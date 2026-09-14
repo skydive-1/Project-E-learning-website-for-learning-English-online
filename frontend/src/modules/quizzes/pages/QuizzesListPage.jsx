@@ -1159,6 +1159,9 @@ const QuizzesListPage = () => {
               ) : (
                 managedQuizzes
                   .filter(q => {
+                    // Chỉ quản lý các đề thi thuộc danh sách đề thi có sẵn (standalone), không quản lý đề thi trong các bài học
+                    if (q.course_id !== null && q.course_id !== undefined) return false;
+                    if (q.lesson_id !== null && q.lesson_id !== undefined) return false;
                     const matchSearch = !manageSearch.trim() || 
                       q.title.toLowerCase().includes(manageSearch.toLowerCase()) || 
                       (q.pin_code && q.pin_code.includes(manageSearch.trim()));

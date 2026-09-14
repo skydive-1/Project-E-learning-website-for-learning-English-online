@@ -162,15 +162,24 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
 // ─── Gemini Client Initialization ──────────────────────────────────────────
 
 let activePreferredModel = null;
+const manuallyLockedModels = new Set();
 
 async function initPreferredGeminiModelFromDb() {
   try {
     const res = await db.query(
-      `SELECT model FROM ai_model_rate_limit_settings WHERE is_preferred = TRUE LIMIT 1`
+      `SELECT model, is_preferred, is_locked FROM ai_model_rate_limit_settings`
     );
-    if (res.rows?.[0]?.model) {
-      activePreferredModel = String(res.rows[0].model).trim();
-      console.log(`[AI Model Routing] Khởi tạo model ưu tiên từ DB: ${activePreferredModel}`);
+    for (const row of res.rows || []) {
+      const model = String(row.model || '').trim();
+      if (!model) continue;
+      if (row.is_preferred) {
+        activePreferredModel = model;
+        console.log(`[AI Model Routing] Khởi tạo model ưu tiên từ DB: ${activePreferredModel}`);
+      }
+      if (row.is_locked) {
+        manuallyLockedModels.add(model);
+        console.log(`[AI Model Routing] Khởi tạo model bị khóa thủ công từ DB: ${model}`);
+      }
     }
   } catch (_err) {
     // Non-fatal if column or table not available
@@ -280,16 +289,6 @@ function markModelQuotaExhausted(
   }
 
   modelQuotaCooldown.set(normalizedModel, nextState);
-
-  if (nextState.dimension === 'rpd') {
-    const exhaustedUntil = new Date(nextState.retryAt).toISOString();
-    db.query(
-      `UPDATE ai_model_rate_limit_settings
-       SET rpd_exhausted_until = $1
-       WHERE model = $2`,
-      [exhaustedUntil, normalizedModel]
-    ).catch(() => {});
-  }
 }
 
 function clearModelQuotaCooldown(model) {
@@ -339,6 +338,10 @@ function getPrioritizedFallbackModels(preferredModel) {
   const coolingDown = [];
 
   for (const m of models) {
+    // Nếu model bị Admin khóa thủ công thì không đưa vào danh sách khả dụng hay coolingDown
+    if (manuallyLockedModels.has(m)) {
+      continue;
+    }
     const cooldown = modelQuotaCooldown.get(m);
     if (cooldown?.retryAt && now < cooldown.retryAt) {
       coolingDown.push({ model: m, retryAt: cooldown.retryAt });
@@ -350,14 +353,15 @@ function getPrioritizedFallbackModels(preferredModel) {
   // Không gọi lại model đã biết đang bị quota trong khi vẫn còn model khả dụng.
   if (available.length > 0) return available;
 
-  // Nếu mọi model đều cooldown, chỉ thử model sắp được mở lại nhất để tránh nhân request lỗi.
-  if (available.length === 0) {
+  // Nếu mọi model khả dụng đều cooldown, chỉ thử model sắp được mở lại nhất để tránh nhân request lỗi.
+  if (coolingDown.length > 0) {
     return coolingDown
       .sort((a, b) => a.retryAt - b.retryAt)
       .slice(0, 1)
       .map((item) => item.model);
   }
 
+  // Nếu tất cả model đều bị khóa thủ công, trả về danh sách fallback để tránh sập cứng app
   return models;
 }
 
@@ -393,25 +397,24 @@ function getGeminiModelRoutingStatus() {
     lastManualResetAt: lastManualRoutingResetAt,
     isCustomPreferred: Boolean(activePreferredModel && activePreferredModel !== GEMINI_MODELS.routingPrimary),
     defaultPreferredModel: GEMINI_MODELS.routingPrimary,
+    lockedModels: Array.from(manuallyLockedModels),
     coolingDown
   };
 }
 
 function resetGeminiModelRouting({ all = false, force = false } = {}) {
   const preferred = getActivePreferredModel();
-  if (all) {
+  if (all || force) {
     modelQuotaCooldown.clear();
     modelQuotaFailureStreak.clear();
     observedRpdUsage.clear();
     rpdRoutingRefreshExpiresAt = 0;
     rpdRoutingRefreshModelsKey = '';
+    db.query(`UPDATE ai_model_rate_limit_settings SET rpd_exhausted_until = NULL WHERE rpd_exhausted_until IS NOT NULL`).catch(() => {});
   }
   else {
-    const preferredState = modelQuotaCooldown.get(preferred);
-    if (force || preferredState?.dimension !== 'rpd') {
-      clearModelQuotaCooldown(preferred);
-      modelQuotaFailureStreak.delete(preferred);
-    }
+    clearModelQuotaCooldown(preferred);
+    modelQuotaFailureStreak.delete(preferred);
   }
   lastManualRoutingResetAt = new Date().toISOString();
   return getGeminiModelRoutingStatus();
@@ -427,10 +430,8 @@ async function setPreferredGeminiModel(model, { adminUserId = null } = {}) {
 
   activePreferredModel = normalizedModel;
 
-  const currentState = modelQuotaCooldown.get(normalizedModel);
-  if (currentState && currentState.dimension !== 'rpd') {
-    clearModelQuotaCooldown(normalizedModel);
-  }
+  // Khi admin chủ động chọn model ưu tiên, xóa ngay mọi cooldown tạm thời của model đó
+  clearModelQuotaCooldown(normalizedModel);
 
   try {
     await db.query(
@@ -443,6 +444,46 @@ async function setPreferredGeminiModel(model, { adminUserId = null } = {}) {
 
   console.info(`[AI Model Routing] Admin ${adminUserId || 'unknown'} đã chọn model ưu tiên điều phối: ${normalizedModel}`);
   return getGeminiModelRoutingStatus();
+}
+
+async function setAiModelManualLock(model, locked, { adminUserId = null, reason = null } = {}) {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) {
+    const error = new Error('Tên model không được để trống.');
+    error.status = 400;
+    throw error;
+  }
+
+  const isLocking = Boolean(locked);
+  if (isLocking) {
+    manuallyLockedModels.add(normalizedModel);
+    clearModelQuotaCooldown(normalizedModel);
+  } else {
+    manuallyLockedModels.delete(normalizedModel);
+    clearModelQuotaCooldown(normalizedModel);
+  }
+
+  try {
+    await db.query(
+      `UPDATE ai_model_rate_limit_settings
+       SET is_locked = $1,
+           locked_at = (CASE WHEN $1 THEN NOW() ELSE NULL END),
+           locked_by = (CASE WHEN $1 THEN $2::int ELSE NULL END),
+           lock_reason = (CASE WHEN $1 THEN $3::text ELSE NULL END),
+           rpd_exhausted_until = NULL
+       WHERE model = $4`,
+      [isLocking, adminUserId ? Number(adminUserId) : null, reason ? String(reason).trim().slice(0, 500) : null, normalizedModel]
+    );
+  } catch (dbErr) {
+    console.warn('[AI Model Routing] Không thể lưu is_locked vào DB (non-fatal):', dbErr.message);
+  }
+
+  console.info(`[AI Model Routing] Admin ${adminUserId || 'unknown'} đã ${isLocking ? 'KHÓA' : 'MỞ KHÓA'} model: ${normalizedModel}`);
+  return getGeminiModelRoutingStatus();
+}
+
+function isAiModelManuallyLocked(model) {
+  return manuallyLockedModels.has(String(model || '').trim());
 }
 
 function applyObservedGeminiRpdUsage(models = [], { now = Date.now() } = {}) {
@@ -1512,6 +1553,8 @@ module.exports = {
   applyObservedGeminiRpdUsage,
   resetGeminiModelRouting,
   setPreferredGeminiModel,
+  setAiModelManualLock,
+  isAiModelManuallyLocked,
   getActivePreferredModel,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,

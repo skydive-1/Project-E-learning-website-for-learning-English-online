@@ -353,6 +353,9 @@ const TestsAndQuizzesPanel = () => {
   };
 
   const filteredManagedQuizzes = managedQuizzes.filter(q => {
+    // Chỉ quản lý các đề thi thuộc danh sách đề thi có sẵn (standalone), không quản lý đề thi trong các bài học
+    if (q.course_id !== null && q.course_id !== undefined) return false;
+    if (q.lesson_id !== null && q.lesson_id !== undefined) return false;
     const matchSearch = !manageSearch || 
       (q.title && q.title.toLowerCase().includes(manageSearch.toLowerCase())) ||
       (q.pin_code && q.pin_code.toLowerCase().includes(manageSearch.toLowerCase()));

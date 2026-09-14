@@ -10,7 +10,8 @@ const {
   getGeminiModelRoutingStatus,
   getNextPacificRpdResetAt,
   resetGeminiModelRouting,
-  setPreferredGeminiModel
+  setPreferredGeminiModel,
+  setAiModelManualLock
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { notifyAiRateLimitsChanged } = require('../../../utils/aiRateLimitEvents');
@@ -1071,13 +1072,19 @@ const getRateLimitStatus = async () => {
       s.tpm_cap,
       s.rpd_cap,
       s.rpd_exhausted_until,
+      s.is_locked,
+      s.locked_at,
+      s.locked_by,
+      s.lock_reason,
       s.updated_at,
       s.updated_by,
-      COALESCE(u.full_name, u.username, u.email) AS updated_by_name
+      COALESCE(u.full_name, u.username, u.email) AS updated_by_name,
+      COALESCE(lu.full_name, lu.username, lu.email) AS locked_by_name
     FROM recent_models rm
     LEFT JOIN usage_by_model ubm ON ubm.model = rm.model
     LEFT JOIN ai_model_rate_limit_settings s ON s.model = rm.model
     LEFT JOIN users u ON u.user_id = s.updated_by
+    LEFT JOIN users lu ON lu.user_id = s.locked_by
     ORDER BY rm.model ASC
     `, [runtimeModels]),
     pool.query(`
@@ -1150,6 +1157,13 @@ const getRateLimitStatus = async () => {
       peakPercent,
       comparisonBasis: 'admin_reference_caps',
       rpdExhaustedUntil: row.rpd_exhausted_until || null,
+      isLocked: Boolean(row.is_locked),
+      lockedAt: row.locked_at || null,
+      lockedBy: row.locked_by === null || row.locked_by === undefined
+        ? null
+        : Number(row.locked_by),
+      lockedByName: row.locked_by_name || null,
+      lockReason: row.lock_reason || null,
       riskLevel: !configured ? 'unconfigured'
         : peakPercent >= 100 ? 'exceeded'
           : peakPercent >= 85 ? 'critical'
@@ -1218,18 +1232,27 @@ const getRateLimitStatus = async () => {
   };
 };
 
-const resetAiModelRouting = ({ adminUserId } = {}) => {
+const resetAiModelRouting = ({ adminUserId, all = true } = {}) => {
   // Đây không phải probe: chỉ mở circuit breaker. Request nghiệp vụ thật tiếp theo
   // sẽ xác nhận model đã phục hồi hay tiếp tục nhận 429 từ Google.
-  const routing = resetGeminiModelRouting({ force: true });
+  const routing = resetGeminiModelRouting({ force: true, all });
   console.info(
-    `[AI Model Routing] Admin ${adminUserId || "unknown"} đã mở lại model ưu tiên ${routing.preferredModel}; request thật tiếp theo sẽ kiểm tra model này.`
+    `[AI Model Routing] Admin ${adminUserId || "unknown"} đã khôi phục điều phối model; request thật tiếp theo sẽ kiểm tra các model.`
   );
+  notifyAiRateLimitsChanged('ai-routing-reset');
   return routing;
 };
 
 const setPreferredAiModel = async ({ model, adminUserId } = {}) => {
-  return setPreferredGeminiModel(model, { adminUserId });
+  const routing = await setPreferredGeminiModel(model, { adminUserId });
+  notifyAiRateLimitsChanged('ai-preferred-model-changed');
+  return routing;
+};
+
+const toggleAiModelLock = async ({ model, locked, adminUserId, reason } = {}) => {
+  const routing = await setAiModelManualLock(model, locked, { adminUserId, reason });
+  notifyAiRateLimitsChanged('ai-model-lock-changed');
+  return routing;
 };
 
 /**
@@ -1384,6 +1407,7 @@ module.exports = {
   getRateLimitStatus,
   resetAiModelRouting,
   setPreferredAiModel,
+  toggleAiModelLock,
   updateAiRateLimitCaps,
   updateUserQuotaLimit,
   migrateCourseMedia
