@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import {
   extractYouTubeVideoId,
   isYouTubeUrl,
@@ -126,6 +126,64 @@ describe('YouTube Educational Lesson Support', () => {
       expect(screen.getByTitle('YouTube lesson').getAttribute('src')).toContain(
         'youtube-nocookie.com/embed/KiNV60Ce7kE'
       );
+    });
+
+    it('reports playback time and supports imperative timestamp seeking', async () => {
+      const playerRef = React.createRef();
+      const onTimeUpdate = vi.fn();
+      let playerEvents;
+      const playerApi = {
+        getCurrentTime: vi.fn(() => 83.7),
+        getDuration: vi.fn(() => 600),
+        seekTo: vi.fn(),
+        playVideo: vi.fn(),
+        pauseVideo: vi.fn(),
+        destroy: vi.fn()
+      };
+      window.YT = {
+        Player: vi.fn(function MockYouTubePlayer(_iframe, options) {
+          playerEvents = options.events;
+          return playerApi;
+        })
+      };
+      const lesson = {
+        id: '101',
+        title: 'YouTube timestamp lesson',
+        type: 'youtube',
+        youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      };
+
+      const { unmount } = render(
+        <LessonYouTubePlayer
+          ref={playerRef}
+          lesson={lesson}
+          onTimeUpdate={onTimeUpdate}
+        />
+      );
+
+      const iframe = screen.getByTitle('YouTube timestamp lesson');
+      fireEvent.load(iframe);
+
+      await waitFor(() => expect(window.YT.Player).toHaveBeenCalled());
+
+      act(() => {
+        playerEvents.onReady({ target: playerApi });
+        playerEvents.onStateChange({ data: 1 });
+      });
+
+      await waitFor(() => expect(onTimeUpdate).toHaveBeenLastCalledWith(83.7), { timeout: 1200 });
+      expect(playerRef.current.currentTime).toBe(83.7);
+      expect(playerRef.current.duration).toBe(600);
+
+      act(() => {
+        playerRef.current.currentTime = 95;
+      });
+
+      expect(playerApi.seekTo).toHaveBeenCalledWith(95, true);
+
+      unmount();
+      expect(playerApi.destroy).toHaveBeenCalled();
+      delete window.YT;
     });
   });
 });

@@ -57,4 +57,59 @@ describe('StudentInstructorChatPanel real messaging boundary', () => {
     expect(screen.queryByText(/Mình đã nhận được tin nhắn/i)).not.toBeInTheDocument();
   });
 
+  it('sends the attached current video timestamp', async () => {
+    sendStudentMessage.mockResolvedValue({
+      id: 8,
+      lessonId: '27',
+      content: 'Em chưa hiểu đoạn này.',
+      timestampSeconds: 95,
+      timestampFormatted: '01:35',
+      replies: []
+    });
+
+    render(
+      <StudentInstructorChatPanel
+        lessonId="27"
+        currentTime={95.8}
+        discussions={[]}
+        setDiscussions={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('Gắn mốc bài giảng hiện tại'));
+    fireEvent.change(screen.getByPlaceholderText('Nhập tin nhắn cho giảng viên...'), {
+      target: { value: 'Em chưa hiểu đoạn này.' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi tin nhắn' }));
+
+    await waitFor(() => expect(sendStudentMessage).toHaveBeenCalledWith({
+      lessonId: '27',
+      content: 'Em chưa hiểu đoạn này.',
+      timestampSeconds: 95
+    }));
+  });
+
+  it('seeks the current lesson when the student clicks a message timestamp', async () => {
+    const onSeekVideo = vi.fn();
+    render(
+      <StudentInstructorChatPanel
+        lessonId="27"
+        onSeekVideo={onSeekVideo}
+        discussions={[{
+          id: 8,
+          lessonId: '27',
+          content: 'Xem lại đoạn này.',
+          timestampSeconds: 95,
+          timestampFormatted: '01:35',
+          createdAt: '14/09/2026 10:00',
+          replies: []
+        }]}
+        setDiscussions={vi.fn()}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '01:35' }));
+    expect(onSeekVideo).toHaveBeenCalledWith(95);
+  });
+
 });

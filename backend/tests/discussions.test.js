@@ -78,6 +78,28 @@ describe('Discussions controller identity boundary', () => {
 });
 
 describe('Discussions service authorization and state transitions', () => {
+  it('maps root and reply video timestamps into the API contract', () => {
+    const { mapDiscussion, mapReply } = discussionsService._private;
+    const discussion = mapDiscussion({
+      discussion_id: 11,
+      course_id: 7,
+      lesson_id: 27,
+      video_timestamp_seconds: 95
+    });
+    const reply = mapReply({
+      reply_id: 12,
+      author_role_id: 3,
+      video_timestamp_seconds: 125
+    });
+
+    assert.strictEqual(discussion.courseId, 7);
+    assert.strictEqual(discussion.lessonId, 27);
+    assert.strictEqual(discussion.timestampSeconds, 95);
+    assert.strictEqual(discussion.timestampFormatted, '01:35');
+    assert.strictEqual(reply.timestampSeconds, 125);
+    assert.strictEqual(reply.timestampFormatted, '02:05');
+  });
+
   it('denies a student access to another student thread', async () => {
     const originalQuery = db.query;
     db.query = async sql => {
