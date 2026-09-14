@@ -1,25 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { FiRefreshCw } from 'react-icons/fi';
 import { useLanguage } from '../../context/LanguageContext';
-import { useOptionalAuth } from '../../context/AuthContext';
 
 const loadPwaRegister = () => import('virtual:pwa-register');
-
-const isUserAdmin = (u) => {
-  if (!u) return false;
-  const roleId = Number(u.roleId ?? u.role_id);
-  return roleId === 1 || u.role === 'admin' || Boolean(u.is_super_admin);
-};
 
 const PWAUpdatePrompt = ({
   registrationEnabled = import.meta.env.PROD,
   loadRegisterModule = loadPwaRegister,
-  user: propUser,
 }) => {
   const { t } = useLanguage();
-  const auth = useOptionalAuth();
-  const activeUser = propUser !== undefined ? propUser : auth?.user;
-  const isAdmin = isUserAdmin(activeUser);
 
   const updateServiceWorkerRef = useRef(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
@@ -68,7 +57,7 @@ const PWAUpdatePrompt = ({
 
   // Kích hoạt animation slide-in mượt mà từ bên trái sang khi có bản cập nhật mới
   useEffect(() => {
-    if (needsRefresh && isAdmin) {
+    if (needsRefresh) {
       let frame1, frame2;
       frame1 = requestAnimationFrame(() => {
         frame2 = requestAnimationFrame(() => {
@@ -82,7 +71,7 @@ const PWAUpdatePrompt = ({
     } else {
       setIsEntered(false);
     }
-  }, [needsRefresh, isAdmin]);
+  }, [needsRefresh]);
 
   const handleUpdate = async () => {
     if (isUpdating || typeof updateServiceWorkerRef.current !== 'function') return;
@@ -99,7 +88,7 @@ const PWAUpdatePrompt = ({
     }
   };
 
-  // Animation slide-out sang trái khi Admin ấn "Để sau"
+  // Animation slide-out sang trái khi người dùng ấn "Để sau"
   const handleDismiss = () => {
     setIsExiting(true);
     setTimeout(() => {
@@ -108,8 +97,9 @@ const PWAUpdatePrompt = ({
     }, 450);
   };
 
-  // Chỉ hiển thị trên role Admin (học viên role 3 và giảng viên role 2 hoàn toàn không hiện)
-  if (!isAdmin || !needsRefresh) return null;
+  // Mọi role phải có thể kích hoạt bundle mới; nếu không, một số tài khoản sẽ
+  // tiếp tục dùng giao diện cũ cho đến khi toàn bộ tab PWA được đóng.
+  if (!needsRefresh) return null;
 
   return (
     <aside
@@ -144,9 +134,6 @@ const PWAUpdatePrompt = ({
               <h2 id="pwa-update-title" className="text-base font-bold leading-6 text-slate-900 dark:text-white">
                 {t('Có phiên bản mới')}
               </h2>
-              <span className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                Admin
-              </span>
             </div>
 
             <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-400">
