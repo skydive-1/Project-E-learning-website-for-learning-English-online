@@ -656,6 +656,13 @@ DECLARE
   v_size BIGINT; v_checksum TEXT; v_status TEXT; v_filename TEXT; v_created_by INT;
 BEGIN
   IF TG_TABLE_NAME = 'lessons' THEN
+    -- YouTube is not an object owned by the internal media lifecycle.
+    IF LOWER(COALESCE(NEW.content_type, '')) = 'youtube'
+       OR LOWER(COALESCE(NEW.storage_provider, '')) = 'youtube' THEN
+      NEW.media_asset_id := NULL;
+      RETURN NEW;
+    END IF;
+
     v_provider := CASE WHEN NEW.storage_provider = 'local' THEN 'legacy_local' ELSE COALESCE(NEW.storage_provider, CASE WHEN NEW.content_url LIKE '/uploads/%' THEN 'legacy_local' END) END;
     v_bucket := NEW.storage_bucket; v_key := COALESCE(NEW.storage_key, NULLIF(NEW.content_url, ''));
     v_mime := COALESCE(NEW.mime_type, CASE WHEN NEW.content_type = 'pdf' THEN 'application/pdf' WHEN NEW.content_type = 'video' THEN 'video/mp4' END);

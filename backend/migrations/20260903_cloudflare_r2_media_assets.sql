@@ -140,6 +140,15 @@ DECLARE
   v_created_by INT;
 BEGIN
   IF TG_TABLE_NAME = 'lessons' THEN
+    -- YouTube is a streamed external source, not an object managed by our
+    -- R2/Supabase lifecycle. Keeping media_asset_id NULL also prevents the
+    -- storage-provider/location constraints from rejecting course saves.
+    IF LOWER(COALESCE(NEW.content_type, '')) = 'youtube'
+       OR LOWER(COALESCE(NEW.storage_provider, '')) = 'youtube' THEN
+      NEW.media_asset_id := NULL;
+      RETURN NEW;
+    END IF;
+
     v_provider := CASE WHEN NEW.storage_provider = 'local' THEN 'legacy_local'
       ELSE COALESCE(NEW.storage_provider, CASE WHEN NEW.content_url LIKE '/uploads/%' THEN 'legacy_local' END) END;
     v_bucket := NEW.storage_bucket;

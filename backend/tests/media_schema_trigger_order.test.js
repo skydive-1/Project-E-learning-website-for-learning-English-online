@@ -7,6 +7,18 @@ const test = require('node:test');
 
 const projectRoot = path.join(__dirname, '..');
 
+const assertYoutubeBypassesManagedMedia = (source, sourceName) => {
+  const lessonsBranch = source.indexOf("IF TG_TABLE_NAME = 'lessons' THEN");
+  const youtubeContentGuard = source.indexOf("LOWER(COALESCE(NEW.content_type, '')) = 'youtube'", lessonsBranch);
+  const youtubeProviderGuard = source.indexOf("LOWER(COALESCE(NEW.storage_provider, '')) = 'youtube'", lessonsBranch);
+  const mediaInsert = source.indexOf('INSERT INTO media_assets', lessonsBranch);
+
+  assert.ok(lessonsBranch >= 0, `${sourceName}: thiếu nhánh trigger cho lessons`);
+  assert.ok(youtubeContentGuard > lessonsBranch, `${sourceName}: thiếu guard content_type YouTube`);
+  assert.ok(youtubeProviderGuard > lessonsBranch, `${sourceName}: thiếu guard storage_provider YouTube`);
+  assert.ok(mediaInsert > youtubeProviderGuard, `${sourceName}: YouTube phải thoát trước khi INSERT media_assets`);
+};
+
 const assertSafeTriggerOrder = (source, sourceName) => {
   const lessonsDrop = source.indexOf('DROP TRIGGER IF EXISTS trg_lessons_sync_media_asset ON lessons');
   const materialsDrop = source.indexOf('DROP TRIGGER IF EXISTS trg_lesson_materials_sync_media_asset ON lesson_materials');
@@ -43,4 +55,16 @@ test('standalone R2 migration is safe to rerun when media triggers already exist
     'utf8'
   );
   assertSafeTriggerOrder(source, '20260903_cloudflare_r2_media_assets.sql');
+  assertYoutubeBypassesManagedMedia(source, '20260903_cloudflare_r2_media_assets.sql');
+});
+
+test('production hotfix and canonical schema keep YouTube outside managed media assets', () => {
+  const hotfix = fs.readFileSync(
+    path.join(projectRoot, 'migrations/20260914_youtube_media_trigger_fix.sql'),
+    'utf8'
+  );
+  const schema = fs.readFileSync(path.join(projectRoot, 'schema.sql'), 'utf8');
+
+  assertYoutubeBypassesManagedMedia(hotfix, '20260914_youtube_media_trigger_fix.sql');
+  assertYoutubeBypassesManagedMedia(schema, 'schema.sql');
 });
