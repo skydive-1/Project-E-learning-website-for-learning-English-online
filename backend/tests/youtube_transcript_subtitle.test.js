@@ -43,6 +43,7 @@ afterEach(() => {
   subtitlesService.runSilenceVadPipeline = originals.runSilenceVadPipeline;
   ragIngestion.ingestLessonTranscript = originals.ingestLessonTranscript;
   subtitlesService.getSubtitleStatus = originals.getSubtitleStatus;
+  subtitlesService.resetYoutubeTranscriptResilience();
 });
 
 describe('YouTube transcript subtitle pipeline', () => {
@@ -93,6 +94,49 @@ describe('YouTube transcript subtitle pipeline', () => {
       youtubeTranscript.classifyYoutubeTranscriptError(new Error('Video unavailable in your region')),
       'video_unavailable'
     );
+    assert.equal(
+      youtubeTranscript.classifyYoutubeTranscriptError(new Error('Caption request timed out')),
+      'timeout'
+    );
+  });
+
+  test('aborts only the YouTube transport after the configured timeout', async () => {
+    const neverResponds = (_input, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener('abort', () => {
+        const error = new Error('aborted');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    });
+    const timedFetch = youtubeTranscript.createYoutubeFetchWithTimeout(10, neverResponds);
+
+    await assert.rejects(
+      () => timedFetch('https://www.youtube.com/youtubei/v1/player'),
+      error => (
+        error.code === 'YOUTUBE_TRANSCRIPT_TIMEOUT'
+        && error.message === youtubeTranscript.YOUTUBE_TRANSCRIPT_TIMEOUT_MESSAGE
+      )
+    );
+  });
+
+  test('opens a YouTube-only circuit after a temporary block and does not burst requests', async () => {
+    let calls = 0;
+    youtubeTranscript.fetchYoutubeTranscript = async () => {
+      calls += 1;
+      const error = new Error(youtubeTranscript.YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE);
+      error.code = 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED';
+      throw error;
+    };
+
+    await assert.rejects(
+      () => subtitlesService.fetchYoutubeTranscriptWithResilience('dQw4w9WgXcQ'),
+      error => error.code === 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED' && error.retryAfterMs >= 15 * 60 * 1000
+    );
+    await assert.rejects(
+      () => subtitlesService.fetchYoutubeTranscriptWithResilience('KiNV60Ce7kE'),
+      error => error.code === 'YOUTUBE_TRANSCRIPT_DEFERRED' && error.retryAfterMs > 0
+    );
+    assert.equal(calls, 1);
   });
 
   test('caps YouTube translation batches by character count and cue count', () => {
@@ -317,6 +361,41 @@ describe('YouTube transcript subtitle pipeline', () => {
         message: youtubeTranscript.YOUTUBE_NO_CAPTIONS_MESSAGE
       }
     });
+  });
+
+  test('keeps a durable YouTube job pending while a temporary block is scheduled for retry', async () => {
+    let failureWrite;
+    db.query = async (sql, params) => {
+      const statement = String(sql);
+      if (statement.includes('FROM lessons WHERE lesson_id')) return { rows: [youtubeLesson] };
+      if (statement.includes("AND subtitle_status = 'pending'") && statement.includes('RETURNING lesson_id')) {
+        return { rows: [{ lesson_id: 321 }] };
+      }
+      if (statement.includes('SET subtitle_status = $3') && statement.includes('error_code = $4')) {
+        failureWrite = params;
+      }
+      return { rows: [] };
+    };
+    youtubeTranscript.fetchYoutubeTranscript = async () => {
+      const error = new Error(youtubeTranscript.YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE);
+      error.code = 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED';
+      throw error;
+    };
+
+    await assert.rejects(
+      () => subtitlesService._generateSubtitlesWithGemini(321, {
+        expectedSourceUrl: youtubeLesson.content_url
+      }),
+      error => error.code === 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED' && error.retryAfterMs > 0
+    );
+
+    assert.deepEqual(failureWrite, [
+      321,
+      youtubeLesson.content_url,
+      'pending',
+      'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED',
+      youtubeTranscript.YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE
+    ]);
   });
 
   test('subtitle status endpoint exposes the public YouTube failure details', async () => {

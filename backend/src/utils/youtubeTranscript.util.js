@@ -9,8 +9,21 @@ const YOUTUBE_TRANSCRIPT_RATE_LIMIT_MESSAGE =
   'YouTube đang giới hạn tạm thời yêu cầu lấy phụ đề. Hệ thống không kết luận video thiếu phụ đề; vui lòng thử lại sau.';
 const YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE =
   'YouTube tạm thời từ chối máy chủ lấy phụ đề công khai. Video vẫn có thể phát; vui lòng thử tạo phụ đề lại sau.';
+const YOUTUBE_TRANSCRIPT_TIMEOUT_MESSAGE =
+  'YouTube phản hồi quá chậm khi máy chủ lấy phụ đề. Video vẫn có thể phát; hệ thống sẽ tự thử lại sau.';
+const YOUTUBE_TRANSCRIPT_DEFERRED_MESSAGE =
+  'YouTube đang tạm hạn chế máy chủ lấy phụ đề công khai. Hệ thống đã giãn lần thử tiếp theo để tránh làm khóa học bị ảnh hưởng.';
 const YOUTUBE_VIDEO_UNAVAILABLE_MESSAGE =
   'Video YouTube không khả dụng công khai, bị giới hạn khu vực hoặc yêu cầu đăng nhập. Vui lòng kiểm tra quyền xem video.';
+
+const DEFAULT_YOUTUBE_TRANSCRIPT_TIMEOUT_MS = 15_000;
+const TRANSIENT_YOUTUBE_TRANSCRIPT_ERROR_CODES = new Set([
+  'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED',
+  'YOUTUBE_TRANSCRIPT_RATE_LIMITED',
+  'YOUTUBE_TRANSCRIPT_TIMEOUT',
+  'YOUTUBE_TRANSCRIPT_FETCH_FAILED',
+  'YOUTUBE_TRANSCRIPT_DEFERRED'
+]);
 
 const YOUTUBE_HOSTS = new Set([
   'youtube.com',
@@ -65,6 +78,9 @@ function normalizeYoutubeUrl(value) {
 
 function classifyYoutubeTranscriptError(error) {
   const message = String(error?.message || error || '').toLowerCase();
+  if (error?.code === 'YOUTUBE_TRANSCRIPT_TIMEOUT' || /timed?\s*out|timeout|aborterror/.test(message)) {
+    return 'timeout';
+  }
   if (/\b429\b|too many requests|rate.?limit/.test(message)) return 'rate_limited';
   if (/\b403\b|sign in to confirm|not a bot|bot check|blocked|forbidden/.test(message)) return 'access_blocked';
   if (/\b404\b|video not playable|video unavailable|private|login_required|region|members-only|age.?restricted/.test(message)) {
@@ -72,6 +88,58 @@ function classifyYoutubeTranscriptError(error) {
   }
   if (/no caption|no subtitle|no caption tracks? available/.test(message)) return 'no_captions';
   return 'unknown';
+}
+
+function getYoutubeTranscriptTimeoutMs() {
+  const configured = Number.parseInt(process.env.YOUTUBE_TRANSCRIPT_TIMEOUT_MS, 10);
+  if (!Number.isFinite(configured)) return DEFAULT_YOUTUBE_TRANSCRIPT_TIMEOUT_MS;
+  return Math.min(60_000, Math.max(5_000, configured));
+}
+
+function createYoutubeFetchWithTimeout(
+  timeoutMs = getYoutubeTranscriptTimeoutMs(),
+  fetchImpl = globalThis.fetch
+) {
+  const safeTimeoutMs = Math.min(60_000, Math.max(5, Number(timeoutMs) || DEFAULT_YOUTUBE_TRANSCRIPT_TIMEOUT_MS));
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('Runtime không hỗ trợ fetch để lấy phụ đề YouTube.');
+  }
+
+  return async (input, init = {}) => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort(init.signal?.reason);
+    if (init.signal?.aborted) abortFromCaller();
+    else init.signal?.addEventListener?.('abort', abortFromCaller, { once: true });
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, safeTimeoutMs);
+    timeout.unref?.();
+
+    try {
+      return await fetchImpl(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (timedOut) {
+        throw createYoutubeTranscriptError(
+          'YOUTUBE_TRANSCRIPT_TIMEOUT',
+          YOUTUBE_TRANSCRIPT_TIMEOUT_MESSAGE,
+          503,
+          error
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      init.signal?.removeEventListener?.('abort', abortFromCaller);
+    }
+  };
+}
+
+function isTransientYoutubeTranscriptError(errorOrCode) {
+  const code = typeof errorOrCode === 'string' ? errorOrCode : errorOrCode?.code;
+  return TRANSIENT_YOUTUBE_TRANSCRIPT_ERROR_CODES.has(String(code || ''));
 }
 
 async function fetchYoutubeTranscript(videoId) {
@@ -84,7 +152,11 @@ async function fetchYoutubeTranscript(videoId) {
   }
 
   try {
-    const transcript = await getSubtitles({ videoID: videoId, lang: 'en' });
+    const transcript = await getSubtitles({
+      videoID: videoId,
+      lang: 'en',
+      fetch: createYoutubeFetchWithTimeout()
+    });
     const segments = (Array.isArray(transcript) ? transcript : [])
       .map(segment => ({
         start: Number(segment?.start),
@@ -135,6 +207,14 @@ async function fetchYoutubeTranscript(videoId) {
         error
       );
     }
+    if (classification === 'timeout') {
+      throw createYoutubeTranscriptError(
+        'YOUTUBE_TRANSCRIPT_TIMEOUT',
+        YOUTUBE_TRANSCRIPT_TIMEOUT_MESSAGE,
+        503,
+        error
+      );
+    }
     if (classification === 'video_unavailable') {
       throw createYoutubeTranscriptError(
         'YOUTUBE_VIDEO_UNAVAILABLE',
@@ -156,9 +236,14 @@ module.exports = {
   YOUTUBE_NO_CAPTIONS_MESSAGE,
   YOUTUBE_TRANSCRIPT_RATE_LIMIT_MESSAGE,
   YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED_MESSAGE,
+  YOUTUBE_TRANSCRIPT_TIMEOUT_MESSAGE,
+  YOUTUBE_TRANSCRIPT_DEFERRED_MESSAGE,
   YOUTUBE_VIDEO_UNAVAILABLE_MESSAGE,
+  DEFAULT_YOUTUBE_TRANSCRIPT_TIMEOUT_MS,
   extractYoutubeVideoId,
   normalizeYoutubeUrl,
   fetchYoutubeTranscript,
-  classifyYoutubeTranscriptError
+  classifyYoutubeTranscriptError,
+  createYoutubeFetchWithTimeout,
+  isTransientYoutubeTranscriptError
 };

@@ -227,24 +227,27 @@ class DurableJobQueue {
   async fail(job, error, {
     retryable = true,
     retryBaseMs = DEFAULT_RETRY_BASE_MS,
-    retryMaxMs = DEFAULT_RETRY_MAX_MS
+    retryMaxMs = DEFAULT_RETRY_MAX_MS,
+    retryDelayMs = null
   } = {}) {
     const attempts = Number(job?.attempts) || 1;
     const maxAttempts = Number(job?.max_attempts) || 5;
     const shouldRetry = Boolean(retryable) && attempts < maxAttempts;
     const safeBase = clampInteger(retryBaseMs, DEFAULT_RETRY_BASE_MS, 1_000, 24 * 60 * 60 * 1000);
     const safeMax = clampInteger(retryMaxMs, DEFAULT_RETRY_MAX_MS, safeBase, 7 * 24 * 60 * 60 * 1000);
-    const delayMs = shouldRetry ? Math.min(safeMax, safeBase * (2 ** Math.max(0, attempts - 1))) : 0;
+    const requestedDelayMs = clampInteger(retryDelayMs, 0, 0, safeMax);
+    const exponentialDelayMs = Math.min(safeMax, safeBase * (2 ** Math.max(0, attempts - 1)));
+    const delayMs = shouldRetry ? Math.max(exponentialDelayMs, requestedDelayMs) : 0;
     const normalized = normalizeError(error);
     const result = await this.db.query(
       `UPDATE background_jobs
-       SET status = $3,
+       SET status = $3::varchar,
            available_at = CASE
-             WHEN $3 = 'retry' THEN CURRENT_TIMESTAMP + ($4 * INTERVAL '1 millisecond')
+             WHEN $3::varchar = 'retry' THEN CURRENT_TIMESTAMP + ($4 * INTERVAL '1 millisecond')
              ELSE available_at
            END,
            lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
-           completed_at = CASE WHEN $3 = 'failed' THEN CURRENT_TIMESTAMP ELSE NULL END,
+           completed_at = CASE WHEN $3::varchar = 'failed' THEN CURRENT_TIMESTAMP ELSE NULL END,
            last_error_code = $5, last_error_message = $6,
            updated_at = CURRENT_TIMESTAMP
        WHERE job_id = $1 AND lease_token = $2 AND status = 'processing'
@@ -302,6 +305,7 @@ class DurableJobWorker {
     concurrency = clampInteger(Number(process.env.BACKGROUND_JOB_CONCURRENCY || 1), 1, 1, 4),
     retention = {},
     classifyError = () => true,
+    getRetryDelayMs = null,
     onJobFailed = null,
     logger = console
   }) {
@@ -312,6 +316,7 @@ class DurableJobWorker {
     this.concurrency = clampInteger(concurrency, 1, 1, 4);
     this.retention = retention;
     this.classifyError = classifyError;
+    this.getRetryDelayMs = getRetryDelayMs;
     this.onJobFailed = onJobFailed;
     this.logger = logger;
     this.timer = null;
@@ -422,7 +427,10 @@ class DurableJobWorker {
       await this.queue.complete(job.job_id, job.lease_token);
     } catch (error) {
       const retryable = this.classifyError(error, job) !== false;
-      const failedJob = await this.queue.fail(job, error, { retryable });
+      const retryDelayMs = typeof this.getRetryDelayMs === 'function'
+        ? this.getRetryDelayMs(error, job)
+        : null;
+      const failedJob = await this.queue.fail(job, error, { retryable, retryDelayMs });
       if (this.onJobFailed) {
         await this.onJobFailed(failedJob || job, error, {
           retryable,

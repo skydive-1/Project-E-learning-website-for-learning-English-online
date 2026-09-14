@@ -24,7 +24,7 @@ const formatAge = (seconds = 0) => {
 
 const getCourseTone = (counts = {}) => {
   if (Number(counts.failed) > 0) return 'failed';
-  if (Number(counts.pending) > 0 || Number(counts.processing) > 0) return 'pending';
+  if (Number(counts.pending) > 0 || Number(counts.processing) > 0 || Number(counts.deferred) > 0) return 'pending';
   if (Number(counts.missing) > 0) return 'missing';
   return 'ready';
 };
@@ -105,7 +105,13 @@ const CourseTranscriptHealthPanel = () => {
         courseId: course?.courseId || null,
         limit: Math.min(
           20,
-          Math.max(1, Number(course?.counts?.pending) + Number(course?.counts?.failed) || 10)
+          Math.max(
+            1,
+            (Number(course?.counts?.pending) || 0)
+              + (Number(course?.counts?.failed) || 0)
+              + (Number(course?.counts?.deferred) || 0)
+            || 10
+          )
         ),
         includeFailed: true
       });
@@ -152,6 +158,7 @@ const CourseTranscriptHealthPanel = () => {
 
   const summary = snapshot?.summary || {};
   const pendingCount = Number(summary.pending) || 0;
+  const deferredCount = Number(summary.deferred) || 0;
   const failedCount = Number(summary.failed) || 0;
   const actionableCount = summary.recoverable === undefined
     ? Math.max(0, pendingCount + failedCount - (Number(summary.mediaMissing) || 0))
@@ -184,7 +191,7 @@ const CourseTranscriptHealthPanel = () => {
           >
             {recoveringKey === 'all'
               ? <><FiRefreshCw className="is-spinning" aria-hidden="true" /> Đang đưa vào worker…</>
-              : <><FiTool aria-hidden="true" /> {failedCount > 0 ? 'Thử tự khôi phục tối đa 10 bài' : 'Xử lý ngay tối đa 10 bài chờ'}</>}
+              : <><FiTool aria-hidden="true" /> {failedCount > 0 || deferredCount > 0 ? 'Thử tự khôi phục tối đa 10 bài' : 'Xử lý ngay tối đa 10 bài chờ'}</>}
           </button>
         </div>
       </div>
@@ -204,9 +211,26 @@ const CourseTranscriptHealthPanel = () => {
         </div>
       )}
 
+      {deferredCount > 0 && (
+        <div className="transcript-health-panel__guidance is-warning" role="status">
+          <FiClock aria-hidden="true" />
+          <div>
+            <strong>{deferredCount} bài YouTube đang tạm hoãn lấy phụ đề</strong>
+            <span>
+              YouTube đang hạn chế IP máy chủ công khai. Video vẫn phát và khóa học vẫn có thể lưu/xuất bản;
+              hệ thống đã giãn retry để tránh gửi dồn yêu cầu.
+            </span>
+            <span>Có thể thử lại sau hoặc bổ sung phụ đề thủ công; đây không phải lỗi file video.</span>
+          </div>
+        </div>
+      )}
+
       <div className="transcript-health-panel__metrics" aria-label="Tổng quan trạng thái transcript">
         <div><strong>{Number(summary.ready) || 0}</strong><span>Sẵn sàng / {Number(summary.total) || 0} video</span></div>
-        <div className={pendingCount ? 'has-warning' : ''}><strong>{pendingCount}</strong><span>Đang chờ</span></div>
+        <div className={pendingCount || deferredCount ? 'has-warning' : ''}>
+          <strong>{pendingCount}</strong>
+          <span>Đang chờ · {deferredCount} YouTube tạm hoãn</span>
+        </div>
         <div className={Number(summary.processing) ? 'has-warning' : ''}><strong>{Number(summary.processing) || 0}</strong><span>Đang xử lý</span></div>
         <div className={Number(summary.failed) ? 'has-error' : ''}>
           <strong>{Number(summary.failed) || 0}</strong>
@@ -236,9 +260,10 @@ const CourseTranscriptHealthPanel = () => {
             const requiresReupload = Number(course.counts.mediaMissing) > 0 && actionableCourseCount === 0;
             const missingLessonId = course.affectedLessons.find(lesson => lesson.mediaMissingSource)?.lessonId;
             const failureGuidance = getFailureGuidance(course.affectedLessons);
-            const courseActionLabel = course.counts.failed > 0 && course.counts.pending > 0
+            const hasRetryableFailure = Number(course.counts.failed) > 0 || Number(course.counts.deferred) > 0;
+            const courseActionLabel = hasRetryableFailure && course.counts.pending > 0
               ? `Xử lý ${actionableCourseCount} bài`
-              : (course.counts.failed > 0
+              : (hasRetryableFailure
                   ? `Thử tự khôi phục ${actionableCourseCount} bài`
                   : `Xử lý ${course.counts.pending} bài chờ`);
             return (
@@ -249,7 +274,7 @@ const CourseTranscriptHealthPanel = () => {
                 </div>
                 <div className="transcript-health-row__detail">
                   <span>
-                    Đang chờ: {course.counts.pending} · Đang xử lý: {course.counts.processing} · Thất bại: {course.counts.failed}
+                    Đang chờ: {course.counts.pending} · Đang xử lý: {course.counts.processing} · YouTube tạm hoãn: {course.counts.deferred || 0} · Thất bại: {course.counts.failed}
                   </span>
                   <span>
                     Bài: {course.affectedLessons.map(lesson => `#${lesson.lessonId}`).join(', ')}
@@ -302,7 +327,8 @@ const CourseTranscriptHealthPanel = () => {
       )}
 
       <p className="transcript-health-panel__note">
-        Job được lưu trong PostgreSQL và tự tiếp tục sau khi server restart. Bài đã xác nhận mất file không bị retry vô hạn và phải tải lại video. Worker chạy tuần tự để bảo vệ quota Gemini miễn phí.
+        Job được lưu trong PostgreSQL và tự tiếp tục sau khi server restart. Bài YouTube được lấy phụ đề tuần tự,
+        có timeout/circuit breaker và retry giãn cách; các nguồn media khác giữ nguyên pipeline hiện tại.
       </p>
     </section>
   );

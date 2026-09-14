@@ -64,6 +64,7 @@ test('course transcript health groups observed PostgreSQL states without fabrica
       ready: 1,
       pending: 1,
       processing: 0,
+      deferred: 0,
       failed: 1,
       missing: 0,
       mediaMissing: 0,
@@ -142,6 +143,39 @@ test('media marked MISSING_SOURCE is reported as reupload-required, not retryabl
     assert.equal(snapshot.summary.recoverable, 0);
     assert.equal(snapshot.courses[0].affectedLessons[0].mediaMissingSource, true);
     assert.equal(snapshot.courses[0].affectedLessons[0].retryable, false);
+  } finally {
+    pool.query = originalQuery;
+  }
+});
+
+test('temporary YouTube egress blocking is reported as deferred instead of pipeline failure', async () => {
+  const originalQuery = pool.query;
+  pool.query = async () => ({
+    rows: [{
+      course_id: 55,
+      course_name: 'IELTS theo chủ đề',
+      course_status: 0,
+      lesson_id: 172,
+      lesson_title: 'IELTS Listen',
+      content_type: 'youtube',
+      media_status: 'READY',
+      subtitle_status: 'failed',
+      error_code: 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED',
+      error_message: 'YouTube tạm thời từ chối máy chủ lấy phụ đề công khai.',
+      cue_count: 0,
+      status_age_seconds: 60,
+      current_source_url: 'https://www.youtube.com/watch?v=ZFhXI0C8_IY',
+      source_matches: true
+    }]
+  });
+
+  try {
+    const snapshot = await service.getCourseTranscriptHealth();
+    assert.equal(snapshot.summary.deferred, 1);
+    assert.equal(snapshot.summary.failed, 0);
+    assert.equal(snapshot.summary.recoverable, 1);
+    assert.equal(snapshot.courses[0].affectedLessons[0].transcriptStatus, 'deferred');
+    assert.equal(snapshot.courses[0].affectedLessons[0].retryable, true);
   } finally {
     pool.query = originalQuery;
   }

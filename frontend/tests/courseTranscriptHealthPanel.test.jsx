@@ -161,6 +161,46 @@ describe('CourseTranscriptHealthPanel', () => {
     expect(screen.queryByRole('button', { name: /Thử tự khôi phục 5 bài/ })).not.toBeInTheDocument();
   });
 
+  it('shows temporary YouTube blocking as deferred without a pipeline-failure warning', async () => {
+    mocks.getHealth.mockResolvedValue({
+      ...snapshot,
+      summary: {
+        ...snapshot.summary,
+        pending: 0,
+        deferred: 1,
+        failed: 0,
+        recoverable: 1,
+        sourceMismatch: 0
+      },
+      courses: [{
+        ...snapshot.courses[0],
+        counts: {
+          ...snapshot.courses[0].counts,
+          pending: 0,
+          deferred: 1,
+          failed: 0,
+          retryable: 1,
+          sourceMismatch: 0
+        },
+        affectedLessons: [{
+          lessonId: 172,
+          transcriptStatus: 'deferred',
+          statusAgeSeconds: 60,
+          sourceMismatch: false,
+          retryable: true,
+          errorCode: 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED'
+        }]
+      }]
+    });
+
+    render(<CourseTranscriptHealthPanel />);
+
+    expect(await screen.findByText('1 bài YouTube đang tạm hoãn lấy phụ đề')).toBeInTheDocument();
+    expect(screen.getByText(/Video vẫn phát và khóa học vẫn có thể lưu\/xuất bản/)).toBeInTheDocument();
+    expect(screen.queryByText(/bài đã chạy nhưng thất bại/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Thử tự khôi phục 1 bài' })).toBeEnabled();
+  });
+
   it('keeps a retry action available when the health endpoint fails', async () => {
     mocks.getHealth.mockRejectedValueOnce(new Error('Database unavailable'));
     render(<CourseTranscriptHealthPanel />);
