@@ -370,9 +370,25 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     }
   }, [lessonId]);
 
-  // Áp dụng mốc tua đang chờ khi video đã sẵn sàng (loadedmetadata / canplay / Shaka attached)
+  // Lấy mốc thời gian tua từ URL (?seek=) một cách an toàn
+  const getInitialSeekFromUrl = useCallback(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const s = params.get('seek');
+      if (s !== null) {
+        const val = Number(s);
+        if (Number.isFinite(val) && val >= 0) return val;
+      }
+    } catch (_) {}
+    return null;
+  }, [location.search]);
+
+  // Áp dụng mốc tua đang chờ khi video đã sẵn sàng (loadedmetadata / canplay / Shaka attached / YouTube ready)
   const applyPendingSeek = useCallback(() => {
-    if (pendingVideoSeekRef.current === null) return;
+    const urlSeek = getInitialSeekFromUrl();
+    const targetSec = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : urlSeek;
+    if (targetSec === null || !Number.isFinite(targetSec) || targetSec < 0) return;
+
     const videoEl = videoRef.current;
     if (!videoEl) return;
 
@@ -383,25 +399,33 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
     if (!isReady) return;
 
-    const targetSec = pendingVideoSeekRef.current;
     const duration = videoEl.duration;
     const safeTime = (duration && isFinite(duration) && duration > 0)
       ? Math.min(Math.max(0, targetSec), duration)
       : Math.max(0, targetSec);
 
     try {
-      videoEl.currentTime = safeTime;
-      pendingVideoSeekRef.current = null;
+      if (typeof videoEl.seekTo === 'function') {
+        videoEl.seekTo(safeTime);
+      } else {
+        videoEl.currentTime = safeTime;
+      }
       setVideoCurrentTime(safeTime);
 
       if (videoEl.paused) {
         videoEl.play().catch(() => {});
         setIsVideoPlaying(true);
       }
+
+      // Xóa pendingVideoSeekRef khi currentTime đã tiệm cận mốc đích
+      const currentPos = typeof videoEl.currentTime === 'number' ? videoEl.currentTime : null;
+      if (currentPos !== null && Math.abs(currentPos - safeTime) <= 2) {
+        pendingVideoSeekRef.current = null;
+      }
     } catch (err) {
       console.warn('⚠️ [Video Seek Error]:', err);
     }
-  }, []);
+  }, [getInitialSeekFromUrl]);
 
   // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
   const handleSeekVideo = useCallback((seconds) => {
@@ -423,18 +447,15 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
   // Tự động tua video khi URL có tham số ?seek= (điều hướng từ mốc thời gian thảo luận hoặc bài học khác)
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const seekParam = params.get('seek');
-    if (seekParam === null) {
+    const seekSec = getInitialSeekFromUrl();
+    if (seekSec === null) {
       pendingVideoSeekRef.current = null;
       return;
     }
 
-    const seekSec = Number(seekParam);
-    if (Number.isFinite(seekSec) && seekSec >= 0) {
-      handleSeekVideo(seekSec);
-    }
-  }, [location.search, lessonId, handleSeekVideo]);
+    pendingVideoSeekRef.current = seekSec;
+    handleSeekVideo(seekSec);
+  }, [location.search, lessonId, getInitialSeekFromUrl, handleSeekVideo]);
 
   // Lắng nghe sự kiện sẵn sàng của thẻ video để áp dụng mốc tua nếu đang chờ
   useEffect(() => {
@@ -442,7 +463,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     if (!videoEl || typeof videoEl.addEventListener !== 'function') return;
 
     const onMediaReady = () => {
-      if (pendingVideoSeekRef.current !== null) {
+      const target = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
+      if (target !== null) {
         applyPendingSeek();
       }
     };
@@ -450,15 +472,18 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     videoEl.addEventListener('loadedmetadata', onMediaReady);
     videoEl.addEventListener('canplay', onMediaReady);
 
-    if (videoEl.readyState >= 1 && pendingVideoSeekRef.current !== null) {
-      applyPendingSeek();
+    if (videoEl.readyState >= 1) {
+      const target = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
+      if (target !== null) {
+        applyPendingSeek();
+      }
     }
 
     return () => {
       videoEl.removeEventListener('loadedmetadata', onMediaReady);
       videoEl.removeEventListener('canplay', onMediaReady);
     };
-  }, [lessonId, ticketPlaybackUrl, applyPendingSeek]);
+  }, [lessonId, ticketPlaybackUrl, getInitialSeekFromUrl, applyPendingSeek]);
 
   // Hệ thống phát hiện phím tắt chụp/chia sẻ màn hình ở tầng trình duyệt phục vụ răn đe bản quyền (Browser Deterrence & Blackout)
   useEffect(() => {
@@ -1357,10 +1382,45 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         const manifestBaseUrl = `${API_BASE_URL}/lessons/dash/${rawLessonId}/manifest.mpd`;
         const manifestUrl = allowQueryTicket ? `${manifestBaseUrl}?ticket=${encodeURIComponent(ticket)}` : manifestBaseUrl;
 
-        shakaPlayerRef.current?.load(manifestUrl)
+        const initialSeekTime = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
+        const validStartTime = (initialSeekTime !== null && Number.isFinite(initialSeekTime) && initialSeekTime > 0)
+          ? initialSeekTime
+          : undefined;
+
+        // Truyền validStartTime vào shaka.Player.load() để Shaka trực tiếp tải segment tại mốc timestamp (thay vì buffer từ 0)
+        shakaPlayerRef.current?.load(manifestUrl, validStartTime)
           .then(() => {
             if (active) setVideoLoading(false);
-            if (pendingVideoSeekRef.current !== null) {
+            if (validStartTime !== undefined) {
+              if (videoRef.current) {
+                try {
+                  videoRef.current.currentTime = validStartTime;
+                  setVideoCurrentTime(validStartTime);
+                  if (videoRef.current.paused) {
+                    videoRef.current.play().catch(() => {});
+                    setIsVideoPlaying(true);
+                  }
+                } catch (_) {}
+              }
+              // Watchdog đảm bảo video ổn định tại đúng timestamp sau khi tải luồng DASH
+              let checkAttempts = 0;
+              const verifyTimer = setInterval(() => {
+                checkAttempts++;
+                const el = videoRef.current;
+                if (!active || !el || checkAttempts > 12) {
+                  clearInterval(verifyTimer);
+                  return;
+                }
+                if (Math.abs(el.currentTime - validStartTime) > 2) {
+                  try {
+                    el.currentTime = validStartTime;
+                  } catch (_) {}
+                } else {
+                  pendingVideoSeekRef.current = null;
+                  clearInterval(verifyTimer);
+                }
+              }, 250);
+            } else if (pendingVideoSeekRef.current !== null) {
               setTimeout(() => {
                 if (active) applyPendingSeek();
               }, 150);
@@ -1460,10 +1520,12 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
             : `${backendHost}${res.streamUrl.startsWith('/') ? '' : '/'}${res.streamUrl}`;
           setTicketPlaybackUrl(fullStreamUrl);
           scheduleMp4TicketRenewal(res.expiresIn || 60);
-          if (pendingVideoSeekRef.current !== null) {
+          const initialSeekTime = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
+          if (initialSeekTime !== null && initialSeekTime > 0) {
+            pendingVideoSeekRef.current = initialSeekTime;
             setTimeout(() => {
               if (active) applyPendingSeek();
-            }, 250);
+            }, 300);
           }
         } else {
           setVideoError({
@@ -1872,6 +1934,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                             ref={videoRef}
                             lesson={currentLesson}
                             title={currentLesson?.title}
+                            initialSeek={pendingVideoSeekRef.current ?? getInitialSeekFromUrl()}
                             onTimeUpdate={setVideoCurrentTime}
                             onReady={applyPendingSeek}
                             onEnded={() => {
@@ -1961,6 +2024,12 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                   onLoadedData={() => { videoHasStartedRef.current = true; setVideoLoading(false); }}
                                   onLoadedMetadata={() => { setVideoLoading(false); applyPendingSeek(); }}
                                   onCanPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoBuffering(false); applyPendingSeek(); }}
+                                  onSeeked={() => {
+                                    const target = pendingVideoSeekRef.current;
+                                    if (target !== null && videoRef.current && Math.abs(videoRef.current.currentTime - target) <= 2) {
+                                      pendingVideoSeekRef.current = null;
+                                    }
+                                  }}
                                   onWaiting={() => {
                                     if (videoHasStartedRef.current) {
                                       // Buffering giữa chừng: chỉ hiện thanh mỏng, không che video
