@@ -1,6 +1,6 @@
 # Báo cáo kiểm tra mức độ sẵn sàng trước bảo vệ
 
-Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 12/09/2026. Kết luận chung: **đủ bằng chứng kỹ thuật để bảo vệ đồ án; chưa nên gọi mọi tích hợp bên ngoài là production-verified**. Các kết luận bên dưới chỉ bao phủ những gì test, production build, truy vấn chỉ đọc hoặc trace trực tiếp đường đi của request đã chứng minh.
+Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 14/09/2026. Kết luận chung: **đủ bằng chứng kỹ thuật để bảo vệ đồ án; chưa nên gọi mọi tích hợp bên ngoài là production-verified**. Các kết luận bên dưới chỉ bao phủ những gì test, production build, truy vấn chỉ đọc hoặc trace trực tiếp đường đi của request đã chứng minh.
 
 ## 1. CONFIRMED FIXED — Đã sửa và có bằng chứng
 
@@ -10,7 +10,7 @@ Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 
 - Nếu điểm đã lưu nhỏ hơn 50, service trả HTTP 422 với mã `LESSON_COMPLETION_SCORE_TOO_LOW`: `backend/src/modules/progress/services/progress.service.js:49`.
 - Controller yêu cầu `isCompleted` là boolean rõ ràng, không còn mặc định ngầm thành `true`: `backend/src/modules/progress/controllers/progress.controller.js:50`.
 - Bài test gửi raw HTTP request với điểm đã lưu 49%, đồng thời thử nhét `score: 100` vào body để giả mạo: `backend/tests/progress_completion_threshold.test.js:106` và `backend/tests/progress_completion_threshold.test.js:120`.
-- Bằng chứng chạy ngày 12/09/2026: `npm --prefix backend test` đạt **325 test, 325 pass, 0 fail, 0 skipped, 0 todo**. Bộ test gồm các ca ngưỡng hoàn thành, grounding và điều phối model theo RPD.
+- Bằng chứng chạy ngày 14/09/2026: `npm --prefix backend test` đạt **410 test, 410 pass, 0 fail, 0 skipped, 0 todo** trên 69 suites. Bộ test gồm các ca ngưỡng hoàn thành, grounding, PostgreSQL integration và điều phối model theo RPD.
 
 ### 1.2. Pipeline tạo phụ đề tự động đã được khôi phục ở mức xử lý cục bộ
 
@@ -57,7 +57,7 @@ Ngày đối soát ban đầu: 02/09/2026. Cập nhật kết quả test/build: 
 - Trang analytics và danh sách khóa học hiển thị lỗi thay vì biến lỗi mạng thành mảng rỗng hoặc số 0: `frontend/src/modules/analytics/pages/AnalyticsDashboardPage.jsx:126`, `frontend/src/modules/courses/pages/CourseListPage.jsx:380`.
 - Đăng ký tư vấn không còn báo gửi thành công khi SMTP thiếu hoặc gửi thất bại. Backend trả lỗi 503: `backend/src/modules/consultation/consultation.service.js:142`, `:169`.
 - Quick quiz ở backend không còn dựng câu hỏi chung khi thiếu nội dung hoặc Gemini trả sai schema; các trường hợp này trả 422/502: `backend/src/modules/chatbot/services/chatbot.service.js:623`, `:668`, `:682`.
-- Bằng chứng biên dịch và kiểm thử frontend ngày 12/09/2026: `npm --prefix frontend run build` thành công; `npm --prefix frontend test` đạt **236/236 test trong 55 file**.
+- Bằng chứng biên dịch và kiểm thử frontend ngày 14/09/2026: `npm --prefix frontend run build` thành công (13.69s); `npm --prefix frontend test` đạt **299/299 test trong 66 file**.
 
 ### 1.6. Logging, cấu hình production và rate limit đã được siết lại
 
@@ -95,7 +95,23 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 - Generator luận văn không còn công bố `Grounded 100%`, `Faithfulness 98.2%`, hallucination 1.2%, Hit Rate 96.4% hoặc latency 0.68 giây như số đo thật. Bảng ghi rõ trạng thái chưa có phép đo đủ bằng chứng tại `backend/scripts/generate_thesis_defense_doc.py:365`; câu trả lời phản biện nêu đúng giới hạn tại dòng 472.
 - File `SO_TAY_THUYET_TRINH_VA_BAO_VE_DO_AN_RAG_AI.docx` đã được sinh lại. Kiểm tra trực tiếp toàn bộ paragraph và table trong DOCX xác nhận có câu “Chưa có phép đo đủ bằng chứng” và không còn năm cụm số liệu/tuyên bố cũ nêu trên.
 
-## 2. KNOWN LIMITATIONS — Giới hạn còn lại sau lần đối soát 12/09/2026
+### 1.10. Khắc phục lỗi SQL type deduction và đảm bảo tính bền vững của Durable Job Queue
+
+- **Nguyên nhân gốc**: Hàm `fail()` trong `backend/src/utils/durableJobQueue.service.js:243` dùng tham số `$3` vừa để gán cho cột `status` (`VARCHAR(20)`), vừa để so sánh trong hai mệnh đề `CASE WHEN $3 = 'retry'` và `CASE WHEN $3 = 'failed'`. Cơ chế phân tích prepared statement của PostgreSQL không suy luận được một kiểu dữ liệu thống nhất nên ném lỗi:
+  ```
+  error: inconsistent types deduced for parameter $3
+  ```
+- **Hệ quả**: Khi một background job (phụ đề, RAG ingestion) gặp lỗi, lệnh `fail()` bị throw ngoại lệ trước khi kịp UPDATE; callback `onJobFailed` không bao giờ được gọi; job bị kẹt vĩnh viễn ở trạng thái `processing`, làm số lần thử (`attempts`) tăng vô hạn sau mỗi lần hết hạn lease.
+- **Khắc phục**: Ép kiểu tường minh `$3::varchar` ngay từ câu lệnh UPDATE và trong các nhánh `CASE WHEN`. Rà soát toàn bộ các câu lệnh SQL trong `backend/src/**/*.js` và xác nhận không còn câu SQL nào khác gặp xung đột kiểu dữ liệu tương tự.
+- **Kiểm thử tích hợp trên PostgreSQL thật**:
+  - File test `backend/tests/durable_job_queue_postgres_integration.test.js` kiểm thử toàn diện các phương thức của `DurableJobQueue` (`fail` retry, `fail` terminal, `enqueue`, `claimNext`, `heartbeat`, `complete`, `release`, `acknowledgeByKey`, `getStats`, `purgeTerminalJobs`) trên PostgreSQL thật trong isolated transaction rollback.
+  - Bộ test tự động bỏ qua (skip) an toàn khi môi trường không có kết nối DB để bảo vệ tính độc lập của CI pipeline.
+- **Bằng chứng kiểm thử**:
+  - Backend: **410/410 passed**, 0 failed trên 69 test suites (đối soát ngày 14/09/2026).
+  - Frontend: **299/299 passed**, 0 failed trên 66 test suites (đối soát ngày 14/09/2026).
+  - Production build: `vite build` biên dịch sạch trong 13.38s.
+
+## 2. KNOWN LIMITATIONS — Giới hạn còn lại sau lần đối soát 14/09/2026
 
 ### 2.1. Versioned migration đã có, DDL tương thích lúc boot vẫn chưa bỏ hết
 
@@ -133,7 +149,7 @@ Các bằng chứng trên chỉ xác nhận wiring, hợp đồng và dữ liệ
 
 ### 2.7. Frontend bundle đã tách; vẫn cần performance budget
 
-- Production build ngày 12/09/2026 thành công, không còn cảnh báo chunk vượt ngưỡng cấu hình. Main JS còn **690.56 kB**, gzip **226.41 kB**.
+- Production build ngày 14/09/2026 thành công, không còn cảnh báo chunk vượt ngưỡng cấu hình. Main JS còn **715.86 kB**, gzip **234.01 kB**.
 - Shaka (**812.22 kB**), PDF (**462.38 kB**) và charts (**458.38 kB**) nằm ở các chunk riêng. PDF worker **1,046.21 kB** chỉ tải cùng luồng PDF.
 - Chưa có Lighthouse artifact hoặc budget kiểm tra trong CI, vì vậy không công bố FCP/LCP trên 4G như số đã đo.
 
@@ -157,7 +173,7 @@ Code nay trả lỗi rõ ràng khi thiếu cấu hình hoặc gửi thất bại
 
 ### 3.5. Toàn bộ test frontend ✅ Đã xác minh
 
-`frontend/package.json` có script `test: vitest run`. Lần chạy ngày 12/09/2026 đạt **55/55 test files, 236/236 tests, 0 fail**. Runner còn in cảnh báo cấu hình `esbuild` đã deprecated trong plugin React Babel; cảnh báo này không làm test hoặc build thất bại nhưng nên dọn khi nâng Vite/plugin.
+`frontend/package.json` có script `test: vitest run`. Lần chạy ngày 14/09/2026 đạt **66/66 test files, 299/299 tests, 0 fail**. Runner còn in cảnh báo cấu hình `esbuild` đã deprecated trong plugin React Babel; cảnh báo này không làm test hoặc build thất bại nhưng nên dọn khi nâng Vite/plugin.
 
 ### 3.6. Cấu hình và quan sát trên môi trường production thật
 

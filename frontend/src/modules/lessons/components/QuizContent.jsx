@@ -121,26 +121,31 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   const streamRef = useRef(null);
 
   // States hỗ trợ dạng bài Nghe hiểu (Listening)
-  const [isPlayingListeningTts, setIsPlayingListeningTts] = useState(false);
+  const [playingListeningTtsGender, setPlayingListeningTtsGender] = useState(null); // 'female' | 'male' | null
   const [showListeningTranscript, setShowListeningTranscript] = useState(false);
 
-  const handleToggleListeningTts = (textToSpeak) => {
+  const isPlayingListeningTts = Boolean(playingListeningTtsGender);
+
+  const handleToggleListeningTts = (textToSpeak, gender = 'female') => {
     if (!window.speechSynthesis) return;
-    if (isPlayingListeningTts) {
+    if (playingListeningTtsGender === gender) {
       window.speechSynthesis.cancel();
-      setIsPlayingListeningTts(false);
+      setPlayingListeningTtsGender(null);
       return;
     }
+    window.speechSynthesis.cancel();
     const cleanText = String(textToSpeak || '')
-      .replace(/\[Question\][\s\S]*$/i, '')
-      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/i, '')
+      .replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?/gi, '')
+      .replace(/\[Question\]\s*:?/gi, 'Question: ')
+      .replace(/\[Dialogue\]\s*:?/gi, '')
+      .replace(/\bAccording to Speaker\s+[A-Z]\s*,?\s*/gi, '')
       .replace(/Speaker\s+[A-Z]\s*:/gi, (m) => `${m}, `)
       .trim();
     const utterance = new SpeechSynthesisUtterance(cleanText || textToSpeak);
-    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.88 });
-    utterance.onend = () => setIsPlayingListeningTts(false);
-    utterance.onerror = () => setIsPlayingListeningTts(false);
-    setIsPlayingListeningTts(true);
+    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { gender, rate: 0.88 });
+    utterance.onend = () => setPlayingListeningTtsGender(null);
+    utterance.onerror = () => setPlayingListeningTtsGender(null);
+    setPlayingListeningTtsGender(gender);
     window.speechSynthesis.speak(utterance);
   };
 
@@ -148,7 +153,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
-    setIsPlayingListeningTts(false);
+    setPlayingListeningTtsGender(null);
     setShowListeningTranscript(false);
   }, [activeQuestionIdx]);
 
@@ -267,7 +272,8 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
     let correctCount = questions.reduce((total, question) => {
       const type = getEffectiveQuestionType(question);
       if (type === 'multiple_choice' || type === 'listening' || type === 'reading') {
-        return total + (selectedAnswers[question.id] === question.correctAnswer ? 1 : 0);
+        // Dùng isOptionMatching để so sánh đúng mọi format đáp án ("A", "A.", "A) text", etc.)
+        return total + (isOptionMatching(question.correctAnswer, selectedAnswers[question.id]) ? 1 : 0);
       }
       return total + (Number(questionScores[question.id]) || 0) / 100;
     }, 0);
@@ -710,27 +716,48 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                     />
                   )}
 
-                  {!hasAudioFile && (
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-background/80 border border-cyan-200/70 dark:border-cyan-800/50">
-                      <div className="text-xs font-semibold text-foreground flex items-center gap-2">
-                        <span className="size-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
-                        <span>Nghe câu hỏi bằng giọng Anh-Anh:</span>
+                  {!hasAudioFile && (() => {
+                    const textToSpeak = listeningDialogue
+                      ? (listeningPrompt ? `${listeningDialogue}. Question: ${listeningPrompt}` : listeningDialogue)
+                      : rawQuestionText;
+
+                    return (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-background/80 border border-cyan-200/70 dark:border-cyan-800/50">
+                        <div className="text-xs font-semibold text-foreground flex items-center gap-2">
+                          <span className="size-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
+                          <span>Nghe bằng giọng đọc Anh - Anh (Miễn phí):</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleToggleListeningTts(textToSpeak, 'female')}
+                            className={`text-xs font-bold gap-1.5 cursor-pointer transition-all ${
+                              playingListeningTtsGender === 'female'
+                                ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                : 'bg-cyan-600 hover:bg-cyan-700 text-white shadow-xs'
+                            }`}
+                          >
+                            {playingListeningTtsGender === 'female' ? <Square className="size-3.5" /> : <Volume2 className="size-3.5" />}
+                            <span>{playingListeningTtsGender === 'female' ? 'Dừng đọc (Nữ)' : 'Giọng Nữ (Anh - Anh)'}</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleToggleListeningTts(textToSpeak, 'male')}
+                            className={`text-xs font-bold gap-1.5 cursor-pointer transition-all ${
+                              playingListeningTtsGender === 'male'
+                                ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                            }`}
+                          >
+                            {playingListeningTtsGender === 'male' ? <Square className="size-3.5" /> : <Volume2 className="size-3.5" />}
+                            <span>{playingListeningTtsGender === 'male' ? 'Dừng đọc (Nam)' : 'Giọng Nam (Anh - Anh)'}</span>
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => handleToggleListeningTts(listeningDialogue || rawQuestionText)}
-                        className={`text-xs font-bold gap-1.5 cursor-pointer ${
-                          isPlayingListeningTts
-                            ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
-                            : 'bg-cyan-600 hover:bg-cyan-700 text-white'
-                        }`}
-                      >
-                        <Headphones className="size-3.5" />
-                        <span>{isPlayingListeningTts ? 'Dừng đọc' : 'Nghe câu hỏi'}</span>
-                      </Button>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {listeningDialogue && (
                     <div className="pt-2 border-t border-cyan-200/50 dark:border-cyan-800/40">
@@ -758,17 +785,34 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               );
             })()}
 
-            <p className="text-base sm:text-lg font-bold text-foreground leading-relaxed mt-1">
-              {currentQuestionType === 'open_cloze'
-                ? 'Hoàn thành đoạn văn bằng cách điền từ hoặc cụm từ phù hợp vào các ô trống:'
-                : currentQuestionType === 'listening'
-                ? (() => {
-                    const raw = currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText || '';
-                    const match = raw.match(/\[Question\]\s*:?\s*([\s\S]+)$/i);
-                    return match ? match[1].trim() : (raw.replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?[\s\S]*$/i, '').trim() || raw || 'Lắng nghe câu hỏi và chọn đáp án chính xác:');
-                  })()
-                : (currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText)}
-            </p>
+            {currentQuestionType === 'listening' ? (
+              <div className="flex flex-col gap-2 mt-1">
+                <p className="text-base sm:text-lg font-bold text-foreground leading-relaxed flex items-center gap-2">
+                  <Headphones className="size-5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                  <span>Lắng nghe câu hỏi và chọn đáp án chính xác bên dưới:</span>
+                </p>
+                {isSubmitted && (
+                  <div className="p-3.5 rounded-xl bg-muted/60 border border-border text-xs sm:text-sm text-foreground mt-1 animate-fade">
+                    <span className="font-bold text-cyan-600 dark:text-cyan-400 block mb-1">
+                      Nội dung câu hỏi bài nghe (Transcript review):
+                    </span>
+                    <span className="font-medium whitespace-pre-line leading-relaxed">
+                      {(() => {
+                        const raw = currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText || '';
+                        const match = raw.match(/\[Question\]\s*:?\s*([\s\S]+)$/i);
+                        return match ? match[1].trim() : (raw.replace(/\[Audio Script\s*\/?\s*Dialogue\]\s*:?[\s\S]*$/i, '').trim() || raw);
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-base sm:text-lg font-bold text-foreground leading-relaxed mt-1">
+                {currentQuestionType === 'open_cloze'
+                  ? 'Hoàn thành đoạn văn bằng cách điền từ hoặc cụm từ phù hợp vào các ô trống:'
+                  : (currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText)}
+              </p>
+            )}
           </div>
 
           <Separator />
@@ -780,7 +824,10 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                 const optionKey = String.fromCharCode(65 + idx); // A, B, C, D
                 const optionLabel = formatQuizOption(option);
                 const isSelected = selectedAnswers[currentQuestion.id] === optionKey;
-                const questionResult = submissionResults?.find(r => r.question_id === currentQuestion.id);
+                // Dùng String() ở cả 2 vế vì backend trả question_id là number, còn frontend map sang string
+                const questionResult = submissionResults?.find(
+                  r => String(r.question_id) === String(currentQuestion.id)
+                );
                 const authoritativeCorrect = questionResult?.correct_answer || currentQuestion.correctAnswer || '';
                 const isCorrect = isSubmitted && isOptionMatching(authoritativeCorrect, optionKey);
 
@@ -1153,7 +1200,8 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                 const qType = getEffectiveQuestionType(q);
                 const isCorrect = isSubmitted && (
                   submissionResults
-                    ? Boolean(submissionResults.find(r => r.question_id === q.id)?.is_correct)
+                    // String() coerce vì backend trả number, frontend dùng String id
+                    ? Boolean(submissionResults.find(r => String(r.question_id) === String(q.id))?.is_correct)
                     : (['multiple_choice', 'listening', 'reading'].includes(qType)
                         ? isOptionMatching(q.correctAnswer, selectedAnswers[q.id])
                         : (Number(questionScores[q.id]) || 0) >= 50)

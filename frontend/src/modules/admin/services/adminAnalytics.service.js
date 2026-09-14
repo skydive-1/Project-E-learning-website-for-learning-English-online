@@ -160,8 +160,9 @@ export const connectGeminiRateLimitStream = ({
   };
 };
 
-export const resetGeminiModelRouting = async () => {
-  const response = await apiClient.post('/admin/gemini-rate-limits/routing/reset');
+export const resetGeminiModelRouting = async (options = {}) => {
+  const all = options?.all !== undefined ? options.all : true;
+  const response = await apiClient.post('/admin/gemini-rate-limits/routing/reset', { all });
   if (!response.data?.success || !response.data?.data?.routing) {
     throw new Error('Phản hồi khôi phục model Gemini không hợp lệ');
   }
@@ -172,6 +173,18 @@ export const setPreferredGeminiModel = async (model) => {
   const response = await apiClient.post('/admin/gemini-rate-limits/routing/preferred', { model });
   if (!response.data?.success || !response.data?.data?.routing) {
     throw new Error('Phản hồi chọn model điều phối không hợp lệ');
+  }
+  return response.data.data.routing;
+};
+
+export const toggleAiModelLock = async ({ model, locked, reason } = {}) => {
+  const response = await apiClient.post('/admin/gemini-rate-limits/routing/lock', {
+    model,
+    locked: Boolean(locked),
+    reason
+  });
+  if (!response.data?.success || !response.data?.data?.routing) {
+    throw new Error('Phản hồi thay đổi trạng thái khóa model không hợp lệ');
   }
   return response.data.data.routing;
 };

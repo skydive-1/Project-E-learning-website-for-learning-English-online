@@ -61,9 +61,11 @@ export const sendStudyHeartbeat = async (lessonId, durationSeconds = 30, activit
  * Lấy tổng quan phân tích học tập (KPI, charts) từ DB thật
  * API backend: GET /api/analytics/summary
  */
-export const getUserAnalyticsSummary = async () => {
+export const getUserAnalyticsSummary = async (timeRange = '30days') => {
   try {
-    const response = await apiClient.get('/analytics/summary');
+    const response = await apiClient.get('/analytics/summary', {
+      params: { range: timeRange }
+    });
     const data = response.data;
 
     if (!data || !data.kpi) throw new Error('Phản hồi analytics từ máy chủ không đúng định dạng.');

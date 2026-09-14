@@ -63,7 +63,7 @@ const AnalyticsDashboardPage = () => {
       setAnalyticsError('');
       const [hmData, sumData] = await Promise.all([
         getUserHeatmapData(timeRange),
-        getUserAnalyticsSummary()
+        getUserAnalyticsSummary(timeRange)
       ]);
       setHeatmapData(hmData);
       setSummary(sumData);
@@ -252,7 +252,7 @@ const AnalyticsDashboardPage = () => {
               }`}>
                 <FiTrendingUp className={`text-xs ${ (summary?.kpi?.weeklyGrowthPercent ?? 0) < 0 ? 'rotate-180' : '' }`} />
                 <span>
-                  {(summary?.kpi?.weeklyGrowthPercent ?? 0) >= 0 ? '+' : ''}{summary?.kpi?.weeklyGrowthPercent ?? 0}% so với tuần trước
+                  {(summary?.kpi?.weeklyGrowthPercent ?? 0) >= 0 ? '+' : ''}{summary?.kpi?.weeklyGrowthPercent ?? 0}% {summary?.kpi?.periodComparisonLabel || (timeRange === '7days' ? 'so với 7 ngày trước' : timeRange === 'year' ? 'so với năm trước' : 'so với 30 ngày trước')}
                 </span>
               </div>
             </div>
@@ -277,7 +277,11 @@ const AnalyticsDashboardPage = () => {
               <div className="flex items-center text-[11px] font-bold text-slate-500 dark:text-slate-400 gap-1 pt-1">
                 <FiBookOpen className="text-xs text-emerald-500" />
                 <span>
-                  {summary?.kpi?.completedLessonsCount > 0 ? `${summary.kpi.completedLessonsCount} bài đã hoàn thành` : 'Chưa có bài học nào hoàn thành'}
+                  {summary?.kpi?.completedLessonsCount > 0
+                    ? `${summary.kpi.completedLessonsCount} bài hoàn thành trong kỳ`
+                    : (summary?.kpi?.allTimeCompletedLessonsCount ?? 0) > 0
+                      ? `${summary.kpi.allTimeCompletedLessonsCount} bài hoàn thành (toàn thời gian)`
+                      : 'Chưa có bài học nào hoàn thành'}
                 </span>
               </div>
             </div>
@@ -304,6 +308,10 @@ const AnalyticsDashboardPage = () => {
                 <span>
                   {(() => {
                     const s = summary?.kpi?.avgQuizScorePercent ?? 0;
+                    const count = summary?.kpi?.totalQuizzesTaken ?? 0;
+                    if (count === 0 && (summary?.kpi?.allTimeQuizzesTaken ?? 0) > 0) {
+                      return `Chưa làm quiz trong kỳ (Toàn thời gian: ${summary?.kpi?.allTimeAvgQuizScorePercent ?? 0}%)`;
+                    }
                     if (s >= 90) return 'Xếp loại: Học viên Xuất sắc 🏆';
                     if (s >= 75) return 'Xếp loại: Học viên Giỏi 🥇';
                     if (s >= 60) return 'Xếp loại: Học viên Khá 🥈';
@@ -346,7 +354,11 @@ const AnalyticsDashboardPage = () => {
                   🔥 Tần suất học tập theo ngày (Learning Heatmap)
                 </span>
                 <h2 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100" style={{ color: 'var(--text-color)' }}>
-                  Biểu đồ Nhiệt độ rèn luyện trong năm ({heatmapData.length} ngày ghi nhận)
+                  {timeRange === '7days'
+                    ? `Biểu đồ Nhiệt độ rèn luyện 7 ngày qua (${heatmapData.length} ngày ghi nhận)`
+                    : timeRange === '30days'
+                    ? `Biểu đồ Nhiệt độ rèn luyện 30 ngày qua (${heatmapData.length} ngày ghi nhận)`
+                    : `Biểu đồ Nhiệt độ rèn luyện trong năm (${heatmapData.length} ngày ghi nhận)`}
                 </h2>
               </div>
 
@@ -364,30 +376,86 @@ const AnalyticsDashboardPage = () => {
               </div>
             </div>
 
-            {/* Heatmap Grid Rendering */}
-            <div className="overflow-x-auto pb-3 scrollbar-thin">
-              <div className="min-w-[760px] flex gap-1.5 p-3 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 select-none">
-                {heatmapWeeks.map((week, wIdx) => (
-                  <div key={wIdx} className="flex flex-col gap-1.5 flex-1">
-                    {week.map((day, dIdx) => (
-                      <div
-                        key={dIdx}
-                        onMouseEnter={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setHoveredDay({
-                            date: day.date,
-                            count: day.count,
-                            rect
-                          });
-                        }}
-                        onMouseLeave={() => setHoveredDay(null)}
-                        className={`w-full aspect-square rounded-[5px] transition-all duration-150 cursor-pointer hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1 dark:hover:ring-offset-slate-900 ${getHeatmapColor(day.intensity)}`}
-                      />
-                    ))}
-                  </div>
-                ))}
+            {/* Heatmap Rendering: Responsive per timeRange */}
+            {timeRange === '7days' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {heatmapData.map((day, idx) => {
+                  const dateObj = new Date(day.date);
+                  const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+                  const dayName = isNaN(dateObj.getTime()) ? `Ngày ${idx + 1}` : dayNames[dateObj.getDay()];
+                  const formattedDate = isNaN(dateObj.getTime()) ? day.date : `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className="flex flex-col items-center p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/40 hover:border-emerald-500/50 transition-all shadow-sm text-center space-y-2"
+                    >
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{dayName}</span>
+                      <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">{formattedDate}</span>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${getHeatmapColor(day.intensity)}`}>
+                        <span className="text-xs font-black">
+                          {day.count > 0 ? `${day.count}m` : '0m'}
+                        </span>
+                      </div>
+                      <span className={`text-[11px] font-bold ${day.count > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                        {day.count > 0 ? `${day.count} phút` : 'Nghỉ ngơi'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            ) : timeRange === '30days' ? (
+              <div className="overflow-x-auto pb-3 scrollbar-thin">
+                <div className="min-w-[700px] flex justify-center gap-2.5 p-4 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 select-none">
+                  {heatmapWeeks.map((week, wIdx) => (
+                    <div key={wIdx} className="flex flex-col gap-2.5">
+                      {week.map((day, dIdx) => (
+                        <div
+                          key={dIdx}
+                          onMouseEnter={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setHoveredDay({
+                              date: day.date,
+                              count: day.count,
+                              rect
+                            });
+                          }}
+                          onMouseLeave={() => setHoveredDay(null)}
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold transition-all duration-150 cursor-pointer hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1 dark:hover:ring-offset-slate-900 ${getHeatmapColor(day.intensity)}`}
+                        >
+                          <span className="opacity-70 text-[10px]">{day.date ? day.date.slice(8, 10) : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Heatmap Grid Rendering cho Cả năm (52 tuần) */
+              <div className="overflow-x-auto pb-3 scrollbar-thin">
+                <div className="min-w-[760px] flex gap-1.5 p-3 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 select-none">
+                  {heatmapWeeks.map((week, wIdx) => (
+                    <div key={wIdx} className="flex flex-col gap-1.5 flex-1">
+                      {week.map((day, dIdx) => (
+                        <div
+                          key={dIdx}
+                          onMouseEnter={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setHoveredDay({
+                              date: day.date,
+                              count: day.count,
+                              rect
+                            });
+                          }}
+                          onMouseLeave={() => setHoveredDay(null)}
+                          className={`w-full aspect-square rounded-[5px] transition-all duration-150 cursor-pointer hover:ring-2 hover:ring-emerald-400 hover:ring-offset-1 dark:hover:ring-offset-slate-900 ${getHeatmapColor(day.intensity)}`}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* TWO COLUMNS CHARTS SECTION */}
@@ -404,7 +472,11 @@ const AnalyticsDashboardPage = () => {
                       📈 Tiến trình làm Quiz
                     </span>
                     <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                      Xu hướng điểm số & Số lượt làm bài
+                      {timeRange === '7days'
+                        ? 'Xu hướng điểm số theo ngày'
+                        : timeRange === '30days'
+                        ? 'Xu hướng điểm số theo tuần (30 ngày)'
+                        : 'Xu hướng điểm số theo tháng trong năm'}
                     </h3>
                   </div>
                 </div>
@@ -449,10 +521,18 @@ const AnalyticsDashboardPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-extrabold uppercase tracking-wider mb-1 inline-block">
-                      📊 Phân bổ theo ngày trong tuần
+                      {timeRange === '7days'
+                        ? '📊 Phân bổ theo ngày trong tuần'
+                        : timeRange === '30days'
+                        ? '📊 Phân bổ theo các tuần trong tháng'
+                        : '📊 Phân bổ theo các tháng trong năm'}
                     </span>
                     <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                      Số phút rèn luyện theo các ngày trong tuần
+                      {timeRange === '7days'
+                        ? 'Số phút rèn luyện theo các ngày trong tuần'
+                        : timeRange === '30days'
+                        ? 'Số phút rèn luyện theo các tuần trong tháng'
+                        : 'Số phút rèn luyện theo 12 tháng trong năm'}
                     </h3>
                   </div>
                 </div>

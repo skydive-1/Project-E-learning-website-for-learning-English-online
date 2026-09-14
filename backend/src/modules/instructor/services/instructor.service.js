@@ -320,8 +320,6 @@ class InstructorService {
    */
   async getAnalytics(instructorId, days = 30, isAdmin = false) {
     const safeDays = [7, 30, 90, 365].includes(Number(days)) ? Number(days) : 30;
-    const courseWhere = isAdmin ? '' : 'WHERE instructor_id = $1';
-    const publishedCourseWhere = isAdmin ? "WHERE (status = 'published' OR status = '1')" : "WHERE instructor_id = $1 AND (status = 'published' OR status = '1')";
 
     const overviewQuery = `
       WITH bounds AS (
@@ -330,7 +328,7 @@ class InstructorService {
           CURRENT_DATE + INTERVAL '1 day' AS period_end
       ),
       instructor_courses AS (
-        SELECT course_id FROM courses ${courseWhere}
+        SELECT course_id FROM courses WHERE ($3::boolean = true OR instructor_id = $1)
       ),
       instructor_lessons AS (
         SELECT l.lesson_id
@@ -373,7 +371,7 @@ class InstructorService {
          WHERE up.lesson_id IN (SELECT lesson_id FROM instructor_lessons)
            AND up.completed_at >= period_start AND up.completed_at < period_end)::int AS new_learners,
         (SELECT COUNT(DISTINCT pa.user_id) FROM period_activity pa)::int AS active_learners,
-        (SELECT COUNT(*) FROM courses WHERE instructor_id = $1 AND (status = 'published' OR status = '1'))::int AS published_courses,
+        (SELECT COUNT(*) FROM courses WHERE ($3::boolean = true OR instructor_id = $1) AND (status = 'published' OR status = '1'))::int AS published_courses,
         (SELECT COUNT(*) FROM instructor_lessons)::int AS total_lessons,
         (SELECT COUNT(*) FROM user_progress up, bounds
          WHERE up.lesson_id IN (SELECT lesson_id FROM instructor_lessons)
@@ -407,7 +405,7 @@ class InstructorService {
         FROM lessons l
         JOIN sections s ON l.section_id = s.section_id
         JOIN courses c ON s.course_id = c.course_id
-        WHERE c.instructor_id = $1
+        WHERE ($3::boolean = true OR c.instructor_id = $1)
       ),
       calendar AS (
         SELECT generate_series(period_start::date, CURRENT_DATE, INTERVAL '1 day')::date AS day
@@ -447,7 +445,7 @@ class InstructorService {
         SELECT CURRENT_DATE - ($2::int - 1) * INTERVAL '1 day' AS period_start
       ),
       instructor_courses AS (
-        SELECT course_id, course_name FROM courses WHERE instructor_id = $1
+        SELECT course_id, course_name FROM courses WHERE ($3::boolean = true OR instructor_id = $1)
       ),
       course_lesson_counts AS (
         SELECT s.course_id, COUNT(l.lesson_id)::int AS lesson_count
@@ -589,16 +587,16 @@ class InstructorService {
         GROUP BY s.course_id, up.user_id
       ) user_course_progress ON user_course_progress.course_id = c.course_id
       LEFT JOIN user_progress up ON up.user_id = user_course_progress.user_id
-      WHERE c.instructor_id = $1
+      WHERE ($2::boolean = true OR c.instructor_id = $1)
       GROUP BY c.course_id, c.course_name, c.status, clc.lesson_count
       ORDER BY learners DESC
     `;
 
     const [overviewRes, trendRes, learnersRes, coursesRes] = await Promise.all([
-      db.query(overviewQuery, [instructorId, safeDays]),
-      db.query(trendQuery, [instructorId, safeDays]),
-      db.query(learnersQuery, [instructorId, safeDays]),
-      db.query(coursesQuery, [instructorId])
+      db.query(overviewQuery, [instructorId, safeDays, Boolean(isAdmin)]),
+      db.query(trendQuery, [instructorId, safeDays, Boolean(isAdmin)]),
+      db.query(learnersQuery, [instructorId, safeDays, Boolean(isAdmin)]),
+      db.query(coursesQuery, [instructorId, Boolean(isAdmin)])
     ]);
 
     const now = Date.now();

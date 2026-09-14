@@ -41,6 +41,20 @@ export const updateProfileApi = async ({ username, fullName, profilePictureUrl }
 };
 
 /**
+ * Tải ảnh đại diện (upload file ảnh)
+ */
+export const uploadAvatarApi = async (file) => {
+  const formData = new FormData();
+  formData.append('avatar', file);
+  const response = await apiClient.post('/auth/profile/avatar', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return response.data;
+};
+
+/**
  * Đăng nhập/Xác thực Google OAuth2 token
  */
 export const loginWithGoogle = async (token, isAccessToken = false) => {

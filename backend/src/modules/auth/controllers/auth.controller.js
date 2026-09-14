@@ -132,6 +132,21 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
+exports.uploadAvatar = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const updatedUser = await authService.uploadAvatar(userId, req.file);
+
+    res.status(200).json({
+      success: true,
+      message: 'Tải ảnh đại diện thành công',
+      data: updatedUser
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.googleLogin = async (req, res, next) => {
   try {
     const { idToken, token, isAccessToken } = req.body;

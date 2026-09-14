@@ -8,9 +8,11 @@ import {
   FiClock,
   FiExternalLink,
   FiInfo,
+  FiLock,
   FiRefreshCw,
   FiSave,
-  FiSettings
+  FiSettings,
+  FiUnlock
 } from 'react-icons/fi';
 
 import { Button } from '@/components/ui/button';
@@ -23,6 +25,7 @@ import {
   connectGeminiRateLimitStream,
   resetGeminiModelRouting,
   setPreferredGeminiModel,
+  toggleAiModelLock,
   updateGeminiRateLimitCaps
 } from '../services/adminAnalytics.service';
 import FreeTierUsageGuard from './FreeTierUsageGuard';
@@ -98,6 +101,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [resettingRouting, setResettingRouting] = useState(false);
   const [settingPreferredModel, setSettingPreferredModel] = useState(null);
+  const [lockingModel, setLockingModel] = useState(null);
   const [savingModel, setSavingModel] = useState(null);
   const [error, setError] = useState(null);
   const [streamState, setStreamState] = useState('connecting');
@@ -109,6 +113,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   ) || null;
   const preferredModelCoolingDown = Boolean(preferredModelCooldown);
   const preferredModelRpdExhausted = preferredModelCooldown?.dimension === 'rpd';
+  const anyModelCoolingDown = Boolean(routing?.coolingDown && routing.coolingDown.length > 0);
 
   const fetchData = useCallback(async ({ background = false, manual = false, fresh = false, includeCaps = !background } = {}) => {
     if (fetchInFlightRef.current) return false;
@@ -348,6 +353,36 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     }
   };
 
+  const handleToggleLock = async (model, currentlyLocked, event) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    if (!model || lockingModel) return;
+    try {
+      setLockingModel(model);
+      const nextRouting = await toggleAiModelLock({
+        model,
+        locked: !currentlyLocked,
+        reason: currentlyLocked ? null : 'Admin manually locked model from dashboard'
+      });
+      setStatus((current) => (current ? { ...current, routing: nextRouting } : current));
+      showToast(
+        currentlyLocked
+          ? t('Đã mở khóa model {{model}}. Model đã có thể nhận request.', { model })
+          : t('Đã khóa model {{model}}. Backend sẽ bỏ qua model này khi điều phối.', { model }),
+        'success'
+      );
+    } catch (lockError) {
+      console.error('Không thể thao tác khóa/mở khóa model:', lockError);
+      showToast(
+        lockError.response?.data?.message || t('Không thể thay đổi trạng thái khóa của model. Vui lòng thử lại.'),
+        'error'
+      );
+    } finally {
+      setLockingModel(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="ai-rate-state" role="status">
@@ -467,15 +502,16 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     id="ai-preferred-model-select"
                     value={routing.preferredModel || ''}
                     onChange={(e) => handleSelectPreferredModel(e.target.value)}
-                    disabled={Boolean(settingPreferredModel)}
+                    disabled={Boolean(settingPreferredModel || lockingModel)}
                     aria-label={t('Chọn model ưu tiên điều phối')}
                   >
                     {(routing.fallbackOrder || []).map((m) => {
+                      const isLocked = Boolean(routing.lockedModels?.includes(m));
                       const mCooldown = routing.coolingDown?.find((item) => item.model === m);
                       const isRpdExhausted = mCooldown?.dimension === 'rpd';
                       return (
-                        <option key={m} value={m} disabled={isRpdExhausted}>
-                          {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''} {isRpdExhausted ? t('(Google API đang cooldown)') : ''}
+                        <option key={m} value={m} disabled={isLocked}>
+                          {m} {m === routing.preferredModel ? t('(Đang ưu tiên)') : ''} {isLocked ? t('(Admin đã khóa)') : isRpdExhausted ? t('(Google API đang cooldown)') : ''}
                         </option>
                       );
                     })}
@@ -500,15 +536,16 @@ const AIRateLimitsView = ({ canManageCaps }) => {
               {(routing.fallbackOrder || []).map((model, index) => {
                 const cooldown = routing.coolingDown?.find((item) => item.model === model);
                 const isRpdExhausted = cooldown?.dimension === 'rpd';
+                const isLocked = Boolean(routing.lockedModels?.includes(model));
                 const isEffective = model === routing.effectiveModel;
                 const isPreferred = model === routing.preferredModel;
-                const isClickable = canManageCaps && !isPreferred && !settingPreferredModel && !isRpdExhausted;
+                const isClickable = canManageCaps && !isPreferred && !settingPreferredModel && !lockingModel && !isLocked;
 
                 return (
                   <React.Fragment key={model}>
                     {index > 0 && <span className="ai-model-routing__arrow" aria-hidden="true">→</span>}
                     <div
-                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isRpdExhausted ? ' is-rpd-locked' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}`}
+                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isLocked ? ' is-manually-locked' : ''}${isRpdExhausted ? ' is-rpd-locked' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}`}
                       role={isClickable ? 'button' : undefined}
                       tabIndex={isClickable ? 0 : undefined}
                       onClick={isClickable ? () => handleSelectPreferredModel(model) : undefined}
@@ -518,14 +555,16 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                           handleSelectPreferredModel(model);
                         }
                       } : undefined}
-                      title={isRpdExhausted
-                        ? t('Gemini API đã trả lỗi quota RPD cho {{model}}. Backend tạm dừng model đến {{time}} để tránh gửi lặp request lỗi.', {
-                            model,
-                            time: dateTimeFormatter.format(new Date(cooldown.retryAt))
-                          })
-                        : isClickable
-                          ? t('Nhấp để chọn {{model}} làm model ưu tiên điều phối', { model })
-                          : undefined}
+                      title={isLocked
+                        ? t('Model đang bị Admin khóa thủ công. Bấm [Mở khóa] để cho phép điều phối lại.', { model })
+                        : isRpdExhausted
+                          ? t('Gemini API đã trả lỗi quota RPD cho {{model}}. Backend tạm dừng model đến {{time}} để tránh gửi lặp request lỗi.', {
+                              model,
+                              time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                            })
+                          : isClickable
+                            ? t('Nhấp để chọn {{model}} làm model ưu tiên điều phối', { model })
+                            : undefined}
                     >
                       <div className="ai-model-routing__model-header">
                         <span>{index === 0 ? t('Ưu tiên') : t('Dự phòng {{number}}', { number: index })}</span>
@@ -535,32 +574,64 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                             {t('Đang chọn')}
                           </span>
                         )}
-                        {isRpdExhausted && !isPreferred && (
+                        {isLocked ? (
+                          <span className="ai-model-routing__admin-lock-badge" title={t('Admin đã chủ động khóa model này')}>
+                            <FiLock aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '3px' }} />
+                            {t('Admin đã khóa')}
+                          </span>
+                        ) : isRpdExhausted && !isPreferred ? (
                           <span className="ai-model-routing__lock-badge" title={t('Gemini API đang từ chối request do quota')}>
                             {t('Provider cooldown')}
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <code>{model}</code>
                       <small>
-                        {cooldown
-                          ? cooldown.dimension === 'rpd'
-                            ? t('Google API từ chối · thử lại {{time}}', {
-                                time: dateTimeFormatter.format(new Date(cooldown.retryAt))
-                              })
-                            : t('Thử lại {{time}}', {
-                                time: dateTimeFormatter.format(new Date(cooldown.retryAt))
-                              })
-                          : isEffective ? t('Request kế tiếp') : t('Sẵn sàng')}
+                        {isLocked
+                          ? t('Admin đã khóa · không điều phối')
+                          : cooldown
+                            ? cooldown.dimension === 'rpd'
+                              ? t('Google API từ chối · thử lại {{time}}', {
+                                  time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                                })
+                              : t('Thử lại {{time}}', {
+                                  time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                                })
+                            : isEffective ? t('Request kế tiếp') : t('Sẵn sàng')}
                       </small>
-                      {canManageCaps && !isPreferred && (
-                        <span className="ai-model-routing__action-hint">
-                          {isRpdExhausted
-                            ? t('Provider cooldown')
-                            : settingPreferredModel === model
-                              ? t('Đang chuyển...')
-                              : t('Bấm để ưu tiên')}
-                        </span>
+                      {canManageCaps && (
+                        <div className="ai-model-routing__model-actions">
+                          {!isPreferred && (
+                            <span className="ai-model-routing__action-hint">
+                              {isLocked
+                                ? t('Đã khóa')
+                                : isRpdExhausted
+                                  ? t('Provider cooldown')
+                                  : settingPreferredModel === model
+                                    ? t('Đang chuyển...')
+                                    : t('Bấm để ưu tiên')}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className={`ai-model-routing__lock-btn${isLocked ? ' is-unlock' : ''}`}
+                            onClick={(e) => handleToggleLock(model, isLocked, e)}
+                            disabled={lockingModel === model}
+                            title={isLocked ? t('Mở khóa model {{model}}', { model }) : t('Khóa model {{model}}', { model })}
+                            aria-label={isLocked ? t('Mở khóa model {{model}}', { model }) : t('Khóa model {{model}}', { model })}
+                          >
+                            {lockingModel === model ? (
+                              <Spinner aria-hidden="true" style={{ width: '12px', height: '12px', display: 'inline-block' }} />
+                            ) : isLocked ? (
+                              <FiUnlock aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '3px' }} />
+                            ) : (
+                              <FiLock aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '3px' }} />
+                            )}
+                            {lockingModel === model
+                              ? isLocked ? t('Đang mở...') : t('Đang khóa...')
+                              : isLocked ? t('Mở khóa') : t('Khóa model')}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </React.Fragment>
@@ -594,7 +665,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                 type="button"
                 variant="outline"
                 onClick={handleResetRouting}
-                disabled={resettingRouting || !preferredModelCoolingDown}
+                disabled={resettingRouting || (!preferredModelCoolingDown && !anyModelCoolingDown)}
                 aria-busy={resettingRouting}
               >
                 {resettingRouting
@@ -604,7 +675,9 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                   ? t('Đang khôi phục')
                   : preferredModelCoolingDown
                     ? t('Khôi phục model ưu tiên')
-                    : t('Model ưu tiên đã sẵn sàng')}
+                    : anyModelCoolingDown
+                      ? t('Khôi phục trạng thái tất cả model')
+                      : t('Model ưu tiên đã sẵn sàng')}
               </Button>
             )}
           </footer>

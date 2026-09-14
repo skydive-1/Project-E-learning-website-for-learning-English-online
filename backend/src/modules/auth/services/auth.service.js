@@ -5,11 +5,30 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('node:crypto');
+const path = require('node:path');
+const fs = require('node:fs');
 const db = require('../../../config/database');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { supabaseAdmin, supabaseClient } = require('../../../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
 const { isSuperAdminUser } = require('../../../utils/superAdmin.util');
+
+const isValidImageBuffer = (buffer) => {
+  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length < 4) return false;
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  // PNG: 89 50 4E 47
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return true;
+  // GIF: 47 49 46 38
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return true;
+  // WEBP: RIFF....WEBP
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return true;
+  return false;
+};
 
 const parseTimeout = (name, fallback) => {
   const value = Number.parseInt(process.env[name] || '', 10);
@@ -252,7 +271,7 @@ class AuthService {
 
         // Tự động di trú người dùng cũ (Lazy Migration / Shadow Migration):
         // Nếu không đăng nhập được qua Supabase, kiểm tra xem user có tồn tại ở PostgreSQL cục bộ với mật khẩu cũ không
-        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at FROM users WHERE LOWER(email) = $1';
+        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url FROM users WHERE LOWER(email) = $1';
         const localUserResult = await db.query(localUserQuery, [cleanEmail]);
 
         if (localUserResult.rows.length > 0) {
@@ -310,7 +329,7 @@ class AuthService {
         supabaseUser = authData.user;
 
         // 2. Tìm kiếm thông tin user cục bộ bằng supabase_uid hoặc email để liên kết
-        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at FROM users WHERE supabase_uid = $1 OR LOWER(email) = $2';
+        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url FROM users WHERE supabase_uid = $1 OR LOWER(email) = $2';
         const result = await db.query(queryText, [supabaseUser.id, cleanEmail]);
 
         if (result.rows.length === 0) {
@@ -322,7 +341,7 @@ class AuthService {
           const insertQuery = `
             INSERT INTO users (email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at)
             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-            RETURNING user_id, email, username, full_name, role_id, supabase_uid, email_verified_at
+            RETURNING user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url
           `;
           const insertRes = await db.query(insertQuery, [cleanEmail, '', username, fullName, roleId, supabaseUser.id]);
           user = insertRes.rows[0];
@@ -359,6 +378,7 @@ class AuthService {
           email: user.email,
           username: user.username,
           fullName: user.full_name,
+          profilePictureUrl: user.profile_picture_url || null,
           roleId: user.role_id,
           isSuperAdmin: isSuperAdminUser(user)
         }
@@ -473,7 +493,7 @@ class AuthService {
   async getProfile(userId) {
     try {
       // Lấy thông tin chi tiết người dùng từ database theo cấu trúc mới
-      const queryText = 'SELECT user_id, email, username, full_name, birth_date, phone, role_id, gender, created_date FROM users WHERE user_id = $1';
+      const queryText = 'SELECT user_id, email, username, full_name, birth_date, phone, role_id, gender, created_date, profile_picture_url FROM users WHERE user_id = $1';
       const result = await db.query(queryText, [userId]);
 
       if (result.rows.length === 0) {
@@ -494,6 +514,7 @@ class AuthService {
         roleId: user.role_id,
         gender: user.gender,
         createdDate: user.created_date,
+        profilePictureUrl: user.profile_picture_url || null,
         isSuperAdmin: isSuperAdminUser(user)
       };
     } catch (error) {
@@ -635,6 +656,104 @@ class AuthService {
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi cập nhật profile trong AuthService');
+    }
+  }
+
+  async uploadAvatar(userId, file) {
+    try {
+      if (!file || !file.buffer) {
+        const error = new Error('Vui lòng chọn tệp hình ảnh để tải lên');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowedMimes.includes(file.mimetype) || !isValidImageBuffer(file.buffer)) {
+        const error = new Error('Định dạng hình ảnh không hợp lệ. Chỉ chấp nhận JPG, PNG, WEBP hoặc GIF');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      const maxBytes = 5 * 1024 * 1024;
+      if (file.size > maxBytes || file.buffer.length > maxBytes) {
+        const error = new Error('Kích thước ảnh không được vượt quá 5MB');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      const rawExt = path.extname(file.originalname || '').toLowerCase();
+      const ext = rawExt || (file.mimetype === 'image/png' ? '.png' : file.mimetype === 'image/webp' ? '.webp' : file.mimetype === 'image/gif' ? '.gif' : '.jpg');
+      const fileName = `avatar-${userId}-${Date.now()}${ext}`;
+      let profilePictureUrl = null;
+
+      // 1. Thử tải lên Supabase Storage bucket 'avatars'
+      try {
+        if (supabaseAdmin && supabaseAdmin.storage) {
+          const { error: uploadErr } = await supabaseAdmin.storage
+            .from('avatars')
+            .upload(fileName, file.buffer, {
+              contentType: file.mimetype,
+              upsert: true
+            });
+
+          if (!uploadErr) {
+            const { data: publicUrlData } = supabaseAdmin.storage
+              .from('avatars')
+              .getPublicUrl(fileName);
+            profilePictureUrl = publicUrlData?.publicUrl || null;
+          } else {
+            console.warn('[Avatar Upload] Supabase upload failed, falling back to local:', uploadErr.message);
+          }
+        }
+      } catch (storageErr) {
+        console.warn('[Avatar Upload] Supabase storage exception:', storageErr.message);
+      }
+
+      // 2. Fallback nếu Supabase không khả dụng: Lưu vào uploads/avatars trên server
+      if (!profilePictureUrl) {
+        const avatarDir = path.join(__dirname, '../../../../uploads/avatars');
+        if (!fs.existsSync(avatarDir)) {
+          fs.mkdirSync(avatarDir, { recursive: true });
+        }
+        const localPath = path.join(avatarDir, fileName);
+        fs.writeFileSync(localPath, file.buffer);
+        profilePictureUrl = `/uploads/avatars/${fileName}`;
+      }
+
+      // 3. Cập nhật URL ảnh đại diện vào PostgreSQL
+      const updateQuery = `
+        UPDATE users 
+        SET profile_picture_url = $1 
+        WHERE user_id = $2 
+        RETURNING user_id, email, username, full_name, birth_date, phone, role_id, gender, created_date, profile_picture_url
+      `;
+      const result = await db.query(updateQuery, [profilePictureUrl, userId]);
+      if (result.rows.length === 0) {
+        const error = new Error('Không tìm thấy tài khoản người dùng');
+        error.name = 'AuthError';
+        error.status = 404;
+        throw error;
+      }
+
+      const updatedUser = result.rows[0];
+      return {
+        userId: updatedUser.user_id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+        fullName: updatedUser.full_name,
+        birthDate: updatedUser.birth_date,
+        phone: updatedUser.phone,
+        roleId: updatedUser.role_id,
+        gender: updatedUser.gender,
+        createdDate: updatedUser.created_date,
+        profilePictureUrl: updatedUser.profile_picture_url,
+        isSuperAdmin: isSuperAdminUser(updatedUser)
+      };
+    } catch (error) {
+      handleServiceError(error, 'Lỗi tải ảnh đại diện trong AuthService');
     }
   }
 

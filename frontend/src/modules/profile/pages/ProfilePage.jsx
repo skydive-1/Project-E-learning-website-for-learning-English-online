@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FiUser, FiMail, FiLock, FiCalendar, FiShield, 
@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { updateProfileApi, changePasswordApi, getUserStatsApi } from '../../auth/services/auth.service';
+import { updateProfileApi, uploadAvatarApi, changePasswordApi, getUserStatsApi } from '../../auth/services/auth.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useGamification } from '../../../context/GamificationContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -51,6 +51,9 @@ const ProfilePage = () => {
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarImgError, setAvatarImgError] = useState(false);
+  const fileInputRef = useRef(null);
 
   // User stats state (kết nối API thật)
   const [userStats, setUserStats] = useState(null);
@@ -64,6 +67,7 @@ const ProfilePage = () => {
         fullName: authUser.fullName || authUser.full_name || '',
         profilePictureUrl: authUser.profilePictureUrl || authUser.profile_picture_url || ''
       });
+      setAvatarImgError(false);
       setIsLoading(false);
     }
   }, [authUser]);
@@ -145,23 +149,109 @@ const ProfilePage = () => {
     }
   };
 
-  // Cập nhật ảnh đại diện bằng URL qua API hồ sơ hiện có
-  const handleAvatarChange = () => {
-    const url = window.prompt(t('Nhập link URL ảnh đại diện mới của bạn:'), profileData.profilePictureUrl);
-    if (url !== null) {
-      setProfileData({ ...profileData, profilePictureUrl: url });
-      // Call update immediately
+  // Kích hoạt chọn file ảnh đại diện từ thiết bị
+  const handleAvatarClick = () => {
+    if (isUploadingAvatar) return;
+    fileInputRef.current?.click();
+  };
+
+  // Xử lý upload file ảnh khi người dùng chọn từ máy tính/điện thoại
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      setInfoMessage({ type: 'error', text: t('Vui lòng chọn tệp hình ảnh hợp lệ (JPG, PNG, WEBP, GIF).') });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setInfoMessage({ type: 'error', text: t('Kích thước ảnh không được vượt quá 5MB.') });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Xem trước tức thì (preview)
+    const previewUrl = URL.createObjectURL(file);
+    setProfileData((prev) => ({ ...prev, profilePictureUrl: previewUrl }));
+    setAvatarImgError(false);
+    setIsUploadingAvatar(true);
+    setInfoMessage({ type: '', text: '' });
+
+    try {
+      const res = await uploadAvatarApi(file);
+      const uploadedUrl = res.data?.profilePictureUrl;
+      setProfileData((prev) => ({ ...prev, profilePictureUrl: uploadedUrl || previewUrl }));
+      await refreshProfile();
+      setInfoMessage({ type: 'success', text: t('Cập nhật ảnh đại diện thành công!') });
+      setTimeout(() => setInfoMessage({ type: '', text: '' }), 3500);
+    } catch (err) {
+      console.error('Lỗi tải ảnh đại diện lên:', err);
+      const errMsg = err.response?.data?.message || t('Không thể tải ảnh đại diện lên. Vui lòng thử lại.');
+      setInfoMessage({ type: 'error', text: errMsg });
+      setProfileData((prev) => ({
+        ...prev,
+        profilePictureUrl: authUser?.profilePictureUrl || authUser?.profile_picture_url || ''
+      }));
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Cập nhật ảnh đại diện bằng URL (nếu muốn nhập link trực tiếp)
+  const handlePromptUrlChange = () => {
+    if (isUploadingAvatar) return;
+    const url = window.prompt(t('Nhập link URL ảnh đại diện mới của bạn:'), profileData.profilePictureUrl || '');
+    if (url !== null && url.trim() !== profileData.profilePictureUrl) {
+      const trimmed = url.trim();
+      setProfileData((prev) => ({ ...prev, profilePictureUrl: trimmed }));
+      setAvatarImgError(false);
+      setIsUploadingAvatar(true);
+
       updateProfileApi({
         username: profileData.username,
         fullName: profileData.fullName,
-        profilePictureUrl: url
-      }).then(async (result) => {
+        profilePictureUrl: trimmed
+      }).then(async () => {
         await refreshProfile();
-        setInfoMessage({ type: 'success', text: 'Cập nhật ảnh đại diện thành công!' });
-        setTimeout(() => setInfoMessage({ type: '', text: '' }), 3000);
-      }).catch(err => {
-        setInfoMessage({ type: 'error', text: 'Không thể lưu ảnh đại diện.' });
+        setInfoMessage({ type: 'success', text: t('Cập nhật ảnh đại diện thành công!') });
+        setTimeout(() => setInfoMessage({ type: '', text: '' }), 3500);
+      }).catch((err) => {
+        const errMsg = err.response?.data?.message || t('Không thể lưu ảnh đại diện.');
+        setInfoMessage({ type: 'error', text: errMsg });
+        setProfileData((prev) => ({
+          ...prev,
+          profilePictureUrl: authUser?.profilePictureUrl || authUser?.profile_picture_url || ''
+        }));
+      }).finally(() => {
+        setIsUploadingAvatar(false);
       });
+    }
+  };
+
+  // Gỡ ảnh đại diện (quay về ký tự mặc định)
+  const handleRemoveAvatar = async () => {
+    if (isUploadingAvatar || !profileData.profilePictureUrl) return;
+    setIsUploadingAvatar(true);
+    try {
+      await updateProfileApi({
+        username: profileData.username,
+        fullName: profileData.fullName,
+        profilePictureUrl: null
+      });
+      setProfileData((prev) => ({ ...prev, profilePictureUrl: '' }));
+      setAvatarImgError(false);
+      await refreshProfile();
+      setInfoMessage({ type: 'success', text: t('Đã gỡ ảnh đại diện.') });
+      setTimeout(() => setInfoMessage({ type: '', text: '' }), 3500);
+    } catch (err) {
+      const errMsg = err.response?.data?.message || t('Không thể gỡ ảnh đại diện.');
+      setInfoMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -249,16 +339,36 @@ const ProfilePage = () => {
             <div className="profile-left-panel">
               <div className="profile-summary-card">
                 <div className="avatar-section">
-                  <div className="avatar-container" onClick={handleAvatarChange}>
-                    {profileData.profilePictureUrl ? (
-                      <img src={profileData.profilePictureUrl} alt="User Avatar" className="profile-avatar-img" />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    style={{ display: 'none' }}
+                  />
+                  <div
+                    className={`avatar-container ${isUploadingAvatar ? 'is-uploading' : ''}`}
+                    onClick={handleAvatarClick}
+                    title={t('Bấm để đổi ảnh đại diện từ máy')}
+                  >
+                    {profileData.profilePictureUrl && !avatarImgError ? (
+                      <img
+                        src={profileData.profilePictureUrl}
+                        alt="User Avatar"
+                        className="profile-avatar-img"
+                        onError={() => setAvatarImgError(true)}
+                      />
                     ) : (
                       <div className="avatar-fallback-large">
                         {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
                       </div>
                     )}
                     <div className="avatar-edit-overlay">
-                      <FiCamera className="edit-icon" />
+                      {isUploadingAvatar ? (
+                        <FiLoader className="edit-icon spin" />
+                      ) : (
+                        <FiCamera className="edit-icon" />
+                      )}
                     </div>
                   </div>
                   <h3>{profileData.fullName || user?.username || 'Học viên'}</h3>
@@ -271,6 +381,38 @@ const ProfilePage = () => {
                           : 'Học viên'
                     }
                   </span>
+                  <div className="avatar-action-links">
+                    <button
+                      type="button"
+                      className="avatar-action-btn"
+                      onClick={handleAvatarClick}
+                      disabled={isUploadingAvatar}
+                    >
+                      {t('Tải ảnh từ máy')}
+                    </button>
+                    <span className="dot-sep">•</span>
+                    <button
+                      type="button"
+                      className="avatar-action-btn"
+                      onClick={handlePromptUrlChange}
+                      disabled={isUploadingAvatar}
+                    >
+                      {t('Dán link ảnh')}
+                    </button>
+                    {profileData.profilePictureUrl && (
+                      <>
+                        <span className="dot-sep">•</span>
+                        <button
+                          type="button"
+                          className="avatar-action-btn btn-danger-link"
+                          onClick={handleRemoveAvatar}
+                          disabled={isUploadingAvatar}
+                        >
+                          {t('Gỡ ảnh')}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <div className="panel-divider"></div>

@@ -2,9 +2,14 @@
 
 **Ngày đánh giá ban đầu:** 04/09/2026
 
-**Đối soát lại:** 12/09/2026
+**Đối soát lại:** 14/09/2026  
 **Dự án:** E-Learning Website for Learning English Online with AI RAG Chatbot  
 **Repository:** https://github.com/skydive-1/Project-E-learning-website-for-learning-English-online
+
+### 👥 Thành viên nhóm thực hiện Đồ án:
+1. **NGUYỄN DŨNG QUỐC ANH** - Frontend & AI UI Integration Developer
+2. **NGUYỄN THANH LIÊM** - Backend & Security Developer
+3. **LÊ ĐÌNH CHƯƠNG** - Database Administrator & Infrastructure Specialist
 
 ---
 
@@ -12,9 +17,9 @@
 
 ### ✅ **CÓ ĐỦ TỰ TIN để trình bày với hội đồng**
 
-**Mức độ tự tin:** **8.5/10**
+**Mức độ tự tin:** **9.0/10**
 
-- **Căn cứ mới:** Backend 325/325 test pass, frontend 236/236 test pass và production build thành công.
+- **Căn cứ mới (14/09/2026):** Backend 410/410 test pass (69 suites), frontend 299/299 test pass (66 files) và production build thành công. Durable Job Queue trên PostgreSQL đã được vá lỗi ép kiểu `$3::varchar` và có bài kiểm thử tích hợp trên DB thật.
 - **Các lỗi cũ đã xử lý:** Bundle đã tách chunk; thống kê Profile dùng API thật; đã có migration versioned, RedisStore tùy chọn, file log bền và health probes.
 - **Phần còn phải nói rõ:** Một số DDL tương thích vẫn chạy lúc boot; chế độ 0 VND một instance dùng MemoryStore; các pipeline bên ngoài cần demo dự phòng khi quota hoặc mạng gián đoạn.
 
@@ -29,8 +34,8 @@
 - Tổ chức: `src/modules/*` (auth, courses, lessons, chatbot, progress, quizzes, admin, gamification, drm)
 - Middleware riêng biệt: JWT auth, error handling, logging, rate limiting
 - Số lượng module: **13 module** độc lập với controller-service-route pattern (admin, analytic, auth, chatbot, comments, consultation, courses, drm, gamification, instructor, lessons, progress, quizzes)
-- Test backend: **325/325 pass**, 60 suites, 0 fail, 0 skip (12/09/2026)
-- Test frontend: **236/236 pass**, 55 files (12/09/2026)
+- Test backend: **410/410 pass**, 69 suites, 0 fail, 0 skip (14/09/2026)
+- Test frontend: **299/299 pass**, 66 files (14/09/2026)
 
 **Frontend - React 19 + Vite**
 - React version: 19.2.7 (mới nhất)
@@ -57,6 +62,7 @@
 | **AI RAG Chatbot** | ✅ Triển khai | Pinecone vector DB + Gemini LLM + grounding policy (5 test grounding pass) |
 | **Auto-Subtitle** | ✅ Verify | FFmpeg + VAD + Gemini STT. Chạy thành công trên silent audio (exit code 0) |
 | **Progress Tracking** | ✅ Đầy đủ | Lesson completion tracking, 50% threshold validation (2 test completion pass) |
+| **Durable Job Queue** | ✅ Bền vững | PostgreSQL SKIP LOCKED, renewable leases, ép kiểu $3::varchar an toàn, auto-retry/recovery |
 | **Gamification** | ✅ Đầy đủ | Achievements, leaderboard, points system |
 | **Email Consultation** | ✅ Triển khai | SMTP integration, error handling rõ ràng |
 
@@ -109,7 +115,7 @@
 **Checklist chuẩn bị:**
 - [ ] Chạy `psql elearning_db < backend/schema.sql` để xác minh schema setup
 - [x] `schema_parity.test.js` kiểm tra initial schema, quiz parity và cơ chế chỉ chạy migration một lần.
-- [x] `npm --prefix backend test`: 325/325 pass.
+- [x] `npm --prefix backend test`: 410/410 pass.
 
 ### 2.2 Rate Limiting Có Hai Chế Độ
 
@@ -129,8 +135,8 @@
 
 ### 2.3 Frontend Bundle ✅ Đã Tách Chunk
 
-**Kết quả build ngày 12/09/2026:**
-- Main JS: **690.56 kB**, gzip **226.41 kB**.
+**Kết quả build ngày 14/09/2026:**
+- Main JS: **715.86 kB**, gzip **234.01 kB**.
 - Shaka: **812.22 kB**; PDF: **462.38 kB**; charts: **458.38 kB**. Ba thư viện nằm ở chunk riêng.
 - PDF worker: **1,046.21 kB**, chỉ tải cùng luồng PDF.
 - Build không còn cảnh báo chunk vượt ngưỡng cấu hình.
@@ -138,11 +144,11 @@
 **Mức độ:** ✅ **Đã xử lý vấn đề main bundle 3 MB**
 
 **Lời giải thích để trình bày:**
-> "Frontend dùng route-level lazy loading và vendor chunk. Main JS hiện còn 690.56 kB, gzip 226.41 kB; Shaka, PDF và charts chỉ tải ở luồng cần chúng. Chúng tôi không công bố thời gian tải 4G khi chưa có Lighthouse artifact."
+> "Frontend dùng route-level lazy loading và vendor chunk. Main JS hiện còn 715.86 kB, gzip 234.01 kB; Shaka, PDF và charts chỉ tải ở luồng cần chúng. Chúng tôi không công bố thời gian tải 4G khi chưa có Lighthouse artifact."
 
 **Checklist chuẩn bị:**
 - [ ] Chạy `npm --prefix frontend run build` trước buổi bảo vệ để show output
-- [x] Production build đã chạy thành công ngày 12/09/2026.
+- [x] Production build đã chạy thành công ngày 14/09/2026.
 - [ ] Nếu hỏi load time, mở Lighthouse/Network và đo trực tiếp thay vì đọc một con số ước lượng.
 
 ### 2.4 Chưa Test End-to-End Live
@@ -208,7 +214,7 @@
 2. RAG Chatbot (Pinecone + Google Gemini) hỗ trợ học tập context-aware
 3. Quiz tự động (Gemini API) sinh câu hỏi từ tài liệu
 
-Hệ thống đã live, backend đạt 325/325 test và frontend đạt 236/236 test.
+Hệ thống đã live, backend đạt 410/410 test và frontend đạt 299/299 test.
 Production build đã tách Shaka, PDF và charts khỏi main chunk."
 ```
 
@@ -237,7 +243,7 @@ Production build đã tách Shaka, PDF và charts khỏi main chunk."
 **A:** "Bản triển khai 0 VND chạy một backend instance nên dùng MemoryStore. Nếu triển khai nhiều instance, code nhận `REDIS_URL` để chuyển sang RedisStore dùng chung; cờ `RATE_LIMIT_REQUIRE_SHARED_STORE` cảnh báo khi cấu hình scale ngang chưa an toàn. Chúng tôi chưa có load test nên không đưa ra con số concurrent user ước lượng."
 
 #### Q3: "Frontend bundle đã tối ưu đến đâu?"
-**A:** "Build ngày 12/09/2026 cho main JS 690.56 kB, gzip 226.41 kB. Shaka, PDF và charts nằm ở ba vendor chunk riêng và chỉ tải ở luồng cần dùng. Build không còn cảnh báo chunk vượt ngưỡng cấu hình; thời gian tải sẽ được đo trực tiếp bằng Lighthouse/Network nếu hội đồng yêu cầu."
+**A:** "Build ngày 14/09/2026 cho main JS 715.86 kB, gzip 234.01 kB. Shaka, PDF và charts nằm ở ba vendor chunk riêng và chỉ tải ở luồng cần dùng. Build không còn cảnh báo chunk vượt ngưỡng cấu hình; thời gian tải sẽ được đo trực tiếp bằng Lighthouse/Network nếu hội đồng yêu cầu."
 
 #### Q4: "AI chatbot có guarantee không hallucinate không?"
 **A:** "Có grounding policy 3 lớp:  
@@ -278,7 +284,7 @@ Hệ thống chưa gom log từ nhiều máy vì bản triển khai hiện tại
 cd backend
 npm install
 npm test
-# Output ngày 12/09/2026: 325 passing, 0 failing
+# Output ngày 14/09/2026: 410 passing, 0 failing (69 suites)
 ```
 
 **Nếu hỏi "Có documentation không?"**
@@ -321,8 +327,8 @@ backend/src/modules/
 
 ### Tuần trước
 
-- [ ] Chạy `npm --prefix backend test` → kỳ vọng 325 pass, 0 fail
-- [ ] Chạy `npm --prefix frontend test` → kỳ vọng 236 pass, 0 fail
+- [ ] Chạy `npm --prefix backend test` → kỳ vọng 410 pass, 0 fail
+- [ ] Chạy `npm --prefix frontend test` → kỳ vọng 299 pass, 0 fail
 - [ ] Chạy `npm --prefix frontend run build` → check no errors
 - [ ] Test live demo trên 2+ browser (Chrome, Firefox, Safari)
 - [ ] Chuẩn bị câu trả lời cho mỗi Q&A ở section 3.3
@@ -362,7 +368,7 @@ backend/src/modules/
 |-----------|----------|--------|
 | **Kiến trúc** | Modular Monolith rõ ràng, **13 module** độc lập | ⭐⭐⭐⭐⭐ |
 | **Technology stack** | Node/Express/React modern, Pinecone + Gemini actual | ⭐⭐⭐⭐⭐ |
-| **Testing** | Backend 325/325; frontend 236/236 | ⭐⭐⭐⭐⭐ |
+| **Testing** | Backend 410/410; frontend 299/299 | ⭐⭐⭐⭐⭐ |
 | **Documentation** | README + AUDIT + DESIGN + PRODUCT files | ⭐⭐⭐⭐⭐ |
 | **Live deployment** | Vercel demo sẵn, Docker-ready | ⭐⭐⭐⭐⭐ |
 | **Core features** | DRM, RAG, Quiz, Progress, Gamification verify | ⭐⭐⭐⭐⭐ |
@@ -375,7 +381,7 @@ backend/src/modules/
 |-----------|---------|--------|-----------|
 | **Migration cleanup** | Còn DDL tương thích trong startup dù đã có migration versioned | 🟡 Medium | 1-2 days |
 | **Rate limit scaling** | MemoryStore ở chế độ 0 VND một instance; RedisStore đã có nhưng cần hạ tầng shared khi scale | 🟡 Medium | Theo hạ tầng |
-| **Bundle size** | Đã tách chunk; main gzip 226.41 kB | ✅ Done | Done |
+| **Bundle size** | Đã tách chunk; main gzip 234.01 kB | ✅ Done | Done |
 | **Live integration test** | STT, RAG, DRM playback, SMTP chưa E2E | 🟡 Medium | 2-3 days |
 | **Error handling consistency** | ✅ Đã fix — tất cả controller dùng `next(error)` | ✅ Done | Done |
 | **Centralized logging** | Có stdout + file log, chưa gom log từ nhiều instance | 🟢 Small ở quy mô hiện tại | Theo quy mô |
@@ -455,7 +461,7 @@ Target: Học viên 13-30 tuổi, từ beginner → IELTS 7.5"
 1. **Tự tin nhưng honest:** Nói rõ cái gì đã verify, cái gì chưa live test, cái gì sẽ improve.
 2. **Demo > Slide:** Hội đồng thích thấy chạy được hơn nghe lý thuyết.
 3. **Code là bằng chứng:** Khi bị hỏi, show code + test, không phải giải thích dài.
-4. **Dùng số đã đo:** "backend 325/325, frontend 236/236" đáng tin hơn câu "feature đã xong".
+4. **Dùng số đã đo:** "backend 410/410, frontend 299/299" đáng tin hơn câu "feature đã xong".
 5. **Nói đúng trade-off:** MemoryStore phù hợp cấu hình 0 VND một instance; RedisStore chỉ cần khi scale ngang và đã có điểm tích hợp trong code.
 
 ---
