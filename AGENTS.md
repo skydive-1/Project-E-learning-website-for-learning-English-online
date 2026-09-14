@@ -12,3 +12,11 @@
 ## Protected file
 
 - `I22.401_BM08.pdf` is another person's graduation-project report. Never open, parse, ingest, index, copy, move, edit, delete, or otherwise touch this file.
+
+## Quality gates before delivery (non-negotiable)
+
+- Follow `docs/RELEASE_CHECKLIST.md` for every code change.
+- Before any push, run the local secret review, backend tests, frontend tests, and frontend production build. Do not push when any local gate fails.
+- A push is not considered complete or safe to merge until GitGuardian, GitHub frontend CI, GitHub backend CI, the Vercel deployment, and the Railway deployment/healthcheck all report success for the same commit.
+- External provider checks only exist after a commit is pushed. Never claim they passed based on local results; report them as unverified until their real status is available.
+- Never merge, release, or promote a deployment while any required check is failing, pending, cancelled, skipped unexpectedly, or inaccessible.

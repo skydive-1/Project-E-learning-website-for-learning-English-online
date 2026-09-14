@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:24-alpine
 
 # 1. Cài đặt các gói hệ thống: curl, thư viện tương thích C/C++, ffmpeg, Python 3 và pip
 RUN apk add --no-cache curl libc6-compat gcompat libstdc++ ffmpeg python3 py3-pip

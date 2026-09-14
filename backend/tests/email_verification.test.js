@@ -9,6 +9,8 @@ const authService = require('../src/modules/auth/services/auth.service');
 const { supabaseAdmin, supabaseClient } = require('../src/config/supabase');
 const emailUtil = require('../src/utils/email.util');
 
+const TEST_ACCOUNT_PASSWORD = crypto.randomBytes(24).toString('base64url');
+
 describe('Email verification flow', () => {
   const originalQuery = db.query;
   const originalCreateUser = supabaseAdmin.auth.admin.createUser;
@@ -70,7 +72,7 @@ describe('Email verification flow', () => {
     const result = await authService.register({
       email: ' STUDENT@gmail.com ',
       username: 'student',
-      password: 'secret123',
+      password: TEST_ACCOUNT_PASSWORD,
       roleId: 3
     });
 
@@ -100,7 +102,7 @@ describe('Email verification flow', () => {
     };
 
     await assert.rejects(
-      authService.login({ email: 'pending@gmail.com', password: 'secret123' }),
+      authService.login({ email: 'pending@gmail.com', password: TEST_ACCOUNT_PASSWORD }),
       (error) => error.code === 'EMAIL_NOT_VERIFIED' && error.status === 403
     );
     assert.equal(signInCalls, 0);
