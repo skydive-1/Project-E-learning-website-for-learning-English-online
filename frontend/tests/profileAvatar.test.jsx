@@ -55,8 +55,10 @@ vi.mock('../src/modules/auth/services/auth.service', () => ({
   updateProfileApi: vi.fn(),
   uploadAvatarApi: vi.fn(),
   changePasswordApi: vi.fn(),
+  requestPasswordChangeOtpApi: vi.fn(),
   getUserStatsApi: vi.fn().mockResolvedValue({ data: {} })
 }));
+
 
 describe('Profile Avatar Upload & Management', () => {
   beforeEach(() => {

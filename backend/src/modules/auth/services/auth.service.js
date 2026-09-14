@@ -78,6 +78,11 @@ const hashEmailVerificationToken = (token) => crypto
   .update(String(token || ''))
   .digest('hex');
 
+const hashPasswordChangeOtp = (otp) => crypto
+  .createHash('sha256')
+  .update(String(otp || '').trim())
+  .digest('hex');
+
 class AuthService {
   async sendVerificationEmail(user) {
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -522,13 +527,27 @@ class AuthService {
     }
   }
 
-  async changePassword({ userId, oldPassword, newPassword }) {
+  async requestPasswordChangeOtp({ userId, oldPassword, newPassword }) {
     try {
       if (!supabaseAdmin || !supabaseClient) {
         throw new Error('Supabase clients chưa được cấu hình. Vui lòng kiểm tra file .env.');
       }
 
-      // 1. Lấy thông tin user cục bộ
+      if (!newPassword || newPassword.length < 6) {
+        const error = new Error('Mật khẩu mới phải có ít nhất 6 ký tự');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      if (oldPassword === newPassword) {
+        const error = new Error('Mật khẩu mới không được trùng với mật khẩu hiện tại');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      // 1. Lấy thông tin user
       const queryText = 'SELECT user_id, email, full_name, username, supabase_uid FROM users WHERE user_id = $1';
       const result = await db.query(queryText, [userId]);
 
@@ -560,7 +579,171 @@ class AuthService {
         throw error;
       }
 
-      // 3. Cập nhật mật khẩu mới trên Supabase
+      // 3. Sinh mã OTP 6 số và lưu hash với thời hạn 5 phút
+      const otp = crypto.randomInt(100000, 1000000).toString();
+      const otpHash = hashPasswordChangeOtp(otp);
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 phút
+
+      await db.query(
+        `UPDATE users
+         SET password_change_otp_hash = $1,
+             password_change_otp_expires_at = $2
+         WHERE user_id = $3`,
+        [otpHash, expiresAt, user.user_id]
+      );
+
+      // 4. Gửi email chứa mã OTP và cảnh báo an ninh
+      try {
+        const { sendEmail } = require('../../../utils/email.util');
+        const safeDisplayName = escapeHtml(user.full_name || user.username || 'bạn');
+        const safeEmail = escapeHtml(user.email);
+        const frontendUrl = getFrontendUrl();
+
+        const emailHtml = `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 32px; border-radius: 16px; border: 1px solid #1e293b;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #38bdf8; font-size: 24px; font-weight: bold; margin: 0;">E-LEARN ACADEMY</h1>
+              <p style="color: #94a3b8; font-size: 14px; margin-top: 4px;">Hệ thống Học tiếng Anh Thông minh tích hợp AI</p>
+            </div>
+            <div style="background-color: #1e293b; padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+              <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background-color: #38bdf8; border-radius: 50%; margin-right: 8px;"></span>
+                <h2 style="color: #f1f5f9; font-size: 18px; margin: 0;">Mã Xác Thực Đổi Mật Khẩu (OTP)</h2>
+              </div>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+                Xin chào <strong>${safeDisplayName}</strong>,<br/><br/>
+                Chúng tôi nhận được yêu cầu đổi mật khẩu cho tài khoản <code>${safeEmail}</code> trên E-Learn Academy. Dưới đây là mã xác thực OTP 6 chữ số của bạn:
+              </p>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <div style="display: inline-block; background-color: #0f172a; border: 2px dashed #38bdf8; border-radius: 12px; padding: 16px 36px;">
+                  <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; font-family: monospace;">${otp}</span>
+                </div>
+                <p style="color: #94a3b8; font-size: 12.5px; margin-top: 8px;">Mã xác thực có hiệu lực trong vòng <strong>5 phút</strong>.</p>
+              </div>
+
+              <div style="background-color: rgba(37, 99, 235, 0.12); border-left: 4px solid #2563eb; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
+                <p style="color: #93c5fd; font-size: 13.5px; font-weight: 600; margin: 0 0 6px 0;">
+                  🔒 Nếu đó là bạn:
+                </p>
+                <p style="color: #e2e8f0; font-size: 13px; line-height: 1.5; margin: 0;">
+                  Nếu đó là bạn đang thực hiện yêu cầu đổi mật khẩu, vui lòng nhập mã OTP trên vào trang đổi mật khẩu để hoàn tất quá trình cập nhật.
+                </p>
+              </div>
+
+              <div style="background-color: rgba(239, 68, 68, 0.12); border-left: 4px solid #ef4444; padding: 14px 16px; border-radius: 6px; margin: 16px 0;">
+                <p style="color: #fca5a5; font-size: 13.5px; font-weight: 600; margin: 0 0 6px 0;">
+                  ⚠️ Nếu KHÔNG phải bạn:
+                </p>
+                <p style="color: #e2e8f0; font-size: 13px; line-height: 1.5; margin: 0;">
+                  Nếu bạn <strong>không hề yêu cầu đổi mật khẩu</strong>, ai đó có thể đang cố gắng truy cập trái phép vào tài khoản của bạn. <strong>Tuyệt đối KHÔNG chia sẻ mã OTP này cho bất kỳ ai.</strong> Mật khẩu của bạn vẫn an toàn và chưa hề bị thay đổi. Nếu thấy bất thường, hãy truy cập <a href="${frontendUrl}/forgot-password" style="color: #38bdf8; text-decoration: underline;">Quên mật khẩu</a> để đặt lại mật khẩu ngay lập tức.
+                </p>
+              </div>
+            </div>
+            <div style="text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #1e293b; padding-top: 16px;">
+              <p>Email này được tạo tự động bởi hệ thống bảo mật 2 lớp của E-Learn Academy.</p>
+              <p>© 2026 E-Learn Academy. All rights reserved.</p>
+            </div>
+          </div>
+        `;
+
+        await sendEmail({
+          to: user.email,
+          subject: `[E-Learn Academy] Mã OTP xác thực đổi mật khẩu: ${otp}`,
+          text: `Mã OTP xác thực đổi mật khẩu của bạn là: ${otp}. Mã có hiệu lực trong 5 phút. Nếu đó là bạn, hãy nhập mã này để tiếp tục. Nếu KHÔNG phải bạn, tuyệt đối không chia sẻ mã này cho bất kỳ ai, mật khẩu của bạn hiện vẫn an toàn.`,
+          html: emailHtml
+        });
+      } catch (emailErr) {
+        console.error('[Request Password Change OTP Email Error]:', emailErr);
+      }
+
+      return { success: true };
+    } catch (error) {
+      handleServiceError(error, 'Lỗi khi yêu cầu mã OTP đổi mật khẩu trong AuthService');
+    }
+  }
+
+  async changePassword({ userId, oldPassword, newPassword, otp }) {
+    try {
+      if (!supabaseAdmin || !supabaseClient) {
+        throw new Error('Supabase clients chưa được cấu hình. Vui lòng kiểm tra file .env.');
+      }
+
+      if (!otp) {
+        const error = new Error('Vui lòng nhập mã xác thực OTP gửi qua Gmail');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      // 1. Lấy thông tin user cục bộ cùng OTP hash và hạn OTP
+      const queryText = `
+        SELECT user_id, email, full_name, username, supabase_uid, 
+               password_change_otp_hash, password_change_otp_expires_at 
+        FROM users 
+        WHERE user_id = $1
+      `;
+      const result = await db.query(queryText, [userId]);
+
+      if (result.rows.length === 0) {
+        const error = new Error('Không tìm thấy tài khoản người dùng');
+        error.name = 'AuthError';
+        error.status = 404;
+        throw error;
+      }
+
+      const user = result.rows[0];
+      if (!user.supabase_uid) {
+        const error = new Error('Tài khoản chưa được liên kết với Supabase. Hãy đăng xuất và đăng nhập lại.');
+        error.name = 'AuthError';
+        error.status = 400;
+        throw error;
+      }
+
+      // 2. Xác thực mã OTP
+      if (!user.password_change_otp_hash || !user.password_change_otp_expires_at) {
+        const error = new Error('Chưa có mã OTP nào được yêu cầu hoặc mã OTP đã hết hiệu lực. Vui lòng lấy mã mới.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(user.password_change_otp_expires_at);
+      if (now > expiresAt) {
+        // Hết hạn OTP -> xóa hash
+        await db.query(
+          'UPDATE users SET password_change_otp_hash = NULL, password_change_otp_expires_at = NULL WHERE user_id = $1',
+          [userId]
+        );
+        const error = new Error('Mã xác thực OTP đã hết hạn (chỉ có hiệu lực 5 phút). Vui lòng yêu cầu mã mới.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      const providedHash = hashPasswordChangeOtp(otp);
+      if (providedHash !== user.password_change_otp_hash) {
+        const error = new Error('Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại Gmail.');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      // 3. Xác thực mật khẩu cũ bằng cách thử đăng nhập Supabase
+      const { error: signInError } = await supabaseClient.auth.signInWithPassword({
+        email: user.email,
+        password: oldPassword
+      });
+
+      if (signInError) {
+        const error = new Error('Mật khẩu cũ không chính xác');
+        error.name = 'ValidationError';
+        error.status = 400;
+        throw error;
+      }
+
+      // 4. Cập nhật mật khẩu mới trên Supabase
       const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.supabase_uid, {
         password: newPassword
       });
@@ -569,7 +752,13 @@ class AuthService {
         throw new Error('Không thể cập nhật mật khẩu mới trên Supabase: ' + updateError.message);
       }
 
-      // 4. Gửi email xác nhận thay đổi mật khẩu (bao gồm nội dung an ninh "Nếu đó là bạn")
+      // 5. Xóa mã OTP để ngăn chặn tái sử dụng
+      await db.query(
+        'UPDATE users SET password_change_otp_hash = NULL, password_change_otp_expires_at = NULL WHERE user_id = $1',
+        [userId]
+      );
+
+      // 6. Gửi email xác nhận thay đổi mật khẩu (bao gồm nội dung an ninh "Nếu đó là bạn")
       try {
         const { sendEmail } = require('../../../utils/email.util');
         const safeDisplayName = escapeHtml(user.full_name || user.username || 'bạn');
@@ -590,7 +779,7 @@ class AuthService {
               </div>
               <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
                 Xin chào <strong>${safeDisplayName}</strong>,<br/><br/>
-                Mật khẩu cho tài khoản <code>${safeEmail}</code> trên hệ thống E-Learn Academy vừa được cập nhật thành công vào lúc <strong>${changeTime} (giờ Việt Nam)</strong>.
+                Mật khẩu cho tài khoản <code>${safeEmail}</code> trên hệ thống E-Learn Academy vừa được cập nhật thành công vào lúc <strong>${changeTime} (giờ Việt Nam)</strong> thông qua xác thực bảo mật OTP.
               </p>
 
               <div style="background-color: rgba(37, 99, 235, 0.12); border-left: 4px solid #2563eb; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
@@ -607,7 +796,7 @@ class AuthService {
                   ⚠️ Nếu KHÔNG phải bạn:
                 </p>
                 <p style="color: #e2e8f0; font-size: 13px; line-height: 1.5; margin: 0;">
-                  Nếu bạn không thực hiện yêu cầu này, tài khoản của bạn có thể đang gặp rủi ro bảo mật. Vui lòng sử dụng tính năng <a href="${frontendUrl}/forgot-password" style="color: #38bdf8; text-decoration: underline;">Quên mật khẩu</a> để đặt lại mật khẩu ngay lập tức hoặc liên hệ với đội ngũ quản trị viên để được hỗ trợ khẩn cấp.
+                  Nếu bạn không thực hiện yêu cầu này, tài khoản của bạn có thể đang gặp rủi ro bảo mật nghiêm trọng. Vui lòng sử dụng tính năng <a href="${frontendUrl}/forgot-password" style="color: #38bdf8; text-decoration: underline;">Quên mật khẩu</a> để đặt lại mật khẩu ngay lập tức hoặc liên hệ với đội ngũ quản trị viên để được hỗ trợ khẩn cấp.
                 </p>
               </div>
 
@@ -639,6 +828,7 @@ class AuthService {
       handleServiceError(error, 'Lỗi khi thay đổi mật khẩu trong AuthService');
     }
   }
+
 
   async updateProfile({ userId, username, fullName, profilePictureUrl, phone, gender, birthDate }) {
     try {

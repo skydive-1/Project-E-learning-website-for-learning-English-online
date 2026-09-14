@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FiUser, FiMail, FiLock, FiCalendar, FiShield, 
   FiCamera, FiBookOpen, FiTrendingUp, FiMessageSquare, 
-  FiAlertCircle, FiArrowLeft, FiAward, FiCheck, FiLoader, FiRefreshCw, FiSave
+  FiAlertCircle, FiArrowLeft, FiAward, FiCheck, FiLoader, FiRefreshCw, FiSave,
+  FiClock, FiKey
 } from 'react-icons/fi';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
-import { updateProfileApi, uploadAvatarApi, changePasswordApi, getUserStatsApi } from '../../auth/services/auth.service';
+import { updateProfileApi, uploadAvatarApi, changePasswordApi, requestPasswordChangeOtpApi, getUserStatsApi } from '../../auth/services/auth.service';
 import { useAuth } from '../../../context/AuthContext';
 import { useGamification } from '../../../context/GamificationContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -39,12 +40,46 @@ const ProfilePage = () => {
     profilePictureUrl: ''
   });
 
-  // Password change state
+  // Password change state (2-step OTP flow)
+  const [passwordStep, setPasswordStep] = useState(1); // 1: Điền mật khẩu -> gửi OTP, 2: Nhập OTP -> xác nhận
+  const [passwordOtp, setPasswordOtp] = useState('');
+  const [otpCountdown, setOtpCountdown] = useState(0); // Đếm ngược hạn mã OTP (giây)
+  const [resendCountdown, setResendCountdown] = useState(0); // Đếm ngược nút gửi lại mã (giây)
   const [passwordData, setPasswordData] = useState({
     oldPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
+
+  useEffect(() => {
+    let timer = null;
+    if (passwordStep === 2 && otpCountdown > 0) {
+      timer = setInterval(() => {
+        setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [passwordStep, otpCountdown]);
+
+  useEffect(() => {
+    let timer = null;
+    if (passwordStep === 2 && resendCountdown > 0) {
+      timer = setInterval(() => {
+        setResendCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [passwordStep, resendCountdown]);
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   // Feedback messages
   const [infoMessage, setInfoMessage] = useState({ type: '', text: '' });
@@ -119,10 +154,25 @@ const ProfilePage = () => {
     }
   };
 
-  // Submit Password Change
-  const handlePasswordSubmit = async (e) => {
+  // Step 1: Yêu cầu gửi mã xác thực OTP qua Gmail
+  const handleRequestPasswordOtp = async (e) => {
     e.preventDefault();
     setPasswordMessage({ type: '', text: '' });
+
+    if (!passwordData.oldPassword) {
+      setPasswordMessage({ type: 'error', text: 'Vui lòng nhập mật khẩu hiện tại' });
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      setPasswordMessage({ type: 'error', text: 'Mật khẩu mới phải có tối thiểu 6 ký tự' });
+      return;
+    }
+
+    if (passwordData.oldPassword === passwordData.newPassword) {
+      setPasswordMessage({ type: 'error', text: 'Mật khẩu mới không được trùng với mật khẩu hiện tại' });
+      return;
+    }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       setPasswordMessage({ type: 'error', text: 'Mật khẩu mới và xác nhận mật khẩu không khớp' });
@@ -130,26 +180,101 @@ const ProfilePage = () => {
     }
 
     setIsSaving(true);
-
     try {
-      const res = await changePasswordApi({
+      const res = await requestPasswordChangeOtpApi({
         oldPassword: passwordData.oldPassword,
         newPassword: passwordData.newPassword
       });
+
+      setPasswordStep(2);
+      setPasswordOtp('');
+      setOtpCountdown(300); // 5 phút hiệu lực
+      setResendCountdown(60); // 60s chờ gửi lại
+      setPasswordMessage({
+        type: 'success',
+        text: res?.message || 'Mã xác thực OTP đã được gửi đến Gmail của bạn. Vui lòng kiểm tra hộp thư.'
+      });
+    } catch (error) {
+      const errMsg = error.response?.data?.message || 'Không thể gửi mã xác thực OTP. Vui lòng kiểm tra lại mật khẩu hiện tại.';
+      setPasswordMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Gửi lại mã OTP khi đang ở Step 2
+  const handleResendOtp = async () => {
+    if (resendCountdown > 0 || isSaving) return;
+
+    setIsSaving(true);
+    setPasswordMessage({ type: '', text: '' });
+    try {
+      const res = await requestPasswordChangeOtpApi({
+        oldPassword: passwordData.oldPassword,
+        newPassword: passwordData.newPassword
+      });
+
+      setOtpCountdown(300);
+      setResendCountdown(60);
+      setPasswordMessage({
+        type: 'success',
+        text: res?.message || 'Đã gửi lại mã OTP mới đến Gmail của bạn.'
+      });
+    } catch (error) {
+      const errMsg = error.response?.data?.message || 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.';
+      setPasswordMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Step 2: Xác nhận đổi mật khẩu với mã OTP
+  const handleConfirmPasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordMessage({ type: '', text: '' });
+
+    if (!passwordOtp || passwordOtp.length !== 6) {
+      setPasswordMessage({ type: 'error', text: 'Vui lòng nhập đủ 6 chữ số mã OTP nhận từ Gmail' });
+      return;
+    }
+
+    if (otpCountdown <= 0) {
+      setPasswordMessage({ type: 'error', text: 'Mã OTP đã hết hạn. Vui lòng bấm Gửi lại mã OTP.' });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await changePasswordApi({
+        oldPassword: passwordData.oldPassword,
+        newPassword: passwordData.newPassword,
+        otp: passwordOtp
+      });
+
+      setPasswordStep(1);
+      setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordOtp('');
+      setOtpCountdown(0);
+      setResendCountdown(0);
 
       setPasswordMessage({
         type: 'success',
         text: res?.message || 'Đổi mật khẩu thành công! Email xác nhận đã được gửi đến hộp thư của bạn.'
       });
-      setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
 
-      setTimeout(() => setPasswordMessage({ type: '', text: '' }), 5000);
+      setTimeout(() => setPasswordMessage({ type: '', text: '' }), 6000);
     } catch (error) {
-      const errMsg = error.response?.data?.message || 'Đổi mật khẩu thất bại. Vui lòng kiểm tra mật khẩu cũ.';
+      const errMsg = error.response?.data?.message || 'Đổi mật khẩu thất bại. Vui lòng kiểm tra lại mã OTP.';
       setPasswordMessage({ type: 'error', text: errMsg });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleBackToStep1 = () => {
+    setPasswordStep(1);
+    setPasswordOtp('');
+    setPasswordMessage({ type: '', text: '' });
   };
 
   // Kích hoạt chọn file ảnh đại diện từ thiết bị
@@ -723,8 +848,10 @@ const ProfilePage = () => {
                 {/* 3. Tab: Change Password */}
                 {activeTab === 'password' && (
                   <div className="tab-content-wrapper animate-fade">
-                    <h2>Đổi mật khẩu</h2>
-                    <p className="tab-subtitle">Đảm bảo an toàn bảo mật cho tài khoản của bạn bằng cách cập nhật mật khẩu định kỳ.</p>
+                    <h2>Đổi mật khẩu bảo mật</h2>
+                    <p className="tab-subtitle">
+                      Hệ thống bảo vệ tài khoản 2 lớp bằng mã OTP qua Gmail giúp ngăn chặn triệt để nguy cơ người lạ chiếm đoạt tài khoản.
+                    </p>
 
                     {passwordMessage.text && (
                       <div className={`form-alert ${passwordMessage.type}`}>
@@ -732,59 +859,136 @@ const ProfilePage = () => {
                       </div>
                     )}
 
-                    <form onSubmit={handlePasswordSubmit} className="profile-form">
-                      <div className="form-group">
-                        <label htmlFor="oldPassword">Mật khẩu hiện tại</label>
-                        <div className="input-with-icon">
-                          <FiLock className="field-icon" />
+                    {passwordStep === 1 ? (
+                      <form onSubmit={handleRequestPasswordOtp} className="profile-form">
+                        <div className="form-group">
+                          <label htmlFor="oldPassword">Mật khẩu hiện tại</label>
+                          <div className="input-with-icon">
+                            <FiLock className="field-icon" />
+                            <input 
+                              type="password" 
+                              id="oldPassword" 
+                              name="oldPassword"
+                              placeholder="Nhập mật khẩu hiện tại"
+                              value={passwordData.oldPassword}
+                              onChange={handlePasswordChange}
+                              required 
+                            />
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label htmlFor="newPassword">Mật khẩu mới</label>
+                          <div className="input-with-icon">
+                            <FiLock className="field-icon" />
+                            <input 
+                              type="password" 
+                              id="newPassword" 
+                              name="newPassword"
+                              placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+                              value={passwordData.newPassword}
+                              onChange={handlePasswordChange}
+                              required 
+                            />
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label htmlFor="confirmPassword">Xác nhận mật khẩu mới</label>
+                          <div className="input-with-icon">
+                            <FiLock className="field-icon" />
+                            <input 
+                              type="password" 
+                              id="confirmPassword" 
+                              name="confirmPassword"
+                              placeholder="Nhập lại mật khẩu mới để xác nhận"
+                              value={passwordData.confirmPassword}
+                              onChange={handlePasswordChange}
+                              required 
+                            />
+                          </div>
+                        </div>
+
+                        <button type="submit" className="save-btn" disabled={isSaving}>
+                          {isSaving ? <span className="btn-spinner"></span> : <><FiShield /> Tiếp tục nhận mã OTP qua Gmail</>}
+                        </button>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleConfirmPasswordChange} className="profile-form">
+                        <div className="otp-verification-card">
+                          <div className="otp-notice-header">
+                            <div className="otp-icon-bubble">
+                              <FiMail />
+                            </div>
+                            <div className="otp-notice-text">
+                              <h4>Xác thực mã OTP bảo mật 2 lớp</h4>
+                              <p>
+                                Mã xác thực OTP 6 chữ số đã được gửi tới email <strong>{user?.email}</strong>. 
+                                Tuyệt đối KHÔNG chia sẻ mã này cho bất kỳ ai!
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className={`otp-timer-badge ${otpCountdown === 0 ? 'expired' : ''}`}>
+                            <FiClock />
+                            <span>
+                              {otpCountdown > 0 
+                                ? `Mã hết hạn sau: ${formatTimer(otpCountdown)}` 
+                                : 'Mã OTP đã hết hạn. Vui lòng bấm Gửi lại mã OTP.'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="otp-input-wrapper">
+                          <label htmlFor="passwordOtp" style={{ fontSize: '14px', fontWeight: 600 }}>
+                            Nhập 6 số mã xác thực OTP
+                          </label>
                           <input 
-                            type="password" 
-                            id="oldPassword" 
-                            name="oldPassword"
-                            placeholder="Nhập mật khẩu hiện tại"
-                            value={passwordData.oldPassword}
-                            onChange={handlePasswordChange}
+                            type="text" 
+                            id="passwordOtp" 
+                            name="passwordOtp"
+                            className="otp-input-field"
+                            placeholder="------"
+                            maxLength={6}
+                            value={passwordOtp}
+                            onChange={(e) => setPasswordOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            autoFocus
                             required 
                           />
+                          <span className="otp-hint">Kiểm tra hộp thư chính hoặc mục Thư rác/Spam của Gmail</span>
                         </div>
-                      </div>
 
-                      <div className="form-group">
-                        <label htmlFor="newPassword">Mật khẩu mới</label>
-                        <div className="input-with-icon">
-                          <FiLock className="field-icon" />
-                          <input 
-                            type="password" 
-                            id="newPassword" 
-                            name="newPassword"
-                            placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
-                            value={passwordData.newPassword}
-                            onChange={handlePasswordChange}
-                            required 
-                          />
+                        <div className="otp-actions">
+                          <button 
+                            type="submit" 
+                            className="save-btn" 
+                            disabled={isSaving || passwordOtp.length !== 6 || otpCountdown <= 0}
+                            style={{ margin: 0 }}
+                          >
+                            {isSaving ? <span className="btn-spinner"></span> : <><FiCheck /> Xác nhận đổi mật khẩu</>}
+                          </button>
+
+                          <button 
+                            type="button" 
+                            className="otp-resend-btn" 
+                            onClick={handleResendOtp}
+                            disabled={resendCountdown > 0 || isSaving}
+                          >
+                            <FiRefreshCw className={isSaving ? 'animate-spin' : ''} />
+                            {resendCountdown > 0 ? `Gửi lại mã (${resendCountdown}s)` : 'Gửi lại mã OTP'}
+                          </button>
+
+                          <button 
+                            type="button" 
+                            className="otp-back-btn" 
+                            onClick={handleBackToStep1}
+                            disabled={isSaving}
+                          >
+                            <FiArrowLeft /> Quay lại sửa mật khẩu
+                          </button>
                         </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label htmlFor="confirmPassword">Xác nhận mật khẩu mới</label>
-                        <div className="input-with-icon">
-                          <FiLock className="field-icon" />
-                          <input 
-                            type="password" 
-                            id="confirmPassword" 
-                            name="confirmPassword"
-                            placeholder="Nhập lại mật khẩu mới để xác nhận"
-                            value={passwordData.confirmPassword}
-                            onChange={handlePasswordChange}
-                            required 
-                          />
-                        </div>
-                      </div>
-
-                      <button type="submit" className="save-btn" disabled={isSaving}>
-                        {isSaving ? <span className="btn-spinner"></span> : <><FiCheck /> Cập nhật mật khẩu</>}
-                      </button>
-                    </form>
+                      </form>
+                    )}
                   </div>
                 )}
 
