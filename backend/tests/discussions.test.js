@@ -302,4 +302,44 @@ describe('Discussions service authorization and state transitions', () => {
       error => error.status === 400 && error.code === 'VALIDATION_ERROR'
     );
   });
+
+  it('enforces authorization for update and delete announcement', async () => {
+    // Student cannot update or delete announcements
+    await assert.rejects(
+      () => discussionsService.updateAnnouncement({ id: 10, roleId: 3 }, 1, { title: 'New', content: 'Content' }),
+      error => error.status === 403 && error.code === 'INSTRUCTOR_ONLY'
+    );
+
+    await assert.rejects(
+      () => discussionsService.deleteAnnouncement({ id: 10, roleId: 3 }, 1),
+      error => error.status === 403 && error.code === 'INSTRUCTOR_ONLY'
+    );
+  });
+
+  it('rejects updating non-existent announcement', async () => {
+    const originalQuery = db.query;
+    db.query = async () => ({ rows: [] });
+    try {
+      await assert.rejects(
+        () => discussionsService.updateAnnouncement({ id: 2, roleId: 2 }, 999, { title: 'Test Title', content: 'Test Content' }),
+        error => error.status === 404 && error.code === 'ANNOUNCEMENT_NOT_FOUND'
+      );
+    } finally {
+      db.query = originalQuery;
+    }
+  });
+
+  it('rejects deleting non-existent announcement', async () => {
+    const originalQuery = db.query;
+    db.query = async () => ({ rows: [] });
+    try {
+      await assert.rejects(
+        () => discussionsService.deleteAnnouncement({ id: 2, roleId: 2 }, 999),
+        error => error.status === 404 && error.code === 'ANNOUNCEMENT_NOT_FOUND'
+      );
+    } finally {
+      db.query = originalQuery;
+    }
+  });
 });
+

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   FiPlay, FiCheckSquare, FiSquare, FiFileText,
@@ -114,9 +114,13 @@ const LessonDetailPage = () => {
   const resumePlaybackAfterTabRef = useRef(false);
   const currentLessonRef = useRef(null);
 
-const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
+  const userRole = parseInt(user?.roleId || user?.role_id || user?.role, 10);
   const currentUserId = user?.userId || user?.user_id || user?.id;
   const isInstructorOrAdminRole = userRole === 1 || userRole === 2;
+  const isInstructorOrAdminRoleRef = useRef(isInstructorOrAdminRole);
+  useEffect(() => {
+    isInstructorOrAdminRoleRef.current = isInstructorOrAdminRole;
+  }, [isInstructorOrAdminRole]);
 
   // Persisted state keys
   const EXPANDED_SECTIONS_KEY = 'lesson_expanded_sections';
@@ -359,31 +363,65 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     return () => clearInterval(safetyInterval);
   }, []);
 
-  // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
-  const handleSeekVideo = (seconds) => {
-    const targetSec = Number(seconds);
-    if (isNaN(targetSec) || !isFinite(targetSec) || targetSec < 0) return;
-    if (!videoRef.current) {
-      pendingVideoSeekRef.current = targetSec;
-      return;
+  // Tự động khôi phục giao diện video khi vừa chuyển tới bài học
+  useEffect(() => {
+    if (!document.hidden && document.hasFocus()) {
+      restoreProtectedMedia();
     }
+  }, [lessonId]);
 
-    const duration = videoRef.current.duration;
+  // Áp dụng mốc tua đang chờ khi video đã sẵn sàng (loadedmetadata / canplay / Shaka attached)
+  const applyPendingSeek = useCallback(() => {
+    if (pendingVideoSeekRef.current === null) return;
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    // Với thẻ HTMLVideoElement, kiểm tra readyState >= 1 (HAVE_METADATA) hoặc duration hợp lệ, hoặc YouTube custom ref
+    const isReady = typeof videoEl.seekTo === 'function'
+      || (typeof videoEl.readyState === 'number' && videoEl.readyState >= 1)
+      || (Number.isFinite(videoEl.duration) && videoEl.duration > 0);
+
+    if (!isReady) return;
+
+    const targetSec = pendingVideoSeekRef.current;
+    const duration = videoEl.duration;
     const safeTime = (duration && isFinite(duration) && duration > 0)
       ? Math.min(Math.max(0, targetSec), duration)
       : Math.max(0, targetSec);
 
-    videoRef.current.currentTime = safeTime;
-    pendingVideoSeekRef.current = null;
-    setVideoCurrentTime(safeTime);
+    try {
+      videoEl.currentTime = safeTime;
+      pendingVideoSeekRef.current = null;
+      setVideoCurrentTime(safeTime);
 
-    if (videoRef.current.paused) {
-      videoRef.current.play().catch(() => {});
-      setIsVideoPlaying(true);
+      if (videoEl.paused) {
+        videoEl.play().catch(() => {});
+        setIsVideoPlaying(true);
+      }
+    } catch (err) {
+      console.warn('⚠️ [Video Seek Error]:', err);
     }
-  };
+  }, []);
 
-  // Tự động tua video khi URL có tham số ?seek= (điều hướng từ thẻ bài học khác sang)
+  // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
+  const handleSeekVideo = useCallback((seconds) => {
+    const targetSec = Number(seconds);
+    if (isNaN(targetSec) || !isFinite(targetSec) || targetSec < 0) return;
+    pendingVideoSeekRef.current = targetSec;
+
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    const isReady = typeof videoEl.seekTo === 'function'
+      || (typeof videoEl.readyState === 'number' && videoEl.readyState >= 1)
+      || (Number.isFinite(videoEl.duration) && videoEl.duration > 0);
+
+    if (isReady) {
+      applyPendingSeek();
+    }
+  }, [applyPendingSeek]);
+
+  // Tự động tua video khi URL có tham số ?seek= (điều hướng từ mốc thời gian thảo luận hoặc bài học khác)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const seekParam = params.get('seek');
@@ -396,15 +434,31 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     if (Number.isFinite(seekSec) && seekSec >= 0) {
       handleSeekVideo(seekSec);
     }
-  }, [location.search, lessonId]);
+  }, [location.search, lessonId, handleSeekVideo]);
 
-  // Nếu dữ liệu bài học/player tải chậm hơn URL, áp dụng mốc đang chờ ngay sau
-  // render đầu tiên mà media ref đã sẵn sàng.
+  // Lắng nghe sự kiện sẵn sàng của thẻ video để áp dụng mốc tua nếu đang chờ
   useEffect(() => {
-    if (videoRef.current && pendingVideoSeekRef.current !== null) {
-      handleSeekVideo(pendingVideoSeekRef.current);
+    const videoEl = videoRef.current;
+    if (!videoEl || typeof videoEl.addEventListener !== 'function') return;
+
+    const onMediaReady = () => {
+      if (pendingVideoSeekRef.current !== null) {
+        applyPendingSeek();
+      }
+    };
+
+    videoEl.addEventListener('loadedmetadata', onMediaReady);
+    videoEl.addEventListener('canplay', onMediaReady);
+
+    if (videoEl.readyState >= 1 && pendingVideoSeekRef.current !== null) {
+      applyPendingSeek();
     }
-  });
+
+    return () => {
+      videoEl.removeEventListener('loadedmetadata', onMediaReady);
+      videoEl.removeEventListener('canplay', onMediaReady);
+    };
+  }, [lessonId, ticketPlaybackUrl, applyPendingSeek]);
 
   // Hệ thống phát hiện phím tắt chụp/chia sẻ màn hình ở tầng trình duyệt phục vụ răn đe bản quyền (Browser Deterrence & Blackout)
   useEffect(() => {
@@ -473,6 +527,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
     // Alt+Tab/phím Windows: che đen nhưng giữ nguyên playback.
     const handleWindowBlur = () => {
+      // Giảng viên và Admin được miễn trừ che đen khi mất focus (window blur) để có thể xem xét, hỗ trợ học viên thuận tiện
+      if (isInstructorOrAdminRoleRef.current) return;
       preservePlaybackWhileHiddenRef.current = isAltPressed || isMetaPressed;
       triggerZeroLatencyBlackout('Window Blur', getWindowBlurBlackoutPolicy());
     };
@@ -492,6 +548,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     // trạng thái modifier được giữ lại để playback tiếp tục chạy bên dưới.
     const handleVisibilityChange = () => {
       if (document.hidden) {
+        if (isInstructorOrAdminRoleRef.current) return;
         const policy = getVisibilityBlackoutPolicy({
           altPressed: isAltPressed,
           metaPressed: isMetaPressed,
@@ -638,9 +695,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
   const searchParams = new URLSearchParams(location.search);
   const queryCourseId = searchParams.get('courseId');
-  const courseIdToLoad = lessonId
-    ? (initialLessonData?.courseId || null)
-    : (queryCourseId ? parseInt(queryCourseId, 10) : 5);
+  const courseIdToLoad = queryCourseId
+    ? parseInt(queryCourseId, 10)
+    : (lessonId ? (initialLessonData?.courseId || null) : 5);
 
   // 2. Tải chi tiết khóa học động dựa trên courseId có được
   const { data: course, isLoading: courseLoading } = useQuery({
@@ -655,7 +712,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   const startDate = course?.startDate ? new Date(course.startDate) : null;
   const currentDate = new Date();
   const hasNotStarted = startDate && startDate > currentDate;
-  const isInstructorOrAdmin = user && (userRole === 1 || Number(currentUserId) === Number(course?.instructorId));
+  const isInstructorOrAdmin = user && (userRole === 1 || userRole === 2 || Number(currentUserId) === Number(course?.instructorId));
   const shouldLock = hasNotStarted && !isInstructorOrAdmin;
 
   useEffect(() => {
@@ -1303,6 +1360,11 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         shakaPlayerRef.current?.load(manifestUrl)
           .then(() => {
             if (active) setVideoLoading(false);
+            if (pendingVideoSeekRef.current !== null) {
+              setTimeout(() => {
+                if (active) applyPendingSeek();
+              }, 150);
+            }
           })
           .catch((err) => {
             if (!active) return;
@@ -1398,6 +1460,11 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
             : `${backendHost}${res.streamUrl.startsWith('/') ? '' : '/'}${res.streamUrl}`;
           setTicketPlaybackUrl(fullStreamUrl);
           scheduleMp4TicketRenewal(res.expiresIn || 60);
+          if (pendingVideoSeekRef.current !== null) {
+            setTimeout(() => {
+              if (active) applyPendingSeek();
+            }, 250);
+          }
         } else {
           setVideoError({
             code: 403,
@@ -1804,6 +1871,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                             lesson={currentLesson}
                             title={currentLesson?.title}
                             onTimeUpdate={setVideoCurrentTime}
+                            onReady={applyPendingSeek}
                             onEnded={() => {
                               if (!currentLesson?.completed) {
                                 handleToggleComplete(null, currentLesson?.id);
@@ -1889,8 +1957,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                   onPause={() => { setIsVideoBuffering(false); setIsVideoPlaying(false); }}
                                   onEnded={() => { setIsVideoBuffering(false); setIsVideoPlaying(false); }}
                                   onLoadedData={() => { videoHasStartedRef.current = true; setVideoLoading(false); }}
-                                  onLoadedMetadata={() => setVideoLoading(false)}
-                                  onCanPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoBuffering(false); }}
+                                  onLoadedMetadata={() => { setVideoLoading(false); applyPendingSeek(); }}
+                                  onCanPlay={() => { videoHasStartedRef.current = true; setVideoLoading(false); setIsVideoBuffering(false); applyPendingSeek(); }}
                                   onWaiting={() => {
                                     if (videoHasStartedRef.current) {
                                       // Buffering giữa chừng: chỉ hiện thanh mỏng, không che video

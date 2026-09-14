@@ -59,6 +59,7 @@ const LessonYouTubePlayer = forwardRef(({
   title = '',
   onEnded,
   onTimeUpdate,
+  onReady,
   className = ''
 }, forwardedRef) => {
   const [copied, setCopied] = useState(false);
@@ -71,6 +72,7 @@ const LessonYouTubePlayer = forwardRef(({
   const pendingSeekRef = useRef(null);
   const onEndedRef = useRef(onEnded);
   const onTimeUpdateRef = useRef(onTimeUpdate);
+  const onReadyRef = useRef(onReady);
 
   const rawUrl = lesson?.youtubeUrl || lesson?.contentUrl || lesson?.content_url || lesson?.videoUrl || '';
   const videoId = extractYouTubeVideoId(rawUrl);
@@ -79,7 +81,8 @@ const LessonYouTubePlayer = forwardRef(({
   useEffect(() => {
     onEndedRef.current = onEnded;
     onTimeUpdateRef.current = onTimeUpdate;
-  }, [onEnded, onTimeUpdate]);
+    onReadyRef.current = onReady;
+  }, [onEnded, onTimeUpdate, onReady]);
 
   const seekTo = useCallback((seconds) => {
     const target = Number(seconds);
@@ -146,6 +149,7 @@ const LessonYouTubePlayer = forwardRef(({
                 event.target.seekTo(pendingSeekRef.current, true);
                 pendingSeekRef.current = null;
               }
+              onReadyRef.current?.(event);
             },
             onStateChange: (event) => {
               if (cancelled) return;

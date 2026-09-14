@@ -93,9 +93,24 @@ export const getInstructorAnnouncements = async () => {
   return (response.data.data.announcements || []).map(normalizeAnnouncement);
 };
 
+export const getUserAnnouncements = async () => {
+  const response = await apiClient.get('/discussions/announcements');
+  return (response.data.data.announcements || []).map(normalizeAnnouncement);
+};
+
 export const createCourseAnnouncement = async payload => {
   const response = await apiClient.post('/discussions/instructor/announcements', payload);
   return normalizeAnnouncement(response.data.data.announcement);
+};
+
+export const updateCourseAnnouncement = async (announcementId, payload) => {
+  const response = await apiClient.put(`/discussions/instructor/announcements/${announcementId}`, payload);
+  return normalizeAnnouncement(response.data.data.announcement);
+};
+
+export const deleteCourseAnnouncement = async (announcementId) => {
+  const response = await apiClient.delete(`/discussions/instructor/announcements/${announcementId}`);
+  return response.data.data;
 };
 
 export const markAnnouncementRead = async announcementId => {
@@ -106,3 +121,4 @@ export const markAnnouncementRead = async announcementId => {
 export const discussionApiErrorMessage = (error, fallback) => (
   error?.response?.data?.message || error?.message || fallback
 );
+

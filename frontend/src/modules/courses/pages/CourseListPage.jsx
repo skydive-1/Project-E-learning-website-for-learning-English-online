@@ -14,12 +14,12 @@ import {
   FiVolume2, 
   FiSearch, 
   FiX, 
-  FiHelpCircle
+  FiBell
 } from 'react-icons/fi';
 import { VOCABULARY_COLLECTIONS } from '../data/vocabularyCollections';
 import VocabularyFlashcardModal from '../components/VocabularyFlashcardModal';
 import AddWordModal from '../components/AddWordModal';
-import HowItWorksModal from '../components/HowItWorksModal';
+import CourseAnnouncementsModal from '../components/CourseAnnouncementsModal';
 import TestsAndQuizzesPanel from '../components/TestsAndQuizzesPanel';
 import { getRoadmapById } from '../../academy/data/roadmapPaths';
 import { courseMatchesRoadmap } from '../../academy/utils/courseRoadmap';
@@ -65,7 +65,8 @@ const CourseListPage = () => {
   // Modals & Active Selections
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [isAddWordModalOpen, setIsAddWordModalOpen] = useState(false);
-  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isAnnouncementsOpen, setIsAnnouncementsOpen] = useState(false);
+  const [unreadAnnCount, setUnreadAnnCount] = useState(0);
 
   // User Custom Words & Progress State (Persisted in localStorage)
   const [customWords, setCustomWords] = useState(() => {
@@ -630,10 +631,16 @@ const CourseListPage = () => {
 
               <button 
                 type="button" 
-                className="btn-how-it-works"
-                onClick={() => setIsHowItWorksOpen(true)}
+                className="btn-how-it-works flex items-center justify-center gap-2 relative cursor-pointer"
+                onClick={() => setIsAnnouncementsOpen(true)}
               >
-                <FiHelpCircle /> How it works
+                <FiBell className="text-sm text-smart-indigo dark:text-blue-400" />
+                <span>Thông báo</span>
+                {unreadAnnCount > 0 && (
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                    {unreadAnnCount}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -659,10 +666,11 @@ const CourseListPage = () => {
         onAddWord={handleAddCustomWord}
       />
 
-      {/* How It Works Explainer Modal */}
-      <HowItWorksModal 
-        isOpen={isHowItWorksOpen}
-        onClose={() => setIsHowItWorksOpen(false)}
+      {/* Course & Instructor Announcements Modal */}
+      <CourseAnnouncementsModal 
+        isOpen={isAnnouncementsOpen}
+        onClose={() => setIsAnnouncementsOpen(false)}
+        onUnreadCountChange={setUnreadAnnCount}
       />
     </div>
   );

@@ -1332,8 +1332,8 @@ class CoursesService {
 
       if (!parsedLessonId || isNaN(parsedLessonId)) return false;
 
-      // 1. Admin (Role ID 1) luôn có toàn quyền truy cập
-      if (parsedRoleId === 1) return true;
+      // 1. Admin (Role ID 1) và Giảng viên (Role ID 2) luôn có toàn quyền truy cập để kiểm duyệt, giải đáp và hỗ trợ học viên
+      if (parsedRoleId === 1 || parsedRoleId === 2) return true;
 
       // 2. Truy vấn khóa học và bài học
       const lessonQuery = `

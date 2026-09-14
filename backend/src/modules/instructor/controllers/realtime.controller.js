@@ -106,11 +106,20 @@ exports.stream = async (req, res, next) => {
     const userId = user.id || user.userId;
 
     // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    // Chuẩn HTTP/2 (RFC 7540) cấm các header điều khiển kết nối đơn lẻ như Connection: keep-alive.
+    // Chỉ set header này trên HTTP/1.x để tránh lỗi ERR_HTTP2_PROTOCOL_ERROR khi chạy sau reverse proxy (Railway/Cloudflare).
+    if (Number(req.httpVersionMajor || 1) < 2) {
+      res.setHeader('Connection', 'keep-alive');
+    }
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
     res.flushHeaders();
+
+    if (res.socket) {
+      res.socket.setTimeout(0);
+      res.socket.setKeepAlive(true);
+    }
 
     // Store client connection
     const clientData = {
@@ -125,8 +134,12 @@ exports.stream = async (req, res, next) => {
     console.log(`[SSE] Instructor ${userId} connected. Total clients: ${connectedClients.size}`);
 
     // Send initial connection confirmation
-    res.write(`event: connected\n`);
-    res.write(`data: ${JSON.stringify({ userId, timestamp: Date.now() })}\n\n`);
+    try {
+      res.write(`event: connected\n`);
+      res.write(`data: ${JSON.stringify({ userId, timestamp: Date.now() })}\n\n`);
+    } catch (writeErr) {
+      console.warn(`[SSE] Could not send initial payload to instructor ${userId}:`, writeErr?.message || writeErr);
+    }
 
     // Heartbeat interval
     const heartbeatInterval = setInterval(() => {
