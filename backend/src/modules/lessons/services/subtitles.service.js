@@ -44,6 +44,14 @@ const TERMINAL_SUBTITLE_ERROR_CODES = new Set([
   'UNSUPPORTED_LESSON_TYPE'
 ]);
 
+const YOUTUBE_CIRCUIT_BASE_DELAY_MS = Object.freeze({
+  YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED: 15 * 60 * 1000,
+  YOUTUBE_TRANSCRIPT_RATE_LIMITED: 10 * 60 * 1000,
+  YOUTUBE_TRANSCRIPT_TIMEOUT: 2 * 60 * 1000,
+  YOUTUBE_TRANSCRIPT_FETCH_FAILED: 2 * 60 * 1000
+});
+const YOUTUBE_CIRCUIT_MAX_DELAY_MS = 60 * 60 * 1000;
+
 /**
  * Format số giây thành chuỗi thời gian WebVTT: 00:01:23.456
  */
@@ -86,6 +94,55 @@ class SubtitlesService {
     this.recoveryTimer = null;
     this.durableWorker = null;
     this.r2AssetIndexCache = null;
+    this.youtubeTranscriptQueueTail = Promise.resolve();
+    this.youtubeTranscriptCircuit = { consecutiveFailures: 0, openUntil: 0 };
+  }
+
+  resetYoutubeTranscriptResilience() {
+    this.youtubeTranscriptQueueTail = Promise.resolve();
+    this.youtubeTranscriptCircuit = { consecutiveFailures: 0, openUntil: 0 };
+  }
+
+  fetchYoutubeTranscriptWithResilience(videoId) {
+    const queuedFetch = this.youtubeTranscriptQueueTail
+      .catch(() => undefined)
+      .then(async () => {
+        const now = Date.now();
+        const remainingDelayMs = Math.max(0, this.youtubeTranscriptCircuit.openUntil - now);
+        if (remainingDelayMs > 0) {
+          const error = new Error(youtubeTranscript.YOUTUBE_TRANSCRIPT_DEFERRED_MESSAGE);
+          error.code = 'YOUTUBE_TRANSCRIPT_DEFERRED';
+          error.status = 503;
+          error.retryAfterMs = remainingDelayMs;
+          throw error;
+        }
+
+        try {
+          const transcript = await youtubeTranscript.fetchYoutubeTranscript(videoId);
+          this.youtubeTranscriptCircuit = { consecutiveFailures: 0, openUntil: 0 };
+          return transcript;
+        } catch (error) {
+          if (youtubeTranscript.isTransientYoutubeTranscriptError(error)) {
+            const consecutiveFailures = this.youtubeTranscriptCircuit.consecutiveFailures + 1;
+            const baseDelayMs = YOUTUBE_CIRCUIT_BASE_DELAY_MS[error.code] || 2 * 60 * 1000;
+            const delayMs = Math.min(
+              YOUTUBE_CIRCUIT_MAX_DELAY_MS,
+              baseDelayMs * (2 ** Math.max(0, consecutiveFailures - 1))
+            );
+            this.youtubeTranscriptCircuit = {
+              consecutiveFailures,
+              openUntil: Date.now() + delayMs
+            };
+            error.retryAfterMs = Math.max(Number(error.retryAfterMs) || 0, delayMs);
+          }
+          throw error;
+        }
+      });
+
+    // Chỉ tuần tự hóa lượt lấy caption từ YouTube. Lỗi của một video không
+    // làm hỏng hàng đợi và không thay đổi pipeline media upload/PDF/R2.
+    this.youtubeTranscriptQueueTail = queuedFetch.catch(() => undefined);
+    return queuedFetch;
   }
 
   /**
@@ -772,6 +829,12 @@ class SubtitlesService {
         }
       },
       classifyError: (error, job) => this.isDurableJobErrorRetryable(error, job),
+      getRetryDelayMs: (error, job) => (
+        job?.job_type === DURABLE_JOB_TYPES.SUBTITLE
+        && youtubeTranscript.isTransientYoutubeTranscriptError(error)
+          ? (Number(error?.retryAfterMs) || null)
+          : null
+      ),
       onJobFailed: (job, error, metadata) => this.handleDurableJobFailure(job, error, metadata)
     });
   }
@@ -1433,6 +1496,7 @@ ${JSON.stringify(translationInput)}
     let mediaDecryptionKey = null;
     let mediaIsEncryptedAudio = false;
     let generatedCues = [];
+    let youtubeVideoId = null;
 
     try {
       // Query raw content_url từ DB trực tiếp vì pipeline phụ đề cần nguồn storage
@@ -1508,10 +1572,10 @@ ${JSON.stringify(translationInput)}
       }
 
       // --- Nhận diện nguồn video ---
-      const youtubeVideoId = youtubeTranscript.extractYoutubeVideoId(rawContentUrl);
+      youtubeVideoId = youtubeTranscript.extractYoutubeVideoId(rawContentUrl);
       if (youtubeVideoId) {
         console.log(`[YouTube Subtitles] Bài học ${lessonId}: Đang lấy phụ đề công khai cho video ${youtubeVideoId}...`);
-        const transcriptSegments = await youtubeTranscript.fetchYoutubeTranscript(youtubeVideoId);
+        const transcriptSegments = await this.fetchYoutubeTranscriptWithResilience(youtubeVideoId);
         generatedCues = await this.translateYoutubeTranscriptWithGemini(transcriptSegments);
         console.log(`[YouTube Subtitles] ✅ Đã lấy và dịch ${generatedCues.length} cue cho bài học ${lessonId}.`);
       } else if (rawContentUrl.startsWith('/uploads/')) {
@@ -1761,6 +1825,9 @@ ${JSON.stringify(translationInput)}
         const errorMessage = pipelineErr?.code === 'YOUTUBE_NO_CAPTIONS_AVAILABLE'
           ? youtubeTranscript.YOUTUBE_NO_CAPTIONS_MESSAGE
           : String(pipelineErr?.message || 'Lỗi không xác định trong quá trình tạo phụ đề.').slice(0, 500);
+        const isDeferredYoutubeFailure = Boolean(expectedSourceUrl && youtubeVideoId)
+          && youtubeTranscript.isTransientYoutubeTranscriptError(pipelineErr);
+        const persistedStatus = isDeferredYoutubeFailure ? 'pending' : 'failed';
         if (errorCode === 'TRANSCRIPT_MEDIA_SOURCE_MISSING') {
           // Chỉ đánh dấu nguồn vẫn còn gắn với lesson. Nếu giảng viên vừa thay
           // video trong lúc job cũ chạy, câu UPDATE này không chạm dữ liệu mới.
@@ -1777,12 +1844,12 @@ ${JSON.stringify(translationInput)}
         if (expectedSourceUrl) {
           await db.query(
             `UPDATE lesson_subtitles
-             SET subtitle_status = 'failed',
-                 error_code = $3,
-                 error_message = $4,
+             SET subtitle_status = $3,
+                 error_code = $4,
+                 error_message = $5,
                  updated_at = CURRENT_TIMESTAMP
              WHERE lesson_id = $1 AND source_content_url = $2`,
-            [lessonId, expectedSourceUrl, errorCode, errorMessage]
+            [lessonId, expectedSourceUrl, persistedStatus, errorCode, errorMessage]
           );
         } else {
           await this.setSubtitleStatus(lessonId, 'failed', rawContentUrl || null, {

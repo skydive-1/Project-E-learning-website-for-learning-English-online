@@ -5,9 +5,22 @@ const subtitlesService = require('../../lessons/services/subtitles.service');
 
 const TRANSCRIPT_SOURCE = 'PostgreSQL · lessons + lesson_subtitles + background_jobs';
 const STALE_PENDING_SECONDS = 15 * 60;
+const DEFERRED_YOUTUBE_ERROR_CODES = new Set([
+  'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED',
+  'YOUTUBE_TRANSCRIPT_RATE_LIMITED',
+  'YOUTUBE_TRANSCRIPT_TIMEOUT',
+  'YOUTUBE_TRANSCRIPT_FETCH_FAILED',
+  'YOUTUBE_TRANSCRIPT_DEFERRED'
+]);
 
 const normalizeTranscriptStatus = (row) => {
   if (row.subtitle_status === 'ready' && Number(row.cue_count) > 0) return 'ready';
+  const observedErrorCode = row.error_code || row.job_error_code;
+  if (
+    row.content_type === 'youtube'
+    && row.subtitle_status === 'failed'
+    && DEFERRED_YOUTUBE_ERROR_CODES.has(observedErrorCode)
+  ) return 'deferred';
   if (['pending', 'processing', 'failed'].includes(row.subtitle_status)) return row.subtitle_status;
   return 'missing';
 };
@@ -17,6 +30,7 @@ const emptyCounts = () => ({
   ready: 0,
   pending: 0,
   processing: 0,
+  deferred: 0,
   failed: 0,
   missing: 0,
   mediaMissing: 0,
@@ -83,6 +97,7 @@ const getCourseTranscriptHealth = async () => {
 
   for (const row of rows) {
     const transcriptStatus = normalizeTranscriptStatus(row);
+    const hasFailureDetails = ['failed', 'deferred'].includes(transcriptStatus);
     const statusAgeSeconds = Number(row.status_age_seconds) || 0;
     const sourceMismatch = Boolean(row.current_source_url)
       && row.source_matches === false
@@ -100,12 +115,12 @@ const getCourseTranscriptHealth = async () => {
         && statusAgeSeconds >= STALE_PENDING_SECONDS
         && !['queued', 'retry', 'processing'].includes(row.job_status),
       sourceMismatch,
-      retryable: ['pending', 'failed'].includes(transcriptStatus)
+      retryable: ['pending', 'failed', 'deferred'].includes(transcriptStatus)
         && row.media_status !== 'MISSING_SOURCE',
-      errorCode: transcriptStatus === 'failed'
+      errorCode: hasFailureDetails
         ? (row.error_code || row.job_error_code || null)
         : (row.job_status === 'retry' ? (row.job_error_code || null) : null),
-      errorMessage: transcriptStatus === 'failed'
+      errorMessage: hasFailureDetails
         ? (row.error_message || row.job_error_message || null)
         : (row.job_status === 'retry' ? (row.job_error_message || null) : null),
       jobStatus: row.job_status || null,

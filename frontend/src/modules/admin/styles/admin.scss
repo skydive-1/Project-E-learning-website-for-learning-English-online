@@ -632,6 +632,16 @@
         line-height: 1.55;
         overflow-wrap: anywhere;
       }
+
+      &.is-warning {
+        border-color: rgba(180, 83, 9, 0.35);
+        background: rgba(245, 158, 11, 0.09);
+        color: #b45309;
+
+        strong {
+          color: #b45309;
+        }
+      }
     }
 
     &__note {

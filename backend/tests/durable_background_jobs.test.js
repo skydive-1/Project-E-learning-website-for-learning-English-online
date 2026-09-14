@@ -100,6 +100,47 @@ describe('PostgreSQL durable background jobs', () => {
     assert.equal(updates[1].params[3], 0);
   });
 
+  it('honors a bounded provider retry delay without changing terminal behavior', async () => {
+    const updates = [];
+    const fakeDb = {
+      query: async (_sql, params) => {
+        updates.push(params);
+        return { rows: [{ status: params[2] }] };
+      }
+    };
+    const queue = new DurableJobQueue(fakeDb, { instanceId: 'server-a' });
+    const providerError = Object.assign(new Error('YouTube temporarily blocked this egress'), {
+      code: 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED',
+      retryAfterMs: 15 * 60 * 1000
+    });
+
+    await queue.fail(
+      { job_id: 12, lease_token: '00000000-0000-4000-8000-000000000004', attempts: 1, max_attempts: 5 },
+      providerError,
+      {
+        retryable: true,
+        retryBaseMs: 1_000,
+        retryMaxMs: 60 * 60 * 1000,
+        retryDelayMs: providerError.retryAfterMs
+      }
+    );
+    await queue.fail(
+      { job_id: 13, lease_token: '00000000-0000-4000-8000-000000000005', attempts: 5, max_attempts: 5 },
+      providerError,
+      {
+        retryable: true,
+        retryBaseMs: 1_000,
+        retryMaxMs: 60 * 60 * 1000,
+        retryDelayMs: providerError.retryAfterMs
+      }
+    );
+
+    assert.equal(updates[0][2], 'retry');
+    assert.equal(updates[0][3], 15 * 60 * 1000);
+    assert.equal(updates[1][2], 'failed');
+    assert.equal(updates[1][3], 0);
+  });
+
   it('worker records retry instead of losing a failed claimed job', async () => {
     const events = [];
     const job = {
