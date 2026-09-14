@@ -14,7 +14,8 @@ import {
   FiVolume2, 
   FiSearch, 
   FiX, 
-  FiBell
+  FiBell,
+  FiLayers
 } from 'react-icons/fi';
 import { VOCABULARY_COLLECTIONS } from '../data/vocabularyCollections';
 import VocabularyFlashcardModal from '../components/VocabularyFlashcardModal';
@@ -581,6 +582,15 @@ const CourseListPage = () => {
                         <div className="card-content-wrap">
                           <h4 className="course-title-text">{course.course_name}</h4>
                           <p className="instructor-sub">{course.instructor_name || 'E-Learn Academy'}</p>
+                          <div className="card-stats-sub">
+                            <span className="stat-item">
+                              <FiLayers /> {course.sections_count || 0} {language === 'ENG' ? 'chapters' : 'chương'}
+                            </span>
+                            <span className="stat-dot">•</span>
+                            <span className="stat-item">
+                              <FiBookOpen /> {course.lessons_count || 0} {language === 'ENG' ? 'lessons' : 'bài học'}
+                            </span>
+                          </div>
                           <div className="card-footer-meta">
                             <span className="price-badge">
                               {course.price && course.price > 0 

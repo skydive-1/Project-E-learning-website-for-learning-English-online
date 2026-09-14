@@ -100,7 +100,7 @@ exports.changePassword = async (req, res, next) => {
     
     res.status(200).json({
       success: true,
-      message: 'Mật khẩu đã được thay đổi thành công'
+      message: 'Đổi mật khẩu thành công. Email xác nhận đã được gửi tới hộp thư của bạn.'
     });
   } catch (error) {
     next(error);

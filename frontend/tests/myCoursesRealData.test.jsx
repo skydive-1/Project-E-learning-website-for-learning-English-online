@@ -21,7 +21,8 @@ vi.mock('../src/components/common/Footer', () => ({
 }));
 
 vi.mock('../src/modules/lessons/services/lessons.service', () => ({
-  getCourseDetails: vi.fn()
+  getCourseDetails: vi.fn(),
+  getUserIdFromToken: vi.fn()
 }));
 
 const renderPage = () => {
@@ -76,5 +77,70 @@ describe('MyCoursesPage real-data states', () => {
       expect(apiClient.get).toHaveBeenCalledTimes(2);
     });
     expect(screen.queryByText('IELTS Masterclass: Target Band 7.5+')).not.toBeInTheDocument();
+  });
+
+  it('hiển thị chính xác số chương, số bài học và phân loại khóa 100% vào tab Đã hoàn thành', async () => {
+    const { getCourseDetails } = await import('../src/modules/lessons/services/lessons.service');
+    apiClient.get.mockResolvedValue({
+      data: {
+        courses: [
+          {
+            course_id: 48,
+            course_name: 'Phát âm cơ bản - Phụ âm và âm cuối',
+            instructor_name: 'Nihooma',
+            thumbnail_url: '/images/hero_illustration.png',
+            subject_name: 'Tiếng Anh',
+            sections_count: 2,
+            lessons_count: 3
+          }
+        ]
+      }
+    });
+
+    getCourseDetails.mockResolvedValue({
+      id: '48',
+      title: 'Phát âm cơ bản - Phụ âm và âm cuối',
+      instructor: 'Nihooma',
+      progress: 100,
+      sectionsCount: 2,
+      lessonsCount: 3,
+      sections: [
+        { id: '1', title: 'Chương 1', lessons: [{ id: '159' }, { id: '160' }] },
+        { id: '2', title: 'Chương 2', lessons: [{ id: '161' }] }
+      ]
+    });
+
+    renderPage();
+
+    // Xác nhận khóa học và thông tin số chương, số bài học
+    expect(await screen.findByText('Phát âm cơ bản - Phụ âm và âm cuối')).toBeInTheDocument();
+    expect(await screen.findByText(/2 chương/i)).toBeInTheDocument();
+    expect(await screen.findByText(/3 bài học/i)).toBeInTheDocument();
+    expect(screen.getByText('Ôn tập lại')).toBeInTheDocument();
+
+    // Chuyển sang tab "Đã hoàn thành"
+    const completedTab = screen.getByRole('button', { name: /Đã hoàn thành/i });
+    expect(completedTab).toHaveTextContent('(1)');
+    fireEvent.click(completedTab);
+
+    // Khóa học hoàn thành 100% phải hiển thị trong tab này
+    expect(screen.getByText('Phát âm cơ bản - Phụ âm và âm cuối')).toBeInTheDocument();
+    expect(screen.getByText('Ôn tập lại')).toBeInTheDocument();
+  });
+
+  it('nút làm mới tiến độ kích hoạt refetch lại API khóa học', async () => {
+    apiClient.get.mockResolvedValue({ data: { courses: [] } });
+
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Bạn chưa đăng ký khóa học nào' });
+
+    const refreshBtn = screen.getByTitle('Làm mới tiến độ học tập');
+    expect(refreshBtn).toBeInTheDocument();
+
+    fireEvent.click(refreshBtn);
+    await waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledTimes(2);
+    });
   });
 });

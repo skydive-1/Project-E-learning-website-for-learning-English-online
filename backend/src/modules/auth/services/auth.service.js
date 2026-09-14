@@ -529,7 +529,7 @@ class AuthService {
       }
 
       // 1. Lấy thông tin user cục bộ
-      const queryText = 'SELECT email, supabase_uid FROM users WHERE user_id = $1';
+      const queryText = 'SELECT user_id, email, full_name, username, supabase_uid FROM users WHERE user_id = $1';
       const result = await db.query(queryText, [userId]);
 
       if (result.rows.length === 0) {
@@ -567,6 +567,71 @@ class AuthService {
 
       if (updateError) {
         throw new Error('Không thể cập nhật mật khẩu mới trên Supabase: ' + updateError.message);
+      }
+
+      // 4. Gửi email xác nhận thay đổi mật khẩu (bao gồm nội dung an ninh "Nếu đó là bạn")
+      try {
+        const { sendEmail } = require('../../../utils/email.util');
+        const safeDisplayName = escapeHtml(user.full_name || user.username || 'bạn');
+        const safeEmail = escapeHtml(user.email);
+        const frontendUrl = getFrontendUrl();
+        const changeTime = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+        const emailHtml = `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 32px; border-radius: 16px; border: 1px solid #1e293b;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #38bdf8; font-size: 24px; font-weight: bold; margin: 0;">E-LEARN ACADEMY</h1>
+              <p style="color: #94a3b8; font-size: 14px; margin-top: 4px;">Hệ thống Học tiếng Anh Thông minh tích hợp AI</p>
+            </div>
+            <div style="background-color: #1e293b; padding: 24px; border-radius: 12px; margin-bottom: 24px;">
+              <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; margin-right: 8px;"></span>
+                <h2 style="color: #f1f5f9; font-size: 18px; margin: 0;">Xác nhận Thay đổi Mật khẩu Thành công</h2>
+              </div>
+              <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6;">
+                Xin chào <strong>${safeDisplayName}</strong>,<br/><br/>
+                Mật khẩu cho tài khoản <code>${safeEmail}</code> trên hệ thống E-Learn Academy vừa được cập nhật thành công vào lúc <strong>${changeTime} (giờ Việt Nam)</strong>.
+              </p>
+
+              <div style="background-color: rgba(37, 99, 235, 0.12); border-left: 4px solid #2563eb; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
+                <p style="color: #93c5fd; font-size: 13.5px; font-weight: 600; margin: 0 0 6px 0;">
+                  🔒 Nếu đó là bạn:
+                </p>
+                <p style="color: #e2e8f0; font-size: 13px; line-height: 1.5; margin: 0;">
+                  Nếu đó là bạn vừa thực hiện thay đổi này, bạn có thể hoàn toàn yên tâm và bỏ qua email này. Tài khoản của bạn đã được cập nhật và bảo vệ an toàn với mật khẩu mới.
+                </p>
+              </div>
+
+              <div style="background-color: rgba(239, 68, 68, 0.12); border-left: 4px solid #ef4444; padding: 14px 16px; border-radius: 6px; margin: 16px 0;">
+                <p style="color: #fca5a5; font-size: 13.5px; font-weight: 600; margin: 0 0 6px 0;">
+                  ⚠️ Nếu KHÔNG phải bạn:
+                </p>
+                <p style="color: #e2e8f0; font-size: 13px; line-height: 1.5; margin: 0;">
+                  Nếu bạn không thực hiện yêu cầu này, tài khoản của bạn có thể đang gặp rủi ro bảo mật. Vui lòng sử dụng tính năng <a href="${frontendUrl}/forgot-password" style="color: #38bdf8; text-decoration: underline;">Quên mật khẩu</a> để đặt lại mật khẩu ngay lập tức hoặc liên hệ với đội ngũ quản trị viên để được hỗ trợ khẩn cấp.
+                </p>
+              </div>
+
+              <div style="text-align: center; margin: 26px 0 10px;">
+                <a href="${frontendUrl}/login" style="background-color: #0284c7; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);">
+                  ĐĂNG NHẬP VỚI MẬT KHẨU MỚI
+                </a>
+              </div>
+            </div>
+            <div style="text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #1e293b; padding-top: 16px;">
+              <p>Email này được gửi tự động để bảo đảm an toàn cho tài khoản E-Learn Academy của bạn.</p>
+              <p>© 2026 E-Learn Academy. All rights reserved.</p>
+            </div>
+          </div>
+        `;
+
+        await sendEmail({
+          to: user.email,
+          subject: '[E-Learn Academy] Xác nhận thay đổi mật khẩu tài khoản của bạn',
+          text: `Xin chào ${user.full_name || user.username || 'bạn'}, mật khẩu cho tài khoản ${user.email} đã được thay đổi thành công vào lúc ${changeTime}. Nếu đó là bạn, bạn có thể hoàn toàn yên tâm và bỏ qua email này. Nếu KHÔNG phải bạn, vui lòng sử dụng tính năng Quên mật khẩu tại ${frontendUrl}/forgot-password hoặc liên hệ quản trị viên ngay lập tức.`,
+          html: emailHtml
+        });
+      } catch (emailErr) {
+        console.error('[Change Password Email Error]:', emailErr);
       }
 
       return true;
