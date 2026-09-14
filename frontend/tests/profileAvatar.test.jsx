@@ -114,6 +114,23 @@ describe('Profile Avatar Upload & Management', () => {
     expect(fallback).toHaveClass('avatar-fallback-large');
   });
 
+  it.each([
+    ['admin', 1],
+    ['instructor', 2],
+    ['student', 3]
+  ])('renders avatar controls for the %s role', async (_roleName, roleId) => {
+    mockUser.roleId = roleId;
+
+    render(
+      <LanguageProvider>
+        <ProfilePage />
+      </LanguageProvider>
+    );
+
+    expect(await screen.findByRole('button', { name: /tải ảnh từ máy/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /dán link ảnh/i })).toBeInTheDocument();
+  });
+
   it('successfully handles file upload and refreshes profile', async () => {
     render(
       <LanguageProvider>

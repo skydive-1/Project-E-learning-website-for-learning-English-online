@@ -23,7 +23,7 @@ describe('PWAUpdatePrompt', () => {
     }
   });
 
-  const renderPrompt = async ({ updateResult, user = { roleId: 1 } } = {}) => {
+  const renderPrompt = async ({ updateResult } = {}) => {
     let registrationOptions;
     const updateServiceWorker = updateResult || vi.fn().mockResolvedValue(undefined);
     const registerSW = vi.fn((options) => {
@@ -36,7 +36,6 @@ describe('PWAUpdatePrompt', () => {
       <PWAUpdatePrompt
         registrationEnabled
         loadRegisterModule={loadRegisterModule}
-        user={user}
       />,
     );
 
@@ -89,25 +88,11 @@ describe('PWAUpdatePrompt', () => {
     expect(screen.getByRole('button', { name: 'Cập nhật' })).toBeEnabled();
   });
 
-  it('chỉ hiển thị thông báo cập nhật cho role admin, không hiển thị cho học viên và giảng viên', async () => {
-    // 1. Kiểm tra role Học viên (roleId: 3) -> KHÔNG hiển thị
-    const student = await renderPrompt({ user: { roleId: 3, role: 'student' } });
-    act(() => student.registrationOptions.onNeedRefresh());
-    expect(screen.queryByRole('heading', { name: 'Có phiên bản mới' })).not.toBeInTheDocument();
+  it('hiển thị thông báo cập nhật mà không phụ thuộc role đăng nhập', async () => {
+    const { registrationOptions } = await renderPrompt();
+    act(() => registrationOptions.onNeedRefresh());
 
-    // 2. Kiểm tra role Giảng viên (roleId: 2) -> KHÔNG hiển thị
-    const instructor = await renderPrompt({ user: { roleId: 2, role: 'instructor' } });
-    act(() => instructor.registrationOptions.onNeedRefresh());
-    expect(screen.queryByRole('heading', { name: 'Có phiên bản mới' })).not.toBeInTheDocument();
-
-    // 3. Kiểm tra khách vãng lai (user: null) -> KHÔNG hiển thị
-    const guest = await renderPrompt({ user: null });
-    act(() => guest.registrationOptions.onNeedRefresh());
-    expect(screen.queryByRole('heading', { name: 'Có phiên bản mới' })).not.toBeInTheDocument();
-
-    // 4. Kiểm tra role Admin (roleId: 1) -> ĐƯỢC HIỂN THỊ
-    const admin = await renderPrompt({ user: { roleId: 1, role: 'admin' } });
-    act(() => admin.registrationOptions.onNeedRefresh());
     expect(screen.getByRole('heading', { name: 'Có phiên bản mới' })).toBeInTheDocument();
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
   });
 });
