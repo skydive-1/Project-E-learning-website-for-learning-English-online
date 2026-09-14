@@ -43,10 +43,18 @@ const resendVerificationSchema = {
   }
 };
 
-const changePasswordSchema = {
+const requestPasswordOtpSchema = {
   body: {
     oldPassword: { required: true },
     newPassword: { required: true, minLength: 6 }
+  }
+};
+
+const changePasswordSchema = {
+  body: {
+    oldPassword: { required: true },
+    newPassword: { required: true, minLength: 6 },
+    otp: { required: true, minLength: 6, maxLength: 6 }
   }
 };
 
@@ -122,6 +130,7 @@ router.post('/resend-verification', registrationLimiter, validate(resendVerifica
 router.post('/login', authLimiter, validate(loginSchema), authController.login);
 router.post('/logout', authenticate, authController.logout);
 router.get('/profile', authenticate, authController.getProfile);
+router.post('/change-password/request-otp', authenticate, authLimiter, validate(requestPasswordOtpSchema), authController.requestPasswordChangeOtp);
 router.put('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.put('/profile', authenticate, validate(updateProfileSchema), authController.updateProfile);
 router.post('/profile/avatar', authenticate, upload.memory.single('avatar'), authController.uploadAvatar);

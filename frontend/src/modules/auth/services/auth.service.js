@@ -25,10 +25,18 @@ export const getProfile = async () => {
 };
 
 /**
- * Đổi mật khẩu
+ * Yêu cầu gửi mã OTP đổi mật khẩu về Gmail
  */
-export const changePasswordApi = async ({ oldPassword, newPassword }) => {
-  const response = await apiClient.put('/auth/change-password', { oldPassword, newPassword });
+export const requestPasswordChangeOtpApi = async ({ oldPassword, newPassword }) => {
+  const response = await apiClient.post('/auth/change-password/request-otp', { oldPassword, newPassword });
+  return response.data;
+};
+
+/**
+ * Đổi mật khẩu với mã xác thực OTP 6 số
+ */
+export const changePasswordApi = async ({ oldPassword, newPassword, otp }) => {
+  const response = await apiClient.put('/auth/change-password', { oldPassword, newPassword, otp });
   return response.data;
 };
 

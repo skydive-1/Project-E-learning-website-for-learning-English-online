@@ -91,12 +91,28 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
-exports.changePassword = async (req, res, next) => {
+exports.requestPasswordChangeOtp = async (req, res, next) => {
   try {
     const { oldPassword, newPassword } = req.body;
     const userId = req.user.id;
+
+    await authService.requestPasswordChangeOtp({ userId, oldPassword, newPassword });
+
+    res.status(200).json({
+      success: true,
+      message: 'Mã xác thực OTP đã được gửi đến Gmail của bạn. Vui lòng kiểm tra hộp thư.'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword, otp } = req.body;
+    const userId = req.user.id;
     
-    await authService.changePassword({ userId, oldPassword, newPassword });
+    await authService.changePassword({ userId, oldPassword, newPassword, otp });
     
     res.status(200).json({
       success: true,
@@ -106,6 +122,7 @@ exports.changePassword = async (req, res, next) => {
     next(error);
   }
 };
+
 
 exports.updateProfile = async (req, res, next) => {
   try {
