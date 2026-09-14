@@ -110,6 +110,7 @@ describe('StudentInstructorChatPanel real messaging boundary', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '01:35' }));
     expect(onSeekVideo).toHaveBeenCalledWith(95);
+    expect(screen.queryByText(/Mốc bài giảng/i)).not.toBeInTheDocument();
   });
 
 });

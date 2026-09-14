@@ -314,7 +314,6 @@ const StudentInstructorChatPanel = ({
                   <div className={`mt-2 pt-1.5 border-t flex items-center gap-1 text-[11px] ${
                     isStudent ? 'border-white/20 text-white/90' : 'border-slate-100 dark:border-slate-700/60 text-slate-500 dark:text-slate-400'
                   }`}>
-                    <span>Mốc bài giảng:</span>
                     <button
                       type="button"
                       onClick={() => onSeekVideo && onSeekVideo(msg.timestampSeconds)}

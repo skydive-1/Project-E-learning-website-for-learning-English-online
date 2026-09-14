@@ -510,7 +510,6 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                       {activeDiscussion.timestampFormatted && (
                         <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 text-xs flex items-center gap-1.5 text-smart-indigo dark:text-blue-400">
                           <FiClock className="text-xs" />
-                          <span>Học viên gắn mốc bài giảng:</span>
                           {buildDiscussionTimestampPath(activeDiscussion, activeDiscussion.timestampSeconds) ? (
                             <Link
                               to={buildDiscussionTimestampPath(activeDiscussion, activeDiscussion.timestampSeconds)}
@@ -539,7 +538,7 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                         >
                           <div className="flex items-center gap-1.5 text-[11px] text-slate-400 px-1">
                             <span className="font-semibold text-slate-600 dark:text-slate-300">
-                              {isInst ? 'Bạn (Giảng viên)' : rep.author?.name}
+                              {rep.author?.name || (isInst ? activeDiscussion.instructor?.name : activeDiscussion.student?.name)}
                             </span>
                             <span>•</span>
                             <span>{rep.createdAt}</span>
@@ -562,7 +561,6 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                                   : 'border-slate-100 dark:border-slate-700/60 text-smart-indigo dark:text-blue-400'
                               }`}>
                                 <FiClock className="text-[10px] shrink-0" />
-                                <span className="font-medium">Mốc bài giảng:</span>
                                 {buildDiscussionTimestampPath(activeDiscussion, rep.timestampSeconds) ? (
                                   <Link
                                     to={buildDiscussionTimestampPath(activeDiscussion, rep.timestampSeconds)}
