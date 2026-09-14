@@ -126,6 +126,8 @@ const LessonYouTubePlayer = forwardRef(({
     seekTo
   }), [seekTo]);
 
+  const lastAppliedSeekRef = useRef(null);
+
   useEffect(() => {
     let cancelled = false;
     let player = null;
@@ -152,7 +154,8 @@ const LessonYouTubePlayer = forwardRef(({
               const duration = Number(event.target.getDuration?.());
               if (Number.isFinite(duration) && duration > 0) durationRef.current = duration;
               const target = pendingSeekRef.current ?? validInitialSeek;
-              if (target !== null && Number.isFinite(target) && target > 0) {
+              if (target !== null && Number.isFinite(target) && target > 0 && lastAppliedSeekRef.current !== target) {
+                lastAppliedSeekRef.current = target;
                 event.target.seekTo(target, true);
                 pendingSeekRef.current = null;
               }
@@ -193,10 +196,11 @@ const LessonYouTubePlayer = forwardRef(({
       if (playerApiRef.current === player) playerApiRef.current = null;
       player?.destroy?.();
     };
-  }, [videoId, validInitialSeek]);
+  }, [videoId]);
 
   useEffect(() => {
-    if (validInitialSeek !== null && playerApiRef.current?.seekTo) {
+    if (validInitialSeek !== null && lastAppliedSeekRef.current !== validInitialSeek && playerApiRef.current?.seekTo) {
+      lastAppliedSeekRef.current = validInitialSeek;
       playerApiRef.current.seekTo(validInitialSeek, true);
     }
   }, [validInitialSeek]);

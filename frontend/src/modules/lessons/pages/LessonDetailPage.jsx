@@ -105,6 +105,7 @@ const LessonDetailPage = () => {
   const { user } = useAuth();
   const videoRef = useRef(null);
   const pendingVideoSeekRef = useRef(null);
+  const handledSeekKeyRef = useRef('');
   const containerRef = useRef(null);
   const shakaPlayerRef = useRef(null);
   const shakaAttachedToRef = useRef(null); // theo dõi element nào Shaka đang attach vào
@@ -383,11 +384,12 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     return null;
   }, [location.search]);
 
-  // Áp dụng mốc tua đang chờ khi video đã sẵn sàng (loadedmetadata / canplay / Shaka attached / YouTube ready)
+  // Áp dụng mốc tua đang chờ khi video đã sẵn sàng (chỉ chạy 1 lần duy nhất khi pendingVideoSeekRef có giá trị)
   const applyPendingSeek = useCallback(() => {
-    const urlSeek = getInitialSeekFromUrl();
-    const targetSec = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : urlSeek;
-    if (targetSec === null || !Number.isFinite(targetSec) || targetSec < 0) return;
+    if (pendingVideoSeekRef.current === null) return;
+
+    const targetSec = pendingVideoSeekRef.current;
+    if (!Number.isFinite(targetSec) || targetSec < 0) return;
 
     const videoEl = videoRef.current;
     if (!videoEl) return;
@@ -398,6 +400,10 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       || (Number.isFinite(videoEl.duration) && videoEl.duration > 0);
 
     if (!isReady) return;
+
+    // Xóa pendingVideoSeekRef NGAY LẬP TỨC trước khi set currentTime
+    // để ngăn ngừa triệt để vòng lặp: set currentTime -> seeking -> canplay -> applyPendingSeek -> set currentTime
+    pendingVideoSeekRef.current = null;
 
     const duration = videoEl.duration;
     const safeTime = (duration && isFinite(duration) && duration > 0)
@@ -411,27 +417,17 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         videoEl.currentTime = safeTime;
       }
       setVideoCurrentTime(safeTime);
-
-      if (videoEl.paused) {
-        videoEl.play().catch(() => {});
-        setIsVideoPlaying(true);
-      }
-
-      // Xóa pendingVideoSeekRef khi currentTime đã tiệm cận mốc đích
-      const currentPos = typeof videoEl.currentTime === 'number' ? videoEl.currentTime : null;
-      if (currentPos !== null && Math.abs(currentPos - safeTime) <= 2) {
-        pendingVideoSeekRef.current = null;
-      }
     } catch (err) {
       console.warn('⚠️ [Video Seek Error]:', err);
     }
-  }, [getInitialSeekFromUrl]);
+  }, []);
 
   // Tua video an toàn (Click-to-Seek với Clamp 0 <= targetSec <= videoDuration)
   const handleSeekVideo = useCallback((seconds) => {
     const targetSec = Number(seconds);
     if (isNaN(targetSec) || !isFinite(targetSec) || targetSec < 0) return;
     pendingVideoSeekRef.current = targetSec;
+    handledSeekKeyRef.current = `${lessonId}:${targetSec}`;
 
     const videoEl = videoRef.current;
     if (!videoEl) return;
@@ -443,9 +439,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     if (isReady) {
       applyPendingSeek();
     }
-  }, [applyPendingSeek]);
+  }, [lessonId, applyPendingSeek]);
 
-  // Tự động tua video khi URL có tham số ?seek= (điều hướng từ mốc thời gian thảo luận hoặc bài học khác)
+  // Tự động tua video khi URL có tham số ?seek= (chỉ thực thi 1 lần duy nhất cho mỗi mốc thời gian / bài học)
   useEffect(() => {
     const seekSec = getInitialSeekFromUrl();
     if (seekSec === null) {
@@ -453,6 +449,13 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       return;
     }
 
+    const seekKey = `${lessonId}:${seekSec}`;
+    if (handledSeekKeyRef.current === seekKey) {
+      // Mốc seek này đã được áp dụng, KHÔNG tua lặp lại tránh giật hình
+      return;
+    }
+
+    handledSeekKeyRef.current = seekKey;
     pendingVideoSeekRef.current = seekSec;
     handleSeekVideo(seekSec);
   }, [location.search, lessonId, getInitialSeekFromUrl, handleSeekVideo]);
@@ -463,8 +466,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     if (!videoEl || typeof videoEl.addEventListener !== 'function') return;
 
     const onMediaReady = () => {
-      const target = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
-      if (target !== null) {
+      if (pendingVideoSeekRef.current !== null) {
         applyPendingSeek();
       }
     };
@@ -472,18 +474,15 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     videoEl.addEventListener('loadedmetadata', onMediaReady);
     videoEl.addEventListener('canplay', onMediaReady);
 
-    if (videoEl.readyState >= 1) {
-      const target = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
-      if (target !== null) {
-        applyPendingSeek();
-      }
+    if (videoEl.readyState >= 1 && pendingVideoSeekRef.current !== null) {
+      applyPendingSeek();
     }
 
     return () => {
       videoEl.removeEventListener('loadedmetadata', onMediaReady);
       videoEl.removeEventListener('canplay', onMediaReady);
     };
-  }, [lessonId, ticketPlaybackUrl, getInitialSeekFromUrl, applyPendingSeek]);
+  }, [lessonId, ticketPlaybackUrl, applyPendingSeek]);
 
   // Hệ thống phát hiện phím tắt chụp/chia sẻ màn hình ở tầng trình duyệt phục vụ răn đe bản quyền (Browser Deterrence & Blackout)
   useEffect(() => {
@@ -1382,48 +1381,25 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         const manifestBaseUrl = `${API_BASE_URL}/lessons/dash/${rawLessonId}/manifest.mpd`;
         const manifestUrl = allowQueryTicket ? `${manifestBaseUrl}?ticket=${encodeURIComponent(ticket)}` : manifestBaseUrl;
 
-        const initialSeekTime = pendingVideoSeekRef.current !== null ? pendingVideoSeekRef.current : getInitialSeekFromUrl();
+        const initialSeekTime = (pendingVideoSeekRef.current !== null)
+          ? pendingVideoSeekRef.current
+          : (handledSeekKeyRef.current !== `${rawLessonId}:${getInitialSeekFromUrl()}` ? getInitialSeekFromUrl() : null);
+
         const validStartTime = (initialSeekTime !== null && Number.isFinite(initialSeekTime) && initialSeekTime > 0)
           ? initialSeekTime
           : undefined;
+
+        if (validStartTime !== undefined) {
+          pendingVideoSeekRef.current = null;
+          handledSeekKeyRef.current = `${rawLessonId}:${validStartTime}`;
+        }
 
         // Truyền validStartTime vào shaka.Player.load() để Shaka trực tiếp tải segment tại mốc timestamp (thay vì buffer từ 0)
         shakaPlayerRef.current?.load(manifestUrl, validStartTime)
           .then(() => {
             if (active) setVideoLoading(false);
-            if (validStartTime !== undefined) {
-              if (videoRef.current) {
-                try {
-                  videoRef.current.currentTime = validStartTime;
-                  setVideoCurrentTime(validStartTime);
-                  if (videoRef.current.paused) {
-                    videoRef.current.play().catch(() => {});
-                    setIsVideoPlaying(true);
-                  }
-                } catch (_) {}
-              }
-              // Watchdog đảm bảo video ổn định tại đúng timestamp sau khi tải luồng DASH
-              let checkAttempts = 0;
-              const verifyTimer = setInterval(() => {
-                checkAttempts++;
-                const el = videoRef.current;
-                if (!active || !el || checkAttempts > 12) {
-                  clearInterval(verifyTimer);
-                  return;
-                }
-                if (Math.abs(el.currentTime - validStartTime) > 2) {
-                  try {
-                    el.currentTime = validStartTime;
-                  } catch (_) {}
-                } else {
-                  pendingVideoSeekRef.current = null;
-                  clearInterval(verifyTimer);
-                }
-              }, 250);
-            } else if (pendingVideoSeekRef.current !== null) {
-              setTimeout(() => {
-                if (active) applyPendingSeek();
-              }, 150);
+            if (validStartTime !== undefined && videoRef.current) {
+              setVideoCurrentTime(validStartTime);
             }
           })
           .catch((err) => {
