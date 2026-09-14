@@ -105,6 +105,15 @@ exports.getInstructorAnnouncements = async (req, res, next) => {
   }
 };
 
+exports.getUserAnnouncements = async (req, res, next) => {
+  try {
+    const announcements = await discussionsService.listUserAnnouncements(req.user);
+    res.status(200).json({ success: true, data: { announcements } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.createAnnouncement = async (req, res, next) => {
   try {
     const announcement = await discussionsService.createAnnouncement(req.user, req.body || {});
@@ -112,6 +121,36 @@ exports.createAnnouncement = async (req, res, next) => {
       success: true,
       message: 'Đã phát hành thông báo khóa học',
       data: { announcement }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateAnnouncement = async (req, res, next) => {
+  try {
+    const announcement = await discussionsService.updateAnnouncement(
+      req.user,
+      req.params.announcementId,
+      req.body || {}
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Đã cập nhật thông báo',
+      data: { announcement }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteAnnouncement = async (req, res, next) => {
+  try {
+    const result = await discussionsService.deleteAnnouncement(req.user, req.params.announcementId);
+    res.status(200).json({
+      success: true,
+      message: 'Đã xóa thông báo thành công',
+      data: result
     });
   } catch (error) {
     next(error);
@@ -126,3 +165,4 @@ exports.markAnnouncementRead = async (req, res, next) => {
     next(error);
   }
 };
+

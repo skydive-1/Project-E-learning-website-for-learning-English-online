@@ -576,9 +576,117 @@ class DiscussionsService {
     return announcements.find(item => Number(item.id) === Number(result.rows[0].announcement_id));
   }
 
+  async listUserAnnouncements(user) {
+    const roleId = roleIdOf(user);
+    const userId = Number(user.id) || 0;
+
+    // Học viên (Role 3): Ưu tiên các khóa học đã đăng ký hoặc các khóa học công khai
+    // Giảng viên (Role 2) & Admin (Role 1): Hiển thị tất cả thông báo
+    let filterCondition = '';
+    const params = [userId];
+
+    if (roleId === 3) {
+      filterCondition = `
+        WHERE c.status = 'published'
+          AND (
+            c.price = 0 OR c.price IS NULL
+            OR EXISTS (
+              SELECT 1 FROM enrollments e
+              WHERE e.course_id = a.course_id AND e.user_id = $1 AND e.status = 'active'
+            )
+            OR NOT EXISTS (
+              SELECT 1 FROM enrollments e2 WHERE e2.user_id = $1 AND e2.status = 'active'
+            )
+          )
+      `;
+    }
+
+    const result = await db.query(`
+      SELECT a.*, c.course_name, u.full_name AS instructor_name,
+             u.profile_picture_url AS instructor_avatar,
+             COUNT(DISTINCT ar_all.user_id)::int AS views_count,
+             COALESCE(BOOL_OR(ar.user_id = $1), FALSE) AS is_read
+      FROM course_announcements a
+      JOIN courses c ON c.course_id = a.course_id
+      JOIN users u ON u.user_id = a.instructor_id
+      LEFT JOIN course_announcement_reads ar ON ar.announcement_id = a.announcement_id AND ar.user_id = $1
+      LEFT JOIN course_announcement_reads ar_all ON ar_all.announcement_id = a.announcement_id
+      ${filterCondition}
+      GROUP BY a.announcement_id, c.course_name, u.full_name, u.profile_picture_url
+      ORDER BY a.created_at DESC
+      LIMIT 100
+    `, params);
+
+    return result.rows.map(mapAnnouncement);
+  }
+
+  async updateAnnouncement(user, announcementIdValue, payload) {
+    const roleId = roleIdOf(user);
+    if (![1, 2].includes(roleId)) {
+      throw createError('Chỉ giảng viên hoặc quản trị viên mới có thể chỉnh sửa thông báo', 403, 'INSTRUCTOR_ONLY');
+    }
+    const announcementId = positiveInteger(announcementIdValue, 'announcementId');
+    const existingResult = await db.query(
+      `SELECT a.announcement_id, a.course_id, a.instructor_id, c.instructor_id AS course_instructor_id
+       FROM course_announcements a
+       JOIN courses c ON c.course_id = a.course_id
+       WHERE a.announcement_id = $1`,
+      [announcementId]
+    );
+    if (existingResult.rows.length === 0) {
+      throw createError('Thông báo không tồn tại', 404, 'ANNOUNCEMENT_NOT_FOUND');
+    }
+    const existing = existingResult.rows[0];
+    if (roleId === 2 && Number(existing.instructor_id) !== Number(user.id) && Number(existing.course_instructor_id) !== Number(user.id)) {
+      throw createError('Bạn không có quyền chỉnh sửa thông báo này', 403, 'ANNOUNCEMENT_ACCESS_DENIED');
+    }
+
+    const title = cleanText(payload?.title, 'Tiêu đề', 180, { minLength: 3 });
+    const content = cleanText(payload?.content, 'Nội dung', 10000);
+
+    await db.query(`
+      UPDATE course_announcements
+      SET title = $1, content = $2, updated_at = NOW()
+      WHERE announcement_id = $3
+    `, [title, content, announcementId]);
+
+    const announcements = await this.listInstructorAnnouncements(user);
+    const updated = announcements.find(item => Number(item.id) === Number(announcementId));
+    return updated || { id: announcementId, title, content };
+  }
+
+  async deleteAnnouncement(user, announcementIdValue) {
+    const roleId = roleIdOf(user);
+    if (![1, 2].includes(roleId)) {
+      throw createError('Chỉ giảng viên hoặc quản trị viên mới có thể xóa thông báo', 403, 'INSTRUCTOR_ONLY');
+    }
+    const announcementId = positiveInteger(announcementIdValue, 'announcementId');
+    const existingResult = await db.query(
+      `SELECT a.announcement_id, a.course_id, a.instructor_id, c.instructor_id AS course_instructor_id
+       FROM course_announcements a
+       JOIN courses c ON c.course_id = a.course_id
+       WHERE a.announcement_id = $1`,
+      [announcementId]
+    );
+    if (existingResult.rows.length === 0) {
+      throw createError('Thông báo không tồn tại', 404, 'ANNOUNCEMENT_NOT_FOUND');
+    }
+    const existing = existingResult.rows[0];
+    if (roleId === 2 && Number(existing.instructor_id) !== Number(user.id) && Number(existing.course_instructor_id) !== Number(user.id)) {
+      throw createError('Bạn không có quyền xóa thông báo này', 403, 'ANNOUNCEMENT_ACCESS_DENIED');
+    }
+
+    await db.query(`
+      DELETE FROM course_announcements
+      WHERE announcement_id = $1
+    `, [announcementId]);
+
+    return { success: true, announcementId };
+  }
+
   async markAnnouncementRead(user, announcementIdValue) {
-    if (roleIdOf(user) !== 3) {
-      throw createError('Chỉ học viên mới đánh dấu thông báo đã đọc', 403, 'STUDENT_ONLY');
+    if (![1, 2, 3].includes(roleIdOf(user))) {
+      throw createError('Bạn không có quyền đánh dấu thông báo đã đọc', 403, 'FORBIDDEN');
     }
     const announcementId = positiveInteger(announcementIdValue, 'announcementId');
     const result = await db.query(`
@@ -592,7 +700,7 @@ class DiscussionsService {
       throw createError('Thông báo không tồn tại', 404, 'ANNOUNCEMENT_NOT_FOUND');
     }
     const lessonId = result.rows[0].lesson_id;
-    if (!lessonId || !(await coursesService.canUserAccessLesson(user.id, lessonId, user.roleId))) {
+    if (lessonId && !(await coursesService.canUserAccessLesson(user.id, lessonId, user.roleId))) {
       throw createError('Bạn không có quyền đọc thông báo này', 403, 'COURSE_ACCESS_DENIED');
     }
 

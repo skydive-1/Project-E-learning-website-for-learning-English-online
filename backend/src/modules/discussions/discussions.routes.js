@@ -25,6 +25,21 @@ router.post(
   writeLimiter,
   controller.createAnnouncement
 );
+router.put(
+  '/instructor/announcements/:announcementId',
+  authorize([1, 2]),
+  writeLimiter,
+  controller.updateAnnouncement
+);
+router.delete(
+  '/instructor/announcements/:announcementId',
+  authorize([1, 2]),
+  writeLimiter,
+  controller.deleteAnnouncement
+);
+
+// Global announcements endpoint for all authenticated roles
+router.get('/announcements', controller.getUserAnnouncements);
 
 router.get('/lesson/:lessonId', authorize([3]), controller.getStudentLessonData);
 router.post('/messages', authorize([3]), writeLimiter, controller.sendStudentMessage);
@@ -34,9 +49,9 @@ router.patch('/:discussionId/status', writeLimiter, controller.updateStatus);
 router.patch('/:discussionId/read', writeLimiter, controller.markDiscussionRead);
 router.patch(
   '/announcements/:announcementId/read',
-  authorize([3]),
   writeLimiter,
   controller.markAnnouncementRead
 );
 
 module.exports = router;
+

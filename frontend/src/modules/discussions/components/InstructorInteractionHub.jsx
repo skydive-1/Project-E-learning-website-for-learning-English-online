@@ -3,12 +3,15 @@ import { Link } from 'react-router-dom';
 import { 
   FiMessageSquare, FiBell, FiSearch, FiCheck, 
   FiClock, FiUser, FiSend, FiArrowLeft, FiPlus, 
-  FiX, FiEye, FiCheckCircle, FiBookOpen, FiFilter, FiPlay
+  FiX, FiEye, FiCheckCircle, FiBookOpen, FiFilter, FiPlay,
+  FiEdit2, FiTrash2, FiAlertTriangle
 } from 'react-icons/fi';
 import { useToast } from '../../../context/ToastContext';
 import { useAuth } from '../../../context/AuthContext';
 import {
   createCourseAnnouncement,
+  updateCourseAnnouncement,
+  deleteCourseAnnouncement,
   discussionApiErrorMessage,
   getInstructorAnnouncements,
   getInstructorDiscussions,
@@ -74,6 +77,14 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
   );
   const [annTitle, setAnnTitle] = useState('');
   const [annContent, setAnnContent] = useState('');
+
+  // State cho Sửa & Xóa thông báo
+  const [editingAnn, setEditingAnn] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [isUpdatingAnn, setIsUpdatingAnn] = useState(false);
+  const [deletingAnn, setDeletingAnn] = useState(null);
+  const [isDeletingAnn, setIsDeletingAnn] = useState(false);
 
   useEffect(() => {
     let isCurrent = true;
@@ -218,6 +229,53 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
       showToast(discussionApiErrorMessage(error, 'Không thể phát hành thông báo.'), 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Mở modal chỉnh sửa thông báo
+  const handleOpenEditAnn = (ann) => {
+    setEditingAnn(ann);
+    setEditTitle(ann.title || '');
+    setEditContent(ann.content || '');
+  };
+
+  // Xử lý cập nhật thông báo
+  const handleUpdateAnnouncement = async (e) => {
+    e.preventDefault();
+    if (!editingAnn || !editTitle.trim() || !editContent.trim()) {
+      showToast('Vui lòng điền đầy đủ tiêu đề và nội dung thông báo.', 'warning');
+      return;
+    }
+
+    setIsUpdatingAnn(true);
+    try {
+      const updated = await updateCourseAnnouncement(editingAnn.id, {
+        title: editTitle.trim(),
+        content: editContent.trim()
+      });
+      setAnnouncements(prev => prev.map(item => item.id === editingAnn.id ? { ...item, ...updated } : item));
+      setEditingAnn(null);
+      showToast('Cập nhật thông báo thành công!', 'success');
+    } catch (error) {
+      showToast(discussionApiErrorMessage(error, 'Không thể cập nhật thông báo.'), 'error');
+    } finally {
+      setIsUpdatingAnn(false);
+    }
+  };
+
+  // Xử lý xóa thông báo
+  const handleDeleteAnnouncement = async () => {
+    if (!deletingAnn) return;
+    setIsDeletingAnn(true);
+    try {
+      await deleteCourseAnnouncement(deletingAnn.id);
+      setAnnouncements(prev => prev.filter(item => item.id !== deletingAnn.id));
+      showToast('Đã xóa thông báo thành công!', 'success');
+      setDeletingAnn(null);
+    } catch (error) {
+      showToast(discussionApiErrorMessage(error, 'Không thể xóa thông báo.'), 'error');
+    } finally {
+      setIsDeletingAnn(false);
     }
   };
 
@@ -463,8 +521,19 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                           </h3>
                           {renderStatusBadge(activeDiscussion.status)}
                         </div>
-                        <p className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
-                          Khóa học: {activeDiscussion.courseName} • {activeDiscussion.lessonTitle}
+                        <p className="text-[11px] text-slate-400 dark:text-slate-400 truncate flex items-center gap-1">
+                          <span>Khóa học: {activeDiscussion.courseName} •</span>
+                          {activeDiscussion.lessonId ? (
+                            <Link
+                              to={`/lessons/${activeDiscussion.lessonId}?courseId=${activeDiscussion.courseId || ''}${activeDiscussion.timestampSeconds ? `&seek=${Math.floor(activeDiscussion.timestampSeconds)}` : ''}`}
+                              className="font-medium text-slate-600 dark:text-slate-300 hover:text-smart-indigo dark:hover:text-blue-400 underline underline-offset-2"
+                              title={`Mở bài học ${activeDiscussion.lessonTitle}`}
+                            >
+                              {activeDiscussion.lessonTitle}
+                            </Link>
+                          ) : (
+                            <span>{activeDiscussion.lessonTitle}</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -645,26 +714,51 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
             {announcements.map((ann) => (
               <div
                 key={ann.id}
-                className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shadow-2xs space-y-2 hover:border-slate-300 transition-all"
+                className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80 shadow-2xs space-y-2 hover:border-slate-300 transition-all flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-smart-indigo dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/40">
-                    {ann.courseName}
-                  </span>
-                  <span className="text-[10.5px] text-slate-400">{ann.createdAt}</span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-smart-indigo dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/40">
+                      {ann.courseName}
+                    </span>
+                    <span className="text-[10.5px] text-slate-400">{ann.createdAt}</span>
+                  </div>
+
+                  <h3 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100">
+                    {ann.title}
+                  </h3>
+
+                  <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed whitespace-pre-wrap">
+                    {ann.content}
+                  </p>
                 </div>
 
-                <h3 className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-100">
-                  {ann.title}
-                </h3>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed">
-                  {ann.content}
-                </p>
-
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Người đăng: {ann.instructorName}</span>
-                  <span>{ann.viewsCount} lượt tiếp cận</span>
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-[11px] text-slate-400 mt-2">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span>Người đăng: {ann.instructorName}</span>
+                    <span>•</span>
+                    <span>{ann.viewsCount} lượt tiếp cận</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditAnn(ann)}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-smart-indigo dark:hover:text-blue-400 transition-colors cursor-pointer"
+                      title="Chỉnh sửa thông báo"
+                    >
+                      <FiEdit2 className="text-[11px]" />
+                      <span>Sửa</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingAnn(ann)}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                      title="Xóa thông báo"
+                    >
+                      <FiTrash2 className="text-[11px]" />
+                      <span>Xóa</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -786,6 +880,125 @@ const InstructorInteractionHub = ({ courses = [], onPendingCountChange = null })
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Chỉnh sửa thông báo */}
+          {editingAnn && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+              <div className="w-full max-w-lg bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-700/80 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/40">
+                  <div className="flex items-center gap-2">
+                    <FiEdit2 className="text-smart-indigo text-base" />
+                    <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                      Chỉnh sửa thông báo ({editingAnn.courseName})
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingAnn(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <FiX className="text-base" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleUpdateAnnouncement} className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                      Tiêu đề thông báo:
+                    </label>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="Nhập tiêu đề thông báo..."
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:border-smart-indigo"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
+                      Nội dung chi tiết:
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      placeholder="Nhập nội dung thông báo..."
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 focus:outline-none focus:border-smart-indigo resize-none"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/60">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAnn(null)}
+                      className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!editTitle.trim() || !editContent.trim() || isUpdatingAnn}
+                      className="px-4 py-2 bg-smart-indigo hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
+                    >
+                      {isUpdatingAnn ? 'Đang lưu...' : 'Lưu thay đổi'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Xác nhận Xóa thông báo */}
+          {deletingAnn && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+              <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200/80 dark:border-slate-700/80 p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 text-xl border border-rose-200 dark:border-rose-900/50">
+                    <FiAlertTriangle />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                      Xác nhận xóa thông báo
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Thao tác này sẽ xóa vĩnh viễn thông báo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-700/60">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 line-clamp-1">
+                    {deletingAnn.title}
+                  </p>
+                  <p className="text-[11px] text-slate-500 line-clamp-2 mt-1">
+                    {deletingAnn.content}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingAnn(null)}
+                    disabled={isDeletingAnn}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAnnouncement}
+                    disabled={isDeletingAnn}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
+                  >
+                    {isDeletingAnn ? 'Đang xóa...' : 'Xác nhận xóa'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
