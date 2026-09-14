@@ -74,6 +74,7 @@ exports.generateQuiz = async (req, res, next) => {
 Generate a quiz with ${numQuestions} multiple choice questions about the topic: "${topic}".
 Each question must be a multiple choice question with exactly 4 options labeled starting with "A. ", "B. ", "C. ", "D. ".
 For each question, specify the question text, the options, the correct answer letter (only "A", "B", "C", or "D"), and a clear explanation in Vietnamese explaining why it is correct.
+CRITICAL: Every question must be 100% self-contained in text. NEVER refer to unseen images, charts, graphs, or pictures (e.g. NEVER write "Look at the picture...", "The chart below shows...").
 
 You must return a JSON array of objects with the following schema:
 [

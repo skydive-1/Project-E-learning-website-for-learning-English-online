@@ -12,6 +12,7 @@ import AuthLayout from './modules/auth/components/AuthLayout';
 const RegisterPage = lazy(() => import('./modules/auth/pages/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('./modules/auth/pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./modules/auth/pages/ResetPasswordPage'));
+const VerifyEmailPage = lazy(() => import('./modules/auth/pages/VerifyEmailPage'));
 const ProfilePage = lazy(() => import('./modules/profile/pages/ProfilePage'));
 const LessonDetailPage = lazy(() => import('./modules/lessons/pages/LessonDetailPage'));
 const CourseListPage = lazy(() => import('./modules/courses/pages/CourseListPage'));
@@ -161,6 +162,7 @@ function App() {
                       <Route path="/register" element={<RegisterPage />} />
                       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                       <Route path="/reset-password" element={<ResetPasswordPage />} />
+                      <Route path="/verify-email" element={<VerifyEmailPage />} />
                     </Route>
 
                     {/* Protected Routes */}

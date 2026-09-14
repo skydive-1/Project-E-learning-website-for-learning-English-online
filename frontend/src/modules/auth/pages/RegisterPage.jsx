@@ -59,21 +59,20 @@ const RegisterPage = () => {
     setIsLoading(true);
 
     try {
-      await registerUser({
+      const result = await registerUser({
         email: formData.email,
         username: formData.username,
         password: formData.password,
         roleId: formData.roleId,
       });
 
-      setMessage({ 
-        type: 'success', 
-        text: 'Đăng ký tài khoản thành công! Đang chuyển hướng về trang đăng nhập...' 
+      navigate('/verify-email', {
+        replace: true,
+        state: {
+          email: formData.email.trim().toLowerCase(),
+          deliveryAccepted: result.data?.emailDeliveryAccepted !== false
+        }
       });
-      
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
     } catch (error) {
       const errMsg = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại';
       setMessage({ type: 'error', text: errMsg });
@@ -161,7 +160,7 @@ const RegisterPage = () => {
       </div>
 
       {message.text && (
-        <div className={`auth-message ${message.type}`}>
+        <div className={`auth-message ${message.type}`} role="alert" aria-live="assertive">
           {message.text}
         </div>
       )}
@@ -177,6 +176,9 @@ const RegisterPage = () => {
               placeholder="Tên người dùng"
               value={formData.username}
               onChange={handleChange}
+              autoComplete="username"
+              minLength={3}
+              maxLength={50}
               onFocus={() => setIsEmailFocused(true)}
               onBlur={() => setIsEmailFocused(false)}
               required
@@ -194,6 +196,8 @@ const RegisterPage = () => {
               placeholder="Email"
               value={formData.email}
               onChange={handleChange}
+              autoComplete="email"
+              maxLength={255}
               onFocus={() => setIsEmailFocused(true)}
               onBlur={() => setIsEmailFocused(false)}
               required
@@ -211,6 +215,8 @@ const RegisterPage = () => {
               placeholder="Mật khẩu"
               value={formData.password}
               onChange={handleChange}
+              autoComplete="new-password"
+              minLength={6}
               onFocus={() => setIsPasswordFocused(true)}
               onBlur={() => setIsPasswordFocused(false)}
               required
@@ -236,6 +242,8 @@ const RegisterPage = () => {
               placeholder="Xác nhận mật khẩu"
               value={formData.confirmPassword}
               onChange={handleChange}
+              autoComplete="new-password"
+              minLength={6}
               onFocus={() => setIsPasswordFocused(true)}
               onBlur={() => setIsPasswordFocused(false)}
               required
@@ -254,23 +262,14 @@ const RegisterPage = () => {
         <div className="form-group">
           <div className="input-wrapper">
             <FiUser className="input-icon" />
+            <label className="auth-field-label" htmlFor="roleId">Vai trò tài khoản</label>
             <select
               id="roleId"
               name="roleId"
               value={formData.roleId}
               onChange={handleChange}
-              style={{
-                width: '100%',
-                backgroundColor: 'var(--input-bg, #f8fafc)',
-                border: '1.5px solid var(--border-grey, #e2e8f0)',
-                borderRadius: '16px',
-                padding: '13px 16px 13px 46px',
-                fontSize: '14.5px',
-                color: 'var(--text-dark, #0f172a)',
-                outline: 'none',
-                cursor: 'pointer',
-                fontFamily: "'Outfit', sans-serif"
-              }}
+              className="auth-role-select"
+              aria-label="Vai trò tài khoản"
             >
               <option value={3}>Học viên (Student)</option>
               <option value={2}>Giảng viên (Instructor)</option>

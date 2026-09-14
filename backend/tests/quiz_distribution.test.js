@@ -303,4 +303,36 @@ describe('enforceAndNormalizeQuestions - Strict Question Type Guard & Auto-Corre
     });
     assert.equal(result[0].questionText, 'Why is history useful?');
   });
+
+  it('intercepts and repairs phantom charts and missing visual prompts in Writing and Multiple Choice', () => {
+    const rawAiOutput = [
+      {
+        questionType: 'writing',
+        questionText: 'The chart below shows the percentage of households with internet access in three different countries between 2000 and 2020. Summarize the information by selecting and reporting the main features, and make comparisons where relevant. Write at least 150 words.',
+        options: [],
+        correctAnswer: '',
+        explanation: 'Model Answer: The line graph illustrates the proportion of households connected to the internet in Country A, Country B, and C...'
+      },
+      {
+        questionType: 'multiple_choice',
+        questionText: 'Look at the chart below and identify which sector grew the fastest in 2020.',
+        options: ['A. Technology', 'B. Agriculture', 'C. Manufacturing', 'D. Services'],
+        correctAnswer: 'A',
+        explanation: 'Sector Technology grew the fastest.'
+      }
+    ];
+
+    const result = enforceAndNormalizeQuestions(
+      rawAiOutput,
+      { writing: 1, multiple_choice: 1 },
+      ['writing', 'multiple_choice'],
+      2,
+      'Internet and Technology'
+    );
+
+    // Phantom visual references must be eliminated
+    assert.doesNotMatch(result[0].questionText, /the\s+chart\s+below\s+shows/i);
+    assert.match(result[0].questionText, /Write an essay of at least 150 words/i);
+    assert.doesNotMatch(result[1].questionText, /look\s+at\s+the\s+chart\s+below/i);
+  });
 });

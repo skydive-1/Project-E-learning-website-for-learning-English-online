@@ -28,6 +28,65 @@
   outline-offset: 2px;
 }
 
+.draft-autosave-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.5rem;
+  margin-top: 0.35rem;
+  color: var(--text-light, #64748b);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+
+  svg {
+    flex: 0 0 auto;
+    font-size: 0.9rem;
+  }
+
+  &.is-safe { color: #047857; }
+  &.is-restored { color: #1d4ed8; }
+  &.is-error { color: #b91c1c; }
+}
+
+.local-draft-restored {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  padding: 0.85rem 1rem;
+  color: #1e40af;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.75rem;
+
+  > svg {
+    flex: 0 0 auto;
+    margin-top: 0.2rem;
+  }
+
+  strong { color: #1e3a8a; }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2rem;
+    height: 2rem;
+    margin: -0.35rem -0.45rem -0.35rem auto;
+    color: currentColor;
+    background: transparent;
+    border: 0;
+    border-radius: 0.5rem;
+    cursor: pointer;
+
+    &:hover { background: rgba(30, 64, 175, 0.1); }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .alert-target-focus {
     scroll-behavior: auto;
@@ -1860,6 +1919,23 @@ html.dark {
   .instructor-page {
     background-color: var(--bg-color);
     color: var(--text-color);
+
+    .draft-autosave-status {
+      color: #aebbd0;
+
+      &.is-safe { color: #6ee7b7; }
+      &.is-restored { color: #93c5fd; }
+      &.is-error { color: #fca5a5; }
+    }
+
+    .local-draft-restored {
+      color: #bfdbfe;
+      background: rgba(37, 99, 235, 0.12);
+      border-color: rgba(96, 165, 250, 0.42);
+
+      strong { color: #dbeafe; }
+      button:hover { background: rgba(147, 197, 253, 0.12); }
+    }
 
     .instructor-sidebar,
     .course-nav-guide,

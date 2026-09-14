@@ -112,11 +112,13 @@ apiClient.interceptors.response.use(
     const url = error?.config?.url || '';
     const hasAuthHeader = Boolean(error?.config?.headers?.Authorization);
 
-    // Không xử lý logout nếu là các endpoint auth công khai (login, register, forgot-password, reset-password, google)
+    // Không xử lý logout nếu là các endpoint auth công khai.
     const isPublicAuthRoute = url.includes('/auth/login') ||
                               url.includes('/auth/register') ||
                               url.includes('/auth/forgot-password') ||
                               url.includes('/auth/reset-password') ||
+                              url.includes('/auth/verify-email') ||
+                              url.includes('/auth/resend-verification') ||
                               url.includes('/auth/google');
 
     if (status === 401 && hasAuthHeader && !isPublicAuthRoute) {

@@ -35,6 +35,12 @@ import {
 } from '../../lessons/services/lessons.service';
 import { withPdfAuthToken } from '../../lessons/utils/pdfAuthUrl';
 import { subtitlesService } from '../../lessons/services/subtitles.service';
+import {
+  buildCourseDraftKey,
+  loadCourseEditorDraft,
+  removeCourseEditorDraft,
+  saveCourseEditorDraft
+} from '../utils/courseDraftStorage';
 import '../styles/instructor.scss';
 
 const YouTubeIcon = ({ className = 'media-icon', style = {} }) => (
@@ -252,6 +258,69 @@ const getRoleFromToken = () => {
   }
 };
 
+export const getCourseSavePlan = ({ requestedStatus, isAdminUser, isPublishedCourse }) => {
+  const submitThroughReviewGate = requestedStatus !== 0 && !isAdminUser && !isPublishedCourse;
+  return {
+    submitThroughReviewGate,
+    serverSaveStatus: submitThroughReviewGate ? 0 : requestedStatus
+  };
+};
+
+export const reconcilePersistedCourseSections = (localSections = [], persistedSections = []) => {
+  const lessonIdMap = {};
+  const reconciledSections = localSections.map((section, sectionIndex) => {
+    const persistedSection = persistedSections[sectionIndex]
+      || persistedSections.find(item => item.order_index === sectionIndex + 1 || item.title === section.title);
+    if (!persistedSection) return section;
+
+    return {
+      ...section,
+      id: persistedSection.section_id || persistedSection.id || section.id,
+      lessons: (section.lessons || []).map((lesson, lessonIndex) => {
+        const persistedLesson = (persistedSection.lessons || [])[lessonIndex]
+          || (persistedSection.lessons || []).find(item => (
+            item.order_index === lessonIndex + 1 || item.title === lesson.title
+          ));
+        if (!persistedLesson) return lesson;
+
+        const persistedLessonId = persistedLesson.lesson_id || persistedLesson.id || lesson.id;
+        lessonIdMap[String(lesson.id)] = String(persistedLessonId);
+        return {
+          ...lesson,
+          id: persistedLessonId,
+          isPersisted: true,
+          contentUrl: persistedLesson.content_url ?? persistedLesson.contentUrl ?? lesson.contentUrl,
+          storageProvider: persistedLesson.storage_provider ?? persistedLesson.storageProvider ?? lesson.storageProvider,
+          storageBucket: persistedLesson.storage_bucket ?? persistedLesson.storageBucket ?? lesson.storageBucket,
+          storageKey: persistedLesson.storage_key ?? persistedLesson.storageKey ?? lesson.storageKey,
+          mimeType: persistedLesson.mime_type ?? persistedLesson.mimeType ?? lesson.mimeType,
+          sizeBytes: persistedLesson.size_bytes ?? persistedLesson.sizeBytes ?? lesson.sizeBytes,
+          checksumSha256: persistedLesson.checksum_sha256 ?? persistedLesson.checksumSha256 ?? lesson.checksumSha256,
+          mediaStatus: persistedLesson.media_status ?? persistedLesson.mediaStatus ?? lesson.mediaStatus,
+          pendingUploadId: null,
+          uploading: false,
+          uploadVerified: lesson.uploadVerified || persistedLesson.media_status === 'READY' || persistedLesson.mediaStatus === 'READY'
+        };
+      })
+    };
+  });
+
+  return { sections: reconciledSections, lessonIdMap };
+};
+
+const getUserIdFromToken = () => {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  try {
+    const payloadBase64 = token.split('.')[1];
+    const payloadJson = atob(payloadBase64);
+    const payload = JSON.parse(payloadJson);
+    return payload.id || payload.userId || payload.user_id || null;
+  } catch (e) {
+    return null;
+  }
+};
+
 const getTodayCivilDate = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -343,17 +412,26 @@ const CourseEditor = () => {
   const [invalidFieldKey, setInvalidFieldKey] = useState(null);
   const [courseLoadFailure, setCourseLoadFailure] = useState(null);
   const [courseReloadKey, setCourseReloadKey] = useState(0);
+  const [initialCourseLoadComplete, setInitialCourseLoadComplete] = useState(!isEditMode);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [draftSaveState, setDraftSaveState] = useState({ status: 'loading', savedAt: null, filesPreserved: true });
+  const [restoredDraftNotice, setRestoredDraftNotice] = useState(null);
+  const persistedCourseIdRef = useRef(courseId || null);
+  const latestDraftRef = useRef(null);
+  const suspendAutoSaveRef = useRef(false);
+  const draftKey = buildCourseDraftKey({ userId: getUserIdFromToken(), courseId });
   const hasActiveUploads = sections.some(section => section.lessons.some(lesson => lesson.uploading));
 
   useEffect(() => {
-    if (!hasActiveUploads) return undefined;
+    const shouldWarn = hasActiveUploads || ['saving', 'error'].includes(draftSaveState.status);
+    if (!shouldWarn) return undefined;
     const warnBeforeLeaving = (event) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warnBeforeLeaving);
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
-  }, [hasActiveUploads]);
+  }, [draftSaveState.status, hasActiveUploads]);
 
   // ── Quizzes Dialog State ──────────────────────────────────────────────────
   const [quizDialogTarget, setQuizDialogTarget] = useState(null); // { sIdx, lIdx }
@@ -477,6 +555,7 @@ const CourseEditor = () => {
             }
           }
           setCourseLoadFailure(null);
+          setInitialCourseLoadComplete(true);
         } catch (err) {
           console.error('Lỗi khi tải thông tin khóa học:', err);
           const notFound = Number(err?.response?.status) === 404;
@@ -494,6 +573,126 @@ const CourseEditor = () => {
       fetchCourse();
     }
   }, [courseId, courseReloadKey, isEditMode]);
+
+  useEffect(() => {
+    if (!initialCourseLoadComplete || courseLoadFailure) return undefined;
+
+    let cancelled = false;
+    const restoreDraft = async () => {
+      try {
+        const draft = await loadCourseEditorDraft(draftKey);
+        if (cancelled) return;
+        const snapshot = draft?.snapshot;
+        if (snapshot) {
+          setCourseName(snapshot.courseName || '');
+          setSubjectId(snapshot.subjectId ? String(snapshot.subjectId) : '');
+          setAcademyRoadmap(snapshot.academyRoadmap || '');
+          setStartDate(snapshot.startDate || getTodayCivilDate());
+          setEndDate(snapshot.endDate || getNextYearCivilDate());
+          setCourseStatus(snapshot.courseStatus ?? 'draft');
+          if (Array.isArray(snapshot.sections) && snapshot.sections.length > 0) {
+            setSections(snapshot.sections.map(section => ({
+              ...section,
+              lessons: (section.lessons || []).map(lesson => ({ ...lesson, uploading: false }))
+            })));
+          }
+          setStagedMaterials(draft.stagedMaterials || {});
+          setActiveHubTab(snapshot.activeHubTab || 'basic');
+          persistedCourseIdRef.current = snapshot.persistedCourseId || courseId || null;
+          setDraftSaveState({
+            status: 'restored',
+            savedAt: draft.savedAt,
+            filesPreserved: draft.filesPreserved !== false
+          });
+          setRestoredDraftNotice({
+            savedAt: draft.savedAt,
+            filesPreserved: draft.filesPreserved !== false
+          });
+        } else {
+          setDraftSaveState({ status: 'ready', savedAt: null, filesPreserved: true });
+        }
+      } catch (error) {
+        console.warn('[CourseEditor] Không thể khôi phục bản nháp cục bộ:', error?.message);
+        if (!cancelled) {
+          setDraftSaveState({ status: 'error', savedAt: null, filesPreserved: false });
+        }
+      } finally {
+        if (!cancelled) setDraftHydrated(true);
+      }
+    };
+
+    restoreDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, courseLoadFailure, draftKey, initialCourseLoadComplete]);
+
+  useEffect(() => {
+    if (!draftHydrated || courseLoadFailure || suspendAutoSaveRef.current) return undefined;
+
+    const snapshot = {
+      version: 1,
+      persistedCourseId: persistedCourseIdRef.current,
+      courseName,
+      subjectId,
+      academyRoadmap,
+      startDate,
+      endDate,
+      courseStatus,
+      activeHubTab,
+      sections
+    };
+    latestDraftRef.current = { snapshot, stagedMaterials };
+    setDraftSaveState(previous => ({ ...previous, status: 'saving' }));
+
+    const saveTimer = window.setTimeout(async () => {
+      if (suspendAutoSaveRef.current) return;
+      try {
+        const result = await saveCourseEditorDraft(draftKey, snapshot, stagedMaterials);
+        setDraftSaveState({ status: 'saved', ...result });
+      } catch (error) {
+        console.error('[CourseEditor] Không thể tự động lưu bản nháp:', error);
+        setDraftSaveState(previous => ({ ...previous, status: 'error' }));
+      }
+    }, 700);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [
+    academyRoadmap,
+    activeHubTab,
+    courseLoadFailure,
+    courseName,
+    courseStatus,
+    draftHydrated,
+    draftKey,
+    endDate,
+    sections,
+    stagedMaterials,
+    startDate,
+    subjectId
+  ]);
+
+  useEffect(() => {
+    if (!draftHydrated) return undefined;
+    const flushLatestDraft = () => {
+      if (suspendAutoSaveRef.current || !latestDraftRef.current) return;
+      saveCourseEditorDraft(
+        draftKey,
+        latestDraftRef.current.snapshot,
+        latestDraftRef.current.stagedMaterials
+      ).catch(() => {});
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushLatestDraft();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', flushLatestDraft);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', flushLatestDraft);
+    };
+  }, [draftHydrated, draftKey]);
 
   useEffect(() => {
     if (loading || deepLinkHandledRef.current || (!targetLessonId && !targetQuizId && !targetIssue)) return undefined;
@@ -538,8 +737,8 @@ const CourseEditor = () => {
         const response = await apiClient.get('/courses/subjects');
         if (response.data && response.data.subjects) {
           setSubjects(response.data.subjects);
-          if (response.data.subjects.length > 0 && !subjectId) {
-            setSubjectId(response.data.subjects[0].subject_id.toString());
+          if (response.data.subjects.length > 0) {
+            setSubjectId(currentSubjectId => currentSubjectId || response.data.subjects[0].subject_id.toString());
           }
         }
       } catch (err) {
@@ -601,6 +800,15 @@ const CourseEditor = () => {
   };
 
   const handleDeleteLesson = (sIdx, lIdx) => {
+    const deletedLesson = sections[sIdx]?.lessons[lIdx];
+    if (deletedLesson?.id) {
+      setStagedMaterials(prev => {
+        if (!prev[deletedLesson.id]) return prev;
+        const copy = { ...prev };
+        delete copy[deletedLesson.id];
+        return copy;
+      });
+    }
     const newSections = [...sections];
     newSections[sIdx].lessons = newSections[sIdx].lessons.filter((_, idx) => idx !== lIdx);
     setSections(newSections);
@@ -672,10 +880,6 @@ const CourseEditor = () => {
 
     const lesson = sections[sIdx].lessons[lIdx];
     const isPersisted = typeof lesson.id === 'number' && lesson.id < 1000000000000;
-    if (!isPersisted) {
-      showToast('Vui lòng nhấn "Lưu bản nháp" hoặc "Xuất bản" để tạo bài học trên hệ thống trước khi đính kèm tài liệu PDF.', 'warning', { duration: 6000 });
-      return;
-    }
 
     const ext = file.name.split('.').pop().toLowerCase();
     if (ext !== 'pdf' && file.type !== 'application/pdf') {
@@ -690,7 +894,11 @@ const CourseEditor = () => {
     }
 
     setStagedMaterials(prev => ({ ...prev, [lesson.id]: file }));
-    showToast(`Đã chọn tài liệu "${file.name}". Bạn có thể "Xem trước" ngay bây giờ hoặc nhấn "Tải tài liệu" để lưu vào bài học.`, 'info');
+    if (isPersisted) {
+      showToast(`Đã chọn tài liệu "${file.name}". Bạn có thể "Xem trước" ngay bây giờ hoặc nhấn "Tải tài liệu" để lưu vào bài học.`, 'info');
+    } else {
+      showToast(`Đã chọn tài liệu "${file.name}". Bạn có thể "Xem trước" ngay; tài liệu sẽ tự động được tải lên khi bạn nhấn "Lưu bản nháp" hoặc "Xuất bản"!`, 'success', { duration: 6000 });
+    }
   };
 
   const handlePreviewStagedMaterial = (lessonId) => {
@@ -718,6 +926,12 @@ const CourseEditor = () => {
     const lesson = sections[sIdx].lessons[lIdx];
     const file = stagedMaterials[lesson.id];
     if (!file) return;
+
+    const isPersisted = typeof lesson.id === 'number' && lesson.id < 1000000000000;
+    if (!isPersisted) {
+      showToast('Bài học này chưa được lưu trên hệ thống. Bạn chỉ cần nhấn "Lưu bản nháp" hoặc "Xuất bản" ở góc trên, hệ thống sẽ tự động lưu bài học và tải tài liệu PDF này lên!', 'info', { duration: 6000 });
+      return;
+    }
 
     setUploadingMaterials(prev => ({ ...prev, [lesson.id]: true }));
     const formData = new FormData();
@@ -1441,14 +1655,31 @@ const CourseEditor = () => {
     }
 
     setInvalidFieldKey(null);
+    const {
+      submitThroughReviewGate: shouldSubmitThroughReviewGate,
+      serverSaveStatus
+    } = getCourseSavePlan({ requestedStatus: status, isAdminUser, isPublishedCourse });
     setLoading(true);
     setLoadingState(
-      status === 0
+      status === 0 || shouldSubmitThroughReviewGate
         ? 'saving_draft'
         : (isPublishedCourse ? 'saving_changes' : 'publishing')
     );
     setErrorMsg('');
     setSuccessMsg('');
+
+    if (latestDraftRef.current) {
+      try {
+        const result = await saveCourseEditorDraft(
+          draftKey,
+          latestDraftRef.current.snapshot,
+          latestDraftRef.current.stagedMaterials
+        );
+        setDraftSaveState({ status: 'saved', ...result });
+      } catch (draftError) {
+        console.warn('[CourseEditor] Không thể flush bản nháp trước khi gửi máy chủ:', draftError?.message);
+      }
+    }
 
     const payload = {
       courseName,
@@ -1456,7 +1687,7 @@ const CourseEditor = () => {
       academyRoadmap,
       startDate,
       endDate,
-      status, // 1: Published, 0: Draft
+      status: serverSaveStatus,
       sections: sections.map((sec, sIdx) => ({
         id: sec.id,
         title: sec.title,
@@ -1493,12 +1724,145 @@ const CourseEditor = () => {
       }))
     };
 
+    let serverDraftSaved = false;
+    let savedCourseId = persistedCourseIdRef.current || courseId || null;
+
     try {
-      const response = isEditMode
-        ? await apiClient.put(`/courses/${courseId}`, payload)
+      const response = savedCourseId
+        ? await apiClient.put(`/courses/${savedCourseId}`, payload)
         : await apiClient.post('/courses', payload);
 
-      if (response.data && response.data.success) {
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Máy chủ không xác nhận đã lưu khóa học.');
+      }
+      {
+        savedCourseId = savedCourseId
+          || response.data.data?.course_id
+          || response.data.course?.course_id
+          || response.data.courseId;
+        if (!savedCourseId) {
+          throw new Error('Máy chủ đã phản hồi nhưng không trả về mã khóa học. Bản nháp cục bộ vẫn được giữ lại.');
+        }
+        persistedCourseIdRef.current = savedCourseId;
+        serverDraftSaved = true;
+
+        // Lấy cấu trúc vừa ghi để đổi các ID tạm thành ID thật. Việc này làm cho retry
+        // có tính idempotent và không claim lại pendingUploadId đã COMMIT.
+        let freshCourse = response.data.data?.sections
+          ? response.data.data
+          : (response.data.course?.sections ? response.data.course : null);
+        if (!freshCourse?.sections) {
+          try {
+            const freshRes = await apiClient.get(`/courses/${savedCourseId}`);
+            freshCourse = freshRes.data?.course || freshRes.data?.data;
+          } catch (hydrateError) {
+            console.warn('[CourseEditor] Khóa học đã lưu nhưng chưa tải lại được cấu trúc:', hydrateError?.message);
+          }
+        }
+
+        const reconciliation = freshCourse?.sections
+          ? reconcilePersistedCourseSections(sections, freshCourse.sections)
+          : { sections, lessonIdMap: {} };
+        const reconciledSections = reconciliation.sections;
+        const remainingStagedMaterials = { ...stagedMaterials };
+
+        // Tự động tải lên các tài liệu PDF đang staged cho các bài học.
+        const stagedEntries = Object.entries(stagedMaterials).filter(([_, file]) => Boolean(file));
+        const materialUploadErrors = [];
+        if (stagedEntries.length > 0 && savedCourseId) {
+          try {
+            setLoadingState('saving_changes');
+            if (freshCourse && Array.isArray(freshCourse.sections)) {
+              for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+                const sec = sections[sIdx];
+                const freshSec = freshCourse.sections[sIdx]
+                  || freshCourse.sections.find(item => item.order_index === sIdx + 1 || item.title === sec.title);
+                if (!freshSec?.lessons) continue;
+
+                for (let lIdx = 0; lIdx < sec.lessons.length; lIdx++) {
+                  const les = sec.lessons[lIdx];
+                  const stagedFile = stagedMaterials[les.id];
+                  if (!stagedFile) continue;
+
+                  const freshLes = freshSec.lessons[lIdx]
+                    || freshSec.lessons.find(item => item.order_index === lIdx + 1 || item.title === les.title);
+                  const targetLessonId = freshLes?.lesson_id || freshLes?.id;
+                  if (!targetLessonId) {
+                    materialUploadErrors.push(les.title || `Bài học ${lIdx + 1}`);
+                    continue;
+                  }
+
+                  const formData = new FormData();
+                  formData.append('file', stagedFile);
+                  try {
+                    await uploadLessonMaterial(targetLessonId, formData);
+                    delete remainingStagedMaterials[les.id];
+                  } catch (uploadErr) {
+                    console.error(`Lỗi tải lên tài liệu PDF cho bài học ${targetLessonId}:`, uploadErr);
+                    materialUploadErrors.push(les.title || `Bài học ${lIdx + 1}`);
+                  }
+                }
+              }
+            } else {
+              materialUploadErrors.push('Không đồng bộ được danh sách bài học');
+            }
+          } catch (stagedErr) {
+            console.error('Lỗi khi đồng bộ tài liệu PDF đính kèm:', stagedErr);
+            materialUploadErrors.push('Không tải được dữ liệu bài học để gắn tài liệu');
+          }
+        }
+
+        const remappedStagedMaterials = Object.fromEntries(
+          Object.entries(remainingStagedMaterials).map(([lessonId, file]) => ([
+            reconciliation.lessonIdMap[String(lessonId)] || lessonId,
+            file
+          ]))
+        );
+        setSections(reconciledSections);
+        setStagedMaterials(remappedStagedMaterials);
+
+        // Giữ snapshot đã gắn ID thật cho đến khi toàn bộ chuỗi gửi duyệt thành công.
+        // Nếu request tiếp theo lỗi, lần thử lại sẽ PUT đúng khóa học thay vì tạo bản sao.
+        const serverSafeSnapshot = {
+          ...(latestDraftRef.current?.snapshot || {}),
+          persistedCourseId: savedCourseId,
+          courseStatus: serverSaveStatus === 1 || serverSaveStatus === 'published' ? 'published' : 'draft',
+          sections: reconciledSections
+        };
+        latestDraftRef.current = {
+          snapshot: serverSafeSnapshot,
+          stagedMaterials: remappedStagedMaterials
+        };
+        try {
+          const result = await saveCourseEditorDraft(draftKey, serverSafeSnapshot, remappedStagedMaterials);
+          setDraftSaveState({ status: 'saved', ...result });
+        } catch (draftError) {
+          console.warn('[CourseEditor] Không thể cập nhật snapshot sau khi lưu server:', draftError?.message);
+        }
+
+        if (materialUploadErrors.length > 0) {
+          const attachmentError = new Error(
+            `Khóa học đã được lưu nháp trên máy chủ, nhưng còn ${materialUploadErrors.length} tài liệu PDF chưa tải lên. ` +
+            'Các tệp này vẫn được giữ trong bản nháp trên thiết bị; hãy thử lại khi kết nối ổn định.'
+          );
+          attachmentError.code = 'DRAFT_ATTACHMENT_UPLOAD_FAILED';
+          throw attachmentError;
+        }
+
+        if (shouldSubmitThroughReviewGate) {
+          setLoadingState('publishing');
+          try {
+            await apiClient.post(`/courses/${savedCourseId}/submit-review`);
+          } catch (reviewError) {
+            setCourseStatus('draft');
+            reviewError.message = reviewError.response?.data?.message
+              ? `${reviewError.response.data.message} Nội dung đã được lưu thành bản nháp trên máy chủ và không bị mất.`
+              : 'Chưa thể gửi kiểm duyệt. Nội dung đã được lưu thành bản nháp trên máy chủ và không bị mất.';
+            reviewError.code = 'REVIEW_SUBMISSION_FAILED_AFTER_DRAFT';
+            throw reviewError;
+          }
+        }
+
         if (status === 1 || status === 'published') {
           setCourseStatus(isAdminUser ? 'published' : 'pending_review');
         } else if (status === 'pending_review') {
@@ -1508,20 +1872,27 @@ const CourseEditor = () => {
         }
         setSuccessMsg(
           status === 0
-            ? 'Đã lưu bản nháp khóa học thành công!'
+            ? (stagedEntries.length > 0 ? 'Đã lưu bản nháp và tải lên toàn bộ tài liệu PDF thành công!' : 'Đã lưu bản nháp khóa học thành công!')
             : (isPublishedCourse
-                ? 'Đã lưu thay đổi khóa học thành công!'
+                ? (stagedEntries.length > 0 ? 'Đã lưu thay đổi và tải lên tài liệu PDF thành công!' : 'Đã lưu thay đổi khóa học thành công!')
                 : (isAdminUser
-                    ? 'Xuất bản khóa học thành công!'
+                    ? (stagedEntries.length > 0 ? 'Xuất bản khóa học và tải lên tài liệu PDF thành công!' : 'Xuất bản khóa học thành công!')
                     : 'Đã gửi khóa học vào hàng đợi kiểm duyệt! Hệ thống AI đang tự động bóc tách phụ đề và chuẩn bị câu hỏi.'))
         );
+        suspendAutoSaveRef.current = true;
+        await removeCourseEditorDraft(draftKey);
+        setRestoredDraftNotice(null);
+        setDraftSaveState({ status: 'synced', savedAt: new Date().toISOString(), filesPreserved: true });
         setTimeout(() => {
           navigate('/instructor/dashboard');
         }, 1500);
       }
     } catch (err) {
       console.error('Lỗi lưu khóa học:', err);
-      const message = err.response?.data?.message || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.';
+      const serverMessage = err.response?.data?.message || err.message;
+      const message = serverDraftSaved
+        ? (serverMessage || 'Khóa học đã được lưu nháp trên máy chủ nhưng bước tiếp theo chưa hoàn tất.')
+        : `${serverMessage || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.'} Bản nháp trên thiết bị vẫn được giữ an toàn để bạn thử lại.`;
       setErrorMsg(message);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
@@ -1554,6 +1925,23 @@ const CourseEditor = () => {
     }
     return true;
   });
+
+  const draftSavedTime = draftSaveState.savedAt
+    ? new Date(draftSaveState.savedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const draftStatusContent = {
+    loading: { icon: <FiLoader className="spin" />, label: 'Đang mở bản nháp an toàn', tone: 'working' },
+    ready: { icon: <FiSave />, label: 'Tự động lưu đã sẵn sàng', tone: 'neutral' },
+    restored: { icon: <FiRefreshCw />, label: 'Đã khôi phục bản nháp trên thiết bị', tone: 'restored' },
+    saving: { icon: <FiLoader className="spin" />, label: 'Đang tự động lưu trên thiết bị...', tone: 'working' },
+    saved: {
+      icon: <FiCheckCircle />,
+      label: `Đã tự động lưu trên thiết bị${draftSavedTime ? ` lúc ${draftSavedTime}` : ''}`,
+      tone: 'safe'
+    },
+    synced: { icon: <FiCheckCircle />, label: 'Đã đồng bộ an toàn với máy chủ', tone: 'safe' },
+    error: { icon: <FiAlertCircle />, label: 'Chưa thể tự động lưu — đừng đóng trang', tone: 'error' }
+  }[draftSaveState.status] || { icon: <FiSave />, label: 'Tự động lưu đã sẵn sàng', tone: 'neutral' };
 
   if (isEditMode && courseLoadFailure) {
     return (
@@ -1639,6 +2027,14 @@ const CourseEditor = () => {
           <header className="content-header" style={{ marginBottom: '24px' }}>
             <div className="header-text">
               <h1>{isEditMode ? 'Chỉnh sửa khóa học' : 'Tạo khóa học mới'}</h1>
+              <div
+                className={`draft-autosave-status is-${draftStatusContent.tone}`}
+                role="status"
+                aria-live="polite"
+              >
+                {draftStatusContent.icon}
+                <span>{draftStatusContent.label}</span>
+              </div>
             </div>
             <div className="header-actions">
               {!isPublishedCourse && (
@@ -1691,6 +2087,25 @@ const CourseEditor = () => {
                   Hệ thống AI đang tiền xử lý tự động bóc tách phụ đề song ngữ và chuẩn bị cơ sở dữ liệu câu hỏi. Quản trị viên sẽ phê duyệt sau khi quá trình hoàn tất.
                 </span>
               </div>
+            </div>
+          )}
+
+          {restoredDraftNotice && (
+            <div className="local-draft-restored" role="status">
+              <FiRefreshCw aria-hidden="true" />
+              <span>
+                <strong>Đã khôi phục phần nội dung bạn đang soạn.</strong>{' '}
+                {restoredDraftNotice.filesPreserved
+                  ? 'Cấu trúc khóa học và các tài liệu PDF chưa tải lên vẫn còn nguyên trên thiết bị này.'
+                  : 'Cấu trúc khóa học vẫn còn nguyên; do giới hạn lưu trữ của trình duyệt, vui lòng chọn lại các tệp PDF chưa tải lên.'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setRestoredDraftNotice(null)}
+                aria-label="Đóng thông báo khôi phục bản nháp"
+              >
+                <FiX aria-hidden="true" />
+              </button>
             </div>
           )}
 
@@ -2311,13 +2726,19 @@ const CourseEditor = () => {
                                   <div className="staged-material-info">
                                     <div className="staged-badge">
                                       <FiFileText />
-                                      <span>Tài liệu vừa chọn (Chưa tải lên server)</span>
+                                      <span>
+                                        {typeof lesson.id === 'number' && lesson.id < 1000000000000
+                                          ? 'Tài liệu vừa chọn (Chưa tải lên server)'
+                                          : 'Tài liệu đã chọn (Sẵn sàng tự động lưu)'}
+                                      </span>
                                     </div>
                                     <div className="staged-filename" title={stagedMaterials[lesson.id].name}>
                                       {stagedMaterials[lesson.id].name}
                                     </div>
                                     <div className="staged-filesize">
-                                      {Math.round(stagedMaterials[lesson.id].size / 1024)} KB • Sẵn sàng xem trước hoặc tải lên máy chủ
+                                      {Math.round(stagedMaterials[lesson.id].size / 1024)} KB • {typeof lesson.id === 'number' && lesson.id < 1000000000000
+                                        ? 'Sẵn sàng xem trước hoặc tải lên máy chủ'
+                                        : 'Xem trước ngay bây giờ; tệp sẽ tự động tải lên khi bạn nhấn "Lưu bản nháp" hoặc "Xuất bản"'}
                                     </div>
                                   </div>
                                   <div className="staged-material-actions">
@@ -2335,17 +2756,24 @@ const CourseEditor = () => {
                                       className="btn-staged-action upload"
                                       disabled={uploadingMaterials[lesson.id]}
                                       onClick={() => handleConfirmUploadMaterial(sIdx, lIdx)}
-                                      title="Tải tệp này lên lưu trữ Cloudflare R2"
+                                      title={typeof lesson.id === 'number' && lesson.id < 1000000000000
+                                        ? 'Tải tệp này lên lưu trữ Cloudflare R2'
+                                        : 'Tài liệu sẽ tự động được tải lên khi bạn nhấn Lưu bản nháp hoặc Xuất bản'}
                                     >
                                       {uploadingMaterials[lesson.id] ? (
                                         <>
                                           <FiLoader className="spin" />
                                           <span>Đang tải lên...</span>
                                         </>
-                                      ) : (
+                                      ) : typeof lesson.id === 'number' && lesson.id < 1000000000000 ? (
                                         <>
                                           <FiUpload />
                                           <span>Tải tài liệu</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <FiCheckCircle />
+                                          <span>Sẵn sàng lưu</span>
                                         </>
                                       )}
                                     </button>
@@ -2395,7 +2823,14 @@ const CourseEditor = () => {
                               ) : !stagedMaterials[lesson.id] && (
                                 <div className="materials-empty-state">
                                   <FiFileText className="empty-icon" />
-                                  <span>Chưa có tài liệu đính kèm nào. Nhấn <strong>"Chọn tệp PDF"</strong> để xem trước và tải lên slide bài giảng hoặc tài liệu đọc cho bài học này.</span>
+                                  <span>
+                                    Chưa có tài liệu đính kèm nào. Nhấn <strong>"Chọn tệp PDF"</strong> để chọn slide bài giảng hoặc tài liệu đọc cho bài học này.
+                                    {!(typeof lesson.id === 'number' && lesson.id < 1000000000000) && (
+                                      <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                                        💡 Bạn có thể chọn và xem trước tệp ngay bây giờ. Khi bạn nhấn <strong>"Lưu bản nháp"</strong> hoặc <strong>"Xuất bản"</strong>, tài liệu sẽ được tự động tải lên và phân tích bởi AI.
+                                      </span>
+                                    )}
+                                  </span>
                                 </div>
                               )}
                             </div>

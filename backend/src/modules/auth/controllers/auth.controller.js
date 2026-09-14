@@ -11,8 +11,38 @@ exports.register = async (req, res, next) => {
     
     res.status(201).json({
       success: true,
-      message: 'Đăng ký tài khoản mới thành công',
+      message: user.emailDeliveryAccepted
+        ? 'Đăng ký thành công. Vui lòng kiểm tra email để xác minh tài khoản.'
+        : 'Tài khoản đã được tạo nhưng email xác minh chưa gửi được. Vui lòng dùng chức năng gửi lại.',
       data: user
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.verifyEmail = async (req, res, next) => {
+  try {
+    const user = await authService.verifyEmail(req.body.token);
+    res.status(200).json({
+      success: true,
+      message: 'Email đã được xác minh. Bạn có thể đăng nhập ngay bây giờ.',
+      data: {
+        email: user.email,
+        emailVerifiedAt: user.email_verified_at
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resendVerificationEmail = async (req, res, next) => {
+  try {
+    await authService.resendVerificationEmail(req.body.email);
+    res.status(200).json({
+      success: true,
+      message: 'Nếu tài khoản đang chờ xác minh, một email mới sẽ được gửi trong ít phút.'
     });
   } catch (error) {
     next(error);

@@ -80,3 +80,19 @@ export const getUserStatsApi = async () => {
   const response = await apiClient.get('/auth/stats');
   return response.data;
 };
+
+/**
+ * Xác minh email bằng token một lần nhận từ liên kết trong hộp thư.
+ */
+export const verifyEmailApi = async ({ token }) => {
+  const response = await apiClient.post('/auth/verify-email', { token });
+  return response.data;
+};
+
+/**
+ * Gửi lại email xác minh. Backend luôn trả phản hồi chung để tránh dò tài khoản.
+ */
+export const resendVerificationEmailApi = async ({ email }) => {
+  const response = await apiClient.post('/auth/resend-verification', { email });
+  return response.data;
+};
