@@ -50,6 +50,14 @@ const discussion = {
     timestampSeconds: 125,
     timestampFormatted: '02:05',
     createdAt: '14/09/2026 10:01'
+  }, {
+    id: 46,
+    isInstructor: true,
+    author: { name: 'Giảng viên Minh Huyền' },
+    content: 'Em xem lại đoạn cô đã đánh dấu nhé.',
+    timestampSeconds: null,
+    timestampFormatted: null,
+    createdAt: '14/09/2026 10:02'
   }]
 };
 
@@ -81,5 +89,8 @@ describe('Instructor discussion timestamp navigation', () => {
       'href',
       '/lessons/27?courseId=7&seek=125'
     );
+    expect(screen.getByText('Giảng viên Minh Huyền')).toBeInTheDocument();
+    expect(screen.queryByText(/Mốc bài giảng/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Bạn (Giảng viên)')).not.toBeInTheDocument();
   });
 });
