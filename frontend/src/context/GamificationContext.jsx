@@ -39,6 +39,23 @@ export const GamificationProvider = ({ children }) => {
     }
   };
 
+  // canvas-confetti cần requestAnimationFrame của browser. Trong jsdom/SSR/CI
+  // không có API này nên phải bỏ qua ăn mừng thay vì để unhandled exception
+  // làm rớt cả suite test (exit code 1) dù 336/336 test vẫn pass.
+  const canCelebrate = () => (
+    typeof window !== 'undefined'
+    && typeof window.requestAnimationFrame !== 'undefined'
+  );
+
+  const fireCelebrationShot = options => {
+    if (!canCelebrate()) return;
+    try {
+      confetti(options);
+    } catch (e) {
+      console.warn('Confetti error:', e);
+    }
+  };
+
   // Nạp thông tin Streak và Badges khi người dùng thay đổi hoặc ứng dụng khởi chạy
   const reloadGamification = useCallback(async () => {
     if (!userId) {
@@ -83,11 +100,7 @@ export const GamificationProvider = ({ children }) => {
           const first = unseen[0];
           markBadgeSeenThisSession(first.id);
           setActiveBadgePopup(first);
-          try {
-            confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-          } catch (e) {
-            console.warn('Confetti error:', e);
-          }
+          fireCelebrationShot({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
         }
       })
       .catch(error => {
@@ -132,29 +145,26 @@ export const GamificationProvider = ({ children }) => {
     setActiveBadgePopup(badgeObj);
 
     // Kích hoạt bắn pháo hoa Confetti 3 đợt ăn mừng rực rỡ
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
+    fireCelebrationShot({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+    setTimeout(() => {
+      if (!canCelebrate()) return;
+      fireCelebrationShot({
+        particleCount: 50,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0 }
       });
-      setTimeout(() => {
-        confetti({
-          particleCount: 50,
-          angle: 60,
-          spread: 55,
-          origin: { x: 0 }
-        });
-        confetti({
-          particleCount: 50,
-          angle: 120,
-          spread: 55,
-          origin: { x: 1 }
-        });
-      }, 250);
-    } catch (e) {
-      console.warn("Confetti error:", e);
-    }
+      fireCelebrationShot({
+        particleCount: 50,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1 }
+      });
+    }, 250);
   };
 
   const closeBadgePopup = () => {
