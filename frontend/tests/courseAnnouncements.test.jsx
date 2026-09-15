@@ -88,4 +88,20 @@ describe('CourseAnnouncementsModal Component', () => {
     expect(screen.getByText('Tin mới chưa đọc')).toBeInTheDocument();
     expect(screen.queryByText('Tin cũ đã đọc')).not.toBeInTheDocument();
   });
+
+  it('keeps retry failures handled and lets the user try again', async () => {
+    discussionsService.getUserAnnouncements
+      .mockRejectedValueOnce(new Error('Backend unavailable'))
+      .mockResolvedValueOnce([]);
+
+    render(<CourseAnnouncementsModal isOpen={true} onClose={vi.fn()} />);
+
+    const retryButton = await screen.findByRole('button', { name: 'Thử lại' });
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      expect(discussionsService.getUserAnnouncements).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('Chưa có thông báo nào')).toBeInTheDocument();
+    });
+  });
 });

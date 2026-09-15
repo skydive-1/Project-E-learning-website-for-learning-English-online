@@ -7,6 +7,7 @@ const GamificationContext = createContext();
 
 export const GamificationProvider = ({ children }) => {
   const { user } = useAuth();
+  const userId = user?.id ?? user?.user_id ?? null;
   const [streak, setStreak] = useState(null);
   const [badges, setBadges] = useState([]);
   const [streakError, setStreakError] = useState(null);
@@ -14,12 +15,13 @@ export const GamificationProvider = ({ children }) => {
   const [isGamificationLoading, setIsGamificationLoading] = useState(false);
   const [activeBadgePopup, setActiveBadgePopup] = useState(null);
   const loadGeneration = useRef(0);
+  const activeRequest = useRef(null);
 
   // Nạp thông tin Streak và Badges khi người dùng thay đổi hoặc ứng dụng khởi chạy
   const reloadGamification = useCallback(async () => {
-    const requestId = ++loadGeneration.current;
-
-    if (!user) {
+    if (!userId) {
+      loadGeneration.current += 1;
+      activeRequest.current = null;
       setStreak(null);
       setBadges([]);
       setStreakError(null);
@@ -28,27 +30,43 @@ export const GamificationProvider = ({ children }) => {
       return;
     }
 
+    if (activeRequest.current?.userId === userId) {
+      return activeRequest.current.promise;
+    }
+
+    const requestId = ++loadGeneration.current;
+
     setIsGamificationLoading(true);
     setStreakError(null);
     setBadgesError(null);
 
-    try {
-      const summary = await getGamificationSummary();
-      if (requestId !== loadGeneration.current) return;
+    const promise = getGamificationSummary()
+      .then(summary => {
+        if (requestId !== loadGeneration.current) return;
 
-      setStreak(summary.streak);
-      setBadges(summary.badges);
-    } catch (error) {
-      if (requestId !== loadGeneration.current) return;
+        setStreak(summary.streak);
+        setBadges(summary.badges);
+      })
+      .catch(error => {
+        if (requestId !== loadGeneration.current) return;
 
-      setStreak(null);
-      setBadges([]);
-      setStreakError(error);
-      setBadgesError(error);
-    }
+        setStreak(null);
+        setBadges([]);
+        setStreakError(error);
+        setBadgesError(error);
+      })
+      .finally(() => {
+        if (activeRequest.current?.promise === promise) {
+          activeRequest.current = null;
+        }
+        if (requestId === loadGeneration.current) {
+          setIsGamificationLoading(false);
+        }
+      });
 
-    setIsGamificationLoading(false);
-  }, [user]);
+    activeRequest.current = { userId, promise };
+    return promise;
+  }, [userId]);
 
   useEffect(() => {
     reloadGamification();

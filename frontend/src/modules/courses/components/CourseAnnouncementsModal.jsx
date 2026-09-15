@@ -224,7 +224,17 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
                 type="button"
                 onClick={() => {
                   setIsLoading(true);
-                  getUserAnnouncements().then(setAnnouncements).finally(() => setIsLoading(false));
+                  setError('');
+                  getUserAnnouncements()
+                    .then((data) => {
+                      const nextAnnouncements = data || [];
+                      setAnnouncements(nextAnnouncements);
+                      onUnreadCountChange?.(nextAnnouncements.filter(item => !item.isRead).length);
+                    })
+                    .catch((err) => {
+                      setError(discussionApiErrorMessage(err, 'Không thể tải danh sách thông báo.'));
+                    })
+                    .finally(() => setIsLoading(false));
                 }}
                 className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg"
               >

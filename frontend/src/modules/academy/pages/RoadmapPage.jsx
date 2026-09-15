@@ -5,7 +5,7 @@ import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { Button } from '../../../components/ui/button';
 import { useLanguage } from '../../../context/LanguageContext';
-import { FiArrowRight, FiBookOpen, FiCheckCircle, FiClock, FiRefreshCw } from 'react-icons/fi';
+import { FiArrowRight, FiBookOpen, FiCheckCircle, FiClock } from 'react-icons/fi';
 import { roadmapPaths } from '../data/roadmapPaths';
 import {
   ACADEMY_COURSES_QUERY_KEY,
@@ -80,9 +80,7 @@ const RoadmapPage = () => {
   const {
     data: courses = [],
     isLoading,
-    isError,
-    isFetching,
-    refetch
+    isError
   } = useQuery({
     queryKey: ACADEMY_COURSES_QUERY_KEY,
     queryFn: fetchAcademyCourses,
@@ -124,18 +122,11 @@ const RoadmapPage = () => {
           <div className="container">
             <h2 className="sr-only">{t('Các lộ trình gợi ý')}</h2>
 
-            <div className={`roadmap-live-status ${isError ? 'is-error' : ''}`} role={isError ? 'alert' : 'status'}>
-              <span>
-                <i aria-hidden="true" />
-                {isError
-                  ? t('Chưa thể đồng bộ danh mục khóa học.')
-                  : t('Danh mục tự cập nhật mỗi phút từ các khóa học đang xuất bản.')}
-              </span>
-              <button type="button" onClick={() => refetch()} disabled={isFetching}>
-                <FiRefreshCw aria-hidden="true" />
-                {isFetching ? t('Đang cập nhật...') : t('Cập nhật ngay')}
-              </button>
-            </div>
+            {isError && (
+              <p className="roadmap-load-error" role="alert">
+                {t('Chưa thể đồng bộ danh mục khóa học.')}
+              </p>
+            )}
 
             <div className="roadmap-grid">
               {roadmapPaths.map((path) => (

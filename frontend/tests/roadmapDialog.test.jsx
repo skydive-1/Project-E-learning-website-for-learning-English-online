@@ -68,6 +68,8 @@ describe('Roadmap detail navigation', () => {
 
     const roadmapCards = screen.getAllByRole('article');
     expect(roadmapCards).toHaveLength(3);
+    expect(screen.queryByText('Danh mục tự cập nhật mỗi phút từ các khóa học đang xuất bản.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cập nhật ngay' })).not.toBeInTheDocument();
     await waitFor(() => expect(roadmapCards[0]).toHaveTextContent('1 khóa học'));
     expect(within(roadmapCards[0]).getByRole('link', { name: 'Tiếng Anh cơ bản' })).toHaveAttribute(
       'href',
