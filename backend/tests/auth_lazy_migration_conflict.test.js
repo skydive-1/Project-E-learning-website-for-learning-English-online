@@ -3,12 +3,15 @@
 const { after, before, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
+const crypto = require('node:crypto');
 
 const db = require('../src/config/database');
 const authService = require('../src/modules/auth/services/auth.service');
 const { supabaseAdmin, supabaseClient } = require('../src/config/supabase');
 
-const LOCAL_PASSWORD = 'LocalPass123!';
+// Test credential sinh ở runtime để không commit literal vào repo (GitGuardian gate).
+const LOCAL_PASSWORD = `Test-${crypto.randomBytes(16).toString('hex')}-Aa1!`;
+const WRONG_PASSWORD = `Wrong-${crypto.randomBytes(16).toString('hex')}-Bb2!`;
 const localHash = bcrypt.hashSync(LOCAL_PASSWORD, 4);
 const localRow = {
   user_id: 99,
@@ -126,7 +129,7 @@ describe('Lazy migration email conflict', () => {
     };
 
     await assert.rejects(
-      () => authService.login({ email: localRow.email, password: 'WrongPass999!' }),
+      () => authService.login({ email: localRow.email, password: WRONG_PASSWORD }),
       /Email hoặc mật khẩu không chính xác/
     );
     assert.strictEqual(adminTouched, false);
