@@ -7,7 +7,9 @@ const GamificationContext = createContext();
 
 export const GamificationProvider = ({ children }) => {
   const { user } = useAuth();
-  const userId = user?.id ?? user?.user_id ?? null;
+  // AuthContext có 2 shape: JWT-decode {user_id} và GET /api/auth/profile {userId}.
+  // Thiếu userId ở đây khiến badges bị xóa lặng và Profile hiện "Chưa có dữ liệu huy hiệu".
+  const userId = user?.id ?? user?.user_id ?? user?.userId ?? null;
   const [streak, setStreak] = useState(null);
   const [badges, setBadges] = useState([]);
   const [streakError, setStreakError] = useState(null);

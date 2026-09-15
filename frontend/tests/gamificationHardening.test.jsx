@@ -126,6 +126,36 @@ describe('Gamification real-data contract', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/gamification/summary');
   });
 
+  it('nhận diện user shape của GET /api/auth/profile ({userId}) để không rỗng badges', async () => {
+    mockAuthUser = { userId: 42, username: 'legacy', roleId: 1 };
+    apiClient.get.mockResolvedValue({
+      data: {
+        data: {
+          streak: { currentStreak: 0, longestStreak: 0, weeklyStatus: [] },
+          badges: [{
+            id: 'first_lesson',
+            title: 'Khởi đầu nan',
+            description: 'Hoàn thành bài học đầu tiên',
+            requirement: 'Hoàn thành ít nhất 1 bài học',
+            unlocked: false,
+            progress: { current: 0, target: 1, unit: 'bài học' }
+          }]
+        }
+      }
+    });
+
+    render(
+      <GamificationProvider>
+        <ContextProbe />
+      </GamificationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('badges-count')).toHaveTextContent('1');
+    });
+    expect(apiClient.get).toHaveBeenCalledWith('/gamification/summary');
+  });
+
   it('không tải lại snapshot khi AuthContext làm mới object của cùng một user', async () => {
     apiClient.get.mockResolvedValue({
       data: {
