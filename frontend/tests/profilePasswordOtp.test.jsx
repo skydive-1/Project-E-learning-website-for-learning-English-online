@@ -95,7 +95,7 @@ describe('Profile Password 2-Step OTP Verification Flow', () => {
       target: { value: 'Mismatch123!' }
     });
 
-    const submitBtn = screen.getByRole('button', { name: /Tiếp tục nhận mã OTP/i });
+    const submitBtn = screen.getByText(/^Đổi mật khẩu$/i, { selector: 'button.save-btn' });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -126,7 +126,7 @@ describe('Profile Password 2-Step OTP Verification Flow', () => {
       target: { value: 'NewPass123!' }
     });
 
-    const submitBtn = screen.getByRole('button', { name: /Tiếp tục nhận mã OTP/i });
+    const submitBtn = screen.getByText(/^Đổi mật khẩu$/i, { selector: 'button.save-btn' });
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
@@ -172,7 +172,7 @@ describe('Profile Password 2-Step OTP Verification Flow', () => {
       target: { value: 'NewPass123!' }
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục nhận mã OTP/i }));
+    fireEvent.click(screen.getByText(/^Đổi mật khẩu$/i, { selector: 'button.save-btn' }));
 
     // Wait for Step 2
     await waitFor(() => {
@@ -218,7 +218,7 @@ describe('Profile Password 2-Step OTP Verification Flow', () => {
       target: { value: 'NewPass123!' }
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục nhận mã OTP/i }));
+    fireEvent.click(screen.getByText(/^Đổi mật khẩu$/i, { selector: 'button.save-btn' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Quay lại sửa mật khẩu/i })).toBeInTheDocument();

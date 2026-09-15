@@ -33,6 +33,7 @@ import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
+import { useGamification } from '../../../context/GamificationContext';
 import { 
   getFreeQuizById, 
   submitQuizAttempt, 
@@ -55,6 +56,7 @@ const PlayQuizPage = () => {
   const { user, loading: authLoading } = useAuth();
   const { t } = useLanguage();
   const showToast = useToast();
+  const { reloadGamification } = useGamification() || {};
   const [quiz, setQuiz] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -619,6 +621,7 @@ const PlayQuizPage = () => {
         setIsExitingStage(false);
         try {
           await submitQuizAttempt(quiz.id, selectedAnswers, nickname);
+          reloadGamification?.();
           const lbData = await getQuizLeaderboard(quiz.id);
           setLeaderboard(lbData);
         } catch (err) {

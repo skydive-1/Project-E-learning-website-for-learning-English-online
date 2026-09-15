@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { getUserStreakInfo, getUserBadges } from '../modules/gamification/services/gamification.service';
+import { getGamificationSummary } from '../modules/gamification/services/gamification.service';
 import { useAuth } from './AuthContext';
 
 const GamificationContext = createContext();
@@ -32,25 +32,19 @@ export const GamificationProvider = ({ children }) => {
     setStreakError(null);
     setBadgesError(null);
 
-    const [streakResult, badgesResult] = await Promise.allSettled([
-      getUserStreakInfo(),
-      getUserBadges()
-    ]);
+    try {
+      const summary = await getGamificationSummary();
+      if (requestId !== loadGeneration.current) return;
 
-    if (requestId !== loadGeneration.current) return;
+      setStreak(summary.streak);
+      setBadges(summary.badges);
+    } catch (error) {
+      if (requestId !== loadGeneration.current) return;
 
-    if (streakResult.status === 'fulfilled') {
-      setStreak(streakResult.value);
-    } else {
       setStreak(null);
-      setStreakError(streakResult.reason);
-    }
-
-    if (badgesResult.status === 'fulfilled') {
-      setBadges(badgesResult.value);
-    } else {
       setBadges([]);
-      setBadgesError(badgesResult.reason);
+      setStreakError(error);
+      setBadgesError(error);
     }
 
     setIsGamificationLoading(false);

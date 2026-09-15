@@ -119,6 +119,31 @@ const ProfilePage = () => {
     }
   }, [activeTab]);
 
+  // Luôn lấy snapshot mới nhất khi người dùng mở phần thống kê sau một phiên học.
+  useEffect(() => {
+    if (activeTab === 'stats') {
+      reloadGamification();
+    }
+  }, [activeTab, reloadGamification]);
+
+  const formatBadgeDate = (value) => {
+    if (!value) return '';
+    const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+    return Number.isNaN(parsed.getTime())
+      ? String(value)
+      : new Intl.DateTimeFormat(locale).format(parsed);
+  };
+
+  const getBadgeProgressText = (badge) => {
+    const progress = badge?.progress;
+    if (!progress) return '';
+    if (progress.available === false) return 'Chưa bắt đầu khóa Ngữ pháp';
+
+    const current = Math.max(0, Number(progress.current) || 0);
+    const target = Math.max(0, Number(progress.target) || 0);
+    return `Tiến độ thật: ${Math.min(current, target)}/${target} ${progress.unit || ''}`.trim();
+  };
+
   // Handle input changes
   const handleProfileChange = (e) => {
     setProfileData({ ...profileData, [e.target.name]: e.target.value });
@@ -329,37 +354,6 @@ const ProfilePage = () => {
     }
   };
 
-  // Cập nhật ảnh đại diện bằng URL (nếu muốn nhập link trực tiếp)
-  const handlePromptUrlChange = () => {
-    if (isUploadingAvatar) return;
-    const url = window.prompt(t('Nhập link URL ảnh đại diện mới của bạn:'), profileData.profilePictureUrl || '');
-    if (url !== null && url.trim() !== profileData.profilePictureUrl) {
-      const trimmed = url.trim();
-      setProfileData((prev) => ({ ...prev, profilePictureUrl: trimmed }));
-      setAvatarImgError(false);
-      setIsUploadingAvatar(true);
-
-      updateProfileApi({
-        username: profileData.username,
-        fullName: profileData.fullName,
-        profilePictureUrl: trimmed
-      }).then(async () => {
-        await refreshProfile();
-        setInfoMessage({ type: 'success', text: t('Cập nhật ảnh đại diện thành công!') });
-        setTimeout(() => setInfoMessage({ type: '', text: '' }), 3500);
-      }).catch((err) => {
-        const errMsg = err.response?.data?.message || t('Không thể lưu ảnh đại diện.');
-        setInfoMessage({ type: 'error', text: errMsg });
-        setProfileData((prev) => ({
-          ...prev,
-          profilePictureUrl: authUser?.profilePictureUrl || authUser?.profile_picture_url || ''
-        }));
-      }).finally(() => {
-        setIsUploadingAvatar(false);
-      });
-    }
-  };
-
   // Gỡ ảnh đại diện (quay về ký tự mặc định)
   const handleRemoveAvatar = async () => {
     if (isUploadingAvatar || !profileData.profilePictureUrl) return;
@@ -509,38 +503,18 @@ const ProfilePage = () => {
                           : 'Học viên'
                     }
                   </span>
-                  <div className="avatar-action-links">
-                    <button
-                      type="button"
-                      className="avatar-action-btn"
-                      onClick={handleAvatarClick}
-                      disabled={isUploadingAvatar}
-                    >
-                      {t('Tải ảnh từ máy')}
-                    </button>
-                    <span className="dot-sep">•</span>
-                    <button
-                      type="button"
-                      className="avatar-action-btn"
-                      onClick={handlePromptUrlChange}
-                      disabled={isUploadingAvatar}
-                    >
-                      {t('Dán link ảnh')}
-                    </button>
-                    {profileData.profilePictureUrl && (
-                      <>
-                        <span className="dot-sep">•</span>
-                        <button
-                          type="button"
-                          className="avatar-action-btn btn-danger-link"
-                          onClick={handleRemoveAvatar}
-                          disabled={isUploadingAvatar}
-                        >
-                          {t('Gỡ ảnh')}
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  {profileData.profilePictureUrl && (
+                    <div className="avatar-action-links">
+                      <button
+                        type="button"
+                        className="avatar-action-btn btn-danger-link"
+                        onClick={handleRemoveAvatar}
+                        disabled={isUploadingAvatar}
+                      >
+                        {t('Gỡ ảnh')}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="panel-divider"></div>
@@ -736,111 +710,77 @@ const ProfilePage = () => {
                       </div>
                     </div>
 
-                    {/* GAMIFICATION BADGES SHOWCASE GRID */}
-                    <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid var(--border-color, #e2e8f0)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginBottom: '16px' }}>
+                    <section className="gamification-section" aria-labelledby="gamification-badges-title">
+                      <div className="gamification-section-header">
                         <div>
-                          <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-color, #0f172a)', margin: 0 }}>
-                            <FiAward aria-hidden="true" style={{ display: 'inline', marginRight: '8px' }} />
+                          <h3 id="gamification-badges-title">
+                            <FiAward aria-hidden="true" />
                             Huy hiệu & Thành tích (Gamification Badges)
                           </h3>
-                          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
-                            Bộ sưu tập huy hiệu độc quyền khi đạt cột mốc học tập
-                          </span>
+                          <p>Tiến độ được tính trực tiếp từ hoạt động học tập đã lưu của bạn.</p>
                         </div>
                       </div>
 
                       {badgesError ? (
-                        <div
-                          role="alert"
-                          style={{
-                            padding: '24px',
-                            borderRadius: '16px',
-                            background: 'rgba(190, 18, 60, 0.08)',
-                            color: 'var(--text-color, #0f172a)',
-                            textAlign: 'center'
-                          }}
-                        >
-                          <FiAlertCircle aria-hidden="true" style={{ fontSize: '28px', color: '#be123c', marginBottom: '8px' }} />
-                          <p style={{ margin: '0 0 12px', fontWeight: '700' }}>
+                        <div role="alert" className="gamification-state gamification-state-error">
+                          <FiAlertCircle aria-hidden="true" />
+                          <p>
                             Không thể tải danh sách huy hiệu, vui lòng thử lại sau
                           </p>
                           <button
                             type="button"
                             onClick={reloadGamification}
                             disabled={isGamificationLoading}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              padding: '10px 18px',
-                              border: 0,
-                              borderRadius: '12px',
-                              background: '#1d4ed8',
-                              color: '#fff',
-                              fontWeight: '700',
-                              cursor: isGamificationLoading ? 'wait' : 'pointer',
-                              opacity: isGamificationLoading ? 0.7 : 1
-                            }}
                           >
                             <FiRefreshCw aria-hidden="true" />
                             {isGamificationLoading ? 'Đang thử lại...' : 'Thử lại'}
                           </button>
                         </div>
                       ) : isGamificationLoading && badges.length === 0 ? (
-                        <div role="status" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-light, #475569)' }}>
-                          <FiLoader className="animate-spin" aria-hidden="true" style={{ marginRight: '8px' }} />
+                        <div role="status" className="gamification-state">
+                          <FiLoader className="animate-spin" aria-hidden="true" />
                           Đang tải danh sách huy hiệu...
                         </div>
                       ) : badges.length === 0 ? (
-                        <div role="status" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-light, #475569)' }}>
-                          Bạn chưa có huy hiệu nào.
+                        <div role="status" className="gamification-state">
+                          Chưa có dữ liệu huy hiệu. Hãy hoàn thành một bài học để bắt đầu.
                         </div>
                       ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+                        <div className="gamification-badges-grid">
                         {(badges || []).map((badge) => (
-                          <div 
+                          <button
+                            type="button"
                             key={badge.id}
                             onClick={badge.unlocked ? () => triggerBadgeUnlock(badge) : undefined}
-                            style={{
-                              background: badge.unlocked ? 'var(--card-bg, #ffffff)' : '#f8fafc',
-                              border: badge.unlocked ? '2px solid #f59e0b' : '1px dashed #cbd5e1',
-                              borderRadius: '16px',
-                              padding: '16px',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              textAlign: 'center',
-                              gap: '8px',
-                              cursor: badge.unlocked ? 'pointer' : 'default',
-                              opacity: badge.unlocked ? 1 : 0.65,
-                              transition: 'all 0.2s hover:scale-102 shadow-sm'
-                            }}
+                            disabled={!badge.unlocked}
+                            className={`gamification-badge-card ${badge.unlocked ? 'is-unlocked' : 'is-locked'}`}
                             title={badge.unlocked ? 'Nhấp để mở xem huy hiệu thành tích!' : 'Huy hiệu chưa mở khóa'}
                           >
-                            <div style={{ fontSize: '36px', filter: badge.unlocked ? 'drop-shadow(0 4px 6px rgba(245, 158, 11, 0.3))' : 'grayscale(100%)' }}>
+                            <span className="gamification-badge-icon" aria-hidden="true">
                               {badge.icon}
-                            </div>
-                            <span style={{ fontSize: '13px', fontWeight: '800', color: badge.unlocked ? '#0f172a' : '#64748b' }}>
+                            </span>
+                            <span className="gamification-badge-title">
                               {badge.title}
                             </span>
-                            <span style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>
+                            <span className="gamification-badge-description">
                               {badge.description}
                             </span>
                             {badge.unlocked ? (
-                              <span style={{ fontSize: '10px', fontWeight: '800', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '12px' }}>
-                                Đã đạt được{badge.unlockedAt ? ` (${badge.unlockedAt})` : ''}
+                              <span className="gamification-badge-status is-earned">
+                                <FiCheck aria-hidden="true" />
+                                Đã đạt{badge.unlockedAt ? ` · ${formatBadgeDate(badge.unlockedAt)}` : ''}
                               </span>
                             ) : (
-                              <span style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px' }}>
-                                🔒 Chưa mở khóa
+                              <span className="gamification-badge-status">
+                                <FiLock aria-hidden="true" />
+                                {getBadgeProgressText(badge)}
                               </span>
                             )}
-                          </div>
+                          </button>
                         ))}
                         </div>
                       )}
-                    </div>
+                    </section>
 
                   </div>
                 )}
@@ -910,7 +850,7 @@ const ProfilePage = () => {
                         </div>
 
                         <button type="submit" className="save-btn" disabled={isSaving}>
-                          {isSaving ? <span className="btn-spinner"></span> : <><FiShield /> Tiếp tục nhận mã OTP qua Gmail</>}
+                          {isSaving ? <span className="btn-spinner"></span> : <><FiShield /> Đổi mật khẩu</>}
                         </button>
                       </form>
                     ) : (

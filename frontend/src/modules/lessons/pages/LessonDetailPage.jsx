@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Header from '../../../components/common/Header';
 import Footer from '../../../components/common/Footer';
 import { useAuth } from '../../../context/AuthContext';
+import { useGamification } from '../../../context/GamificationContext';
 import { useToast } from '../../../context/ToastContext';
 import ChatBox from '../../chatbot/components/ChatBox';
 import StudentInstructorChatPanel from '../../discussions/components/StudentInstructorChatPanel';
@@ -103,6 +104,7 @@ const LessonDetailPage = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { reloadGamification } = useGamification() || {};
   const videoRef = useRef(null);
   const pendingVideoSeekRef = useRef(null);
   const handledSeekKeyRef = useRef('');
@@ -1608,6 +1610,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
     try {
       await toggleLessonCompletion(id);
+      reloadGamification?.();
 
       // Khởi chạy reload ngầm của React Query để đồng bộ toàn cục
       queryClient.invalidateQueries({ queryKey: ['lesson', id] });
