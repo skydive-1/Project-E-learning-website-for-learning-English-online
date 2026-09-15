@@ -170,16 +170,8 @@ $hover-orange: #ea580c;
         display: flex;
         align-items: center;
         justify-content: center;
-        flex-wrap: wrap;
-        gap: 8px;
         margin-top: 14px;
         font-size: 13px;
-
-        .dot-sep {
-          color: $text-light;
-          opacity: 0.5;
-          user-select: none;
-        }
 
         .avatar-action-btn {
           background: none;
@@ -722,6 +714,164 @@ $hover-orange: #ea580c;
         }
       }
     }
+
+    .gamification-section {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-color, $border-light);
+    }
+
+    .gamification-section-header {
+      margin-bottom: 16px;
+
+      h3 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: var(--text-color, $text-dark);
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      p {
+        margin: 4px 0 0;
+        color: var(--text-light, $text-light);
+        font-size: 12px;
+        font-weight: 600;
+      }
+    }
+
+    .gamification-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 104px;
+      padding: 24px;
+      border-radius: 16px;
+      color: var(--text-light, $text-light);
+      text-align: center;
+
+      &.gamification-state-error {
+        flex-direction: column;
+        background: rgba(190, 18, 60, 0.08);
+        color: var(--text-color, $text-dark);
+
+        > svg {
+          color: #be123c;
+          font-size: 28px;
+        }
+
+        p {
+          margin: 0 0 4px;
+          font-weight: 700;
+        }
+
+        button {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 18px;
+          border: 0;
+          border-radius: 12px;
+          background: $primary-blue;
+          color: #ffffff;
+          font-weight: 700;
+          cursor: pointer;
+
+          &:disabled {
+            cursor: wait;
+            opacity: 0.7;
+          }
+        }
+      }
+    }
+
+    .gamification-badges-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .gamification-badge-card {
+      display: flex;
+      min-width: 0;
+      min-height: 178px;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      border-radius: 16px;
+      font: inherit;
+      text-align: center;
+
+      &.is-unlocked {
+        border: 1px solid #f59e0b;
+        background: var(--card-bg, #ffffff);
+        cursor: pointer;
+
+        &:hover {
+          background: #fffbeb;
+        }
+
+        &:focus-visible {
+          outline: 3px solid rgba(245, 158, 11, 0.35);
+          outline-offset: 3px;
+        }
+
+        .gamification-badge-icon {
+          filter: drop-shadow(0 4px 6px rgba(245, 158, 11, 0.25));
+        }
+      }
+
+      &.is-locked {
+        border: 1px dashed #94a3b8;
+        background: #f1f5f9;
+        cursor: default;
+        opacity: 1;
+
+        .gamification-badge-icon {
+          filter: grayscale(100%);
+          opacity: 0.58;
+        }
+      }
+    }
+
+    .gamification-badge-icon {
+      font-size: 36px;
+      line-height: 1;
+    }
+
+    .gamification-badge-title {
+      color: var(--text-color, $text-dark);
+      font-size: 13px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .gamification-badge-description {
+      flex: 1;
+      color: var(--text-light, $text-light);
+      font-size: 11px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .gamification-badge-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      color: #475569;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.35;
+
+      &.is-earned {
+        color: #047857;
+      }
+    }
   }
 }
 
@@ -972,6 +1122,34 @@ html.dark {
           }
         }
       }
+    }
+
+    .gamification-badge-card {
+      &.is-unlocked {
+        background: #16181c;
+
+        &:hover {
+          background: #1f1b13;
+        }
+      }
+
+      &.is-locked {
+        border-color: #475569;
+        background: #17191d;
+      }
+    }
+
+    .gamification-badge-title {
+      color: var(--text-color, #f3f4f6);
+    }
+
+    .gamification-badge-description,
+    .gamification-badge-status {
+      color: var(--text-light, #a3aab7);
+    }
+
+    .gamification-badge-status.is-earned {
+      color: #6ee7b7;
     }
   }
 }

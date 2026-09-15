@@ -23,7 +23,19 @@ const getBadges = async (req, res, next) => {
   }
 };
 
+const getSummary = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const summary = await gamificationService.getGamificationSummary(userId);
+    return res.status(200).json({ data: summary });
+  } catch (error) {
+    console.error('Lỗi lấy tổng quan gamification:', error);
+    return next(error);
+  }
+};
+
 module.exports = {
   getStreak,
-  getBadges
+  getBadges,
+  getSummary
 };

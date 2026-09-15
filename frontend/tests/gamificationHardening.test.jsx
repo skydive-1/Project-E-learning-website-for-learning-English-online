@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import apiClient from '../src/config/api.config';
 import { GamificationProvider, useGamification } from '../src/context/GamificationContext';
-import { getUserBadges, getUserStreakInfo } from '../src/modules/gamification/services/gamification.service';
+import {
+  getGamificationSummary,
+  getUserBadges,
+  getUserStreakInfo
+} from '../src/modules/gamification/services/gamification.service';
 
 vi.mock('../src/config/api.config', () => ({
   default: {
@@ -11,8 +15,10 @@ vi.mock('../src/config/api.config', () => ({
   }
 }));
 
+const mockAuthUser = { id: 42 };
+
 vi.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 42 } })
+  useAuth: () => ({ user: mockAuthUser })
 }));
 
 const ContextProbe = () => {
@@ -32,35 +38,47 @@ describe('Gamification real-data contract', () => {
     vi.clearAllMocks();
   });
 
-  it('gọi endpoint theo Bearer-token contract, không gửi user_id trong query', async () => {
-    apiClient.get
-      .mockResolvedValueOnce({
+  it('lấy một snapshot thật, không gửi user_id và giữ tiến độ từng huy hiệu', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
         data: {
-          data: {
+          streak: {
             currentStreak: 2,
             longestStreak: 4,
             weeklyStatus: []
-          }
+          },
+          badges: [{
+            id: 'first_lesson',
+            title: 'Khởi đầu nan',
+            desc: 'Hoàn thành bài học đầu tiên',
+            unlocked: false,
+            progress: { current: 0, target: 1, unit: 'bài học' }
+          }]
         }
-      })
-      .mockResolvedValueOnce({ data: { badges: [] } });
+      }
+    });
 
-    await getUserStreakInfo(999999);
-    await getUserBadges(999999);
+    const summary = await getGamificationSummary(999999);
 
-    expect(apiClient.get).toHaveBeenNthCalledWith(1, '/gamification/streak');
-    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/gamification/badges');
+    expect(apiClient.get).toHaveBeenCalledOnce();
+    expect(apiClient.get).toHaveBeenCalledWith('/gamification/summary');
+    expect(summary.streak.longestStreak).toBe(4);
+    expect(summary.badges[0]).toEqual(expect.objectContaining({
+      description: 'Hoàn thành bài học đầu tiên',
+      progress: { current: 0, target: 1, unit: 'bài học' }
+    }));
   });
 
   it('ném lại lỗi API thay vì trả streak hoặc badges mô phỏng', async () => {
     const apiError = new Error('Backend unavailable');
     apiClient.get.mockRejectedValue(apiError);
 
+    await expect(getGamificationSummary()).rejects.toBe(apiError);
     await expect(getUserStreakInfo()).rejects.toBe(apiError);
     await expect(getUserBadges()).rejects.toBe(apiError);
   });
 
-  it('context công bố error state và giữ dữ liệu rỗng khi cả hai API lỗi', async () => {
+  it('context công bố error state và giữ dữ liệu rỗng khi snapshot API lỗi', async () => {
     apiClient.get.mockRejectedValue(new Error('Backend unavailable'));
 
     render(
@@ -75,5 +93,35 @@ describe('Gamification real-data contract', () => {
     });
     expect(screen.getByTestId('streak-value')).toHaveTextContent('none');
     expect(screen.getByTestId('badges-count')).toHaveTextContent('0');
+  });
+
+  it('context nạp streak và badges từ cùng một snapshot API', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        data: {
+          streak: { currentStreak: 3, longestStreak: 7, weeklyStatus: [] },
+          badges: [{
+            id: 'streak_3',
+            title: 'Chiến binh kiên trì',
+            description: 'Đạt chuỗi học 3 ngày liên tiếp',
+            unlocked: true,
+            progress: { current: 7, target: 3, unit: 'ngày' }
+          }]
+        }
+      }
+    });
+
+    render(
+      <GamificationProvider>
+        <ContextProbe />
+      </GamificationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('streak-value')).toHaveTextContent('3');
+      expect(screen.getByTestId('badges-count')).toHaveTextContent('1');
+    });
+    expect(apiClient.get).toHaveBeenCalledOnce();
+    expect(apiClient.get).toHaveBeenCalledWith('/gamification/summary');
   });
 });

@@ -100,7 +100,10 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
       handleMarkAsRead(ann.id);
     }
     onClose();
-    if (ann.courseId) {
+    if (ann.courseName) {
+      // Navigate đến /courses và pre-fill search bằng tên khóa học
+      navigate(`/courses?search=${encodeURIComponent(ann.courseName)}`);
+    } else if (ann.courseId) {
       navigate(`/courses`);
     }
   };

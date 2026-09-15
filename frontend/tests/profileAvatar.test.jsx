@@ -7,6 +7,9 @@ import * as authService from '../src/modules/auth/services/auth.service';
 
 const mockNavigate = vi.fn();
 const mockRefreshProfile = vi.fn();
+const mockReloadGamification = vi.fn();
+
+let mockBadges = [];
 
 let mockUser = {
   id: 1,
@@ -43,10 +46,10 @@ vi.mock('../src/context/AuthContext', () => ({
 
 vi.mock('../src/context/GamificationContext', () => ({
   useGamification: () => ({
-    badges: [],
+    badges: mockBadges,
     badgesError: null,
     isGamificationLoading: false,
-    reloadGamification: vi.fn(),
+    reloadGamification: mockReloadGamification,
     triggerBadgeUnlock: vi.fn()
   })
 }));
@@ -72,6 +75,7 @@ describe('Profile Avatar Upload & Management', () => {
       profilePictureUrl: 'https://example.com/avatar.png',
       created_date: '2026-01-01'
     };
+    mockBadges = [];
 
     authService.updateProfileApi.mockResolvedValue({ status: 'success' });
     authService.uploadAvatarApi.mockResolvedValue({
@@ -80,6 +84,9 @@ describe('Profile Avatar Upload & Management', () => {
         profilePictureUrl: 'https://example.com/new-avatar.png',
         user: { id: 1, username: 'teststudent', profilePictureUrl: 'https://example.com/new-avatar.png' }
       }
+    });
+    authService.getUserStatsApi.mockResolvedValue({
+      data: { enrolledCourses: 0, completedLessons: 0, aiChatCount: 0, avgProgress: 0 }
     });
 
     global.URL.createObjectURL = vi.fn(() => 'blob:mock-preview-url');
@@ -120,7 +127,7 @@ describe('Profile Avatar Upload & Management', () => {
     ['admin', 1],
     ['instructor', 2],
     ['student', 3]
-  ])('renders avatar controls for the %s role', async (_roleName, roleId) => {
+  ])('only renders the remove avatar action for the %s role', async (_roleName, roleId) => {
     mockUser.roleId = roleId;
 
     render(
@@ -129,8 +136,9 @@ describe('Profile Avatar Upload & Management', () => {
       </LanguageProvider>
     );
 
-    expect(await screen.findByRole('button', { name: /tải ảnh từ máy/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /dán link ảnh/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /gỡ ảnh/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /tải ảnh từ máy/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /dán link ảnh/i })).not.toBeInTheDocument();
   });
 
   it('successfully handles file upload and refreshes profile', async () => {
@@ -219,5 +227,28 @@ describe('Profile Avatar Upload & Management', () => {
     fireEvent.error(avatarImg);
 
     expect(await screen.findByText('T')).toBeInTheDocument();
+  });
+
+  it('shows measured badge progress from the gamification API on the stats tab', async () => {
+    mockBadges = [{
+      id: 'quiz_master',
+      title: 'Vua trắc nghiệm',
+      description: 'Đạt điểm tuyệt đối trong 5 bài Quiz khác nhau',
+      icon: '🎯',
+      unlocked: false,
+      progress: { current: 2, target: 5, unit: 'quiz' }
+    }];
+
+    render(
+      <LanguageProvider>
+        <ProfilePage />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /thống kê học tập/i }));
+
+    expect(await screen.findByText('Tiến độ thật: 2/5 quiz')).toBeInTheDocument();
+    expect(screen.getByText(/tính trực tiếp từ hoạt động học tập đã lưu/i)).toBeInTheDocument();
+    expect(mockReloadGamification).toHaveBeenCalled();
   });
 });

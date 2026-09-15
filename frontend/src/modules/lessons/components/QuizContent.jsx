@@ -78,7 +78,7 @@ export const isOptionMatching = (correct, optKey) => {
 };
 
 const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
-  const { triggerBadgeUnlock } = useGamification() || {};
+  const { reloadGamification } = useGamification() || {};
   const showToast = useToast();
   const [questions, setQuestions] = useState([]);
   const [quizTitle, setQuizTitle] = useState("Bài tập Trắc nghiệm");
@@ -290,6 +290,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
         }
         const authoritativeCount = Number(result?.data?.correct_count);
         if (Number.isFinite(authoritativeCount)) correctCount = authoritativeCount;
+        reloadGamification?.();
       } catch (err) {
         console.warn("⚠️ Không thể lưu kết quả thi lên máy chủ:", err.message);
       }
@@ -297,10 +298,6 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
     const finalScore = Math.round(correctCount * 10) / 10;
     setScore(finalScore);
-
-    if (finalScore > 0 && finalScore >= questions.length && triggerBadgeUnlock) {
-      triggerBadgeUnlock('badge-quiz-100');
-    }
 
     if (onComplete) {
       onComplete(finalScore, questions.length);
