@@ -18,6 +18,14 @@ const academyRoadmapSql = fs.readFileSync(
   path.join(migrationsDir, '20260912_academy_course_roadmap.sql'),
   'utf8'
 );
+const initialSchemaSql = fs.readFileSync(
+  path.join(migrationsDir, '001_initial_schema.sql'),
+  'utf8'
+);
+const aiChatParitySql = fs.readFileSync(
+  path.join(migrationsDir, '20260915_ai_chat_primary_key_parity.sql'),
+  'utf8'
+);
 
 function getTableDefinition(sql, tableName) {
   const match = sql.match(new RegExp(
@@ -121,6 +129,17 @@ describe('Database Schema Parity & Migration Integrity', () => {
         `schema.sql: thiếu bảng ${tableName}`
       );
     }
+  });
+
+  it('keeps the ai_chat primary key consistent and repairs legacy databases', () => {
+    const canonicalDefinition = getTableDefinition(schemaSql, 'ai_chat');
+    const initialDefinition = getTableDefinition(initialSchemaSql, 'ai_chat');
+
+    assert.match(canonicalDefinition, /ai_chat\s+SERIAL\s+PRIMARY KEY/i);
+    assert.match(initialDefinition, /ai_chat\s+SERIAL\s+PRIMARY KEY/i);
+    assert.doesNotMatch(initialDefinition, /chat_id\s+SERIAL\s+PRIMARY KEY/i);
+    assert.match(aiChatParitySql, /column_name = 'chat_id'/i);
+    assert.match(aiChatParitySql, /RENAME COLUMN chat_id TO ai_chat/i);
   });
 
   it('keeps Academy roadmap metadata in schema and safely backfills existing courses', () => {

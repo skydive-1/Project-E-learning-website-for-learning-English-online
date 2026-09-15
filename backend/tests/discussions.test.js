@@ -316,6 +316,29 @@ describe('Discussions service authorization and state transitions', () => {
     );
   });
 
+  it('loads student announcements from real learning progress without an enrollments table', async () => {
+    const originalQuery = db.query;
+    let announcementSql = '';
+    let announcementValues = [];
+    db.query = async (sql, values) => {
+      announcementSql = sql;
+      announcementValues = values;
+      return { rows: [] };
+    };
+
+    try {
+      const announcements = await discussionsService.listUserAnnouncements({ id: 42, roleId: 3 });
+
+      assert.deepStrictEqual(announcements, []);
+      assert.deepStrictEqual(announcementValues, [42]);
+      assert.match(announcementSql, /FROM user_progress up/);
+      assert.match(announcementSql, /progress_section\.course_id = a\.course_id/);
+      assert.doesNotMatch(announcementSql, /FROM enrollments/);
+    } finally {
+      db.query = originalQuery;
+    }
+  });
+
   it('rejects updating non-existent announcement', async () => {
     const originalQuery = db.query;
     db.query = async () => ({ rows: [] });
@@ -342,4 +365,3 @@ describe('Discussions service authorization and state transitions', () => {
     }
   });
 });
-

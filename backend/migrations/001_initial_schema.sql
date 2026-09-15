@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
 -- 11. AI Chat Table
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS ai_chat (
-  chat_id SERIAL PRIMARY KEY,
+  ai_chat SERIAL PRIMARY KEY,
   student_id INT NOT NULL,
   title TEXT NOT NULL,
   sender_type VARCHAR(50) NOT NULL, -- user or bot

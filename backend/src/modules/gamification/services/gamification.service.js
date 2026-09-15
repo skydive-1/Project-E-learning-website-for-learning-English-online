@@ -215,9 +215,9 @@ const loadBadgeMetrics = async userId => {
     ),
     user_ai_questions AS (
       SELECT
-        ac.chat_id,
+        ac.ai_chat,
         timezone('Asia/Ho_Chi_Minh', ac.created_at AT TIME ZONE 'UTC')::date AS question_day,
-        ROW_NUMBER() OVER (ORDER BY ac.created_at ASC, ac.chat_id ASC) AS question_number
+        ROW_NUMBER() OVER (ORDER BY ac.created_at ASC, ac.ai_chat ASC) AS question_number
       FROM ai_chat ac
       WHERE ac.student_id = $1
         AND ac.sender_type = 'user'

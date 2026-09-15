@@ -15,7 +15,7 @@ vi.mock('../src/config/api.config', () => ({
   }
 }));
 
-const mockAuthUser = { id: 42 };
+let mockAuthUser = { id: 42 };
 
 vi.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({ user: mockAuthUser })
@@ -36,6 +36,7 @@ const ContextProbe = () => {
 describe('Gamification real-data contract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuthUser = { id: 42 };
   });
 
   it('lấy một snapshot thật, không gửi user_id và giữ tiến độ từng huy hiệu', async () => {
@@ -123,5 +124,33 @@ describe('Gamification real-data contract', () => {
     });
     expect(apiClient.get).toHaveBeenCalledOnce();
     expect(apiClient.get).toHaveBeenCalledWith('/gamification/summary');
+  });
+
+  it('không tải lại snapshot khi AuthContext làm mới object của cùng một user', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        data: {
+          streak: { currentStreak: 1, longestStreak: 1, weeklyStatus: [] },
+          badges: []
+        }
+      }
+    });
+
+    const view = render(
+      <GamificationProvider>
+        <ContextProbe />
+      </GamificationProvider>
+    );
+
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledOnce());
+    mockAuthUser = { id: 42, fullName: 'Updated profile object' };
+    view.rerender(
+      <GamificationProvider>
+        <ContextProbe />
+      </GamificationProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('streak-value')).toHaveTextContent('1'));
+    expect(apiClient.get).toHaveBeenCalledOnce();
   });
 });

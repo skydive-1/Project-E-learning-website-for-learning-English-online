@@ -580,7 +580,9 @@ class DiscussionsService {
     const roleId = roleIdOf(user);
     const userId = Number(user.id) || 0;
 
-    // Học viên (Role 3): Ưu tiên các khóa học đã đăng ký hoặc các khóa học công khai
+    // Học viên (Role 3): khóa công khai miễn phí hoặc khóa đã có tiến độ học thật.
+    // Dự án không có bảng enrollments, vì vậy user_progress là nguồn dữ liệu hiện có
+    // để xác nhận học viên đã bắt đầu học một khóa.
     // Giảng viên (Role 2) & Admin (Role 1): Hiển thị tất cả thông báo
     let filterCondition = '';
     const params = [userId];
@@ -591,11 +593,12 @@ class DiscussionsService {
           AND (
             c.price = 0 OR c.price IS NULL
             OR EXISTS (
-              SELECT 1 FROM enrollments e
-              WHERE e.course_id = a.course_id AND e.user_id = $1 AND e.status = 'active'
-            )
-            OR NOT EXISTS (
-              SELECT 1 FROM enrollments e2 WHERE e2.user_id = $1 AND e2.status = 'active'
+              SELECT 1
+              FROM user_progress up
+              JOIN lessons progress_lesson ON progress_lesson.lesson_id = up.lesson_id
+              JOIN sections progress_section ON progress_section.section_id = progress_lesson.section_id
+              WHERE up.user_id = $1
+                AND progress_section.course_id = a.course_id
             )
           )
       `;

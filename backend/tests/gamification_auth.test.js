@@ -226,6 +226,8 @@ describe('Gamification authentication boundary', () => {
       assert.match(metricsSql, /qa\.score = 100/);
       assert.match(metricsSql, /FROM ai_chat/);
       assert.match(metricsSql, /ac\.sender_type = 'user'/);
+      assert.match(metricsSql, /ac\.ai_chat/);
+      assert.doesNotMatch(metricsSql, /ac\.chat_id/);
       assert.match(metricsSql, /JOIN subjects/);
     } finally {
       db.query = originalQuery;

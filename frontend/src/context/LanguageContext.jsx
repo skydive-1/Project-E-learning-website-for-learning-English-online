@@ -217,7 +217,6 @@ const directPhraseMap = {
   "Xem lộ trình": "View Roadmap",
   "Khóa học đang có": "Available Courses",
   "Xem tất cả khóa học": "View All Courses",
-  "Danh mục tự cập nhật mỗi phút từ các khóa học đang xuất bản.": "The catalog refreshes every minute from published courses.",
   "Chưa thể đồng bộ danh mục khóa học.": "The course catalog could not be synced.",
   "Cập nhật ngay": "Refresh Now",
   "Đang cập nhật...": "Updating...",
