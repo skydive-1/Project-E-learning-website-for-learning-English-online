@@ -41,12 +41,11 @@ export const GamificationProvider = ({ children }) => {
     }
   };
 
-  // canvas-confetti cần requestAnimationFrame của browser. Trong jsdom/SSR/CI
-  // không có API này nên phải bỏ qua ăn mừng thay vì để unhandled exception
-  // làm rớt cả suite test (exit code 1) dù 336/336 test vẫn pass.
+  // canvas-confetti gọi bare global `requestAnimationFrame` (không qua window)
+  // trong timer bất đồng bộ. Kiểm tra đúng reference đó để không bao giờ để
+  // unhandled exception làm rớt suite (exit 1) dù mọi test vẫn pass.
   const canCelebrate = () => (
-    typeof window !== 'undefined'
-    && typeof window.requestAnimationFrame !== 'undefined'
+    typeof requestAnimationFrame !== 'undefined'
   );
 
   const fireCelebrationShot = options => {

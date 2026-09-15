@@ -80,9 +80,15 @@ HTMLCanvasElement.prototype.getContext = () => ({
   stroke: vi.fn()
 });
 
-// Mock requestAnimationFrame / cancelAnimationFrame
+// Mock requestAnimationFrame / cancelAnimationFrame.
+// canvas-confetti gọi bare global `requestAnimationFrame` (không qua window)
+// trong timer bất đồng bộ; thiếu mock này CI rớt exit 1 dù 337/337 test pass.
 window.requestAnimationFrame = (cb) => setTimeout(cb, 16);
 window.cancelAnimationFrame = (id) => clearTimeout(id);
+if (typeof global !== 'undefined') {
+  global.requestAnimationFrame = window.requestAnimationFrame;
+  global.cancelAnimationFrame = window.cancelAnimationFrame;
+}
 
 // jsdom does not implement matchMedia. Media UI libraries such as Plyr read
 // it during module initialization to detect pointer and motion capabilities.
