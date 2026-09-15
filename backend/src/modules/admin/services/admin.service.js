@@ -7,6 +7,7 @@ const { supabaseAdmin } = require('../../../config/supabase');
 const { GEMINI_MODELS } = require('../../../config/ai-model');
 const {
   applyObservedGeminiRpdUsage,
+  getGeminiRetryPolicySnapshot,
   getGeminiModelRoutingStatus,
   getNextPacificRpdResetAt,
   resetGeminiModelRouting,
@@ -1017,6 +1018,11 @@ const getRateLimitStatus = async () => {
       FROM ai_usage_events e
       CROSS JOIN bounds b
       WHERE e.created_at >= b.last_24_hours
+      UNION
+      SELECT r.model
+      FROM ai_retry_events r
+      CROSS JOIN bounds b
+      WHERE r.created_at >= b.last_24_hours
     ),
     usage_by_model AS (
       SELECT
@@ -1056,6 +1062,38 @@ const getRateLimitStatus = async () => {
       CROSS JOIN bounds b
       WHERE e.created_at >= LEAST(b.last_minute, b.pacific_today AT TIME ZONE 'America/Los_Angeles')
       GROUP BY e.model
+    ),
+    error_code_counts AS (
+      SELECT
+        e.model,
+        COALESCE(NULLIF(TRIM(e.error_code), ''), 'UNKNOWN') AS error_code,
+        COUNT(*)::int AS error_count
+      FROM ai_usage_events e
+      CROSS JOIN bounds b
+      WHERE e.request_status = 'error'
+        AND date_trunc('day', e.created_at AT TIME ZONE 'America/Los_Angeles') = b.pacific_today
+      GROUP BY e.model, COALESCE(NULLIF(TRIM(e.error_code), ''), 'UNKNOWN')
+    ),
+    error_breakdown_by_model AS (
+      SELECT
+        model,
+        jsonb_object_agg(error_code, error_count ORDER BY error_count DESC, error_code) AS rpd_error_breakdown
+      FROM error_code_counts
+      GROUP BY model
+    ),
+    retry_by_model AS (
+      SELECT
+        r.model,
+        COUNT(*) FILTER (WHERE r.created_at >= b.last_minute)::int AS retry_last_minute,
+        COUNT(*)::int AS retry_last_24_hours,
+        COALESCE(SUM(r.delay_ms), 0)::bigint AS retry_backoff_ms,
+        COUNT(*) FILTER (WHERE COALESCE(r.http_status::text, r.error_code) = '429')::int AS retry_429,
+        COUNT(*) FILTER (WHERE COALESCE(r.http_status::text, r.error_code) = '503')::int AS retry_503,
+        MAX(r.created_at) AS last_retry_at
+      FROM ai_retry_events r
+      CROSS JOIN bounds b
+      WHERE r.created_at >= b.last_24_hours
+      GROUP BY r.model
     )
     SELECT
       rm.model,
@@ -1068,6 +1106,13 @@ const getRateLimitStatus = async () => {
       COALESCE(ubm.rpd_success, 0)::int AS rpd_success,
       COALESCE(ubm.rpd_error, 0)::int AS rpd_error,
       COALESCE(ubm.rpd_pending, 0)::int AS rpd_pending,
+      COALESCE(ebm.rpd_error_breakdown, '{}'::jsonb) AS rpd_error_breakdown,
+      COALESCE(rbm.retry_last_minute, 0)::int AS retry_last_minute,
+      COALESCE(rbm.retry_last_24_hours, 0)::int AS retry_last_24_hours,
+      COALESCE(rbm.retry_backoff_ms, 0)::bigint AS retry_backoff_ms,
+      COALESCE(rbm.retry_429, 0)::int AS retry_429,
+      COALESCE(rbm.retry_503, 0)::int AS retry_503,
+      rbm.last_retry_at,
       s.rpm_cap,
       s.tpm_cap,
       s.rpd_cap,
@@ -1082,6 +1127,8 @@ const getRateLimitStatus = async () => {
       COALESCE(lu.full_name, lu.username, lu.email) AS locked_by_name
     FROM recent_models rm
     LEFT JOIN usage_by_model ubm ON ubm.model = rm.model
+    LEFT JOIN error_breakdown_by_model ebm ON ebm.model = rm.model
+    LEFT JOIN retry_by_model rbm ON rbm.model = rm.model
     LEFT JOIN ai_model_rate_limit_settings s ON s.model = rm.model
     LEFT JOIN users u ON u.user_id = s.updated_by
     LEFT JOIN users lu ON lu.user_id = s.locked_by
@@ -1143,8 +1190,20 @@ const getRateLimitStatus = async () => {
         rpd: {
           success: Number(row.rpd_success || 0),
           error: Number(row.rpd_error || 0),
-          pending: Number(row.rpd_pending || 0)
+          pending: Number(row.rpd_pending || 0),
+          errorsByCode: Object.entries(row.rpd_error_breakdown || {})
+            .map(([code, count]) => ({ code, count: Number(count || 0) }))
+            .filter((item) => item.count > 0)
+            .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code))
         }
+      },
+      retry: {
+        lastMinute: Number(row.retry_last_minute || 0),
+        last24Hours: Number(row.retry_last_24_hours || 0),
+        totalBackoffMs: Number(row.retry_backoff_ms || 0),
+        errors429: Number(row.retry_429 || 0),
+        errors503: Number(row.retry_503 || 0),
+        lastRetryAt: row.last_retry_at || null
       },
       caps,
       percentUsed,
@@ -1188,6 +1247,27 @@ const getRateLimitStatus = async () => {
     checkedAt: new Date().toISOString()
   };
 
+  const retryTelemetry = models.reduce((summary, item) => {
+    summary.lastMinute += item.retry.lastMinute;
+    summary.last24Hours += item.retry.last24Hours;
+    summary.totalBackoffMs += item.retry.totalBackoffMs;
+    summary.errors429 += item.retry.errors429;
+    summary.errors503 += item.retry.errors503;
+    if (item.retry.lastRetryAt && (!summary.lastRetryAt || new Date(item.retry.lastRetryAt) > new Date(summary.lastRetryAt))) {
+      summary.lastRetryAt = item.retry.lastRetryAt;
+    }
+    return summary;
+  }, {
+    source: 'backend_observed_retry_events',
+    lastMinute: 0,
+    last24Hours: 0,
+    totalBackoffMs: 0,
+    errors429: 0,
+    errors503: 0,
+    lastRetryAt: null,
+    policy: getGeminiRetryPolicySnapshot()
+  });
+
   // Chỉ nạp cooldown provider đã lưu. Telemetry attempts không được tự khóa model.
   applyObservedGeminiRpdUsage(models);
 
@@ -1219,6 +1299,7 @@ const getRateLimitStatus = async () => {
     },
     models,
     guard,
+    retryTelemetry,
     routing: getGeminiModelRoutingStatus(),
     notices: noticesResult.rows.map((row) => ({
       model: row.model,

@@ -1,6 +1,11 @@
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const {
+  calculateBackoffDelay,
+  executeWithExponentialBackoff,
+  resolveRetryProfile
+} = require('../src/utils/exponentialBackoff');
 
 const db = require('../src/config/database');
 const adminService = require('../src/modules/admin/services/admin.service');
@@ -11,6 +16,8 @@ const {
   parseGeminiQuotaViolation,
   recordGeminiQuotaSignal,
   recordAiProviderIncident,
+  getGeminiErrorCode,
+  getGeminiRetryDecision,
   getGeminiQuotaCooldown,
   getGeminiModelRoutingStatus,
   getNextPacificRpdResetAt,
@@ -24,6 +31,98 @@ const {
   setAiModelManualLock,
   isAiModelManuallyLocked
 } = require('../src/utils/ai-clients');
+
+describe('Gemini bounded exponential backoff', () => {
+  test('doubles retry delays and caps jitter within the configured maximum', () => {
+    const first = calculateBackoffDelay({
+      retryAttempt: 1, baseDelayMs: 500, maxDelayMs: 4000, jitterRatio: 0, random: () => 0
+    });
+    const second = calculateBackoffDelay({
+      retryAttempt: 2, baseDelayMs: 500, maxDelayMs: 4000, jitterRatio: 0, random: () => 0
+    });
+    const capped = calculateBackoffDelay({
+      retryAttempt: 8, baseDelayMs: 500, maxDelayMs: 4000, jitterRatio: 0.25, random: () => 1
+    });
+
+    assert.equal(first.delayMs, 500);
+    assert.equal(second.delayMs, 1000);
+    assert.equal(capped.delayMs, 4000);
+  });
+
+  test('retries transient failures and reports the scheduled backoff', async () => {
+    let attempts = 0;
+    const sleeps = [];
+    const retries = [];
+    const result = await executeWithExponentialBackoff(async () => {
+      attempts += 1;
+      if (attempts < 3) throw Object.assign(new Error('temporarily unavailable'), { status: 503 });
+      return 'ok';
+    }, {
+      maxRetries: 2,
+      baseDelayMs: 500,
+      maxDelayMs: 4000,
+      maxElapsedMs: 5000,
+      jitterRatio: 0,
+      random: () => 0,
+      now: () => 0,
+      sleep: async (delayMs) => { sleeps.push(delayMs); },
+      shouldRetry: () => ({ retryable: true, reason: 'provider_transient' }),
+      onRetry: (event) => { retries.push(event.retryAttempt); }
+    });
+
+    assert.equal(result, 'ok');
+    assert.equal(attempts, 3);
+    assert.deepEqual(sleeps, [500, 1000]);
+    assert.deepEqual(retries, [1, 2]);
+  });
+
+  test('honors Retry-After without waiting beyond the request budget', async () => {
+    let skippedReason = null;
+    await assert.rejects(
+      () => executeWithExponentialBackoff(async () => {
+        throw Object.assign(new Error('quota'), { status: 429 });
+      }, {
+        maxRetries: 2,
+        baseDelayMs: 500,
+        maxDelayMs: 4000,
+        maxElapsedMs: 5000,
+        shouldRetry: () => ({ retryable: true, retryAfterMs: 30000, reason: 'rate_limit_rpm' }),
+        onRetrySkipped: ({ reason }) => { skippedReason = reason; }
+      }),
+      /quota/
+    );
+    assert.equal(skippedReason, 'retry_after_exceeds_max_delay');
+  });
+
+  test('selects a longer retry policy for background ingestion', () => {
+    assert.equal(resolveRetryProfile({ purpose: 'chat', operation: 'generate' }).maxRetries, 2);
+    assert.equal(resolveRetryProfile({ purpose: 'speaking_stt', operation: 'speaking' }).name, 'speaking');
+    assert.equal(resolveRetryProfile({ purpose: 'rag_ingestion_embedding', operation: 'embedding' }).maxRetries, 5);
+  });
+
+  test('prefers concrete HTTP codes for dashboard error breakdowns', () => {
+    assert.equal(getGeminiErrorCode({ status: 429, code: 'RESOURCE_EXHAUSTED' }), '429');
+    assert.equal(getGeminiErrorCode({ response: { status: 503 }, code: 'UNAVAILABLE' }), '503');
+    assert.equal(getGeminiErrorCode({ code: 'ECONNRESET' }), 'ECONNRESET');
+  });
+
+  test('does not retry a provider-confirmed daily quota exhaustion', () => {
+    const decision = getGeminiRetryDecision({
+      status: 429,
+      response: {
+        data: {
+          error: {
+            code: 429,
+            status: 'RESOURCE_EXHAUSTED',
+            details: [{ quotaMetric: 'requests_per_day_per_project', model: 'gemini-3.7-flash' }]
+          }
+        }
+      }
+    }, 'gemini-3.7-flash');
+    assert.equal(decision.retryable, false);
+    assert.equal(decision.reason, 'daily_quota_exhausted');
+  });
+});
 
 describe('Admin Gemini rate-limit status', () => {
   test('disables HTTP caching for live status responses', async () => {

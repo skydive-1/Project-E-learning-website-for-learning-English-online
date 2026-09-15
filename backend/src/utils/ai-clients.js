@@ -20,6 +20,11 @@ const db = require('../config/database');
 const { notifyOperationalAlertsChanged } = require('./operationalAlertEvents');
 const { notifyAiRateLimitsChanged } = require('./aiRateLimitEvents');
 const {
+  DEFAULT_RETRY_PROFILES,
+  executeWithExponentialBackoff,
+  resolveRetryProfile
+} = require('./exponentialBackoff');
+const {
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODELS
 } = require('../config/ai-model');
@@ -210,15 +215,6 @@ const TRANSIENT_QUOTA_STREAK_TTL_MS = 5 * 60 * 1000;
 const TRANSIENT_QUOTA_JITTER_MAX_MS = 1000;
 const RPD_ROUTING_REFRESH_MS = 15 * 1000;
 
-// ─── Per-attempt Exponential Backoff (google.dev recommendation) ────────────
-// Khi một model gặp lỗi 503/429 tạm thời, thử lại tối đa 2 lần thêm
-// trước khi chuyển sang model kế tiếp trong fallback chain.
-// Delay: 1 giây → 2 giây (nhỏ vì request user-facing cần phản hồi nhanh).
-const PER_ATTEMPT_MAX_RETRIES = 2;          // Tối đa 2 lần retry → 3 attempts tổng
-const PER_ATTEMPT_BACKOFF_BASE_MS = 1000;   // Bắt đầu 1 giây
-const PER_ATTEMPT_BACKOFF_MAX_MS = 4000;    // Tối đa 4 giây (1s → 2s → 4s)
-// Chỉ retry nếu retryAfterMs từ provider <= ngưỡng này (lớn hơn → nhảy model luôn)
-const PER_ATTEMPT_RETRY_AFTER_THRESHOLD_MS = 4000;
 const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
 const pacificDayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: PACIFIC_TIME_ZONE,
@@ -638,48 +634,29 @@ const isRetryableGeminiError = (error) => {
     || /not found|no longer available|timed?\s*out|deadline exceeded|socket hang up|network error|temporarily unavailable|resource[_ ]exhausted|quota exceeded/i.test(message);
 };
 
-/**
- * Trả về true khi lỗi là transient 503 hoặc 429 thoáng qua (RPM) —
- * tức là đáng để thử lại cùng model sau một khoảng delay ngắn.
- *
- * Trả về false khi:
- *  - Lỗi 429 RPD (hết quota cả ngày) → nhảy model ngay
- *  - retryAfterMs từ provider > PER_ATTEMPT_RETRY_AFTER_THRESHOLD_MS → nhảy model ngay
- *  - Các lỗi không phải 503/429 → để logic fallback hiện tại xử lý
- *
- * @param {Error} error
- * @returns {boolean}
- */
-const isTransientRetryableError = (error) => {
-  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
-  const code = String(error?.code || error?.cause?.code || '').toUpperCase();
-  const message = String(error?.message || '');
-
-  const is503 = status === 503
-    || code === 'UNAVAILABLE'
-    || /temporarily unavailable|service unavailable|model overload/i.test(message);
-  const is429 = isGeminiQuotaError(error);
-
-  if (!is503 && !is429) return false;
-
-  // Nếu đây là lỗi 429 RPD (hết quota ngày), không nên retry — nhảy model ngay
-  if (is429) {
-    const normalized = normalizeGeminiError(error);
-    const retryAfterMs = Number(normalized?.retryAfterMs || 0);
-    // retryAfterMs lớn → có thể là RPD; nhảy model ngay
-    if (Number.isFinite(retryAfterMs) && retryAfterMs > PER_ATTEMPT_RETRY_AFTER_THRESHOLD_MS) return false;
-    // parseGeminiQuotaViolation sẽ phân tích dimension; nếu là RPD thì bỏ retry
-    // (hàm này được gọi sau, không gọi ở đây để tránh parse lặp lại)
-  }
-
-  return true;
+const getGeminiHttpStatus = (error) => {
+  const candidates = [
+    error?.status,
+    error?.statusCode,
+    error?.response?.status,
+    error?.response?.data?.error?.code,
+    error?.cause?.status,
+    error?.cause?.statusCode
+  ];
+  const status = candidates.map(Number).find((value) => Number.isInteger(value) && value >= 100 && value <= 599);
+  return status || null;
 };
 
-/**
- * Async sleep dùng cho per-attempt backoff.
- * @param {number} ms
- */
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const getGeminiErrorCode = (error) => {
+  const status = getGeminiHttpStatus(error);
+  if (status) return String(status);
+  const rawCode = error?.code
+    || error?.response?.data?.error?.status
+    || error?.cause?.code
+    || error?.name
+    || 'PROVIDER_ERROR';
+  return String(rawCode).trim().slice(0, 100) || 'PROVIDER_ERROR';
+};
 
 const normalizeGeminiError = (error) => {
   if (!isGeminiQuotaError(error)) return error;
@@ -773,6 +750,103 @@ const getGeminiQuotaCooldown = (
   };
 };
 
+const getGeminiRetryDecision = (error, model = null) => {
+  if (!isRetryableGeminiError(error)) {
+    return { retryable: false, reason: 'non_retryable_error', retryAfterMs: 0 };
+  }
+
+  if (getGeminiHttpStatus(error) === 404) {
+    return { retryable: false, reason: 'model_not_available', retryAfterMs: 0 };
+  }
+
+  const parsedQuota = isGeminiQuotaError(error)
+    ? parseGeminiQuotaViolation(error, model)
+    : null;
+  if (parsedQuota?.dimension === 'rpd') {
+    return { retryable: false, reason: 'daily_quota_exhausted', retryAfterMs: 0 };
+  }
+
+  const normalized = normalizeGeminiError(error);
+  return {
+    retryable: true,
+    reason: parsedQuota?.dimension === 'rpm'
+      ? 'rate_limit_rpm'
+      : getGeminiHttpStatus(error) === 429 || isGeminiQuotaError(error)
+        ? 'rate_limit_transient'
+        : 'provider_transient',
+    retryAfterMs: Math.max(0, Number(normalized?.retryAfterMs || 0))
+  };
+};
+
+const getGeminiRetryPolicySnapshot = () => ({
+  source: 'backend_runtime_policy',
+  algorithm: 'bounded_exponential_backoff_with_jitter',
+  profiles: Object.fromEntries(
+    Object.entries(DEFAULT_RETRY_PROFILES).map(([key, value]) => [key, { ...value }])
+  ),
+  retryableHttpStatuses: [408, 429, 500, 502, 503, 504],
+  nonRetryableQuotaDimension: 'rpd',
+  honorsProviderRetryAfter: true
+});
+
+async function runTrackedGeminiOperation({
+  model,
+  purpose,
+  operation,
+  userId,
+  invoke,
+  policyOverrides = {}
+}) {
+  const profile = {
+    ...resolveRetryProfile({ purpose, operation }),
+    ...policyOverrides
+  };
+  let failedUsageEventId = null;
+
+  return executeWithExponentialBackoff(async () => {
+    noteObservedGeminiAttempt(model);
+    const usageEventId = await beginAiUsageEvent({ userId, purpose, model });
+    try {
+      const value = await invoke();
+      return { value, usageEventId };
+    } catch (error) {
+      failedUsageEventId = usageEventId;
+      await failAiUsageEvent({ eventId: usageEventId, error });
+      recordAiProviderIncident({ error, model, purpose });
+      recordGeminiQuotaSignal({ error, model });
+      throw error;
+    }
+  }, {
+    ...profile,
+    shouldRetry: (error) => getGeminiRetryDecision(error, model),
+    onRetry: async ({ error, retryAttempt, delayMs, source, decision }) => {
+      await recordAiRetryEvent({
+        usageEventId: failedUsageEventId,
+        userId,
+        purpose,
+        operation,
+        model,
+        retryAttempt,
+        maxRetries: profile.maxRetries,
+        delayMs,
+        delaySource: source,
+        reason: decision.reason,
+        error
+      });
+      console.warn(
+        `[Gemini Retry] operation=${operation}, model=${model}, attempt=${retryAttempt}/${profile.maxRetries}, `
+        + `delayMs=${delayMs}, reason=${decision.reason}.`
+      );
+    },
+    onRetrySkipped: ({ reason, delayMs, decision }) => {
+      console.warn(
+        `[Gemini Retry] Bỏ qua retry operation=${operation}, model=${model}, `
+        + `delayMs=${delayMs}, reason=${reason}, providerReason=${decision.reason}.`
+      );
+    }
+  });
+}
+
 const isRagPurpose = (purpose) => /^rag_[a-z0-9_]+$/i.test(String(purpose || '').trim());
 
 async function recordAiProviderIncident({ error, model, purpose }) {
@@ -806,13 +880,7 @@ async function failAiUsageEvent({ eventId, error }) {
   if (!eventId) return;
 
   try {
-    const rawCode = error?.code
-      || error?.response?.data?.error?.status
-      || error?.status
-      || error?.statusCode
-      || error?.name
-      || 'PROVIDER_ERROR';
-    const errorCode = String(rawCode).trim().slice(0, 100) || 'PROVIDER_ERROR';
+    const errorCode = getGeminiErrorCode(error);
 
     await db.query(
       `UPDATE ai_usage_events
@@ -826,6 +894,46 @@ async function failAiUsageEvent({ eventId, error }) {
     notifyAiRateLimitsChanged('ai-usage-error');
   } catch (err) {
     console.error('[AI Usage Recording] Failed to close failed event (non-fatal):', err.message);
+  }
+}
+
+async function recordAiRetryEvent({
+  usageEventId = null,
+  userId = null,
+  purpose = 'unknown',
+  operation = 'generate',
+  model,
+  retryAttempt,
+  maxRetries,
+  delayMs,
+  delaySource,
+  reason,
+  error
+}) {
+  try {
+    await db.query(
+      `INSERT INTO ai_retry_events
+         (usage_event_id, user_id, purpose, operation, model, retry_attempt,
+          max_retries, delay_ms, delay_source, retry_reason, error_code, http_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        usageEventId || null,
+        userId || null,
+        String(purpose || 'unknown').slice(0, 120),
+        String(operation || 'generate').slice(0, 32),
+        String(model || 'unknown').slice(0, 160),
+        Math.max(1, Number(retryAttempt) || 1),
+        Math.max(0, Number(maxRetries) || 0),
+        Math.max(0, Math.ceil(Number(delayMs) || 0)),
+        String(delaySource || 'exponential_backoff').slice(0, 40),
+        String(reason || 'provider_transient').slice(0, 80),
+        getGeminiErrorCode(error),
+        getGeminiHttpStatus(error)
+      ]
+    );
+    notifyAiRateLimitsChanged('ai-retry-scheduled');
+  } catch (retryTelemetryError) {
+    console.warn('[AI Retry Telemetry] Không thể lưu lần retry (non-fatal):', retryTelemetryError.message);
   }
 }
 
@@ -1135,13 +1243,8 @@ function normalizeRequest(request) {
 }
 
 /**
- * Helper gọi generateContent với per-attempt exponential backoff (google.dev recommendation)
- * và fallback giữa các model Flash.
- *
- * Với mỗi model trong fallback chain:
- *  - Thử tối đa (PER_ATTEMPT_MAX_RETRIES + 1) lần
- *  - Nếu gặp lỗi 503 hoặc 429 tạm thời: chờ backoff rồi thử lại cùng model
- *  - Nếu mọi attempt đều thất bại hoặc lỗi không phải transient: chuyển sang model kế tiếp
+ * Helper gọi generateContent với bounded exponential backoff, jitter,
+ * Retry-After và fallback giữa các model Flash.
  *
  * Sau khi gọi thành công, tự động ghi nhận usageMetadata vào ai_usage_events.
  */
@@ -1150,85 +1253,46 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
   const fallbackModels = await getQuotaAwareFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
+  const ctx = getAiContext();
+  const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
+  const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
 
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
-
-    const ctx = getAiContext();
-    const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
-    const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
-    let modelSucceeded = false;
-
-    // ── Per-attempt retry loop cho cùng 1 model ──────────────────────────────
-    for (let attempt = 1; attempt <= PER_ATTEMPT_MAX_RETRIES + 1; attempt++) {
-      noteObservedGeminiAttempt(model);
-      const usageEventId = await beginAiUsageEvent({
+    try {
+      const { value: response, usageEventId } = await runTrackedGeminiOperation({
+        model,
+        purpose: finalPurpose,
+        operation: 'generate',
+        userId: finalUserId,
+        invoke: () => client.models.generateContent({ model, contents, config })
+      });
+      recordSuccessfulGeminiModel(model);
+      await resolveAiProviderIncident({ model, purpose: finalPurpose });
+      await recordAiUsage({
+        eventId: usageEventId,
         userId: finalUserId,
         purpose: finalPurpose,
-        model
+        model,
+        usageMetadata: response.usageMetadata
       });
-
-      try {
-        const response = await client.models.generateContent({
-          model,
-          contents,
-          config
-        });
-
-        // Thành công — ghi nhận và thoát vòng lặp
-        recordSuccessfulGeminiModel(model);
-        await resolveAiProviderIncident({ model, purpose: finalPurpose });
-        await recordAiUsage({
-          eventId: usageEventId,
-          userId: finalUserId,
-          purpose: finalPurpose,
-          model,
-          usageMetadata: response.usageMetadata
-        });
-        modelSucceeded = true;
-        return response;
-      } catch (err) {
-        lastError = err;
-        await failAiUsageEvent({ eventId: usageEventId, error: err });
-        recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
-        recordGeminiQuotaSignal({ error: err, model });
-
-        // Kiểm tra có nên retry cùng model không
-        const canRetryThisModel = attempt <= PER_ATTEMPT_MAX_RETRIES && isTransientRetryableError(err);
-        if (canRetryThisModel) {
-          const delayMs = Math.min(
-            PER_ATTEMPT_BACKOFF_MAX_MS,
-            PER_ATTEMPT_BACKOFF_BASE_MS * (2 ** (attempt - 1))
-          );
-          console.warn(
-            `[Gemini Backoff] ${model} lỗi tạm thời (attempt ${attempt}/${PER_ATTEMPT_MAX_RETRIES + 1}),`,
-            `thử lại sau ${delayMs}ms.`
-          );
-          await sleep(delayMs);
-          continue; // retry cùng model
-        }
-
-        // Không retry — thoát vòng attempt, kiểm tra fallback
-        break;
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (isRetryableGeminiError(error)) {
+        console.warn(`[Gemini Fallback] ${model} vẫn thất bại sau retry, đang thử model kế tiếp.`);
+        continue;
       }
+      throw error;
     }
-
-    if (modelSucceeded) return; // unreachable nhưng an toàn
-
-    // Chuyển sang model kế tiếp nếu lỗi là retryable ở tầng model
-    if (isRetryableGeminiError(lastError)) {
-      console.warn(`[Gemini Fallback] ${model} đã dùng hết ${PER_ATTEMPT_MAX_RETRIES + 1} attempt, chuyển sang model kế tiếp.`);
-      continue;
-    }
-    throw lastError;
   }
   throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash khả dụng.'));
 }
 
 /**
- * Helper gọi generateContentStream với per-attempt exponential backoff
- * và fallback tự động giữa các model Flash.
+ * Helper gọi generateContentStream với bounded exponential backoff trước
+ * chunk đầu tiên và fallback tự động giữa các model Flash.
  *
  * Returns { responseStream, modelUsed, usageEventId, finalUserId, finalPurpose }
  * để wrapper ghi nhận usage sau khi stream được consume hoàn toàn.
@@ -1238,60 +1302,46 @@ async function executeGenerateStream(client, contents, config, modelOverride = n
   const fallbackModels = await getQuotaAwareFallbackModels(preferredModel);
   const triedModels = new Set();
   let lastError = null;
+  const ctx = getAiContext();
+  const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
+  const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
 
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
 
-    const ctx = getAiContext();
-    const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
-    const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
-
-    // ── Per-attempt retry loop cho cùng 1 model (stream) ─────────────────────
-    for (let attempt = 1; attempt <= PER_ATTEMPT_MAX_RETRIES + 1; attempt++) {
-      noteObservedGeminiAttempt(model);
-      const usageEventId = await beginAiUsageEvent({
-        userId: finalUserId,
+    try {
+      const { value: responseStream, usageEventId } = await runTrackedGeminiOperation({
+        model,
         purpose: finalPurpose,
-        model
-      });
+        operation: 'stream',
+        userId: finalUserId,
+        invoke: async () => {
+          const providerStream = await client.models.generateContentStream({ model, contents, config });
+          const iterator = providerStream[Symbol.asyncIterator]();
+          const firstChunk = await iterator.next();
 
-      try {
-        const responseStream = await client.models.generateContentStream({
-          model,
-          contents,
-          config
-        });
-        return { responseStream, modelUsed: model, usageEventId, finalUserId, finalPurpose };
-      } catch (err) {
-        lastError = err;
-        await failAiUsageEvent({ eventId: usageEventId, error: err });
-        recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
-        recordGeminiQuotaSignal({ error: err, model });
-
-        const canRetryThisModel = attempt <= PER_ATTEMPT_MAX_RETRIES && isTransientRetryableError(err);
-        if (canRetryThisModel) {
-          const delayMs = Math.min(
-            PER_ATTEMPT_BACKOFF_MAX_MS,
-            PER_ATTEMPT_BACKOFF_BASE_MS * (2 ** (attempt - 1))
-          );
-          console.warn(
-            `[Gemini Stream Backoff] ${model} lỗi tạm thời (attempt ${attempt}/${PER_ATTEMPT_MAX_RETRIES + 1}),`,
-            `thử lại sau ${delayMs}ms.`
-          );
-          await sleep(delayMs);
-          continue;
+          return {
+            async *[Symbol.asyncIterator]() {
+              if (!firstChunk.done) yield firstChunk.value;
+              while (true) {
+                const nextChunk = await iterator.next();
+                if (nextChunk.done) return;
+                yield nextChunk.value;
+              }
+            }
+          };
         }
-
-        break;
+      });
+      return { responseStream, modelUsed: model, usageEventId, finalUserId, finalPurpose };
+    } catch (error) {
+      lastError = error;
+      if (isRetryableGeminiError(error)) {
+        console.warn(`[Gemini Stream Fallback] ${model} vẫn thất bại trước chunk đầu tiên, đang thử model kế tiếp.`);
+        continue;
       }
+      throw error;
     }
-
-    if (isRetryableGeminiError(lastError)) {
-      console.warn(`[Gemini Stream Fallback] ${model} đã dùng hết ${PER_ATTEMPT_MAX_RETRIES + 1} attempt, chuyển sang model kế tiếp.`);
-      continue;
-    }
-    throw lastError;
   }
   throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash Stream khả dụng.'));
 }
@@ -1365,6 +1415,8 @@ const geminiModel = {
           });
         } catch (streamError) {
           await failAiUsageEvent({ eventId: usageEventId, error: streamError });
+          recordAiProviderIncident({ error: streamError, model: modelUsed, purpose: finalPurpose });
+          recordGeminiQuotaSignal({ error: streamError, model: modelUsed });
           throw streamError;
         }
       }
@@ -1396,17 +1448,27 @@ const geminiModel = {
     try {
       const client = getAiClient();
       const modelName = getActivePreferredModel();
-      const response = await client.models.countTokens({
+      const ctx = getAiContext();
+      const { value: response, usageEventId } = await runTrackedGeminiOperation({
         model: modelName,
-        contents
+        purpose: ctx.purpose || 'count_tokens',
+        operation: 'count_tokens',
+        userId: ctx.userId,
+        policyOverrides: { maxRetries: 1 },
+        invoke: () => client.models.countTokens({ model: modelName, contents })
+      });
+      await recordAiUsage({
+        eventId: usageEventId,
+        userId: ctx.userId,
+        purpose: ctx.purpose || 'count_tokens',
+        model: modelName,
+        usageMetadata: null
       });
 
       return {
         totalTokens: response.totalTokens !== undefined ? response.totalTokens : 0
       };
     } catch (error) {
-      const modelName = getActivePreferredModel();
-      recordGeminiQuotaSignal({ error, model: modelName });
       // Fallback an toàn ước lượng token (1 token ~ 4 ký tự)
       const strLength = typeof contents === "string" ? contents.length : JSON.stringify(contents).length;
       return { totalTokens: Math.max(1, Math.ceil(strLength / 4)) };
@@ -1434,19 +1496,20 @@ const embeddingModel = {
     const ctx = getAiContext();
     const finalUserId = userId !== undefined ? userId : ctx.userId;
     const finalPurpose = purpose || ctx.purpose || 'embedding';
-    const usageEventId = await beginAiUsageEvent({
-      userId: finalUserId,
-      purpose: finalPurpose,
-      model: modelName
-    });
 
     try {
-      const response = await client.models.embedContent({
+      const { value: response, usageEventId } = await runTrackedGeminiOperation({
         model: modelName,
-        contents: textToEmbed,
-        config: {
-          outputDimensionality: outputDimensionality || 768
-        }
+        purpose: finalPurpose,
+        operation: 'embedding',
+        userId: finalUserId,
+        invoke: () => client.models.embedContent({
+          model: modelName,
+          contents: textToEmbed,
+          config: {
+            outputDimensionality: outputDimensionality || 768
+          }
+        })
       });
 
       // Record real embedding usage
@@ -1468,9 +1531,6 @@ const embeddingModel = {
       };
     } catch (error) {
       console.error(`[Embedding Model Error] Lỗi khi tạo vector từ ${modelName}:`, error.message);
-      await failAiUsageEvent({ eventId: usageEventId, error });
-      recordAiProviderIncident({ error, model: modelName, purpose: finalPurpose });
-      recordGeminiQuotaSignal({ error, model: modelName });
       throw normalizeGeminiError(error);
     }
   }
@@ -1595,20 +1655,17 @@ const geminiSpeakingModel = {
     const ctx = getAiContext();
     const finalUserId = userId !== undefined ? userId : ctx.userId;
     const finalPurpose = purpose || 'speaking_stt';
-    const usageEventId = await beginAiUsageEvent({
-      userId: finalUserId,
-      purpose: finalPurpose,
-      model
-    });
     const config = {
       responseMimeType
     };
 
     try {
-      const response = await client.models.generateContent({
+      const { value: response, usageEventId } = await runTrackedGeminiOperation({
         model,
-        contents,
-        config
+        purpose: finalPurpose,
+        operation: 'speaking',
+        userId: finalUserId,
+        invoke: () => client.models.generateContent({ model, contents, config })
       });
 
       // Record real speaking assessment usage
@@ -1628,8 +1685,6 @@ const geminiSpeakingModel = {
       };
     } catch (error) {
       console.error(`[Gemini Speaking Model Error] (${model}):`, error.message);
-      await failAiUsageEvent({ eventId: usageEventId, error });
-      recordGeminiQuotaSignal({ error, model });
       // Không âm thầm fallback sang model khác để bảo đảm tính nhất quán của chuẩn chấm điểm
       throw normalizeGeminiError(error);
     }
@@ -1645,6 +1700,10 @@ module.exports = {
   COST_PER_M_TOKENS,
   isGeminiQuotaError,
   isRetryableGeminiError,
+  getGeminiErrorCode,
+  getGeminiHttpStatus,
+  getGeminiRetryDecision,
+  getGeminiRetryPolicySnapshot,
   normalizeGeminiError,
   getGeminiQuotaCooldown,
   isRagPurpose,
