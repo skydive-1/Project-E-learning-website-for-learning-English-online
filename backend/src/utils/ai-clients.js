@@ -209,6 +209,16 @@ const TRANSIENT_QUOTA_BACKOFF_MAX_MS = 5 * 60 * 1000;
 const TRANSIENT_QUOTA_STREAK_TTL_MS = 5 * 60 * 1000;
 const TRANSIENT_QUOTA_JITTER_MAX_MS = 1000;
 const RPD_ROUTING_REFRESH_MS = 15 * 1000;
+
+// ─── Per-attempt Exponential Backoff (google.dev recommendation) ────────────
+// Khi một model gặp lỗi 503/429 tạm thời, thử lại tối đa 2 lần thêm
+// trước khi chuyển sang model kế tiếp trong fallback chain.
+// Delay: 1 giây → 2 giây (nhỏ vì request user-facing cần phản hồi nhanh).
+const PER_ATTEMPT_MAX_RETRIES = 2;          // Tối đa 2 lần retry → 3 attempts tổng
+const PER_ATTEMPT_BACKOFF_BASE_MS = 1000;   // Bắt đầu 1 giây
+const PER_ATTEMPT_BACKOFF_MAX_MS = 4000;    // Tối đa 4 giây (1s → 2s → 4s)
+// Chỉ retry nếu retryAfterMs từ provider <= ngưỡng này (lớn hơn → nhảy model luôn)
+const PER_ATTEMPT_RETRY_AFTER_THRESHOLD_MS = 4000;
 const PACIFIC_TIME_ZONE = 'America/Los_Angeles';
 const pacificDayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: PACIFIC_TIME_ZONE,
@@ -627,6 +637,49 @@ const isRetryableGeminiError = (error) => {
     || ['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_CONNECT_TIMEOUT', 'DEADLINE_EXCEEDED', 'RESOURCE_EXHAUSTED', 'UNAVAILABLE'].includes(code)
     || /not found|no longer available|timed?\s*out|deadline exceeded|socket hang up|network error|temporarily unavailable|resource[_ ]exhausted|quota exceeded/i.test(message);
 };
+
+/**
+ * Trả về true khi lỗi là transient 503 hoặc 429 thoáng qua (RPM) —
+ * tức là đáng để thử lại cùng model sau một khoảng delay ngắn.
+ *
+ * Trả về false khi:
+ *  - Lỗi 429 RPD (hết quota cả ngày) → nhảy model ngay
+ *  - retryAfterMs từ provider > PER_ATTEMPT_RETRY_AFTER_THRESHOLD_MS → nhảy model ngay
+ *  - Các lỗi không phải 503/429 → để logic fallback hiện tại xử lý
+ *
+ * @param {Error} error
+ * @returns {boolean}
+ */
+const isTransientRetryableError = (error) => {
+  const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+  const code = String(error?.code || error?.cause?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+
+  const is503 = status === 503
+    || code === 'UNAVAILABLE'
+    || /temporarily unavailable|service unavailable|model overload/i.test(message);
+  const is429 = isGeminiQuotaError(error);
+
+  if (!is503 && !is429) return false;
+
+  // Nếu đây là lỗi 429 RPD (hết quota ngày), không nên retry — nhảy model ngay
+  if (is429) {
+    const normalized = normalizeGeminiError(error);
+    const retryAfterMs = Number(normalized?.retryAfterMs || 0);
+    // retryAfterMs lớn → có thể là RPD; nhảy model ngay
+    if (Number.isFinite(retryAfterMs) && retryAfterMs > PER_ATTEMPT_RETRY_AFTER_THRESHOLD_MS) return false;
+    // parseGeminiQuotaViolation sẽ phân tích dimension; nếu là RPD thì bỏ retry
+    // (hàm này được gọi sau, không gọi ở đây để tránh parse lặp lại)
+  }
+
+  return true;
+};
+
+/**
+ * Async sleep dùng cho per-attempt backoff.
+ * @param {number} ms
+ */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeGeminiError = (error) => {
   if (!isGeminiQuotaError(error)) return error;
@@ -1082,7 +1135,14 @@ function normalizeRequest(request) {
 }
 
 /**
- * Helper gọi generateContent với retry và fallback giữa các model Flash.
+ * Helper gọi generateContent với per-attempt exponential backoff (google.dev recommendation)
+ * và fallback giữa các model Flash.
+ *
+ * Với mỗi model trong fallback chain:
+ *  - Thử tối đa (PER_ATTEMPT_MAX_RETRIES + 1) lần
+ *  - Nếu gặp lỗi 503 hoặc 429 tạm thời: chờ backoff rồi thử lại cùng model
+ *  - Nếu mọi attempt đều thất bại hoặc lỗi không phải transient: chuyển sang model kế tiếp
+ *
  * Sau khi gọi thành công, tự động ghi nhận usageMetadata vào ai_usage_events.
  */
 async function executeGenerate(client, contents, config, modelOverride = null, customCtx = {}) {
@@ -1094,54 +1154,84 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
-    noteObservedGeminiAttempt(model);
+
     const ctx = getAiContext();
     const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
     const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
-    const usageEventId = await beginAiUsageEvent({
-      userId: finalUserId,
-      purpose: finalPurpose,
-      model
-    });
+    let modelSucceeded = false;
 
-    try {
-      const response = await client.models.generateContent({
-        model,
-        contents,
-        config
-      });
-
-      // Record real usage from Gemini response
-      recordSuccessfulGeminiModel(model);
-      await resolveAiProviderIncident({ model, purpose: finalPurpose });
-      await recordAiUsage({
-        eventId: usageEventId,
+    // ── Per-attempt retry loop cho cùng 1 model ──────────────────────────────
+    for (let attempt = 1; attempt <= PER_ATTEMPT_MAX_RETRIES + 1; attempt++) {
+      noteObservedGeminiAttempt(model);
+      const usageEventId = await beginAiUsageEvent({
         userId: finalUserId,
         purpose: finalPurpose,
-        model,
-        usageMetadata: response.usageMetadata
+        model
       });
 
-      return response;
-    } catch (err) {
-      lastError = err;
-      await failAiUsageEvent({ eventId: usageEventId, error: err });
-      recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
-      recordGeminiQuotaSignal({ error: err, model });
-      if (isRetryableGeminiError(err)) {
-        console.warn(`[Gemini Fallback] ${model} thất bại, đang thử model kế tiếp.`);
-        continue;
+      try {
+        const response = await client.models.generateContent({
+          model,
+          contents,
+          config
+        });
+
+        // Thành công — ghi nhận và thoát vòng lặp
+        recordSuccessfulGeminiModel(model);
+        await resolveAiProviderIncident({ model, purpose: finalPurpose });
+        await recordAiUsage({
+          eventId: usageEventId,
+          userId: finalUserId,
+          purpose: finalPurpose,
+          model,
+          usageMetadata: response.usageMetadata
+        });
+        modelSucceeded = true;
+        return response;
+      } catch (err) {
+        lastError = err;
+        await failAiUsageEvent({ eventId: usageEventId, error: err });
+        recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
+        recordGeminiQuotaSignal({ error: err, model });
+
+        // Kiểm tra có nên retry cùng model không
+        const canRetryThisModel = attempt <= PER_ATTEMPT_MAX_RETRIES && isTransientRetryableError(err);
+        if (canRetryThisModel) {
+          const delayMs = Math.min(
+            PER_ATTEMPT_BACKOFF_MAX_MS,
+            PER_ATTEMPT_BACKOFF_BASE_MS * (2 ** (attempt - 1))
+          );
+          console.warn(
+            `[Gemini Backoff] ${model} lỗi tạm thời (attempt ${attempt}/${PER_ATTEMPT_MAX_RETRIES + 1}),`,
+            `thử lại sau ${delayMs}ms.`
+          );
+          await sleep(delayMs);
+          continue; // retry cùng model
+        }
+
+        // Không retry — thoát vòng attempt, kiểm tra fallback
+        break;
       }
-      throw err;
     }
+
+    if (modelSucceeded) return; // unreachable nhưng an toàn
+
+    // Chuyển sang model kế tiếp nếu lỗi là retryable ở tầng model
+    if (isRetryableGeminiError(lastError)) {
+      console.warn(`[Gemini Fallback] ${model} đã dùng hết ${PER_ATTEMPT_MAX_RETRIES + 1} attempt, chuyển sang model kế tiếp.`);
+      continue;
+    }
+    throw lastError;
   }
   throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash khả dụng.'));
 }
 
 /**
- * Helper gọi generateContentStream với fallback tự động.
- * Returns { responseStream, modelUsed } so the wrapper can record usage
- * after the stream is fully consumed.
+ * Helper gọi generateContentStream với per-attempt exponential backoff
+ * và fallback tự động giữa các model Flash.
+ *
+ * Returns { responseStream, modelUsed, usageEventId, finalUserId, finalPurpose }
+ * để wrapper ghi nhận usage sau khi stream được consume hoàn toàn.
  */
 async function executeGenerateStream(client, contents, config, modelOverride = null, customCtx = {}) {
   const preferredModel = modelOverride || getActivePreferredModel();
@@ -1152,34 +1242,56 @@ async function executeGenerateStream(client, contents, config, modelOverride = n
   for (const model of fallbackModels) {
     if (triedModels.has(model)) continue;
     triedModels.add(model);
-    noteObservedGeminiAttempt(model);
+
     const ctx = getAiContext();
     const finalUserId = customCtx.userId !== undefined ? customCtx.userId : ctx.userId;
     const finalPurpose = customCtx.purpose || ctx.purpose || 'chat';
-    const usageEventId = await beginAiUsageEvent({
-      userId: finalUserId,
-      purpose: finalPurpose,
-      model
-    });
 
-    try {
-      const responseStream = await client.models.generateContentStream({
-        model,
-        contents,
-        config
+    // ── Per-attempt retry loop cho cùng 1 model (stream) ─────────────────────
+    for (let attempt = 1; attempt <= PER_ATTEMPT_MAX_RETRIES + 1; attempt++) {
+      noteObservedGeminiAttempt(model);
+      const usageEventId = await beginAiUsageEvent({
+        userId: finalUserId,
+        purpose: finalPurpose,
+        model
       });
-      return { responseStream, modelUsed: model, usageEventId, finalUserId, finalPurpose };
-    } catch (err) {
-      lastError = err;
-      await failAiUsageEvent({ eventId: usageEventId, error: err });
-      recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
-      recordGeminiQuotaSignal({ error: err, model });
-      if (isRetryableGeminiError(err)) {
-        console.warn(`[Gemini Stream Fallback] ${model} thất bại, đang thử model kế tiếp.`);
-        continue;
+
+      try {
+        const responseStream = await client.models.generateContentStream({
+          model,
+          contents,
+          config
+        });
+        return { responseStream, modelUsed: model, usageEventId, finalUserId, finalPurpose };
+      } catch (err) {
+        lastError = err;
+        await failAiUsageEvent({ eventId: usageEventId, error: err });
+        recordAiProviderIncident({ error: err, model, purpose: finalPurpose });
+        recordGeminiQuotaSignal({ error: err, model });
+
+        const canRetryThisModel = attempt <= PER_ATTEMPT_MAX_RETRIES && isTransientRetryableError(err);
+        if (canRetryThisModel) {
+          const delayMs = Math.min(
+            PER_ATTEMPT_BACKOFF_MAX_MS,
+            PER_ATTEMPT_BACKOFF_BASE_MS * (2 ** (attempt - 1))
+          );
+          console.warn(
+            `[Gemini Stream Backoff] ${model} lỗi tạm thời (attempt ${attempt}/${PER_ATTEMPT_MAX_RETRIES + 1}),`,
+            `thử lại sau ${delayMs}ms.`
+          );
+          await sleep(delayMs);
+          continue;
+        }
+
+        break;
       }
-      throw err;
     }
+
+    if (isRetryableGeminiError(lastError)) {
+      console.warn(`[Gemini Stream Fallback] ${model} đã dùng hết ${PER_ATTEMPT_MAX_RETRIES + 1} attempt, chuyển sang model kế tiếp.`);
+      continue;
+    }
+    throw lastError;
   }
   throw normalizeGeminiError(lastError || new Error('Không thể kết nối đến mô hình Gemini Flash Stream khả dụng.'));
 }

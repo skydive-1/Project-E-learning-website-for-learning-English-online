@@ -34,8 +34,21 @@ const getSummary = async (req, res, next) => {
   }
 };
 
+// POST /api/gamification/resync - Admin rà soát toàn bộ user (workflow tự động hóa)
+const resyncAllBadges = async (req, res, next) => {
+  try {
+    const { limit, offset } = req.query || {};
+    const result = await gamificationService.evaluateAllUsers({ limit, offset });
+    return res.status(200).json({ data: result });
+  } catch (error) {
+    console.error('Lỗi rà soát huy hiệu toàn hệ thống:', error);
+    return next(error);
+  }
+};
+
 module.exports = {
   getStreak,
   getBadges,
-  getSummary
+  getSummary,
+  resyncAllBadges
 };

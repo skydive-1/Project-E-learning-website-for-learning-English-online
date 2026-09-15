@@ -22,6 +22,7 @@ const normalizeBadges = badges => {
   return badges.map(badge => ({
     ...badge,
     description: badge.description ?? badge.desc ?? '',
+    requirement: badge.requirement ?? '',
     progress: badge.progress && typeof badge.progress === 'object'
       ? badge.progress
       : null
@@ -62,4 +63,15 @@ export const getUserStreakInfo = async () => {
 export const getUserBadges = async () => {
   const response = await apiClient.get('/gamification/badges');
   return normalizeBadges(response.data?.badges);
+};
+
+/**
+ * Admin rà soát điều kiện huy hiệu cho toàn bộ user từ dữ liệu học tập thật.
+ * API Backend: POST /api/gamification/resync?limit=&offset=
+ */
+export const resyncAllBadges = async ({ limit = 200, offset = 0 } = {}) => {
+  const response = await apiClient.post('/gamification/resync', null, {
+    params: { limit, offset }
+  });
+  return response.data?.data;
 };

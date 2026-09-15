@@ -16,6 +16,45 @@ export const GamificationProvider = ({ children }) => {
   const [activeBadgePopup, setActiveBadgePopup] = useState(null);
   const loadGeneration = useRef(0);
   const activeRequest = useRef(null);
+  const knownUnlockedRef = useRef(new Set());
+  const popupRef = useRef(null);
+  useEffect(() => {
+    popupRef.current = activeBadgePopup;
+  }, [activeBadgePopup]);
+
+  const hasSeenBadgeThisSession = badgeId => {
+    try {
+      return sessionStorage.getItem(`elear-badge-seen-${badgeId}`) === '1';
+    } catch {
+      return knownUnlockedRef.current.has(`seen:${badgeId}`);
+    }
+  };
+
+  const markBadgeSeenThisSession = badgeId => {
+    knownUnlockedRef.current.add(`seen:${badgeId}`);
+    try {
+      sessionStorage.setItem(`elear-badge-seen-${badgeId}`, '1');
+    } catch {
+      // Bỏ qua khi browser chặn storage: vẫn chống spam bằng ref trong phiên
+    }
+  };
+
+  // canvas-confetti cần requestAnimationFrame của browser. Trong jsdom/SSR/CI
+  // không có API này nên phải bỏ qua ăn mừng thay vì để unhandled exception
+  // làm rớt cả suite test (exit code 1) dù 336/336 test vẫn pass.
+  const canCelebrate = () => (
+    typeof window !== 'undefined'
+    && typeof window.requestAnimationFrame !== 'undefined'
+  );
+
+  const fireCelebrationShot = options => {
+    if (!canCelebrate()) return;
+    try {
+      confetti(options);
+    } catch (e) {
+      console.warn('Confetti error:', e);
+    }
+  };
 
   // Nạp thông tin Streak và Badges khi người dùng thay đổi hoặc ứng dụng khởi chạy
   const reloadGamification = useCallback(async () => {
@@ -46,6 +85,23 @@ export const GamificationProvider = ({ children }) => {
 
         setStreak(summary.streak);
         setBadges(summary.badges);
+
+        // Workflow tự động: phát hiện huy hiệu vừa mở khóa so với snapshot trước
+        // và tự bật modal ăn mừng đúng 1 lần mỗi huy hiệu trong phiên.
+        const previousUnlocked = knownUnlockedRef.current;
+        const freshlyUnlocked = (summary.badges || []).filter(
+          badge => badge?.unlocked && badge?.id && !previousUnlocked.has(badge.id)
+        );
+        (summary.badges || []).forEach(badge => {
+          if (badge?.unlocked && badge?.id) previousUnlocked.add(badge.id);
+        });
+        const unseen = freshlyUnlocked.filter(badge => !hasSeenBadgeThisSession(badge.id));
+        if (unseen.length > 0 && !popupRef.current) {
+          const first = unseen[0];
+          markBadgeSeenThisSession(first.id);
+          setActiveBadgePopup(first);
+          fireCelebrationShot({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        }
       })
       .catch(error => {
         if (requestId !== loadGeneration.current) return;
@@ -89,29 +145,26 @@ export const GamificationProvider = ({ children }) => {
     setActiveBadgePopup(badgeObj);
 
     // Kích hoạt bắn pháo hoa Confetti 3 đợt ăn mừng rực rỡ
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
+    fireCelebrationShot({
+      particleCount: 80,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+    setTimeout(() => {
+      if (!canCelebrate()) return;
+      fireCelebrationShot({
+        particleCount: 50,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0 }
       });
-      setTimeout(() => {
-        confetti({
-          particleCount: 50,
-          angle: 60,
-          spread: 55,
-          origin: { x: 0 }
-        });
-        confetti({
-          particleCount: 50,
-          angle: 120,
-          spread: 55,
-          origin: { x: 1 }
-        });
-      }, 250);
-    } catch (e) {
-      console.warn("Confetti error:", e);
-    }
+      fireCelebrationShot({
+        particleCount: 50,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1 }
+      });
+    }, 250);
   };
 
   const closeBadgePopup = () => {

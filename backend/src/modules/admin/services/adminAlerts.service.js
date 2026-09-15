@@ -244,6 +244,12 @@ const collectDatabaseAlerts = async (generatedAt) => {
       FROM latest_completed_attempts e
       LEFT JOIN users u ON u.user_id = e.user_id
       WHERE e.request_status = 'error'
+        -- Ẩn lỗi hạ tầng phía Google (503/overload/quota) — không phải lỗi hệ thống
+        AND UPPER(COALESCE(e.error_code, '')) NOT IN (
+          'GEMINI_QUOTA_EXHAUSTED', 'RESOURCE_EXHAUSTED', 'UNAVAILABLE',
+          '503', 'SERVICE_UNAVAILABLE', 'MODEL_OVERLOADED',
+          'QUOTA_EXCEEDED', 'TOO_MANY_REQUESTS'
+        )
       ORDER BY COALESCE(e.completed_at, e.created_at) DESC
       LIMIT 25
     `),
@@ -255,6 +261,13 @@ const collectDatabaseAlerts = async (generatedAt) => {
         AND workload = 'rag'
         AND LEFT(purpose, 4) = 'rag_'
         AND last_seen_at >= NOW() - INTERVAL '30 minutes'
+        -- Ẩn sự cố 503 từ phía Google (hạ tầng quá tải / quota) — không phải lỗi hệ thống
+        AND COALESCE(http_status, 0) != 503
+        AND UPPER(COALESCE(error_code, '')) NOT IN (
+          'GEMINI_QUOTA_EXHAUSTED', 'RESOURCE_EXHAUSTED', 'UNAVAILABLE',
+          'SERVICE_UNAVAILABLE', 'MODEL_OVERLOADED',
+          'QUOTA_EXCEEDED', 'TOO_MANY_REQUESTS'
+        )
       ORDER BY last_seen_at DESC
       LIMIT 25
     `)

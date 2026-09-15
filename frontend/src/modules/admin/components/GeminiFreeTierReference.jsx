@@ -7,7 +7,9 @@ import {
   ExternalLink,
   FileText,
   Info,
+  RefreshCw,
   RotateCcw,
+  RotateCw,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -257,7 +259,191 @@ const GeminiFreeTierReference = ({ models = [], windows }) => {
           </div>
         </div>
 
-        {/* 3. Data Table (BoardUI bui-table Pattern) */}
+        {/* 2.2 ── Cơ chế tự phục hồi (Exponential Backoff) ──────────────── */}
+        <div
+          className="overflow-hidden rounded-xl border border-violet-500/25 bg-violet-500/5 shadow-2xs dark:border-violet-500/20 dark:bg-violet-950/15"
+          role="note"
+          aria-labelledby="backoff-mechanism-title"
+        >
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-violet-500/20 px-4 py-3">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-violet-500/25 bg-violet-500/15 text-violet-600 dark:text-violet-400">
+              <RefreshCw className="size-3.5" aria-hidden="true" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4
+                id="backoff-mechanism-title"
+                className="text-body-medium font-semibold text-text-primary"
+              >
+                {t('Cơ chế tự phục hồi khi gặp lỗi hạ tầng (Exponential Backoff)')}
+              </h4>
+              <p className="text-caption-2-regular text-text-tertiary mt-0.5">
+                {t('Áp dụng theo khuyến nghị của google.dev · Không cần can thiệp thủ công')}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+              {t('Đang hoạt động')}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-4 p-4">
+            {/* Mô tả ngắn */}
+            <p className="text-caption-1-regular text-text-secondary leading-relaxed">
+              {t('Khi Google trả lỗi 503 (quá tải hạ tầng) hoặc 429 tạm thời (RPM), backend không báo lỗi ngay cho người dùng. Thay vào đó, hệ thống tự động chờ một khoảng thời gian tăng dần rồi thử lại — đúng như khuyến nghị chính thức từ')}
+              {' '}
+              <a
+                href="https://ai.google.dev/gemini-api/docs/rate-limits#error-codes"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300 underline underline-offset-2 font-medium"
+              >
+                google.dev
+                <ExternalLink className="size-3 inline-block" aria-hidden="true" />
+              </a>
+              {t('.')}
+            </p>
+
+            {/* Flow diagram dạng timeline */}
+            <div className="rounded-lg border border-violet-500/20 bg-background-primary-default p-4">
+              <p className="mb-3 text-caption-1-semibold text-text-primary">
+                {t('Luồng xử lý khi gặp lỗi 503 / 429 RPM:')}
+              </p>
+              <ol className="relative space-y-2.5 pl-6" aria-label={t('Các bước retry')}>
+                {/* Step 1 */}
+                <li className="relative">
+                  <span
+                    className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/15 text-[10px] font-bold text-violet-600 dark:text-violet-400"
+                    aria-hidden="true"
+                  >
+                    1
+                  </span>
+                  <div className="text-caption-1-regular text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{t('Attempt 1')}</span>
+                    {' — '}
+                    {t('Gọi Gemini API → nhận 503 hoặc 429 RPM')}
+                  </div>
+                </li>
+                {/* Step 2 */}
+                <li className="relative">
+                  <span
+                    className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+                    aria-hidden="true"
+                  >
+                    2
+                  </span>
+                  <div className="text-caption-1-regular text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{t('Chờ 1 giây')}</span>
+                    {' — '}
+                    {t('Exponential backoff lần 1 · Không hiển thị lỗi cho người dùng')}
+                  </div>
+                </li>
+                {/* Step 3 */}
+                <li className="relative">
+                  <span
+                    className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/15 text-[10px] font-bold text-violet-600 dark:text-violet-400"
+                    aria-hidden="true"
+                  >
+                    3
+                  </span>
+                  <div className="text-caption-1-regular text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{t('Attempt 2')}</span>
+                    {' — '}
+                    {t('Thử lại cùng model → thành công ✓ hoặc nhận lỗi lần 2')}
+                  </div>
+                </li>
+                {/* Step 4 */}
+                <li className="relative">
+                  <span
+                    className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+                    aria-hidden="true"
+                  >
+                    4
+                  </span>
+                  <div className="text-caption-1-regular text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{t('Chờ 2 giây')}</span>
+                    {' — '}
+                    {t('Exponential backoff lần 2 · Delay tăng gấp đôi (1s → 2s)')}
+                  </div>
+                </li>
+                {/* Step 5 */}
+                <li className="relative">
+                  <span
+                    className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/15 text-[10px] font-bold text-violet-600 dark:text-violet-400"
+                    aria-hidden="true"
+                  >
+                    5
+                  </span>
+                  <div className="text-caption-1-regular text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{t('Attempt 3')}</span>
+                    {' — '}
+                    {t('Thử lại lần cuối cùng model → thành công ✓ hoặc nhảy sang model kế tiếp')}
+                  </div>
+                </li>
+                {/* Step 6 - fallback */}
+                <li className="relative">
+                  <span
+                    className="absolute -left-6 top-0.5 flex size-5 items-center justify-center rounded-full border border-blue-500/30 bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-400"
+                    aria-hidden="true"
+                  >
+                    6
+                  </span>
+                  <div className="text-caption-1-regular text-text-secondary leading-relaxed">
+                    <span className="font-semibold text-text-primary">{t('Fallback model')}</span>
+                    {' — '}
+                    {t('Áp dụng lại 3 attempt + backoff cho model tiếp theo trong chuỗi (3.7 → 3.6 → 3.5-lite)')}
+                  </div>
+                </li>
+              </ol>
+            </div>
+
+            {/* 3 Cards: Phân biệt lỗi */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* 503 */}
+              <div className="rounded-lg border border-orange-500/25 bg-orange-500/8 p-3 dark:border-orange-500/20 dark:bg-orange-950/20">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <RotateCw className="size-3.5 text-orange-500 dark:text-orange-400 shrink-0" aria-hidden="true" />
+                  <span className="text-caption-1-semibold text-orange-700 dark:text-orange-300">503 Overload</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-text-secondary">
+                  {t('Hạ tầng Google quá tải tạm thời. Luôn retry với backoff. Không phải lỗi hệ thống → ẩn khỏi cảnh báo.')}
+                </p>
+              </div>
+              {/* 429 RPM */}
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/8 p-3 dark:border-amber-500/20 dark:bg-amber-950/20">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <RotateCw className="size-3.5 text-amber-500 dark:text-amber-400 shrink-0" aria-hidden="true" />
+                  <span className="text-caption-1-semibold text-amber-700 dark:text-amber-300">429 RPM</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-text-secondary">
+                  {t('Vượt lượt gọi/phút. Retry nếu retryAfter ≤ 4 giây (thoáng qua). Retry sau khi chờ ngắn.')}
+                </p>
+              </div>
+              {/* 429 RPD */}
+              <div className="rounded-lg border border-red-500/25 bg-red-500/8 p-3 dark:border-red-500/20 dark:bg-red-950/20">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <RotateCcw className="size-3.5 text-red-500 dark:text-red-400 shrink-0" aria-hidden="true" />
+                  <span className="text-caption-1-semibold text-red-700 dark:text-red-300">429 RPD</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-text-secondary">
+                  {t('Hết quota cả ngày. Không retry — nhảy model ngay. Cooldown đến 00:00 Pacific. Hiển thị cảnh báo.')}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer note */}
+            <div className="flex items-start gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/8 px-3.5 py-2.5 dark:border-emerald-500/20 dark:bg-emerald-950/20">
+              <ShieldCheck className="size-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+              <p className="text-caption-1-regular text-text-secondary leading-relaxed">
+                <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                  {t('Tại sao lỗi 503 không hiện trong bảng cảnh báo? ')}
+                </span>
+                {t('Vì đây là lỗi hạ tầng Google (không phải lỗi hệ thống). Backend đã xử lý tự động bằng retry. Nếu sau 3 lần thử model vẫn lỗi, hệ thống tự chuyển sang model khác trong chuỗi fallback mà không cần admin can thiệp.')}
+              </p>
+            </div>
+          </div>
+        </div>
+
+
         <div className="overflow-hidden rounded-xl border border-separator-border bg-background-primary-default shadow-2xs">
           <div className="w-full overflow-x-auto">
             <table className="bui-table">

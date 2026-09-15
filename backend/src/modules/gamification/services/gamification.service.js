@@ -9,48 +9,56 @@ const BADGE_DEFINITIONS = [
     id: 'first_lesson',
     title: 'Khởi đầu nan',
     description: 'Hoàn thành bài học đầu tiên',
+    requirement: 'Hoàn thành ít nhất 1 bài học (user_progress.is_completed = TRUE)',
     icon: '🌱'
   },
   {
     id: 'streak_3',
     title: 'Chiến binh kiên trì',
     description: 'Đạt chuỗi học 3 ngày liên tiếp',
+    requirement: 'Học 3 ngày liên tiếp (Asia/Ho_Chi_Minh, từ learning_ss)',
     icon: '🔥'
   },
   {
     id: 'streak_7',
     title: 'Thói quen vàng',
     description: 'Đạt chuỗi học 7 ngày liên tiếp',
+    requirement: 'Học 7 ngày liên tiếp (Asia/Ho_Chi_Minh, từ learning_ss)',
     icon: '⚡'
   },
   {
     id: 'streak_30',
     title: 'Bậc thầy kỷ luật',
     description: 'Đạt chuỗi học 30 ngày liên tiếp',
+    requirement: 'Học 30 ngày liên tiếp (Asia/Ho_Chi_Minh, từ learning_ss)',
     icon: '👑'
   },
   {
     id: 'quiz_master',
     title: 'Vua trắc nghiệm',
     description: 'Đạt điểm tuyệt đối trong 5 bài Quiz khác nhau',
+    requirement: 'Đạt score = 100 ở 5 quiz_id khác nhau (quiz_attempts)',
     icon: '🎯'
   },
   {
     id: 'ai_interactive',
     title: 'Tương tác thông minh',
     description: 'Đặt 10 câu hỏi cho AI Chatbot',
+    requirement: 'Gửi 10 tin nhắn user cho AI Chatbot (ai_chat.sender_type = user)',
     icon: '🤖'
   },
   {
     id: 'grammar_guru',
     title: 'Bậc thầy Ngữ pháp',
     description: 'Hoàn thành các bài học trong khóa Ngữ pháp đã bắt đầu',
+    requirement: 'Hoàn thành 100% bài học Ngữ pháp thuộc khóa đã bắt đầu',
     icon: '📚'
   },
   {
     id: 'speed_learner',
     title: 'Tốc độ ánh sáng',
     description: 'Hoàn thành 3 bài học trong cùng một ngày',
+    requirement: 'Hoàn thành 3 bài học trong cùng 1 ngày (Asia/Ho_Chi_Minh)',
     icon: '🚀'
   }
 ];
@@ -354,9 +362,53 @@ const getUserBadges = async userId => {
   return summary.badges;
 };
 
+/**
+ * Rà soát điều kiện huy hiệu cho toàn bộ user từ dữ liệu học tập thật.
+ * Dùng cho workflow tự động hóa: admin gọi định kỳ hoặc sau deploy để đảm bảo
+ * mọi user đủ điều kiện đều được ghi nhận unlocked (tính live, không mock).
+ * Giới hạn batch để giữ kiến trúc 0 VND một instance (tránh OOM/quota).
+ */
+const evaluateAllUsers = async ({ limit = 200, offset = 0 } = {}) => {
+  const cleanLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 200, 1), 1000);
+  const cleanOffset = Math.max(Number.parseInt(offset, 10) || 0, 0);
+
+  const usersResult = await db.query(
+    'SELECT user_id FROM users ORDER BY user_id ASC LIMIT $1 OFFSET $2',
+    [cleanLimit, cleanOffset]
+  );
+
+  const perUser = [];
+  const unlockedCounts = {};
+  BADGE_DEFINITIONS.forEach(definition => {
+    unlockedCounts[definition.id] = 0;
+  });
+
+  for (const row of usersResult.rows) {
+    const userId = row.user_id;
+    const summary = await getGamificationSummary(userId);
+    const unlocked = summary.badges
+      .filter(badge => badge.unlocked)
+      .map(badge => ({ id: badge.id, unlockedAt: badge.unlockedAt || null }));
+    unlocked.forEach(entry => {
+      unlockedCounts[entry.id] = (unlockedCounts[entry.id] || 0) + 1;
+    });
+    perUser.push({ user_id: userId, unlocked, unlockedCount: unlocked.length });
+  }
+
+  return {
+    scanned: perUser.length,
+    limit: cleanLimit,
+    offset: cleanOffset,
+    unlockedCounts,
+    users: perUser
+  };
+};
+
 module.exports = {
+  BADGE_DEFINITIONS,
   calculateStreak,
   getUserBadges,
   getGamificationSummary,
+  evaluateAllUsers,
   analyzeActivityDays
 };
