@@ -69,6 +69,31 @@ const getLevel = (percent) => {
   return 'healthy';
 };
 
+const getErrorCodeDescription = (code, t) => {
+  const normalized = String(code || 'UNKNOWN').toUpperCase();
+  const descriptions = {
+    '429': 'Quá giới hạn tần suất hoặc quota Gemini',
+    '500': 'Lỗi nội bộ từ dịch vụ Gemini',
+    '502': 'Gateway của nhà cung cấp gặp lỗi',
+    '503': 'Dịch vụ Gemini tạm thời không khả dụng',
+    '504': 'Dịch vụ Gemini phản hồi quá thời gian',
+    RESOURCE_EXHAUSTED: 'Gemini đã hết quota khả dụng',
+    UNAVAILABLE: 'Dịch vụ Gemini tạm thời không khả dụng',
+    DEADLINE_EXCEEDED: 'Request Gemini vượt quá thời gian chờ',
+    ETIMEDOUT: 'Kết nối tới Gemini bị quá thời gian',
+    ECONNRESET: 'Kết nối tới Gemini bị ngắt giữa chừng',
+    UNKNOWN: 'Backend chưa nhận diện được mã lỗi'
+  };
+  return t(descriptions[normalized] || 'Lỗi khác do Gemini hoặc kết nối trả về');
+};
+
+const formatDuration = (milliseconds, numberFormatter) => {
+  const totalMs = Math.max(0, Number(milliseconds) || 0);
+  if (totalMs < 1_000) return `${numberFormatter.format(totalMs)} ms`;
+  if (totalMs < 60_000) return `${numberFormatter.format(Math.round(totalMs / 100) / 10)} s`;
+  return `${numberFormatter.format(Math.round(totalMs / 6_000) / 10)} min`;
+};
+
 const makeDraft = (model, saved) => {
   const suggestion = SUGGESTED_CAPS[model] || {};
   return {
@@ -108,6 +133,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const isStreamConnecting = streamState === 'connecting' || streamState === 'delayed';
   const latestTelemetryAt = getValidDate(status?.guard?.checkedAt || status?.generatedAt);
   const routing = status?.routing || null;
+  const retryTelemetry = status?.retryTelemetry || null;
   const preferredModelCooldown = routing?.coolingDown?.find(
     (item) => item.model === routing.preferredModel
   ) || null;
@@ -484,6 +510,63 @@ const AIRateLimitsView = ({ canManageCaps }) => {
         </div>
       </section>
 
+      {retryTelemetry && (
+        <section className="ai-retry-telemetry" aria-labelledby="ai-retry-telemetry-title">
+          <header className="ai-retry-telemetry__header">
+            <div>
+              <h2 id="ai-retry-telemetry-title">
+                <FiRefreshCw aria-hidden="true" /> {t('Retry và exponential backoff')}
+              </h2>
+              <p>{t('Backend tự gọi lại lỗi tạm thời có giới hạn trước khi chuyển sang model fallback.')}</p>
+            </div>
+            <span className={retryTelemetry.last24Hours > 0 ? 'has-retries' : 'is-quiet'}>
+              <i aria-hidden="true" />
+              {retryTelemetry.last24Hours > 0
+                ? t('{{count}} retry trong 24 giờ', { count: numberFormatter.format(retryTelemetry.last24Hours) })
+                : t('Không phát sinh retry trong 24 giờ')}
+            </span>
+          </header>
+
+          <dl className="ai-retry-telemetry__metrics">
+            <div>
+              <dt>{t('Retry / 60s')}</dt>
+              <dd>{numberFormatter.format(retryTelemetry.lastMinute || 0)}</dd>
+              <small>{t('Số lần backend thực sự gọi lại')}</small>
+            </div>
+            <div>
+              <dt>{t('Tổng thời gian backoff')}</dt>
+              <dd>{formatDuration(retryTelemetry.totalBackoffMs, numberFormatter)}</dd>
+              <small>{t('Cộng dồn trong 24 giờ')}</small>
+            </div>
+            <div>
+              <dt>{t('Lỗi đã retry')}</dt>
+              <dd>
+                <code>429</code> {numberFormatter.format(retryTelemetry.errors429 || 0)}
+                <span aria-hidden="true">·</span>
+                <code>503</code> {numberFormatter.format(retryTelemetry.errors503 || 0)}
+              </dd>
+              <small>{t('Các mã khác vẫn được ghi theo model')}</small>
+            </div>
+            <div>
+              <dt>{t('Retry gần nhất')}</dt>
+              <dd className="is-time">
+                {retryTelemetry.lastRetryAt
+                  ? dateTimeFormatter.format(new Date(retryTelemetry.lastRetryAt))
+                  : t('Chưa có dữ liệu')}
+              </dd>
+              <small>{t('PostgreSQL · backend telemetry')}</small>
+            </div>
+          </dl>
+
+          <footer>
+            {t('Request tương tác retry tối đa {{interactive}} lần; tác vụ nền tối đa {{background}} lần. Quota ngày RPD không bị gọi lặp.', {
+              interactive: retryTelemetry.policy?.profiles?.interactive?.maxRetries ?? 2,
+              background: retryTelemetry.policy?.profiles?.background?.maxRetries ?? 5
+            })}
+          </footer>
+        </section>
+      )}
+
       {routing && (
         <section className="ai-model-routing" aria-labelledby="ai-model-routing-title">
           <div className="ai-model-routing__heading">
@@ -779,6 +862,21 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     count: numberFormatter.format(item.requestStatus?.rpd?.error || 0)
                   })}
                 </span>
+                {(item.requestStatus?.rpd?.errorsByCode || []).length > 0 && (
+                  <span
+                    className="ai-model-error-breakdown"
+                    aria-label={t('Chi tiết mã lỗi của {{model}}', { model: item.model })}
+                  >
+                    {(item.requestStatus.rpd.errorsByCode || []).map(({ code, count }) => (
+                      <code
+                        key={code}
+                        title={`${code}: ${getErrorCodeDescription(code, t)}`}
+                      >
+                        {code} <b>×{numberFormatter.format(count)}</b>
+                      </code>
+                    ))}
+                  </span>
+                )}
                 {(item.requestStatus?.rpd?.pending || 0) > 0 && (
                   <span className="is-pending">
                     <FiClock aria-hidden="true" />

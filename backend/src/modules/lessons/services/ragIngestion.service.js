@@ -33,35 +33,6 @@ function chunkText(text, chunkSize = 900, overlap = 150) {
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 let embeddingQueue = Promise.resolve();
 let lastEmbeddingStartedAt = 0;
-let embeddingCooldownUntil = 0;
-
-function isEmbeddingQuotaError(error) {
-  let current = error;
-  for (let depth = 0; current && depth < 6; depth++) {
-    const message = String(current.message || '');
-    if (current.status === 429 || current.code === 429 || current.code === 'RESOURCE_EXHAUSTED'
-      || current.code === 'GEMINI_QUOTA_EXHAUSTED' || /resource[_ ]exhausted|quota exceeded|\b429\b/i.test(message)) {
-      return true;
-    }
-    current = current.cause;
-  }
-  return false;
-}
-
-function getProviderRetryDelayMs(error) {
-  let current = error;
-  for (let depth = 0; current && depth < 6; depth++) {
-    if (Number.isFinite(Number(current.retryAfterMs)) && Number(current.retryAfterMs) > 0) {
-      return Number(current.retryAfterMs);
-    }
-    const message = String(current.message || '');
-    const match = message.match(/retry(?:Delay)?[\\"'\s:=]+(\d+(?:\.\d+)?)s/i)
-      || message.match(/retry in\s+(\d+(?:\.\d+)?)s/i);
-    if (match) return Math.ceil(Number(match[1]) * 1000);
-    current = current.cause;
-  }
-  return 0;
-}
 
 function scheduleEmbedding(task) {
   const configuredInterval = Number(process.env.RAG_EMBEDDING_MIN_INTERVAL_MS);
@@ -71,7 +42,7 @@ function scheduleEmbedding(task) {
 
   const run = embeddingQueue.then(async () => {
     const now = Date.now();
-    const waitUntil = Math.max(lastEmbeddingStartedAt + minimumIntervalMs, embeddingCooldownUntil);
+    const waitUntil = lastEmbeddingStartedAt + minimumIntervalMs;
     if (waitUntil > now) await sleep(waitUntil - now);
     lastEmbeddingStartedAt = Date.now();
     return task();
@@ -81,28 +52,17 @@ function scheduleEmbedding(task) {
 }
 
 async function createEmbeddingWithRetry(text, lessonId, chunkIndex, totalChunks) {
-  const configuredRetries = Number(process.env.RAG_EMBEDDING_MAX_RETRIES);
-  const maxRetries = Number.isInteger(configuredRetries) && configuredRetries >= 0 ? configuredRetries : 5;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await scheduleEmbedding(() => embeddingModel.embedContent({
-        content: { parts: [{ text }] },
-        outputDimensionality: 768,
-        purpose: 'rag_ingestion_embedding'
-      }));
-    } catch (error) {
-      if (!isEmbeddingQuotaError(error) || attempt === maxRetries) throw error;
-      const providerDelay = getProviderRetryDelayMs(error);
-      const retryDelay = Math.min(60_000, Math.max(providerDelay + 1000, 10_000 * (attempt + 1)));
-      embeddingCooldownUntil = Math.max(embeddingCooldownUntil, Date.now() + retryDelay);
-      console.warn(
-        `[RAG Ingestion] Gemini Embedding chạm giới hạn tại lessonId=${lessonId}, chunk ${chunkIndex + 1}/${totalChunks}. `
-        + `Chờ ${Math.ceil(retryDelay / 1000)}s rồi thử lại (${attempt + 1}/${maxRetries}).`
-      );
-    }
-  }
-  throw new Error('Không thể tạo embedding sau số lần retry cho phép.');
+  return scheduleEmbedding(() => embeddingModel.embedContent({
+    content: { parts: [{ text }] },
+    outputDimensionality: 768,
+    purpose: 'rag_ingestion_embedding'
+  })).catch((error) => {
+    console.warn(
+      `[RAG Ingestion] Không thể tạo embedding lessonId=${lessonId}, chunk ${chunkIndex + 1}/${totalChunks} `
+      + 'sau khi wrapper dùng hết retry policy.'
+    );
+    throw error;
+  });
 }
 
 /**
