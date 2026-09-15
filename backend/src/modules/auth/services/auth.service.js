@@ -83,6 +83,25 @@ const hashPasswordChangeOtp = (otp) => crypto
   .update(String(otp || '').trim())
   .digest('hex');
 
+// Tìm user Supabase theo email qua Admin SDK với phân trang giới hạn.
+// Giữ quota free-tier: tối đa 5 trang x 100 user, dừng ngay khi thấy.
+const findSupabaseUserByEmail = async (email) => {
+  if (!supabaseAdmin) return null;
+  const target = String(email || '').trim().toLowerCase();
+  if (!target) return null;
+  const PER_PAGE = 100;
+  const MAX_PAGES = 5;
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: PER_PAGE });
+    if (error) throw error;
+    const users = data?.users || [];
+    const found = users.find(candidate => String(candidate?.email || '').toLowerCase() === target);
+    if (found) return found;
+    if (users.length < PER_PAGE) break;
+  }
+  return null;
+};
+
 class AuthService {
   async sendVerificationEmail(user) {
     const rawToken = crypto.randomBytes(32).toString('hex');
@@ -299,19 +318,59 @@ class AuthService {
               });
 
               if (migrateError) {
-                console.error('❌ Lỗi tự động di trú sang Supabase Auth:', migrateError.message);
-                const error = new Error('Email hoặc mật khẩu không chính xác');
-                error.name = 'AuthError';
-                error.status = 401;
-                throw error;
+                // Email đã tồn tại bên Supabase nhưng local chưa link supabase_uid:
+                // user đã chứng minh chủ sở hữu bằng bcrypt local ở trên nên được
+                // phép link UID sẵn có + đồng bộ password, thay vì trả 401 oan.
+                const conflictMessage = String(migrateError.message || '');
+                const isAlreadyRegistered = /already[_\s-]*been[_\s-]*registered|already[_\s-]*registered|user_conflict|duplicate/i.test(conflictMessage)
+                  || migrateError.status === 422;
+                if (isAlreadyRegistered && supabaseAdmin) {
+                  try {
+                    const existing = await findSupabaseUserByEmail(cleanEmail);
+                    if (existing) {
+                      const { error: syncError } = await supabaseAdmin.auth.admin.updateUserById(
+                        existing.id,
+                        { password, email_confirm: true }
+                      );
+                      if (syncError) throw syncError;
+                      console.log(`[Lazy Migration] Link tài khoản Supabase sẵn có: ${cleanEmail}`);
+                      supabaseUser = existing;
+                      await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [existing.id, matchedUser.user_id]);
+                      user = matchedUser;
+                      user.supabase_uid = existing.id;
+                    } else {
+                      console.error('❌ Lỗi tự động di trú sang Supabase Auth:', migrateError.message);
+                      const error = new Error('Email hoặc mật khẩu không chính xác');
+                      error.name = 'AuthError';
+                      error.status = 401;
+                      throw error;
+                    }
+                  } catch (linkError) {
+                    if (linkError.name === 'AuthError' && linkError.status === 401) throw linkError;
+                    console.error('❌ Lỗi link tài khoản Supabase sẵn có:', linkError.message);
+                    const error = new Error('Email hoặc mật khẩu không chính xác');
+                    error.name = 'AuthError';
+                    error.status = 401;
+                    throw error;
+                  }
+                } else {
+                  console.error('❌ Lỗi tự động di trú sang Supabase Auth:', migrateError.message);
+                  const error = new Error('Email hoặc mật khẩu không chính xác');
+                  error.name = 'AuthError';
+                  error.status = 401;
+                  throw error;
+                }
               }
 
-              supabaseUser = migratedData.user;
-              // Cập nhật supabase_uid vào PostgreSQL cục bộ để liên kết
-              await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, matchedUser.user_id]);
+              // Nhánh conflict đã link UID sẵn có ở trên thì giữ nguyên, không đọc migratedData null.
+              if (!migrateError) {
+                supabaseUser = migratedData.user;
+                // Cập nhật supabase_uid vào PostgreSQL cục bộ để liên kết
+                await db.query('UPDATE users SET supabase_uid = $1 WHERE user_id = $2', [supabaseUser.id, matchedUser.user_id]);
 
-              user = matchedUser;
-              user.supabase_uid = supabaseUser.id;
+                user = matchedUser;
+                user.supabase_uid = supabaseUser.id;
+              }
             } else {
               const error = new Error('Email hoặc mật khẩu không chính xác');
               error.name = 'AuthError';

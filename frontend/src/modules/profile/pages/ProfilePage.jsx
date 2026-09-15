@@ -144,6 +144,32 @@ const ProfilePage = () => {
     return `Tiến độ thật: ${Math.min(current, target)}/${target} ${progress.unit || ''}`.trim();
   };
 
+  const getBadgeRequirementText = (badge) => {
+    if (badge?.requirement) return badge.requirement;
+    return badge?.description || '';
+  };
+
+  const getBadgeProgressPercent = (badge) => {
+    const progress = badge?.progress;
+    if (!progress) return 0;
+    const current = Math.max(0, Number(progress.current) || 0);
+    const target = Math.max(1, Number(progress.target) || 1);
+    return Math.min(100, Math.round((Math.min(current, target) / target) * 100));
+  };
+
+  const getBadgeRemainingText = (badge) => {
+    const progress = badge?.progress;
+    if (!progress || progress.available === false) return '';
+    const current = Math.max(0, Number(progress.current) || 0);
+    const target = Math.max(0, Number(progress.target) || 0);
+    const remaining = Math.max(0, target - Math.min(current, target));
+    if (remaining <= 0) return '';
+    return `Còn thiếu ${remaining} ${progress.unit || ''}`.trim();
+  };
+
+  const unlockedBadgeCount = (badges || []).filter((badge) => badge?.unlocked).length;
+  const totalBadgeCount = (badges || []).length;
+
   // Handle input changes
   const handleProfileChange = (e) => {
     setProfileData({ ...profileData, [e.target.name]: e.target.value });
@@ -718,6 +744,14 @@ const ProfilePage = () => {
                             Huy hiệu & Thành tích (Gamification Badges)
                           </h3>
                           <p>Tiến độ được tính trực tiếp từ hoạt động học tập đã lưu của bạn.</p>
+                          {totalBadgeCount > 0 && (
+                            <p className="gamification-badges-count" aria-live="polite">
+                              Đã đạt {unlockedBadgeCount}/{totalBadgeCount}
+                              {unlockedBadgeCount < totalBadgeCount
+                                ? ` • Còn ${totalBadgeCount - unlockedBadgeCount} huy hiệu đang khóa`
+                                : ' • Đã mở khóa toàn bộ!'}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -754,10 +788,11 @@ const ProfilePage = () => {
                             onClick={badge.unlocked ? () => triggerBadgeUnlock(badge) : undefined}
                             disabled={!badge.unlocked}
                             className={`gamification-badge-card ${badge.unlocked ? 'is-unlocked' : 'is-locked'}`}
-                            title={badge.unlocked ? 'Nhấp để mở xem huy hiệu thành tích!' : 'Huy hiệu chưa mở khóa'}
+                            title={badge.unlocked ? 'Nhấp để mở xem huy hiệu thành tích!' : `Chưa đạt: ${getBadgeRequirementText(badge)}`}
+                            aria-label={badge.unlocked ? `Huy hiệu đã đạt: ${badge.title}` : `Huy hiệu đang khóa: ${badge.title}. ${getBadgeRequirementText(badge)}`}
                           >
                             <span className="gamification-badge-icon" aria-hidden="true">
-                              {badge.icon}
+                              {badge.unlocked ? badge.icon : '🔒'}
                             </span>
                             <span className="gamification-badge-title">
                               {badge.title}
@@ -765,16 +800,35 @@ const ProfilePage = () => {
                             <span className="gamification-badge-description">
                               {badge.description}
                             </span>
+                            <span className="gamification-badge-requirement">
+                              Điều kiện: {getBadgeRequirementText(badge)}
+                            </span>
                             {badge.unlocked ? (
                               <span className="gamification-badge-status is-earned">
                                 <FiCheck aria-hidden="true" />
                                 Đã đạt{badge.unlockedAt ? ` · ${formatBadgeDate(badge.unlockedAt)}` : ''}
                               </span>
                             ) : (
-                              <span className="gamification-badge-status">
-                                <FiLock aria-hidden="true" />
-                                {getBadgeProgressText(badge)}
-                              </span>
+                              <>
+                                <span
+                                  className="gamification-badge-progress"
+                                  role="progressbar"
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={getBadgeProgressPercent(badge)}
+                                  aria-label={`Tiến độ ${badge.title}`}
+                                >
+                                  <span
+                                    className="gamification-badge-progress-bar"
+                                    style={{ width: `${getBadgeProgressPercent(badge)}%` }}
+                                  />
+                                </span>
+                                <span className="gamification-badge-status">
+                                  <FiLock aria-hidden="true" />
+                                  {getBadgeProgressText(badge)}
+                                  {getBadgeRemainingText(badge) ? ` • ${getBadgeRemainingText(badge)}` : ''}
+                                </span>
+                              </>
                             )}
                           </button>
                         ))}

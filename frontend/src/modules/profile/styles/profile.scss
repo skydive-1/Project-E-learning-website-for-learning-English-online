@@ -858,6 +858,38 @@ $hover-orange: #ea580c;
       overflow-wrap: anywhere;
     }
 
+    .gamification-badges-count {
+      margin: 8px 0 0 !important;
+      color: $primary-blue !important;
+      font-size: 13px !important;
+      font-weight: 800 !important;
+    }
+
+    .gamification-badge-requirement {
+      color: var(--text-light, $text-light);
+      font-size: 10.5px;
+      font-weight: 600;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .gamification-badge-progress {
+      display: block;
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }
+
+    .gamification-badge-progress-bar {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, $primary-blue, $accent-orange);
+      transition: width 0.25s ease;
+    }
+
     .gamification-badge-status {
       display: inline-flex;
       align-items: center;

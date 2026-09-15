@@ -234,6 +234,7 @@ describe('Profile Avatar Upload & Management', () => {
       id: 'quiz_master',
       title: 'Vua trắc nghiệm',
       description: 'Đạt điểm tuyệt đối trong 5 bài Quiz khác nhau',
+      requirement: 'Đạt score = 100 ở 5 quiz_id khác nhau (quiz_attempts)',
       icon: '🎯',
       unlocked: false,
       progress: { current: 2, target: 5, unit: 'quiz' }
@@ -247,7 +248,12 @@ describe('Profile Avatar Upload & Management', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /thống kê học tập/i }));
 
-    expect(await screen.findByText('Tiến độ thật: 2/5 quiz')).toBeInTheDocument();
+    // Hiển thị tất cả huy hiệu ở trạng thái khóa kèm điều kiện + tiến độ thật
+    expect(await screen.findByText(/Tiến độ thật: 2\/5 quiz/)).toBeInTheDocument();
+    expect(screen.getByText(/Còn thiếu 3 quiz/)).toBeInTheDocument();
+    expect(screen.getByText(/Điều kiện:/)).toBeInTheDocument();
+    expect(screen.getByText(/Đã đạt 0\/1/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: /Tiến độ Vua trắc nghiệm/i })).toHaveAttribute('aria-valuenow', '40');
     expect(screen.getByText(/tính trực tiếp từ hoạt động học tập đã lưu/i)).toBeInTheDocument();
     expect(mockReloadGamification).toHaveBeenCalled();
   });
