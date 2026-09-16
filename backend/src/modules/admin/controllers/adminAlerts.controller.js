@@ -150,6 +150,13 @@ exports.cleanupAlerts = async (req, res, next) => {
       console.warn('[CleanupAlerts] Không thể dọn dẹp ai_provider_incidents:', incidentCleanupErr.message);
     }
 
+    // Dọn dẹp bản ghi lệch telemetry do Google cập nhật chậm
+    try {
+      await pool.query('DELETE FROM ai_rate_limit_discrepancies');
+    } catch (discrepancyCleanupErr) {
+      console.warn('[CleanupAlerts] Không thể dọn dẹp ai_rate_limit_discrepancies:', discrepancyCleanupErr.message);
+    }
+
     adminAlertsService.resetCache();
     const freshSnapshot = await adminAlertsService.getAdminAlertsSnapshot({ fresh: true });
     notifyOperationalAlertsChanged('manual-alert-cleanup');

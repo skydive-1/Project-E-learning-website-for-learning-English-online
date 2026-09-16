@@ -269,31 +269,34 @@ export const getCourseDetails = async (courseId = 1) => {
   }
 };
 
-export const toggleLessonCompletion = async (lessonId) => {
+export const toggleLessonCompletion = async (lessonId, targetState = undefined) => {
   try {
     const cleanId = String(lessonId).replace('quiz-', '').replace('speaking-', '');
     const userId = getUserIdFromToken();
     const token = localStorage.getItem('token');
     if (!userId && !token) throw new Error("Chưa đăng nhập");
 
-    // Lấy tiến trình hiện tại để tìm trạng thái hoàn thành hiện tại
-    const progressEndpoint = userId ? `/progress/${userId}` : '/progress/me';
-    let currentProgress = null;
-    try {
-      const progressResponse = await apiClient.get(progressEndpoint);
-      const progressList = progressResponse.data?.progress || [];
-      currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
-    } catch (err) {
-      console.warn("Không thể tải danh sách tiến trình trước đó:", err.message);
+    let newCompletedState = targetState;
+    if (newCompletedState === undefined) {
+      // Lấy tiến trình hiện tại để tìm trạng thái hoàn thành hiện tại
+      const progressEndpoint = userId ? `/progress/${userId}` : '/progress/me';
+      let currentProgress = null;
+      try {
+        const progressResponse = await apiClient.get(progressEndpoint);
+        const progressList = progressResponse.data?.progress || [];
+        currentProgress = progressList.find(p => String(p.lesson_id) === String(cleanId));
+      } catch (err) {
+        console.warn("Không thể tải danh sách tiến trình trước đó:", err.message);
+      }
+      newCompletedState = currentProgress ? !currentProgress.is_completed : true;
     }
-    
-    const newCompletedState = currentProgress ? !currentProgress.is_completed : true;
 
-    // Gửi cập nhật lên backend
+    // Gửi cập nhật lên backend kèm manual: true (được đánh dấu chủ động bởi người dùng)
     await apiClient.post('/progress', {
       userId: userId || undefined,
       lessonId: parseInt(cleanId, 10),
-      isCompleted: newCompletedState
+      isCompleted: newCompletedState,
+      manual: true
     });
 
     return newCompletedState;

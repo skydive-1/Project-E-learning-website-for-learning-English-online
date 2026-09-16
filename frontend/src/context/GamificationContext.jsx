@@ -19,7 +19,18 @@ export const GamificationProvider = ({ children }) => {
   const loadGeneration = useRef(0);
   const activeRequest = useRef(null);
   const knownUnlockedRef = useRef(new Set());
+  const isInitializedRef = useRef(false);
+  const prevUserIdRef = useRef(userId);
   const popupRef = useRef(null);
+
+  useEffect(() => {
+    if (prevUserIdRef.current !== userId) {
+      isInitializedRef.current = false;
+      knownUnlockedRef.current = new Set();
+      prevUserIdRef.current = userId;
+    }
+  }, [userId]);
+
   useEffect(() => {
     popupRef.current = activeBadgePopup;
   }, [activeBadgePopup]);
@@ -62,6 +73,8 @@ export const GamificationProvider = ({ children }) => {
     if (!userId) {
       loadGeneration.current += 1;
       activeRequest.current = null;
+      isInitializedRef.current = false;
+      knownUnlockedRef.current = new Set();
       setStreak(null);
       setBadges([]);
       setStreakError(null);
@@ -87,21 +100,33 @@ export const GamificationProvider = ({ children }) => {
         setStreak(summary.streak);
         setBadges(summary.badges);
 
-        // Workflow tự động: phát hiện huy hiệu vừa mở khóa so với snapshot trước
-        // và tự bật modal ăn mừng đúng 1 lần mỗi huy hiệu trong phiên.
-        const previousUnlocked = knownUnlockedRef.current;
-        const freshlyUnlocked = (summary.badges || []).filter(
-          badge => badge?.unlocked && badge?.id && !previousUnlocked.has(badge.id)
-        );
-        (summary.badges || []).forEach(badge => {
-          if (badge?.unlocked && badge?.id) previousUnlocked.add(badge.id);
-        });
-        const unseen = freshlyUnlocked.filter(badge => !hasSeenBadgeThisSession(badge.id));
-        if (unseen.length > 0 && !popupRef.current) {
-          const first = unseen[0];
-          markBadgeSeenThisSession(first.id);
-          setActiveBadgePopup(first);
-          fireCelebrationShot({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+        const isFirstLoad = !isInitializedRef.current;
+        isInitializedRef.current = true;
+
+        if (isFirstLoad) {
+          // Lần đầu nạp khi vào web: thiết lập baseline cho danh hiệu đã đạt từ trước, không bật modal chúc mừng.
+          (summary.badges || []).forEach(badge => {
+            if (badge?.unlocked && badge?.id) {
+              knownUnlockedRef.current.add(badge.id);
+            }
+          });
+        } else {
+          // Chỉ các lần cập nhật tiếp theo trong phiên (đang học, nộp quiz, làm bài đạt huy hiệu)
+          // mới phát hiện huy hiệu vừa mở khóa so với snapshot trước và bật modal ăn mừng.
+          const previousUnlocked = knownUnlockedRef.current;
+          const freshlyUnlocked = (summary.badges || []).filter(
+            badge => badge?.unlocked && badge?.id && !previousUnlocked.has(badge.id)
+          );
+          (summary.badges || []).forEach(badge => {
+            if (badge?.unlocked && badge?.id) previousUnlocked.add(badge.id);
+          });
+          const unseen = freshlyUnlocked.filter(badge => !hasSeenBadgeThisSession(badge.id));
+          if (unseen.length > 0 && !popupRef.current) {
+            const first = unseen[0];
+            markBadgeSeenThisSession(first.id);
+            setActiveBadgePopup(first);
+            fireCelebrationShot({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+          }
         }
       })
       .catch(error => {

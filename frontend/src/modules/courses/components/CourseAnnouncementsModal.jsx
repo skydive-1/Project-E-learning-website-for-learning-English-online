@@ -1,13 +1,14 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FiBell, FiX, FiSearch, FiCheckCircle, 
   FiBookOpen, FiClock, FiUser, FiExternalLink, 
-  FiCheck, FiFilter, FiInbox
+  FiCheck, FiFilter, FiInbox, FiTrash2
 } from 'react-icons/fi';
 import { 
   getUserAnnouncements, 
   markAnnouncementRead,
+  dismissAnnouncement,
   discussionApiErrorMessage 
 } from '../../discussions/services/discussions.service';
 import { useToast } from '../../../context/ToastContext';
@@ -22,6 +23,10 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('all');
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread'
+
+  const listContainerRef = useRef(null);
+  const cardElementsRef = useRef(new Map());
+  const pendingReadsRef = useRef(new Set());
 
   useEffect(() => {
     if (!isOpen) return;
@@ -91,6 +96,59 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
       onUnreadCountChange?.(nextUnread);
     } catch (err) {
       // Bỏ qua lỗi êm đẹp
+    }
+  };
+
+  // Tự động đánh dấu đã đọc khi thông báo xuất hiện trong tầm nhìn hoặc khi lướt xuống
+  useEffect(() => {
+    if (!isOpen || !listContainerRef.current || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = Number(entry.target.getAttribute('data-ann-id'));
+            const isUnread = entry.target.getAttribute('data-is-unread') === 'true';
+            if (id && isUnread && !pendingReadsRef.current.has(id)) {
+              pendingReadsRef.current.add(id);
+              // Đánh dấu sau 300ms hiển thị để đảm bảo người dùng đã lướt tới
+              setTimeout(() => {
+                handleMarkAsRead(id);
+              }, 300);
+            }
+          }
+        });
+      },
+      {
+        root: listContainerRef.current,
+        threshold: 0.4
+      }
+    );
+
+    cardElementsRef.current.forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [isOpen, filteredAnnouncements]);
+
+  // Xóa / Ẩn thông báo khỏi danh sách người dùng (cả 3 role)
+  const handleDismissAnnouncement = async (e, annId) => {
+    e.stopPropagation();
+    try {
+      const target = announcements.find(a => a.id === annId);
+      setAnnouncements(prev => prev.filter(item => item.id !== annId));
+      if (target && !target.isRead) {
+        const nextUnread = Math.max(0, unreadCount - 1);
+        onUnreadCountChange?.(nextUnread);
+      }
+      showToast('Đã xóa thông báo khỏi danh sách.', 'success');
+      await dismissAnnouncement(annId);
+    } catch (err) {
+      console.error('Lỗi xóa thông báo:', err);
+      showToast(discussionApiErrorMessage(err, 'Không thể xóa thông báo.'), 'error');
     }
   };
 
@@ -211,7 +269,10 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
         </div>
 
         {/* Nội dung danh sách thông báo */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/40 dark:bg-slate-900/30">
+        <div 
+          ref={listContainerRef}
+          className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/40 dark:bg-slate-900/30"
+        >
           {isLoading ? (
             <div className="py-16 text-center space-y-3">
               <div className="w-8 h-8 border-3 border-indigo-200 border-t-smart-indigo rounded-full animate-spin mx-auto" />
@@ -262,6 +323,12 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
               return (
                 <div
                   key={ann.id}
+                  ref={(el) => {
+                    if (el) cardElementsRef.current.set(ann.id, el);
+                    else cardElementsRef.current.delete(ann.id);
+                  }}
+                  data-ann-id={ann.id}
+                  data-is-unread={isUnread}
                   className={`p-4 rounded-xl border transition-all space-y-2.5 relative shadow-2xs ${
                     isUnread
                       ? 'bg-white dark:bg-slate-800/95 border-indigo-200 dark:border-indigo-900/60 ring-1 ring-indigo-500/10'
@@ -282,9 +349,20 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1 text-[11px] text-slate-400 shrink-0">
-                      <FiClock className="text-[10px]" />
-                      <span>{ann.createdAt}</span>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 shrink-0">
+                      <div className="flex items-center gap-1">
+                        <FiClock className="text-[10px]" />
+                        <span>{ann.createdAt}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDismissAnnouncement(e, ann.id)}
+                        className="p-1 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                        title="Xóa thông báo này"
+                        aria-label="Xóa thông báo"
+                      >
+                        <FiTrash2 className="text-xs" />
+                      </button>
                     </div>
                   </div>
 
@@ -308,6 +386,16 @@ const CourseAnnouncementsModal = ({ isOpen, onClose, onUnreadCountChange }) => {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => handleDismissAnnouncement(e, ann.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-semibold rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                        title="Xóa thông báo"
+                      >
+                        <FiTrash2 className="text-[11px]" />
+                        <span className="hidden sm:inline">Xóa</span>
+                      </button>
+
                       {isUnread && (
                         <button
                           type="button"

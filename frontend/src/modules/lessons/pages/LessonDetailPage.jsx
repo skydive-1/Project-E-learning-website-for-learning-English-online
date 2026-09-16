@@ -1583,15 +1583,25 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
   // Check hoàn thành bài học (Optimistic State Update < 50ms)
   const handleToggleComplete = async (e, id) => {
-    e.stopPropagation(); // Ngăn kích hoạt click chọn bài học
+    if (e?.stopPropagation) e.stopPropagation(); // Ngăn kích hoạt click chọn bài học
     const cleanId = String(id).replace('quiz-', '').replace('speaking-', '');
 
+    // Xác định trạng thái trước đó để đảo ngược chính xác, chống race-condition
+    const currentLessonData = queryClient.getQueryData(['lesson', id]) || queryClient.getQueryData(['lesson', cleanId]);
+    const currentCourse = queryClient.getQueryData(['course', courseIdToLoad]);
+    const currentItem = currentCourse?.sections
+      ?.flatMap(s => s.lessons)
+      ?.find(l => String(l.id).replace(/^(quiz|speaking)-/, '') === cleanId);
+
+    const prevCompleted = currentLessonData?.completed ?? currentItem?.completed ?? (currentLesson?.id === id ? currentLesson?.completed : false);
+    const targetCompleted = !prevCompleted;
+
     // 1. Cập nhật tức thì (< 50ms) trên Client Query Cache cho tất cả biến thể bài học (video, quiz, speaking)
-    const toggleCompleted = (old) => old ? { ...old, completed: !old.completed } : old;
-    queryClient.setQueryData(['lesson', id], toggleCompleted);
-    queryClient.setQueryData(['lesson', cleanId], toggleCompleted);
-    queryClient.setQueryData(['lesson', `quiz-${cleanId}`], toggleCompleted);
-    queryClient.setQueryData(['lesson', `speaking-${cleanId}`], toggleCompleted);
+    const setCompleted = (old) => old ? { ...old, completed: targetCompleted } : old;
+    queryClient.setQueryData(['lesson', id], setCompleted);
+    queryClient.setQueryData(['lesson', cleanId], setCompleted);
+    queryClient.setQueryData(['lesson', `quiz-${cleanId}`], setCompleted);
+    queryClient.setQueryData(['lesson', `speaking-${cleanId}`], setCompleted);
 
     queryClient.setQueryData(['course', courseIdToLoad], (oldCourse) => {
       if (!oldCourse) return oldCourse;
@@ -1599,7 +1609,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         ...sec,
         lessons: sec.lessons.map(l => {
           const lCleanId = String(l.id).replace('quiz-', '').replace('speaking-', '');
-          return lCleanId === cleanId ? { ...l, completed: !l.completed } : l;
+          return lCleanId === cleanId ? { ...l, completed: targetCompleted } : l;
         })
       }));
       const all = updatedSections.flatMap(s => s.lessons);
@@ -1609,7 +1619,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     });
 
     try {
-      await toggleLessonCompletion(id);
+      await toggleLessonCompletion(id, targetCompleted);
       reloadGamification?.();
 
       // Khởi chạy reload ngầm của React Query để đồng bộ toàn cục
@@ -1620,6 +1630,12 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
       queryClient.invalidateQueries({ queryKey: ['courses-raw'] });
     } catch (error) {
       console.error("Lỗi cập nhật trạng thái bài học:", error);
+      const revertCompleted = (old) => old ? { ...old, completed: prevCompleted } : old;
+      queryClient.setQueryData(['lesson', id], revertCompleted);
+      queryClient.setQueryData(['lesson', cleanId], revertCompleted);
+      queryClient.setQueryData(['lesson', `quiz-${cleanId}`], revertCompleted);
+      queryClient.setQueryData(['lesson', `speaking-${cleanId}`], revertCompleted);
+      showToast(error.response?.data?.message || 'Không thể lưu trạng thái bài học.', 'error');
     }
   };
 

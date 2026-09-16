@@ -574,3 +574,47 @@ exports.getCourseTranscriptPipeline = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getMyCourses = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const courses = await coursesService.getMyCourses(userId);
+    res.set('Cache-Control', 'no-store');
+    res.status(200).json({
+      success: true,
+      message: 'Lấy danh sách khóa học của tôi thành công',
+      courses
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getEnrolledCourseIds = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const enrolledCourseIds = await coursesService.getEnrolledCourseIds(userId);
+    res.set('Cache-Control', 'no-store');
+    res.status(200).json({
+      success: true,
+      enrolledCourseIds
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.enrollCourse = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const { courseId } = req.params;
+    const result = await coursesService.enrollCourse(userId, courseId);
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -26,9 +26,11 @@ class ProgressService {
    * @param {number} userId - ID của học viên
    * @param {number} lessonId - ID của bài học
    * @param {boolean} isCompleted - Trạng thái hoàn thành bài học (mặc định: true)
+   * @param {Object} [options] - Cấu hình bổ sung (ví dụ: manual: true khi người dùng bấm trực tiếp nút tick)
    */
-  async recordProgress(userId, lessonId, isCompleted = true) {
-    if (isCompleted) {
+  async recordProgress(userId, lessonId, isCompleted = true, options = {}) {
+    const isManual = options && options.manual === true;
+    if (isCompleted && !isManual) {
       const eligibilityResult = await db.query(`
         SELECT
           COUNT(q.quiz_id)::int AS quiz_count,

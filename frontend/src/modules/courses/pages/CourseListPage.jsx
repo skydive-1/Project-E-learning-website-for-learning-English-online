@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../../config/api.config';
 import Header from '../../../components/common/Header';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useOptionalAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 import { 
   FiBookOpen, 
   FiBookmark, 
@@ -24,6 +26,7 @@ import CourseAnnouncementsModal from '../components/CourseAnnouncementsModal';
 import TestsAndQuizzesPanel from '../components/TestsAndQuizzesPanel';
 import { getRoadmapById } from '../../academy/data/roadmapPaths';
 import { courseMatchesRoadmap } from '../../academy/utils/courseRoadmap';
+import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
 import '../styles/courses.scss';
 
 // Fetch courses from Backend API for the "Course" tab
@@ -69,6 +72,63 @@ const CourseListPage = () => {
   const [isAnnouncementsOpen, setIsAnnouncementsOpen] = useState(false);
   const [unreadAnnCount, setUnreadAnnCount] = useState(0);
 
+  const queryClient = useQueryClient();
+  const showToast = useToast();
+  const { user } = useOptionalAuth();
+
+  // Danh sách ID các khóa học người dùng đã đăng ký (hoặc có tiến trình)
+  const currentUserId = user?.id || user?.userId || user?.user_id;
+  const { data: enrolledCourseIds = [] } = useQuery({
+    queryKey: ['enrolled-course-ids', currentUserId],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/courses/enrolled-ids');
+        return res.data?.enrolledCourseIds || [];
+      } catch (e) {
+        return [];
+      }
+    },
+    enabled: Boolean(currentUserId),
+    staleTime: 0
+  });
+
+  const [enrollConfirmCourse, setEnrollConfirmCourse] = useState(null);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+
+  const handlePromptEnroll = (course) => {
+    if (!user) {
+      showToast(language === 'ENG' ? 'Please log in to enroll in courses.' : 'Vui lòng đăng nhập để đăng ký khóa học.', 'info');
+      navigate('/login');
+      return;
+    }
+    setEnrollConfirmCourse(course);
+  };
+
+  const handleConfirmEnroll = async () => {
+    if (!enrollConfirmCourse) return;
+    setIsEnrolling(true);
+    try {
+      await apiClient.post(`/courses/${enrollConfirmCourse.course_id}/enroll`);
+      queryClient.invalidateQueries({ queryKey: ['enrolled-course-ids'] });
+      queryClient.invalidateQueries({ queryKey: ['my-courses-raw'] });
+      queryClient.invalidateQueries({ queryKey: ['my-courses-progress'] });
+      showToast(
+        language === 'ENG' 
+          ? 'Enrolled successfully! Redirecting to course lessons...' 
+          : 'Đăng ký khóa học thành công! Đang chuyển đến bài học...', 
+        'success'
+      );
+      const targetCourseId = enrollConfirmCourse.course_id;
+      setEnrollConfirmCourse(null);
+      navigate(`/lessons?courseId=${targetCourseId}`);
+    } catch (err) {
+      console.error('Lỗi đăng ký khóa học:', err);
+      showToast(err.response?.data?.message || (language === 'ENG' ? 'Failed to enroll.' : 'Không thể đăng ký khóa học.'), 'error');
+    } finally {
+      setIsEnrolling(false);
+    }
+  };
+
   // User Custom Words & Progress State (Persisted in localStorage)
   const [customWords, setCustomWords] = useState(() => {
     try {
@@ -104,14 +164,13 @@ const CourseListPage = () => {
     }
   }, [userProgressMap]);
 
-  // Audio Pronunciation Helper
+  // Audio Pronunciation Helper (Nam - British)
   const speakWord = useCallback((text) => {
     if (!text || typeof window === 'undefined' || !window.speechSynthesis) return;
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      utterance.rate = 0.9;
+      configureBritishEnglishUtterance(utterance, window.speechSynthesis, { gender: 'male', rate: 0.88 });
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn(e);
@@ -566,42 +625,61 @@ const CourseListPage = () => {
                   </div>
                 ) : (
                   <div className="course-cards-grid">
-                    {filteredDbCourses.map(course => (
-                      <div 
-                        key={course.course_id} 
-                        className="course-card-clean"
-                        onClick={() => navigate(`/lessons?courseId=${course.course_id}`)}
-                      >
-                        <div className="card-media-wrap">
-                          <img 
-                            src={course.thumbnail_url || '/images/hero_illustration.png'} 
-                            alt={course.course_name} 
-                          />
-                          <span className="level-chip">{course.subject_name || 'General'}</span>
-                        </div>
-                        <div className="card-content-wrap">
-                          <h4 className="course-title-text">{course.course_name}</h4>
-                          <p className="instructor-sub">{course.instructor_name || 'E-Learn Academy'}</p>
-                          <div className="card-stats-sub">
-                            <span className="stat-item">
-                              <FiLayers /> {course.sections_count || 0} {language === 'ENG' ? 'chapters' : 'chương'}
-                            </span>
-                            <span className="stat-dot">•</span>
-                            <span className="stat-item">
-                              <FiBookOpen /> {course.lessons_count || 0} {language === 'ENG' ? 'lessons' : 'bài học'}
-                            </span>
+                    {filteredDbCourses.map(course => {
+                      const isEnrolled = enrolledCourseIds.includes(course.course_id);
+
+                      return (
+                        <div 
+                          key={course.course_id} 
+                          className="course-card-clean"
+                          onClick={() => isEnrolled ? navigate(`/lessons?courseId=${course.course_id}`) : handlePromptEnroll(course)}
+                        >
+                          <div className="card-media-wrap">
+                            <img 
+                              src={course.thumbnail_url || '/images/hero_illustration.png'} 
+                              alt={course.course_name} 
+                            />
+                            <span className="level-chip">{course.subject_name || 'General'}</span>
                           </div>
-                          <div className="card-footer-meta">
-                            <span className="price-badge">
-                              {course.price && course.price > 0 
-                                ? `${Number(course.price).toLocaleString(locale)} ₫`
-                                : 'Miễn phí'}
-                            </span>
-                            <span className="btn-card-learn">Học ngay →</span>
+                          <div className="card-content-wrap">
+                            <h4 className="course-title-text">{course.course_name}</h4>
+                            <p className="instructor-sub">{course.instructor_name || 'E-Learn Academy'}</p>
+                            <div className="card-stats-sub">
+                              <span className="stat-item">
+                                <FiLayers /> {course.sections_count || 0} {language === 'ENG' ? 'chapters' : 'chương'}
+                              </span>
+                              <span className="stat-dot">•</span>
+                              <span className="stat-item">
+                                <FiBookOpen /> {course.lessons_count || 0} {language === 'ENG' ? 'lessons' : 'bài học'}
+                              </span>
+                            </div>
+                            <div className="card-footer-meta">
+                              <span className="price-badge">
+                                {course.price && course.price > 0 
+                                  ? `${Number(course.price).toLocaleString(locale)} ₫`
+                                  : (language === 'ENG' ? 'Free' : 'Miễn phí')}
+                              </span>
+                              {isEnrolled ? (
+                                <span className="btn-card-learn enrolled">
+                                  {language === 'ENG' ? 'Learn now →' : 'Vào học ngay →'}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePromptEnroll(course);
+                                  }}
+                                  className="btn-card-enroll"
+                                >
+                                  {language === 'ENG' ? 'Enroll' : 'Đăng ký học'}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -682,6 +760,95 @@ const CourseListPage = () => {
         onClose={() => setIsAnnouncementsOpen(false)}
         onUnreadCountChange={setUnreadAnnCount}
       />
+
+      {/* Course Enrollment Confirmation Modal */}
+      {enrollConfirmCourse && (
+        <div 
+          className="vocab-modal-backdrop" 
+          onClick={() => !isEnrolling && setEnrollConfirmCourse(null)} 
+          role="dialog" 
+          aria-modal="true"
+        >
+          <div 
+            className="vocab-modal-card max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 flex flex-col gap-4 animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xl shadow-md shrink-0">
+                  <FiBookOpen />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-smart-indigo dark:text-blue-400">
+                    {language === 'ENG' ? 'Course Enrollment' : 'Đăng ký khóa học'}
+                  </span>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight mt-0.5">
+                    {language === 'ENG' ? 'Are you sure you want to enroll?' : 'Bạn chắc chắn muốn đăng ký học chứ?'}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isEnrolling}
+                onClick={() => setEnrollConfirmCourse(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Đóng"
+              >
+                <FiX className="text-lg" />
+              </button>
+            </div>
+
+            {/* Mini preview card */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3.5">
+              <img 
+                src={enrollConfirmCourse.thumbnail_url || '/images/hero_illustration.png'} 
+                alt={enrollConfirmCourse.course_name} 
+                className="w-16 h-14 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {enrollConfirmCourse.course_name}
+                </h4>
+                <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {enrollConfirmCourse.instructor_name || 'E-Learn Academy'}
+                </p>
+                <span className="inline-block mt-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/40">
+                  {enrollConfirmCourse.price && enrollConfirmCourse.price > 0 
+                    ? `${Number(enrollConfirmCourse.price).toLocaleString(locale)} ₫`
+                    : (language === 'ENG' ? 'Free' : 'Miễn phí')}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              {language === 'ENG'
+                ? 'Enrolling will add this course to "My Courses", allowing you to track your syllabus progress and save learning achievements.'
+                : 'Sau khi đăng ký, khóa học sẽ được lưu vào mục "Bài học của tôi", cho phép bạn theo dõi tiến độ bài giảng và lưu kết quả học tập.'}
+            </p>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                disabled={isEnrolling}
+                onClick={() => setEnrollConfirmCourse(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {language === 'ENG' ? 'Cancel' : 'Hủy'}
+              </button>
+              <button
+                type="button"
+                disabled={isEnrolling}
+                onClick={handleConfirmEnroll}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-smart-indigo hover:bg-indigo-700 shadow-md shadow-indigo-500/20 active:scale-[0.98] transition-all cursor-pointer flex items-center gap-2 disabled:opacity-70"
+              >
+                {isEnrolling && <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                <span>{language === 'ENG' ? 'Confirm & Learn' : 'Đồng ý & Vào học'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

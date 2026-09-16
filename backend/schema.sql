@@ -729,3 +729,23 @@ DROP TRIGGER IF EXISTS trg_lesson_materials_sync_media_asset ON lesson_materials
 CREATE TRIGGER trg_lesson_materials_sync_media_asset BEFORE INSERT OR UPDATE OF file_url, storage_provider, storage_bucket, storage_key, mime_type, size_bytes, checksum_sha256, media_status
 ON lesson_materials FOR EACH ROW EXECUTE FUNCTION sync_media_asset_reference();
 
+-- 21. Bảng Đăng ký khóa học (enrollments)
+CREATE TABLE IF NOT EXISTS enrollments (
+  enrollment_id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  course_id INT NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  enrolled_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, course_id)
+);
+CREATE INDEX IF NOT EXISTS idx_enrollments_user_id ON enrollments(user_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_course_id ON enrollments(course_id);
+
+-- 22. Bảng Ẩn/Xóa thông báo của người dùng (course_announcement_dismissals)
+CREATE TABLE IF NOT EXISTS course_announcement_dismissals (
+  announcement_id INT NOT NULL REFERENCES course_announcements(announcement_id) ON DELETE CASCADE,
+  user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  dismissed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (announcement_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_announcement_dismissals_user_id ON course_announcement_dismissals(user_id);

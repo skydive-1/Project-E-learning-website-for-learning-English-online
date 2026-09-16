@@ -76,7 +76,10 @@ exports.recordProgress = async (req, res, next) => {
       });
     }
 
-    const progress = await progressService.recordProgress(cleanUserId, cleanLessonId, isCompleted);
+    const isManual = req.body.manual === true || req.body.is_manual === true;
+    const progress = await progressService.recordProgress(cleanUserId, cleanLessonId, isCompleted, {
+      manual: isManual
+    });
 
     res.status(200).json({
       success: true,

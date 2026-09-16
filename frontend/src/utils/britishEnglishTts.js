@@ -1,17 +1,17 @@
 const BRITISH_LANGUAGE_PATTERN = /^en[-_]GB$/i;
 
 const PREFERRED_BRITISH_NAMES = [
-  /Microsoft (?:Sonia|Ryan|Libby|Maisie)/i,
+  /Microsoft (?:Sonia|Ryan|Libby|Maisie|Mia|Bella|Clara|Emily|Freya|Alfie|Elliot|Ethan|Noah|Thomas|George|Oliver)/i,
   /Google UK English/i,
-  /(?:Daniel|Serena|Kate|Oliver)/i,
+  /(?:Daniel|Serena|Kate|Oliver|George|Arthur|Alfie|Elliot|Ethan|Noah|Thomas)/i,
   /British/i,
   /English.*United Kingdom/i
 ];
 
 // SpeechSynthesisVoice does not expose a standardized gender field. These
 // patterns cover the common free en-GB voices bundled with major browsers/OSes.
-const FEMALE_BRITISH_NAMES = /(?:Sonia|Libby|Maisie|Serena|Kate|Hazel|Susan|Victoria|Fiona|Google UK English Female)/i;
-const MALE_BRITISH_NAMES = /(?:Ryan|Daniel|Oliver|George|Arthur|Google UK English Male)/i;
+const FEMALE_BRITISH_NAMES = /(?:Sonia|Libby|Maisie|Mia|Bella|Clara|Emily|Freya|Serena|Kate|Hazel|Susan|Victoria|Fiona|Google UK English Female)/i;
+const MALE_BRITISH_NAMES = /(?:Ryan|Daniel|Oliver|George|Arthur|Alfie|Elliot|Ethan|Noah|Thomas|Google UK English Male)/i;
 
 const getVoiceScore = (voice) => {
   const name = String(voice?.name || '');

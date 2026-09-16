@@ -803,13 +803,30 @@ const PlayQuizPage = () => {
                           <><FiAward aria-hidden="true" /><span>Trắc nghiệm</span></>
                         )}
                       </span>
-                      <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 leading-snug">
-                        {effectiveQuestionType === 'open_cloze'
-                          ? 'Hoàn thành đoạn văn bằng từ phù hợp'
-                          : effectiveQuestionType === 'listening'
-                          ? 'Lắng nghe câu hỏi và chọn đáp án chính xác bên dưới:'
-                          : rawQuestionText}
-                      </h2>
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <h2 className="text-xl md:text-2xl font-extrabold text-slate-800 dark:text-slate-100 leading-snug flex-1">
+                          {effectiveQuestionType === 'open_cloze'
+                            ? 'Hoàn thành đoạn văn bằng từ phù hợp'
+                            : effectiveQuestionType === 'listening'
+                            ? 'Lắng nghe câu hỏi và chọn đáp án chính xác bên dưới:'
+                            : rawQuestionText}
+                        </h2>
+                        {effectiveQuestionType !== 'listening' && rawQuestionText && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBritishTts(rawQuestionText, 'male')}
+                            title="Đọc câu hỏi bằng giọng Nam (British)"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 ${
+                              playingTtsGender === 'male'
+                                ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                            }`}
+                          >
+                            {playingTtsGender === 'male' ? <FiSquare className="text-xs" /> : <FiVolume2 className="text-xs" />}
+                            <span>{playingTtsGender === 'male' ? 'Dừng đọc' : 'Đọc câu hỏi (Nam - British)'}</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Reading Passage if Reading question */}
@@ -843,11 +860,15 @@ const PlayQuizPage = () => {
                             src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
                             controls
                             className="w-full h-10 outline-none rounded-lg"
+                            onPlay={() => {
+                              if (window.speechSynthesis) window.speechSynthesis.cancel();
+                              setPlayingTtsGender(null);
+                            }}
                           />
                         )}
 
-                        {/* Fallback AI TTS Player when no audio file is provided */}
-                        {!hasAudioFile && (() => {
+                        {/* AI TTS Player */}
+                        {(() => {
                           const textToSpeak = listeningDialogue
                             ? (listeningPrompt ? `${listeningDialogue}. Question: ${listeningPrompt}` : listeningDialogue)
                             : rawQuestionText;
@@ -856,7 +877,7 @@ const PlayQuizPage = () => {
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-cyan-200/70 dark:border-cyan-800/50">
                               <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                                 <span className="size-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
-                                <span>Nghe bằng giọng đọc Anh - Anh (Miễn phí):</span>
+                                <span>{hasAudioFile ? 'Tùy chọn giọng đọc AI Anh - Anh:' : 'Nghe bằng giọng đọc Anh - Anh (Miễn phí):'}</span>
                               </div>
                               <div className="flex flex-wrap items-center gap-2">
                                 <button
@@ -1099,18 +1120,32 @@ const PlayQuizPage = () => {
                           <p className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-slate-100 italic">
                             "{currentQuestion.correctAnswer || currentQuestion.question}"
                           </p>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleBritishTts(currentQuestion.correctAnswer || currentQuestion.question)}
-                            className={`mt-4 mx-auto px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
-                              isPlayingTts
-                                ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
-                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                            }`}
-                          >
-                            <FiVolume2 />
-                            <span>{isPlayingTts ? 'Dừng nghe' : 'Nghe thử'}</span>
-                          </button>
+                          <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBritishTts(currentQuestion.correctAnswer || currentQuestion.question, 'male')}
+                              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                                playingTtsGender === 'male'
+                                  ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                              }`}
+                            >
+                              {playingTtsGender === 'male' ? <FiSquare /> : <FiVolume2 />}
+                              <span>{playingTtsGender === 'male' ? 'Dừng đọc (Nam)' : 'Giọng Nam (Anh - Anh)'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBritishTts(currentQuestion.correctAnswer || currentQuestion.question, 'female')}
+                              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                                playingTtsGender === 'female'
+                                  ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                                  : 'bg-cyan-600 hover:bg-cyan-700 text-white'
+                              }`}
+                            >
+                              {playingTtsGender === 'female' ? <FiSquare /> : <FiVolume2 />}
+                              <span>{playingTtsGender === 'female' ? 'Dừng đọc (Nữ)' : 'Giọng Nữ (Anh - Anh)'}</span>
+                            </button>
+                          </div>
                         </div>
 
                         {/* Microphone Status Indicator */}

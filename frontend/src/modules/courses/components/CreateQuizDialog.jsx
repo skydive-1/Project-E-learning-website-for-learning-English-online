@@ -158,20 +158,22 @@ const QuestionEditor = ({ question, index, onChange, onRemove, showToast }) => {
   const options = Array.isArray(question.options) ? question.options : ['', '', '', ''];
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
-  const [isPlayingTts, setIsPlayingTts] = useState(false);
+  const [playingTtsGender, setPlayingTtsGender] = useState(null);
+  const isPlayingTts = Boolean(playingTtsGender);
   const storedAudioUrl = question.audio_url || question.audioUrl || '';
 
   useEffect(() => () => {
     if (audioPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(audioPreviewUrl);
   }, [audioPreviewUrl]);
 
-  const handleToggleTts = (textOverride = '') => {
+  const handleToggleTts = (textOverride = '', gender = 'male') => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    if (isPlayingTts) {
+    if (playingTtsGender === gender) {
       window.speechSynthesis.cancel();
-      setIsPlayingTts(false);
+      setPlayingTtsGender(null);
       return;
     }
+    window.speechSynthesis.cancel();
     const fullText = textOverride || question.question_text || question.questionText || question.question || '';
     const cleanText = fullText
       .replace(/\[Question\][\s\S]*$/i, '')
@@ -181,10 +183,10 @@ const QuestionEditor = ({ question, index, onChange, onRemove, showToast }) => {
       .replace(/Speaker\s+[A-Z]\s*:/gi, '')
       .trim();
     const utterance = new SpeechSynthesisUtterance(cleanText || fullText);
-    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { rate: 0.88 });
-    utterance.onend = () => setIsPlayingTts(false);
-    utterance.onerror = () => setIsPlayingTts(false);
-    setIsPlayingTts(true);
+    configureBritishEnglishUtterance(utterance, window.speechSynthesis, { gender, rate: 0.88 });
+    utterance.onend = () => setPlayingTtsGender(null);
+    utterance.onerror = () => setPlayingTtsGender(null);
+    setPlayingTtsGender(gender);
     window.speechSynthesis.speak(utterance);
   };
 
@@ -347,16 +349,36 @@ const QuestionEditor = ({ question, index, onChange, onRemove, showToast }) => {
                 <span className="text-slate-600 dark:text-slate-400 text-[11px]">
                   Không có file âm thanh? Hệ thống sẽ đọc câu hỏi bằng giọng Anh-Anh <strong>TTS</strong> khi học viên làm bài.
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleToggleTts()}
-                  className="h-7 text-xs font-semibold border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 shrink-0 gap-1"
-                >
-                  <HeadphonesIcon className="size-3.5" />
-                  <span>{isPlayingTts ? 'Dừng đọc thử' : 'Nghe thử AI đọc'}</span>
-                </Button>
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleToggleTts('', 'male')}
+                    className={`h-7 text-xs font-semibold gap-1 ${
+                      playingTtsGender === 'male'
+                        ? 'border-rose-500 bg-rose-50 text-rose-600 dark:bg-rose-950/40 animate-pulse'
+                        : 'border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50'
+                    }`}
+                  >
+                    <HeadphonesIcon className="size-3.5" />
+                    <span>{playingTtsGender === 'male' ? 'Dừng đọc (Nam)' : 'Nghe Nam (British)'}</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleToggleTts('', 'female')}
+                    className={`h-7 text-xs font-semibold gap-1 ${
+                      playingTtsGender === 'female'
+                        ? 'border-rose-500 bg-rose-50 text-rose-600 dark:bg-rose-950/40 animate-pulse'
+                        : 'border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950/50'
+                    }`}
+                  >
+                    <HeadphonesIcon className="size-3.5" />
+                    <span>{playingTtsGender === 'female' ? 'Dừng đọc (Nữ)' : 'Nghe Nữ (British)'}</span>
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -459,19 +481,40 @@ const QuestionEditor = ({ question, index, onChange, onRemove, showToast }) => {
             />
             <div className="p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/25 border border-emerald-200/70 dark:border-emerald-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                Học viên sẽ nghe mẫu câu bằng giọng Anh-Anh trước khi ghi âm câu trả lời.
+                Học viên sẽ nghe mẫu câu bằng giọng Anh-Anh chuẩn trước khi ghi âm câu trả lời.
               </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => handleToggleTts(question.correct_answer || '')}
-                disabled={!String(question.correct_answer || '').trim()}
-                className="h-7 text-xs font-semibold border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 shrink-0 gap-1"
-              >
-                <Mic2Icon className="size-3.5" />
-                <span>{isPlayingTts ? 'Dừng nghe' : 'Nghe thử'}</span>
-              </Button>
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleToggleTts(question.correct_answer || '', 'male')}
+                  disabled={!String(question.correct_answer || '').trim()}
+                  className={`h-7 text-xs font-semibold shrink-0 gap-1 ${
+                    playingTtsGender === 'male'
+                      ? 'border-rose-500 bg-rose-50 text-rose-600 dark:bg-rose-950/40 animate-pulse'
+                      : 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50'
+                  }`}
+                >
+                  <Mic2Icon className="size-3.5" />
+                  <span>{playingTtsGender === 'male' ? 'Dừng nghe' : 'Nghe thử'}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleToggleTts(question.correct_answer || '', 'female')}
+                  disabled={!String(question.correct_answer || '').trim()}
+                  className={`h-7 text-xs font-semibold shrink-0 gap-1 ${
+                    playingTtsGender === 'female'
+                      ? 'border-rose-500 bg-rose-50 text-rose-600 dark:bg-rose-950/40 animate-pulse'
+                      : 'border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950/50'
+                  }`}
+                >
+                  <Mic2Icon className="size-3.5" />
+                  <span>{playingTtsGender === 'female' ? 'Dừng đọc (Nữ)' : 'Nghe Nữ'}</span>
+                </Button>
+              </div>
             </div>
           </div>
         )}
