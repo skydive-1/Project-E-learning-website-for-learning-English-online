@@ -52,6 +52,11 @@ router.patch(
   writeLimiter,
   controller.markAnnouncementRead
 );
+router.delete(
+  '/announcements/:announcementId',
+  writeLimiter,
+  controller.dismissAnnouncement
+);
 
 module.exports = router;
 

@@ -580,27 +580,28 @@ class DiscussionsService {
     const roleId = roleIdOf(user);
     const userId = Number(user.id) || 0;
 
-    // Học viên (Role 3): khóa công khai miễn phí hoặc khóa đã có tiến độ học thật.
-    // Dự án không có bảng enrollments, vì vậy user_progress là nguồn dữ liệu hiện có
-    // để xác nhận học viên đã bắt đầu học một khóa.
-    // Giảng viên (Role 2) & Admin (Role 1): Hiển thị tất cả thông báo
-    let filterCondition = '';
+    let filterCondition = `
+      WHERE NOT EXISTS (
+        SELECT 1 FROM course_announcement_dismissals cad
+        WHERE cad.announcement_id = a.announcement_id AND cad.user_id = $1
+      )
+    `;
     const params = [userId];
 
     if (roleId === 3) {
-      filterCondition = `
-        WHERE c.status = 'published'
-          AND (
-            c.price = 0 OR c.price IS NULL
-            OR EXISTS (
-              SELECT 1
-              FROM user_progress up
-              JOIN lessons progress_lesson ON progress_lesson.lesson_id = up.lesson_id
-              JOIN sections progress_section ON progress_section.section_id = progress_lesson.section_id
-              WHERE up.user_id = $1
-                AND progress_section.course_id = a.course_id
-            )
+      filterCondition += `
+        AND c.status = 'published'
+        AND (
+          c.price = 0 OR c.price IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM user_progress up
+            JOIN lessons progress_lesson ON progress_lesson.lesson_id = up.lesson_id
+            JOIN sections progress_section ON progress_section.section_id = progress_lesson.section_id
+            WHERE up.user_id = $1
+              AND progress_section.course_id = a.course_id
           )
+        )
       `;
     }
 
@@ -713,6 +714,21 @@ class DiscussionsService {
       ON CONFLICT (announcement_id, user_id) DO NOTHING
     `, [announcementId, user.id]);
     return { announcementId, isRead: true };
+  }
+
+  async dismissAnnouncement(user, announcementIdValue) {
+    if (![1, 2, 3].includes(roleIdOf(user))) {
+      throw createError('Bạn không có quyền ẩn thông báo này', 403, 'FORBIDDEN');
+    }
+    const announcementId = positiveInteger(announcementIdValue, 'announcementId');
+
+    await db.query(`
+      INSERT INTO course_announcement_dismissals (announcement_id, user_id, dismissed_at)
+      VALUES ($1, $2, CURRENT_TIMESTAMP)
+      ON CONFLICT (announcement_id, user_id) DO NOTHING
+    `, [announcementId, user.id]);
+
+    return { success: true, announcementId, dismissed: true };
   }
 }
 

@@ -219,11 +219,12 @@ const collectDatabaseAlerts = async (generatedAt) => {
       LIMIT 25
     `),
     pool.query(`
-      SELECT utl.user_id, utl.remaining_tokens, utl.updated_at,
+      SELECT utl.user_id, utl.max_tokens, utl.used_tokens, utl.remaining_tokens, utl.updated_at,
              u.full_name, u.username, u.email
       FROM user_token_limits utl
       JOIN users u ON u.user_id = utl.user_id
-      WHERE utl.remaining_tokens <= 0
+      WHERE utl.max_tokens > 0
+        AND (utl.remaining_tokens <= 0 OR utl.used_tokens >= (utl.max_tokens * 0.8))
       ORDER BY utl.updated_at DESC
       LIMIT 25
     `),
@@ -384,18 +385,40 @@ const collectDatabaseAlerts = async (generatedAt) => {
   }
 
   for (const row of quotaResult.rows) {
-    alerts.push(createAlert({
-      id: `exhausted-quota-${row.user_id}`,
-      type: 'quota_warning',
-      severity: 'medium',
-      title: 'Tài khoản đã hết hạn mức Token AI',
-      message: `Tài khoản “${row.full_name || row.username || row.email}” đã dùng hết hạn mức token được cấp.`,
-      timestamp: asTimestamp(row.updated_at, generatedAt),
-      actionUrl: userTarget(row.user_id),
-      actionLabel: 'Mở đúng tài khoản',
-      source: `PostgreSQL · user_token_limits · user #${row.user_id}`,
-      entity: { type: 'user_quota', id: row.user_id, userId: row.user_id }
-    }));
+    const isExhausted = Number(row.remaining_tokens ?? (Number(row.max_tokens) - Number(row.used_tokens))) <= 0
+      || Number(row.used_tokens) >= Number(row.max_tokens);
+    const maxTokensFormatted = asNumber(row.max_tokens);
+    const usedTokensFormatted = asNumber(row.used_tokens);
+    const remainingTokensFormatted = asNumber(Math.max(0, Number(row.remaining_tokens ?? 0)));
+    const userName = row.full_name || row.username || row.email;
+
+    if (isExhausted) {
+      alerts.push(createAlert({
+        id: `exhausted-quota-${row.user_id}`,
+        type: 'quota_warning',
+        severity: 'high',
+        title: 'Tài khoản đã hết hạn mức Token AI',
+        message: `Tài khoản “${userName}” đã dùng hết hạn mức token được cấp (${usedTokensFormatted}/${maxTokensFormatted} token).`,
+        timestamp: asTimestamp(row.updated_at, generatedAt),
+        actionUrl: userTarget(row.user_id),
+        actionLabel: 'Mở đúng tài khoản',
+        source: `PostgreSQL · user_token_limits · user #${row.user_id}`,
+        entity: { type: 'user_quota', id: row.user_id, userId: row.user_id, status: 'exhausted' }
+      }));
+    } else {
+      alerts.push(createAlert({
+        id: `near-quota-${row.user_id}`,
+        type: 'quota_warning',
+        severity: 'medium',
+        title: 'Tài khoản sắp hết hạn mức Token AI',
+        message: `Tài khoản “${userName}” sắp hết hạn mức token được cấp (đã dùng ${usedTokensFormatted}/${maxTokensFormatted} token, còn ${remainingTokensFormatted} token).`,
+        timestamp: asTimestamp(row.updated_at, generatedAt),
+        actionUrl: userTarget(row.user_id),
+        actionLabel: 'Mở đúng tài khoản',
+        source: `PostgreSQL · user_token_limits · user #${row.user_id}`,
+        entity: { type: 'user_quota', id: row.user_id, userId: row.user_id, status: 'critical' }
+      }));
+    }
   }
 
   for (const row of aiErrorResult.rows) {
@@ -451,19 +474,9 @@ const collectRuntimeAlerts = async (generatedAt) => {
     }));
   }
 
-  for (const notice of status.notices || []) {
-    alerts.push(createAlert({
-      id: `ai-cap-discrepancy-${notice.model}-${notice.dimension}`,
-      type: 'rate_limit',
-      severity: 'high',
-      title: `Tín hiệu ${String(notice.dimension).toUpperCase()} từ Google lệch telemetry`,
-      message: `${notice.model}: Google trả tín hiệu quota ${notice.providerLimit ?? 'không rõ'}, backend đã thử ${notice.observedUsage} lượt; cần đối chiếu AI Studio.`,
-      timestamp: asTimestamp(notice.detectedAt, generatedAt),
-      actionUrl: userTarget(null, { view: 'rate-limits', model: notice.model }),
-      actionLabel: 'Mở đúng model',
-      source: 'Backend telemetry · ai_rate_limit_discrepancies'
-    }));
-  }
+  // Lưu ý: Độ lệch telemetry từ Google (RPD/RPM notices) phát sinh từ độ trễ đồng bộ
+  // phân tán và lệch múi giờ reset quota phía Google; không thể can thiệp từ client.
+  // Không đưa vào cảnh báo vận hành để tránh false alarms gây nhiễu cho Admin.
 
   return alerts;
 };

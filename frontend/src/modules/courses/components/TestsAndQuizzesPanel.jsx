@@ -93,8 +93,14 @@ const TestsAndQuizzesPanel = () => {
     }
   };
 
+
   useEffect(() => {
     loadQuizzes();
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
 
   // Xử lý tham gia bằng mã PIN
@@ -377,6 +383,7 @@ const TestsAndQuizzesPanel = () => {
         <p className="panel-subtitle">
           Thực hành bài tập trắc nghiệm ngắn, phản xạ phát âm AI và thi thử nhanh giúp củng cố kiến thức tức thì.
         </p>
+
       </div>
 
       {/* Quick PIN Entry Card (Double-Bezel High-End Hardware Style) */}

@@ -18,6 +18,15 @@ router.get('/subjects', coursesController.getSubjects);
 // GET /api/courses/uploads/:uploadId/status - Theo dõi đóng gói DASH nền
 router.get('/uploads/:uploadId/status', authenticate, authorize([1, 2]), coursesController.getUploadStatus);
 
+// GET /api/courses/my-courses - Lấy danh sách khóa học người dùng đã đăng ký (hoặc có tiến trình)
+router.get('/my-courses', authenticate, coursesController.getMyCourses);
+
+// GET /api/courses/enrolled-ids - Lấy danh sách ID các khóa học đã đăng ký
+router.get('/enrolled-ids', authenticate, coursesController.getEnrolledCourseIds);
+
+// POST /api/courses/:courseId/enroll - Đăng ký tham gia một khóa học
+router.post('/:courseId/enroll', authenticate, coursesController.enrollCourse);
+
 // GET /api/courses/:courseId - Lấy chi tiết khóa học kèm chương và bài học
 router.get('/:courseId', coursesController.getCourseById);
 

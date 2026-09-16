@@ -1674,6 +1674,110 @@ class CoursesService {
       lessons
     };
   }
+
+  /**
+   * Lấy danh sách các khóa học mà người dùng đã đăng ký (active) hoặc đã có tiến trình
+   */
+  async getMyCourses(userId) {
+    try {
+      const cleanUserId = parseInt(userId, 10);
+      if (!cleanUserId || isNaN(cleanUserId)) return [];
+
+      const queryText = `
+        SELECT 
+          c.course_id,
+          c.course_name,
+          c.description,
+          c.price,
+          c.thumbnail_url,
+          c.status,
+          c.subject_id,
+          c.instructor_id,
+          u.full_name AS instructor_name,
+          s.subject_name,
+          COALESCE(e.enrolled_at, MIN(up.completed_at), c.created_at) AS enrolled_at,
+          COUNT(DISTINCT sec.section_id)::int AS sections_count,
+          COUNT(DISTINCT les.lesson_id)::int AS lessons_count
+        FROM courses c
+        LEFT JOIN users u ON u.user_id = c.instructor_id
+        LEFT JOIN subjects s ON s.subject_id = c.subject_id
+        LEFT JOIN sections sec ON sec.course_id = c.course_id
+        LEFT JOIN lessons les ON les.section_id = sec.section_id
+        LEFT JOIN enrollments e ON e.course_id = c.course_id AND e.user_id = $1 AND e.status = 'active'
+        LEFT JOIN user_progress up ON up.lesson_id = les.lesson_id AND up.user_id = $1
+        WHERE (e.enrollment_id IS NOT NULL OR up.progress_id IS NOT NULL)
+          AND c.status = 'published'
+        GROUP BY c.course_id, u.full_name, s.subject_name, e.enrolled_at
+        ORDER BY enrolled_at DESC
+      `;
+      const result = await db.query(queryText, [cleanUserId]);
+      return result.rows.map(course => ({
+        ...course,
+        sections_count: Number(course.sections_count) || 0,
+        lessons_count: Number(course.lessons_count) || 0
+      }));
+    } catch (error) {
+      handleServiceError(error, 'Lỗi lấy danh sách khóa học của tôi');
+    }
+  }
+
+  /**
+   * Lấy danh sách ID các khóa học người dùng đã đăng ký hoặc đã có tiến trình
+   */
+  async getEnrolledCourseIds(userId) {
+    try {
+      const cleanUserId = parseInt(userId, 10);
+      if (!cleanUserId || isNaN(cleanUserId)) return [];
+
+      const queryText = `
+        SELECT DISTINCT c.course_id
+        FROM courses c
+        LEFT JOIN sections sec ON sec.course_id = c.course_id
+        LEFT JOIN lessons les ON les.section_id = sec.section_id
+        LEFT JOIN enrollments e ON e.course_id = c.course_id AND e.user_id = $1 AND e.status = 'active'
+        LEFT JOIN user_progress up ON up.lesson_id = les.lesson_id AND up.user_id = $1
+        WHERE (e.enrollment_id IS NOT NULL OR up.progress_id IS NOT NULL)
+          AND c.status = 'published'
+      `;
+      const result = await db.query(queryText, [cleanUserId]);
+      return result.rows.map(r => r.course_id);
+    } catch (error) {
+      handleServiceError(error, 'Lỗi lấy danh sách ID khóa học đã đăng ký');
+    }
+  }
+
+  /**
+   * Đăng ký tham gia một khóa học
+   */
+  async enrollCourse(userId, courseId) {
+    const cleanUserId = parseInt(userId, 10);
+    const cleanCourseId = parseInt(courseId, 10);
+    if (!cleanUserId || isNaN(cleanUserId) || !cleanCourseId || isNaN(cleanCourseId)) {
+      const err = new Error('Thông tin người dùng hoặc khóa học không hợp lệ');
+      err.status = 400;
+      throw err;
+    }
+
+    const courseRes = await db.query('SELECT course_id, status FROM courses WHERE course_id = $1', [cleanCourseId]);
+    if (courseRes.rows.length === 0 || courseRes.rows[0].status !== 'published') {
+      const err = new Error('Khóa học không tồn tại hoặc chưa được xuất bản');
+      err.status = 404;
+      throw err;
+    }
+
+    await db.query(`
+      INSERT INTO enrollments (user_id, course_id, status, enrolled_at)
+      VALUES ($1, $2, 'active', CURRENT_TIMESTAMP)
+      ON CONFLICT (user_id, course_id)
+      DO UPDATE SET status = 'active', enrolled_at = CURRENT_TIMESTAMP
+    `, [cleanUserId, cleanCourseId]);
+
+    return {
+      success: true,
+      message: 'Đăng ký khóa học thành công',
+      courseId: cleanCourseId
+    };
+  }
 }
 
 module.exports = new CoursesService();

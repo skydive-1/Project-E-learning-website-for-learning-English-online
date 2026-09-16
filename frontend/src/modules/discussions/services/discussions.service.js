@@ -118,7 +118,13 @@ export const markAnnouncementRead = async announcementId => {
   return response.data.data;
 };
 
+export const dismissAnnouncement = async announcementId => {
+  const response = await apiClient.delete(`/discussions/announcements/${announcementId}`);
+  return response.data.data;
+};
+
 export const discussionApiErrorMessage = (error, fallback) => (
   error?.response?.data?.message || error?.message || fallback
 );
+
 

@@ -22,11 +22,12 @@ vi.mock('../src/context/AuthContext', () => ({
 }));
 
 const ContextProbe = () => {
-  const { streak, badges, streakError, badgesError } = useGamification();
+  const { streak, badges, streakError, badgesError, activeBadgePopup } = useGamification();
   return (
     <div>
       <span data-testid="streak-value">{streak ? streak.currentStreak : 'none'}</span>
       <span data-testid="badges-count">{badges.length}</span>
+      <span data-testid="active-popup">{activeBadgePopup ? activeBadgePopup.id : 'none'}</span>
       {streakError && <span>streak-error</span>}
       {badgesError && <span>badges-error</span>}
     </div>
@@ -182,5 +183,34 @@ describe('Gamification real-data contract', () => {
 
     await waitFor(() => expect(screen.getByTestId('streak-value')).toHaveTextContent('1'));
     expect(apiClient.get).toHaveBeenCalledOnce();
+  });
+
+  it('không tự ý bật popup chúc mừng cho huy hiệu đã đạt từ trước ở lần vào web đầu tiên', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        data: {
+          streak: { currentStreak: 5, longestStreak: 10, weeklyStatus: [] },
+          badges: [{
+            id: 'first_lesson',
+            title: 'Khởi đầu nan',
+            description: 'Hoàn thành bài học đầu tiên',
+            unlocked: true,
+            progress: { current: 1, target: 1, unit: 'bài học' }
+          }]
+        }
+      }
+    });
+
+    render(
+      <GamificationProvider>
+        <ContextProbe />
+      </GamificationProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('badges-count')).toHaveTextContent('1');
+    });
+
+    expect(screen.getByTestId('active-popup')).toHaveTextContent('none');
   });
 });

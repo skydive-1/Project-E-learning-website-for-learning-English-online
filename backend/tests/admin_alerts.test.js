@@ -35,7 +35,12 @@ describe('Admin operational alerts', () => {
       if (sql.includes('FROM courses c')) return { rows: [{ course_id: 8, course_name: 'Empty course', updated_at: '2026-09-10T01:03:00.000Z' }] };
       if (sql.includes('FROM quizzes q')) return { rows: [{ quiz_id: 9, course_id: 7, lesson_id: 12, title: 'Empty quiz', updated_at: '2026-09-10T01:04:00.000Z' }] };
       if (sql.includes('FROM user_token_limits')) {
-        return { rows: [{ user_id: 25, full_name: 'Test User', remaining_tokens: 0, updated_at: '2026-09-10T01:05:00.000Z' }] };
+        return {
+          rows: [
+            { user_id: 25, full_name: 'Exhausted User', max_tokens: 6000, used_tokens: 6000, remaining_tokens: 0, updated_at: '2026-09-10T01:05:00.000Z' },
+            { user_id: 26, full_name: 'Near Quota User', max_tokens: 6000, used_tokens: 5000, remaining_tokens: 1000, updated_at: '2026-09-10T01:05:30.000Z' }
+          ]
+        };
       }
       if (sql.includes('FROM ai_usage_events')) {
         assert.match(sql, /DISTINCT ON \(e\.user_id, e\.purpose\)/);
@@ -58,7 +63,14 @@ describe('Admin operational alerts', () => {
         peakPercent: 91,
         updatedAt: '2026-09-10T01:07:00.000Z'
       }],
-      notices: []
+      notices: [{
+        model: 'gemini-test',
+        dimension: 'rpd',
+        configuredCap: 20,
+        observedUsage: 25,
+        providerLimit: 20,
+        detectedAt: '2026-09-10T01:07:00.000Z'
+      }]
     });
 
     try {
@@ -74,6 +86,17 @@ describe('Admin operational alerts', () => {
       assert.ok(ids.has('empty-course-8'));
       assert.ok(ids.has('empty-quiz-9'));
       assert.ok(ids.has('exhausted-quota-25'));
+      assert.ok(ids.has('near-quota-26'));
+      assert.ok(!ids.has('ai-cap-discrepancy-gemini-test-rpd'));
+
+      const exhaustedAlert = snapshot.alerts.find((a) => a.id === 'exhausted-quota-25');
+      assert.equal(exhaustedAlert.severity, 'high');
+      assert.equal(exhaustedAlert.title, 'Tài khoản đã hết hạn mức Token AI');
+
+      const nearAlert = snapshot.alerts.find((a) => a.id === 'near-quota-26');
+      assert.equal(nearAlert.severity, 'medium');
+      assert.equal(nearAlert.title, 'Tài khoản sắp hết hạn mức Token AI');
+
       assert.ok(ids.has('ai-request-31'));
       assert.ok(ids.has('ai-rate-limit-gemini-test'));
       assert.ok(snapshot.alerts.every((alert) => alert.source && alert.actionUrl));

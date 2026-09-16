@@ -710,10 +710,14 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                       src={resolveAudioUrl(currentQuestion.audio_url || currentQuestion.audioUrl)}
                       controls
                       className="w-full h-10 outline-none rounded-lg shadow-xs"
+                      onPlay={() => {
+                        if (window.speechSynthesis) window.speechSynthesis.cancel();
+                        setPlayingListeningTtsGender(null);
+                      }}
                     />
                   )}
 
-                  {!hasAudioFile && (() => {
+                  {(() => {
                     const textToSpeak = listeningDialogue
                       ? (listeningPrompt ? `${listeningDialogue}. Question: ${listeningPrompt}` : listeningDialogue)
                       : rawQuestionText;
@@ -722,7 +726,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-background/80 border border-cyan-200/70 dark:border-cyan-800/50">
                         <div className="text-xs font-semibold text-foreground flex items-center gap-2">
                           <span className="size-2 rounded-full bg-cyan-500 animate-pulse shrink-0" />
-                          <span>Nghe bằng giọng đọc Anh - Anh (Miễn phí):</span>
+                          <span>{hasAudioFile ? 'Tùy chọn giọng đọc AI Anh - Anh:' : 'Nghe bằng giọng đọc Anh - Anh (Miễn phí):'}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Button

@@ -166,3 +166,16 @@ exports.markAnnouncementRead = async (req, res, next) => {
   }
 };
 
+exports.dismissAnnouncement = async (req, res, next) => {
+  try {
+    const result = await discussionsService.dismissAnnouncement(req.user, req.params.announcementId);
+    res.status(200).json({
+      success: true,
+      message: 'Đã xóa thông báo khỏi danh sách',
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

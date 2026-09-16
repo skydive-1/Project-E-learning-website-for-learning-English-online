@@ -59,7 +59,7 @@ const MyCoursesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'in_progress', 'completed'
 
-  // 1. Fetch all courses
+  // 1. Fetch only enrolled courses for current user
   const {
     data: rawCourses = [],
     isLoading: isCoursesLoading,
@@ -67,10 +67,15 @@ const MyCoursesPage = () => {
     isError: isCoursesError,
     refetch: refetchCourses
   } = useQuery({
-    queryKey: ['courses-raw'],
+    queryKey: ['my-courses-raw', currentUserId],
     queryFn: async () => {
-      const response = await apiClient.get('/courses');
-      return response.data.courses || [];
+      try {
+        const response = await apiClient.get('/courses/my-courses');
+        return response.data.courses || [];
+      } catch (err) {
+        if (err?.response?.status === 401) return [];
+        throw err;
+      }
     },
     staleTime: 0,
     refetchOnMount: 'always',
