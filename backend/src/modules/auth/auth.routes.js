@@ -62,6 +62,7 @@ const updateProfileSchema = {
   body: {
     username: { minLength: 3 },
     fullName: { minLength: 2 },
+    email: { required: false, isEmail: true },
     profilePictureUrl: { required: false },
     phone: { required: false },
     gender: { required: false },

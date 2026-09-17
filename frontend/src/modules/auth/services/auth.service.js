@@ -43,8 +43,8 @@ export const changePasswordApi = async ({ oldPassword, newPassword, otp }) => {
 /**
  * Cập nhật thông tin cá nhân
  */
-export const updateProfileApi = async ({ username, fullName, profilePictureUrl }) => {
-  const response = await apiClient.put('/auth/profile', { username, fullName, profilePictureUrl });
+export const updateProfileApi = async ({ username, fullName, email, profilePictureUrl }) => {
+  const response = await apiClient.put('/auth/profile', { username, fullName, email, profilePictureUrl });
   return response.data;
 };
 

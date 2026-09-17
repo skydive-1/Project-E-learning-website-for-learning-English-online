@@ -189,6 +189,17 @@ export const toggleAiModelLock = async ({ model, locked, reason } = {}) => {
   return response.data.data.routing;
 };
 
+export const simulateGeminiModelFallback = async ({ model, simulatedError = 503 } = {}) => {
+  const response = await apiClient.post('/admin/gemini-rate-limits/routing/simulate-fallback', {
+    model,
+    simulatedError
+  });
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error('Phản hồi mô phỏng fallback không hợp lệ');
+  }
+  return response.data.data;
+};
+
 export const getGeminiRateLimitCaps = async ({ fresh = false } = {}) => {
   const response = await apiClient.get(
     '/admin/gemini-rate-limits/caps',

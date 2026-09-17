@@ -12,7 +12,8 @@ import {
   connectGeminiRateLimitStream,
   resetGeminiModelRouting,
   toggleAiModelLock,
-  updateGeminiRateLimitCaps
+  updateGeminiRateLimitCaps,
+  simulateGeminiModelFallback
 } from '../src/modules/admin/services/adminAnalytics.service';
 
 vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
@@ -24,6 +25,7 @@ vi.mock('../src/modules/admin/services/adminAnalytics.service', () => ({
   resetGeminiModelRouting: vi.fn(),
   toggleAiModelLock: vi.fn(),
   updateGeminiRateLimitCaps: vi.fn(),
+  simulateGeminiModelFallback: vi.fn(),
   updateUserQuota: vi.fn(),
   resetUserAiToken: vi.fn(),
   resetBulkAiTokens: vi.fn()
@@ -257,7 +259,7 @@ describe('Gemini Rate Limits admin view', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Lượt gọi Gemini từ backend/i }));
     expect(await screen.findByText('Đang dùng model dự phòng')).toBeInTheDocument();
     expect(screen.getAllByText(/Google API từ chối · thử lại/)).toHaveLength(2);
-    expect(screen.getByText('Request kế tiếp').closest('div')).toHaveTextContent('gemini-3.5-flash-lite');
+    expect(screen.getByText(/Đang xử lý thay thế cho/).closest('div')).toHaveTextContent('gemini-3.5-flash-lite');
     const restoreButton = screen.getByRole('button', { name: 'Khôi phục model ưu tiên' });
     expect(restoreButton).toBeEnabled();
     fireEvent.click(restoreButton);
@@ -434,6 +436,103 @@ describe('Gemini Rate Limits admin view', () => {
         model: 'gemini-3.6-flash',
         locked: false,
         reason: null
+      });
+    });
+  });
+
+  it('displays the fallback alert banner and active fallback badges when a model fails with 503', async () => {
+    getGeminiRateLimitStatus.mockResolvedValueOnce({
+      generatedAt: '2026-09-02T00:00:00.000Z',
+      windows: { rpmSeconds: 60, tpmSeconds: 60, rpdTimezone: 'America/Los_Angeles' },
+      routing: {
+        scope: 'process_instance',
+        preferredModel: 'gemini-3.7-flash',
+        effectiveModel: 'gemini-3.6-flash',
+        fallbackOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+        effectiveOrder: ['gemini-3.6-flash', 'gemini-3.5-flash-lite'],
+        lastSuccessfulModel: 'gemini-3.6-flash',
+        lastSuccessfulAt: '2026-09-02T00:00:00.000Z',
+        coolingDown: [{
+          model: 'gemini-3.7-flash',
+          retryAt: '2026-09-02T00:01:00.000Z',
+          remainingMs: 60000,
+          dimension: '503_unavailable',
+          source: 'provider_503_unavailable'
+        }],
+        isFallbackActive: true,
+        activeFallbackModel: 'gemini-3.6-flash',
+        fallbackReason: 'HTTP 503 Service Unavailable (Tạm ngừng 60s)'
+      },
+      models: [{
+        model: 'gemini-3.7-flash',
+        usage: { rpm: 1, tpm: 1000, rpd: 5 },
+        caps: { rpm: 10, tpm: 250000, rpd: 250 },
+        percentUsed: { rpm: 10, tpm: 1, rpd: 2 },
+        headroom: { rpm: 9, tpm: 249000, rpd: 245 },
+        requestStatus: { rpm: { success: 0, error: 1, pending: 0 }, rpd: { success: 4, error: 1, pending: 0 } },
+        riskLevel: 'healthy',
+        configured: true,
+        updatedAt: '2026-09-02T00:00:00.000Z',
+        updatedByName: 'Admin'
+      }, {
+        model: 'gemini-3.6-flash',
+        usage: { rpm: 2, tpm: 2000, rpd: 10 },
+        caps: { rpm: 15, tpm: 300000, rpd: 300 },
+        percentUsed: { rpm: 13, tpm: 1, rpd: 3 },
+        headroom: { rpm: 13, tpm: 298000, rpd: 290 },
+        requestStatus: { rpm: { success: 2, error: 0, pending: 0 }, rpd: { success: 10, error: 0, pending: 0 } },
+        riskLevel: 'healthy',
+        configured: true,
+        updatedAt: '2026-09-02T00:00:00.000Z',
+        updatedByName: 'Admin'
+      }]
+    });
+
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Lượt gọi Gemini từ backend/i }));
+
+    expect(await screen.findByText('HỆ THỐNG ĐANG TỰ ĐỘNG ĐIỀU PHỐI FALLBACK')).toBeInTheDocument();
+    expect(screen.getByText('Đang fallback thay thế')).toBeInTheDocument();
+    expect(screen.getByText('Lỗi 503 · Tạm dừng')).toBeInTheDocument();
+    expect(screen.getByText('(Đang Fallback)')).toBeInTheDocument();
+  });
+
+  it('allows admin to trigger simulated 503 fallback testing', async () => {
+    simulateGeminiModelFallback.mockResolvedValueOnce({
+      model: 'gemini-3.7-flash',
+      simulatedError: 503,
+      routing: {
+        preferredModel: 'gemini-3.7-flash',
+        effectiveModel: 'gemini-3.6-flash',
+        isFallbackActive: true,
+        activeFallbackModel: 'gemini-3.6-flash',
+        fallbackReason: 'Thử nghiệm mô phỏng HTTP 503 (60s)'
+      }
+    });
+
+    render(
+      <LanguageProvider>
+        <AIQuotaControlCenter canManageCaps />
+      </LanguageProvider>
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Lượt gọi Gemini từ backend/i }));
+    await screen.findAllByText('gemini-3.7-flash');
+
+    const testBtn = screen.getByRole('button', { name: /Test Fallback \(Mô phỏng 503\)/i });
+    expect(testBtn).toBeInTheDocument();
+
+    fireEvent.click(testBtn);
+
+    await waitFor(() => {
+      expect(simulateGeminiModelFallback).toHaveBeenCalledWith({
+        model: 'gemini-3.7-flash',
+        simulatedError: 503
       });
     });
   });

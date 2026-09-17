@@ -1142,17 +1142,6 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               showSubmit={!isSubmitted && !clozeFeedbackByQuestion[currentQuestion.id]}
             />
           )}
-
-          {/* Giải thích chi tiết khi nộp bài */}
-          {isSubmitted && currentQuestion.explanation && (
-            <Alert className="bg-primary/5 border-primary/20 text-foreground">
-              <Sparkles className="size-4 text-primary" />
-              <AlertTitle className="text-xs font-bold text-primary">Giải thích chi tiết:</AlertTitle>
-              <AlertDescription className="text-xs leading-relaxed text-muted-foreground mt-1">
-                {currentQuestion.explanation}
-              </AlertDescription>
-            </Alert>
-          )}
           </div>
 
           {/* Bottom Navigation controls */}

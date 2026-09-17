@@ -51,6 +51,7 @@ if (!process.env.JWT_SECRET) {
 // ===== 2. IMPORT MIDDLEWARE =====
 const errorHandler = require('./middleware/error.middleware');
 const loggerMiddleware = require('./middleware/logger.middleware');
+const securityHeaders = require('./middleware/securityHeaders.middleware');
 const {
   apiLimiter,
   configureTrustProxy,
@@ -60,9 +61,11 @@ const {
 // ===== 3. KHỞI TẠO EXPRESS APP =====
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.disable('x-powered-by');
 configureTrustProxy(app);
 
 // ===== 4. GLOBAL MIDDLEWARE =====
+app.use(securityHeaders);
 
 app.use(cors({
   origin: (origin, callback) => {

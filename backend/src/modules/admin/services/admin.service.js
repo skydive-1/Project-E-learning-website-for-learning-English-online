@@ -12,7 +12,8 @@ const {
   getNextPacificRpdResetAt,
   resetGeminiModelRouting,
   setPreferredGeminiModel,
-  setAiModelManualLock
+  setAiModelManualLock,
+  simulateAiModelFallback: simulateAiModelFallbackCore
 } = require('../../../utils/ai-clients');
 const { handleServiceError } = require('../../../utils/service-errors');
 const { notifyAiRateLimitsChanged } = require('../../../utils/aiRateLimitEvents');
@@ -1336,6 +1337,14 @@ const toggleAiModelLock = async ({ model, locked, adminUserId, reason } = {}) =>
   return routing;
 };
 
+const simulateAiModelFallback = async ({ model, simulatedError = 503, adminUserId } = {}) => {
+  const result = simulateAiModelFallbackCore({ model, simulatedError });
+  console.info(
+    `[AI Model Routing] Admin ${adminUserId || 'unknown'} đã mô phỏng lỗi ${simulatedError} trên model ${result.fromModel}; hệ thống tự động fallback sang ${result.toModel}.`
+  );
+  return result;
+};
+
 /**
  * Tạo/cập nhật cap của một model. Tất cả cap phải do admin gửi lên.
  */
@@ -1489,6 +1498,7 @@ module.exports = {
   resetAiModelRouting,
   setPreferredAiModel,
   toggleAiModelLock,
+  simulateAiModelFallback,
   updateAiRateLimitCaps,
   updateUserQuotaLimit,
   migrateCourseMedia
