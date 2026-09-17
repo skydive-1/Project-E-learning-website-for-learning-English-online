@@ -379,6 +379,58 @@ class QuizzesService {
     }
   }
 
+  async getGlobalLeaderboard({ timeframe = 'all', limit = 20 } = {}) {
+    try {
+      const parsedLimit = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+      let timeCondition = '';
+      const params = [parsedLimit];
+
+      if (timeframe === 'week') {
+        timeCondition = "WHERE qa.completed_at >= NOW() - INTERVAL '7 days'";
+      } else if (timeframe === 'month') {
+        timeCondition = "WHERE qa.completed_at >= NOW() - INTERVAL '30 days'";
+      }
+
+      const query = `
+        WITH user_best_quiz AS (
+          SELECT 
+            qa.user_id,
+            COALESCE(u.full_name, u.username, qa.nickname, 'Học viên') AS user_name,
+            u.avatar,
+            COALESCE(u.role_id, 3) AS role_id,
+            qa.quiz_id,
+            MAX(qa.score) AS best_score,
+            MAX(qa.completed_at) AS last_completed_at
+          FROM quiz_attempts qa
+          LEFT JOIN users u ON qa.user_id = u.user_id
+          ${timeCondition}
+          GROUP BY qa.user_id, u.full_name, u.username, qa.nickname, u.avatar, u.role_id, qa.quiz_id
+        )
+        SELECT 
+          ROW_NUMBER() OVER(ORDER BY SUM(best_score) DESC, ROUND(AVG(best_score), 1) DESC, MAX(last_completed_at) ASC)::int AS rank,
+          user_id,
+          user_name,
+          avatar,
+          role_id,
+          COUNT(quiz_id)::int AS total_quizzes_taken,
+          SUM(best_score)::int AS total_score,
+          ROUND(AVG(best_score), 1)::float AS average_score,
+          COUNT(CASE WHEN best_score = 100 THEN 1 END)::int AS perfect_scores,
+          MAX(last_completed_at) AS last_activity_at
+        FROM user_best_quiz
+        GROUP BY user_id, user_name, avatar, role_id
+        ORDER BY total_score DESC, average_score DESC, last_activity_at ASC
+        LIMIT $1
+      `;
+
+      const result = await db.query(query, params);
+      return result.rows;
+    } catch (error) {
+      console.error("Lỗi xảy ra tại QuizzesService.getGlobalLeaderboard:", error);
+      throw error;
+    }
+  }
+
   async evaluateWriting(writingText) {
     /**
      * Chấm điểm Writing theo IELTS Writing Band Descriptors

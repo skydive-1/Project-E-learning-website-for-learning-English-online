@@ -11,6 +11,9 @@ router.get('/detail/:quizId', quizzesController.getQuizById);
 // Route: GET /api/quizzes/join-by-pin/:pinCode
 router.get('/join-by-pin/:pinCode', quizzesController.getQuizByPin);
 
+// Route: GET /api/quizzes/leaderboard/global - Bảng xếp hạng toàn hệ thống (Công khai cho cả 3 role & khách)
+router.get('/leaderboard/global', quizzesController.getGlobalLeaderboard);
+
 // Route: GET /api/quizzes/:quizId/leaderboard
 router.get('/:quizId/leaderboard', quizzesController.getLeaderboard);
 
