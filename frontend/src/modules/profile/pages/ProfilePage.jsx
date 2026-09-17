@@ -37,6 +37,7 @@ const ProfilePage = () => {
   const [profileData, setProfileData] = useState({
     username: '',
     fullName: '',
+    email: '',
     profilePictureUrl: ''
   });
 
@@ -100,6 +101,7 @@ const ProfilePage = () => {
       setProfileData({
         username: authUser.username || '',
         fullName: authUser.fullName || authUser.full_name || '',
+        email: authUser.email || '',
         profilePictureUrl: authUser.profilePictureUrl || authUser.profile_picture_url || ''
       });
       setAvatarImgError(false);
@@ -189,6 +191,7 @@ const ProfilePage = () => {
       await updateProfileApi({
         username: profileData.username,
         fullName: profileData.fullName,
+        email: profileData.email,
         profilePictureUrl: profileData.profilePictureUrl
       });
       
@@ -467,6 +470,7 @@ const ProfilePage = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'Chưa xác định';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Chưa xác định';
     return date.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
@@ -622,18 +626,20 @@ const ProfilePage = () => {
                           </div>
                         </div>
 
-                        <div className="form-group disabled-group">
+                        <div className="form-group">
                           <label htmlFor="email">Địa chỉ Email</label>
                           <div className="input-with-icon">
                             <FiMail className="field-icon" />
                             <input 
                               type="email" 
                               id="email" 
-                              value={user?.email || ''} 
-                              disabled 
+                              name="email"
+                              placeholder="Nhập địa chỉ email của bạn"
+                              value={profileData.email} 
+                              onChange={handleProfileChange}
+                              required
                             />
                           </div>
-                          <span className="field-hint">Email đăng ký không thể thay đổi.</span>
                         </div>
 
                         <div className="form-group disabled-group">
@@ -642,7 +648,7 @@ const ProfilePage = () => {
                             <FiCalendar className="field-icon" />
                             <input 
                               type="text" 
-                              value={formatDate(user?.created_date || user?.created_at)} 
+                              value={formatDate(user?.createdDate || user?.created_date || user?.created_at || user?.createdAt)} 
                               disabled 
                             />
                           </div>

@@ -208,6 +208,25 @@ exports.toggleAiModelLock = async (req, res, next) => {
   }
 };
 
+exports.simulateAiModelFallback = async (req, res, next) => {
+  try {
+    disableLiveDataCache(res);
+    const { model, simulatedError } = req.body || {};
+    const result = await adminService.simulateAiModelFallback({
+      model,
+      simulatedError: simulatedError || 503,
+      adminUserId: req.user?.id || req.user?.user_id
+    });
+    res.status(200).json({
+      success: true,
+      message: `Đã kích hoạt mô phỏng lỗi ${result.errorCode} trên model ${result.fromModel}. Hệ thống đã tự động chuyển sang model fallback ${result.toModel}!`,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAiRateLimitCaps = async (req, res, next) => {
   try {
     disableLiveDataCache(res);

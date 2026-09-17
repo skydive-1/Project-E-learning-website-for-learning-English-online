@@ -295,7 +295,7 @@ class AuthService {
 
         // Tự động di trú người dùng cũ (Lazy Migration / Shadow Migration):
         // Nếu không đăng nhập được qua Supabase, kiểm tra xem user có tồn tại ở PostgreSQL cục bộ với mật khẩu cũ không
-        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url FROM users WHERE LOWER(email) = $1';
+        const localUserQuery = 'SELECT user_id, email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url, created_date FROM users WHERE LOWER(email) = $1';
         const localUserResult = await db.query(localUserQuery, [cleanEmail]);
 
         if (localUserResult.rows.length > 0) {
@@ -393,7 +393,7 @@ class AuthService {
         supabaseUser = authData.user;
 
         // 2. Tìm kiếm thông tin user cục bộ bằng supabase_uid hoặc email để liên kết
-        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url FROM users WHERE supabase_uid = $1 OR LOWER(email) = $2';
+        const queryText = 'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url, created_date FROM users WHERE supabase_uid = $1 OR LOWER(email) = $2';
         const result = await db.query(queryText, [supabaseUser.id, cleanEmail]);
 
         if (result.rows.length === 0) {
@@ -405,7 +405,7 @@ class AuthService {
           const insertQuery = `
             INSERT INTO users (email, password_hash, username, full_name, role_id, supabase_uid, email_verified_at)
             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
-            RETURNING user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url
+            RETURNING user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url, created_date
           `;
           const insertRes = await db.query(insertQuery, [cleanEmail, '', username, fullName, roleId, supabaseUser.id]);
           user = insertRes.rows[0];
@@ -444,7 +444,9 @@ class AuthService {
           fullName: user.full_name,
           profilePictureUrl: user.profile_picture_url || null,
           roleId: user.role_id,
-          isSuperAdmin: isSuperAdminUser(user)
+          isSuperAdmin: isSuperAdminUser(user),
+          createdDate: user.created_date,
+          created_date: user.created_date
         }
       };
     } catch (error) {
@@ -578,6 +580,7 @@ class AuthService {
         roleId: user.role_id,
         gender: user.gender,
         createdDate: user.created_date,
+        created_date: user.created_date,
         profilePictureUrl: user.profile_picture_url || null,
         isSuperAdmin: isSuperAdminUser(user)
       };
@@ -889,8 +892,21 @@ class AuthService {
   }
 
 
-  async updateProfile({ userId, username, fullName, profilePictureUrl, phone, gender, birthDate }) {
+  async updateProfile({ userId, username, fullName, email, profilePictureUrl, phone, gender, birthDate }) {
     try {
+      // 0. Lấy thông tin user hiện tại
+      const currentUserRes = await db.query(
+        'SELECT user_id, email, username, full_name, supabase_uid, created_date FROM users WHERE user_id = $1',
+        [userId]
+      );
+      if (currentUserRes.rows.length === 0) {
+        const error = new Error('Không tìm thấy tài khoản người dùng');
+        error.name = 'AuthError';
+        error.status = 404;
+        throw error;
+      }
+      const currentUser = currentUserRes.rows[0];
+
       // 1. Kiểm tra username trùng lặp nếu có đổi
       if (username) {
         const existingUser = await db.query('SELECT user_id FROM users WHERE username = $1 AND user_id != $2', [username, userId]);
@@ -902,7 +918,49 @@ class AuthService {
         }
       }
 
-      // 2. Tạo câu query động để cập nhật
+      // 2. Kiểm tra email trùng lặp và đồng bộ Supabase nếu có đổi
+      let emailToUpdate = null;
+      if (email !== undefined && email !== null) {
+        const cleanEmail = String(email).trim().toLowerCase();
+        if (cleanEmail && cleanEmail !== (currentUser.email || '').toLowerCase()) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(cleanEmail)) {
+            const error = new Error('Địa chỉ email không hợp lệ');
+            error.name = 'ValidationError';
+            error.status = 400;
+            throw error;
+          }
+
+          const existingEmailUser = await db.query(
+            'SELECT user_id FROM users WHERE LOWER(email) = $1 AND user_id != $2',
+            [cleanEmail, userId]
+          );
+          if (existingEmailUser.rows.length > 0) {
+            const error = new Error('Địa chỉ email này đã được sử dụng bởi tài khoản khác');
+            error.name = 'ValidationError';
+            error.status = 400;
+            throw error;
+          }
+
+          // Đồng bộ sang Supabase Auth nếu user có supabase_uid
+          if (currentUser.supabase_uid && supabaseAdmin?.auth?.admin) {
+            try {
+              const { error: supaErr } = await supabaseAdmin.auth.admin.updateUserById(currentUser.supabase_uid, {
+                email: cleanEmail,
+                email_confirm: true
+              });
+              if (supaErr) {
+                console.warn('[updateProfile] Supabase email update warning:', supaErr.message);
+              }
+            } catch (supaEx) {
+              console.warn('[updateProfile] Supabase email update exception:', supaEx.message);
+            }
+          }
+          emailToUpdate = cleanEmail;
+        }
+      }
+
+      // 3. Tạo câu query động để cập nhật
       const updates = [];
       const values = [];
       let paramIndex = 1;
@@ -914,6 +972,10 @@ class AuthService {
       if (fullName) {
         updates.push(`full_name = $${paramIndex++}`);
         values.push(fullName);
+      }
+      if (emailToUpdate) {
+        updates.push(`email = $${paramIndex++}`);
+        values.push(emailToUpdate);
       }
       if (profilePictureUrl !== undefined) {
         updates.push(`profile_picture_url = $${paramIndex++}`);
@@ -945,7 +1007,7 @@ class AuthService {
         UPDATE users 
         SET ${updates.join(', ')} 
         WHERE user_id = $${paramIndex}
-        RETURNING user_id, email, username, full_name, profile_picture_url, phone, gender, birth_date, role_id
+        RETURNING user_id, email, username, full_name, profile_picture_url, phone, gender, birth_date, role_id, created_date
       `;
 
       const result = await db.query(queryText, values);
@@ -966,7 +1028,9 @@ class AuthService {
         phone: updatedUser.phone,
         gender: updatedUser.gender,
         birthDate: updatedUser.birth_date,
-        roleId: updatedUser.role_id
+        roleId: updatedUser.role_id,
+        createdDate: updatedUser.created_date,
+        created_date: updatedUser.created_date
       };
     } catch (error) {
       handleServiceError(error, 'Lỗi cập nhật profile trong AuthService');
@@ -1185,7 +1249,7 @@ class AuthService {
       }
 
       const result = await db.query(
-        'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at FROM users WHERE email = $1',
+        'SELECT user_id, email, username, full_name, role_id, supabase_uid, email_verified_at, profile_picture_url, created_date FROM users WHERE email = $1',
         [email]
       );
 
@@ -1229,7 +1293,10 @@ class AuthService {
             email: user.email,
             username: user.username,
             fullName: user.full_name,
-            roleId: user.role_id
+            roleId: user.role_id,
+            profilePictureUrl: user.profile_picture_url || null,
+            createdDate: user.created_date,
+            created_date: user.created_date
           }
         };
       }
@@ -1331,7 +1398,9 @@ class AuthService {
           username: newUser.username,
           fullName: newUser.full_name,
           roleId: newUser.role_id,
-          profilePictureUrl: newUser.profile_picture_url
+          profilePictureUrl: newUser.profile_picture_url,
+          createdDate: newUser.created_date,
+          created_date: newUser.created_date
         }
       };
     } catch (error) {

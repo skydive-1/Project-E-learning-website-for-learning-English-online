@@ -234,6 +234,7 @@ let pacificResetCache = { day: null, resetAt: 0 };
 let lastSuccessfulGeminiModel = null;
 let lastSuccessfulGeminiAt = null;
 let lastManualRoutingResetAt = null;
+let lastFallbackEvent = null;
 
 function getPacificDayKey(timestamp = Date.now()) {
   return pacificDayFormatter.format(new Date(timestamp));
@@ -295,6 +296,7 @@ function markModelQuotaExhausted(
   }
 
   modelQuotaCooldown.set(normalizedModel, nextState);
+  notifyAiRateLimitsChanged('model-cooldown-set');
 }
 
 function clearModelQuotaCooldown(model) {
@@ -306,7 +308,11 @@ function clearModelQuotaCooldown(model) {
      WHERE model = $1`,
     [normalizedModel]
   ).catch(() => {});
-  return modelQuotaCooldown.delete(normalizedModel);
+  const deleted = modelQuotaCooldown.delete(normalizedModel);
+  if (deleted) {
+    notifyAiRateLimitsChanged('model-cooldown-cleared');
+  }
+  return deleted;
 }
 
 function noteModelQuotaFailure(model, now = Date.now()) {
@@ -392,10 +398,34 @@ function getGeminiModelRoutingStatus() {
       cap: item.cap
     }));
 
+  const effectiveModel = effectiveOrder[0] || preferred;
+  const isFallbackActive = Boolean(preferred && effectiveModel && effectiveModel !== preferred);
+  const preferredCooldown = coolingDown.find((c) => c.model === preferred);
+  const isPreferredLocked = manuallyLockedModels.has(preferred);
+
+  let fallbackReason = null;
+  if (isFallbackActive) {
+    if (preferredCooldown) {
+      if (preferredCooldown.dimension === '503_unavailable' || preferredCooldown.source === 'provider_503_service_error' || preferredCooldown.source === 'admin_simulated_503') {
+        fallbackReason = `Model ưu tiên (${preferred}) gặp sự cố gián đoạn (Mã lỗi 503: Service Unavailable / Quá tải)`;
+      } else if (preferredCooldown.dimension === 'rpd') {
+        fallbackReason = `Model ưu tiên (${preferred}) đã chạm hạn mức ngày (RPD) của Google API`;
+      } else {
+        fallbackReason = `Model ưu tiên (${preferred}) đang trong thời gian chờ cooldown tạm thời`;
+      }
+    } else if (isPreferredLocked) {
+      fallbackReason = `Model ưu tiên (${preferred}) đang bị Admin khóa thủ công`;
+    } else if (lastFallbackEvent && lastFallbackEvent.fromModel === preferred) {
+      fallbackReason = lastFallbackEvent.reason;
+    } else {
+      fallbackReason = `Model ưu tiên (${preferred}) tạm thời gián đoạn, hệ thống tự động chuyển sang model dự phòng`;
+    }
+  }
+
   return {
     scope: 'process_instance',
     preferredModel: preferred,
-    effectiveModel: effectiveOrder[0] || preferred,
+    effectiveModel,
     fallbackOrder,
     effectiveOrder,
     lastSuccessfulModel: lastSuccessfulGeminiModel,
@@ -404,7 +434,11 @@ function getGeminiModelRoutingStatus() {
     isCustomPreferred: Boolean(activePreferredModel && activePreferredModel !== GEMINI_MODELS.routingPrimary),
     defaultPreferredModel: GEMINI_MODELS.routingPrimary,
     lockedModels: Array.from(manuallyLockedModels),
-    coolingDown
+    coolingDown,
+    isFallbackActive,
+    activeFallbackModel: isFallbackActive ? effectiveModel : null,
+    fallbackReason,
+    lastFallbackEvent
   };
 }
 
@@ -423,7 +457,39 @@ function resetGeminiModelRouting({ all = false, force = false } = {}) {
     modelQuotaFailureStreak.delete(preferred);
   }
   lastManualRoutingResetAt = new Date().toISOString();
+  lastFallbackEvent = null;
+  notifyAiRateLimitsChanged('ai-routing-reset');
   return getGeminiModelRoutingStatus();
+}
+
+function simulateAiModelFallback({ model, simulatedError = 503 } = {}) {
+  const targetModel = String(model || getActivePreferredModel()).trim();
+  const fallbackModels = getGeminiFallbackModels(targetModel);
+  const fallbackCandidate = fallbackModels.find((m) => m !== targetModel && !manuallyLockedModels.has(m)) || fallbackModels[1] || 'gemini-3.6-flash';
+
+  const durationMs = 60 * 1000;
+  markModelQuotaExhausted(targetModel, durationMs, 'admin_simulated_503', {
+    dimension: '503_unavailable'
+  });
+
+  lastFallbackEvent = {
+    fromModel: targetModel,
+    toModel: fallbackCandidate,
+    reason: `Mô phỏng phản biện: Lỗi ${simulatedError} (Service Unavailable / Quá tải)`,
+    errorCode: Number(simulatedError) || 503,
+    at: new Date().toISOString()
+  };
+
+  notifyAiRateLimitsChanged('model-fallback-simulated');
+
+  return {
+    success: true,
+    fromModel: targetModel,
+    toModel: fallbackCandidate,
+    errorCode: Number(simulatedError) || 503,
+    reason: lastFallbackEvent.reason,
+    routing: getGeminiModelRoutingStatus()
+  };
 }
 
 async function setPreferredGeminiModel(model, { adminUserId = null } = {}) {
@@ -1281,7 +1347,29 @@ async function executeGenerate(client, contents, config, modelOverride = null, c
     } catch (error) {
       lastError = error;
       if (isRetryableGeminiError(error)) {
-        console.warn(`[Gemini Fallback] ${model} vẫn thất bại sau retry, đang thử model kế tiếp.`);
+        const httpStatus = getGeminiHttpStatus(error);
+        const is503 = httpStatus === 503 || /503|unavailable|overloaded/i.test(String(error?.message || ''));
+        const nextTarget = fallbackModels.find((m) => !triedModels.has(m)) || null;
+
+        markModelQuotaExhausted(
+          model,
+          DEFAULT_MODEL_QUOTA_COOLDOWN_MS,
+          is503 ? 'provider_503_service_error' : 'provider_retryable_error',
+          { dimension: is503 ? '503_unavailable' : 'transient' }
+        );
+
+        if (nextTarget) {
+          lastFallbackEvent = {
+            fromModel: model,
+            toModel: nextTarget,
+            reason: is503 ? 'Lỗi 503 (Service Unavailable / Quá tải)' : `Lỗi ${httpStatus || 'tạm thời'} từ nhà cung cấp`,
+            errorCode: httpStatus || (is503 ? 503 : 500),
+            at: new Date().toISOString()
+          };
+          notifyAiRateLimitsChanged('model-fallback');
+        }
+
+        console.warn(`[Gemini Fallback] ${model} vẫn thất bại sau retry, đang thử model kế tiếp: ${nextTarget || 'hết model'}.`);
         continue;
       }
       throw error;
@@ -1337,7 +1425,29 @@ async function executeGenerateStream(client, contents, config, modelOverride = n
     } catch (error) {
       lastError = error;
       if (isRetryableGeminiError(error)) {
-        console.warn(`[Gemini Stream Fallback] ${model} vẫn thất bại trước chunk đầu tiên, đang thử model kế tiếp.`);
+        const httpStatus = getGeminiHttpStatus(error);
+        const is503 = httpStatus === 503 || /503|unavailable|overloaded/i.test(String(error?.message || ''));
+        const nextTarget = fallbackModels.find((m) => !triedModels.has(m)) || null;
+
+        markModelQuotaExhausted(
+          model,
+          DEFAULT_MODEL_QUOTA_COOLDOWN_MS,
+          is503 ? 'provider_503_service_error' : 'provider_retryable_error',
+          { dimension: is503 ? '503_unavailable' : 'transient' }
+        );
+
+        if (nextTarget) {
+          lastFallbackEvent = {
+            fromModel: model,
+            toModel: nextTarget,
+            reason: is503 ? 'Lỗi 503 (Service Unavailable / Quá tải)' : `Lỗi ${httpStatus || 'tạm thời'} từ nhà cung cấp`,
+            errorCode: httpStatus || (is503 ? 503 : 500),
+            at: new Date().toISOString()
+          };
+          notifyAiRateLimitsChanged('model-fallback');
+        }
+
+        console.warn(`[Gemini Stream Fallback] ${model} vẫn thất bại trước chunk đầu tiên, đang thử model kế tiếp: ${nextTarget || 'hết model'}.`);
         continue;
       }
       throw error;
@@ -1729,6 +1839,7 @@ module.exports = {
   getActivePreferredModel,
   markModelQuotaExhausted,
   recordSuccessfulGeminiModel,
+  simulateAiModelFallback,
   geminiModel,
   geminiSpeakingModel,
   embeddingModel,

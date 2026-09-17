@@ -12,7 +12,8 @@ import {
   FiRefreshCw,
   FiSave,
   FiSettings,
-  FiUnlock
+  FiUnlock,
+  FiZap
 } from 'react-icons/fi';
 
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import {
   resetGeminiModelRouting,
   setPreferredGeminiModel,
   toggleAiModelLock,
+  simulateGeminiModelFallback,
   updateGeminiRateLimitCaps
 } from '../services/adminAnalytics.service';
 import FreeTierUsageGuard from './FreeTierUsageGuard';
@@ -128,6 +130,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const [settingPreferredModel, setSettingPreferredModel] = useState(null);
   const [lockingModel, setLockingModel] = useState(null);
   const [savingModel, setSavingModel] = useState(null);
+  const [simulatingFallback, setSimulatingFallback] = useState(false);
   const [error, setError] = useState(null);
   const [streamState, setStreamState] = useState('connecting');
   const isStreamConnecting = streamState === 'connecting' || streamState === 'delayed';
@@ -140,6 +143,19 @@ const AIRateLimitsView = ({ canManageCaps }) => {
   const preferredModelCoolingDown = Boolean(preferredModelCooldown);
   const preferredModelRpdExhausted = preferredModelCooldown?.dimension === 'rpd';
   const anyModelCoolingDown = Boolean(routing?.coolingDown && routing.coolingDown.length > 0);
+  const isFallbackActive = Boolean(
+    routing?.isFallbackActive
+    || (routing?.effectiveModel && routing?.preferredModel && routing.effectiveModel !== routing.preferredModel)
+    || preferredModelCoolingDown
+  );
+  const activeFallbackModel = routing?.activeFallbackModel || (isFallbackActive ? routing?.effectiveModel : null);
+  const fallbackReason = routing?.fallbackReason || (
+    preferredModelRpdExhausted
+      ? t('Hạn mức ngày (RPD)')
+      : preferredModelCooldown
+        ? t('Model ưu tiên đang cooldown / gặp sự cố')
+        : null
+  );
 
   const fetchData = useCallback(async ({ background = false, manual = false, fresh = false, includeCaps = !background } = {}) => {
     if (fetchInFlightRef.current) return false;
@@ -409,6 +425,33 @@ const AIRateLimitsView = ({ canManageCaps }) => {
     }
   };
 
+  const handleSimulateFallback = async () => {
+    if (simulatingFallback || !canManageCaps) return;
+    try {
+      setSimulatingFallback(true);
+      const targetModel = routing?.preferredModel || 'gemini-3.7-flash';
+      const result = await simulateGeminiModelFallback({ model: targetModel, simulatedError: 503 });
+      if (result?.routing) {
+        setStatus((current) => current ? { ...current, routing: result.routing } : current);
+      }
+      showToast(
+        t('🧪 Đã mô phỏng lỗi 503 trên {{from}}. Hệ thống đã tự động chuyển sang {{to}}!', {
+          from: result?.fromModel || targetModel,
+          to: result?.toModel || 'model dự phòng'
+        }),
+        'warning'
+      );
+    } catch (simError) {
+      console.error('Không thể mô phỏng fallback:', simError);
+      showToast(
+        simError.response?.data?.message || t('Không thể kích hoạt mô phỏng fallback. Vui lòng thử lại.'),
+        'error'
+      );
+    } finally {
+      setSimulatingFallback(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="ai-rate-state" role="status">
@@ -585,7 +628,7 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     id="ai-preferred-model-select"
                     value={routing.preferredModel || ''}
                     onChange={(e) => handleSelectPreferredModel(e.target.value)}
-                    disabled={Boolean(settingPreferredModel || lockingModel)}
+                    disabled={Boolean(settingPreferredModel || lockingModel || simulatingFallback)}
                     aria-label={t('Chọn model ưu tiên điều phối')}
                   >
                     {(routing.fallbackOrder || []).map((m) => {
@@ -601,20 +644,72 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                   </select>
                 </div>
               )}
-              <span className={`ai-model-routing__state${preferredModelCoolingDown ? ' is-cooling' : ' is-ready'}`}>
+              {canManageCaps && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="ai-model-routing__simulate-btn"
+                  onClick={handleSimulateFallback}
+                  disabled={Boolean(simulatingFallback || resettingRouting || settingPreferredModel || isFallbackActive)}
+                  title={t('Mô phỏng kiểm tra phản ứng của hệ thống khi model ưu tiên gặp lỗi 503')}
+                  aria-label={t('Test Fallback (Mô phỏng 503)')}
+                >
+                  {simulatingFallback ? (
+                    <Spinner data-icon="inline-start" aria-hidden="true" style={{ width: '12px', height: '12px' }} />
+                  ) : (
+                    <FiZap data-icon="inline-start" aria-hidden="true" />
+                  )}
+                  {simulatingFallback ? t('Đang mô phỏng...') : t('🧪 Test Fallback (Mô phỏng 503)')}
+                </Button>
+              )}
+              <span className={`ai-model-routing__state${preferredModelCoolingDown || isFallbackActive ? ' is-cooling' : ' is-ready'}`}>
                 <i aria-hidden="true" />
                 {preferredModelRpdExhausted
                   ? t('Đang dùng model dự phòng')
-                  : preferredModelCoolingDown
-                    ? t('Model chính đang chờ')
-                    : routing.isCustomPreferred
-                      ? t('Admin ưu tiên: {{model}}', { model: routing.preferredModel })
-                      : t('Đang ưu tiên model cao nhất')}
+                  : isFallbackActive
+                    ? t('Đang điều phối fallback')
+                    : preferredModelCoolingDown
+                      ? t('Model chính đang chờ')
+                      : routing.isCustomPreferred
+                        ? t('Admin ưu tiên: {{model}}', { model: routing.preferredModel })
+                        : t('Đang ưu tiên model cao nhất')}
               </span>
             </div>
           </div>
 
           <div className="ai-model-routing__body">
+            {isFallbackActive && (
+              <div className="ai-model-routing__fallback-alert" role="alert" aria-live="assertive">
+                <div className="ai-model-routing__fallback-alert-header">
+                  <div className="ai-model-routing__fallback-alert-badge">
+                    <FiAlertTriangle aria-hidden="true" />
+                    <span>{t('HỆ THỐNG ĐANG TỰ ĐỘNG ĐIỀU PHỐI FALLBACK')}</span>
+                  </div>
+                  {canManageCaps && (
+                    <button
+                      type="button"
+                      className="ai-model-routing__fallback-alert-restore-btn"
+                      onClick={handleResetRouting}
+                      disabled={resettingRouting}
+                      title={t('Khôi phục ngay')}
+                      aria-label={t('Khôi phục ngay')}
+                    >
+                      {resettingRouting ? <Spinner aria-hidden="true" style={{ width: '12px', height: '12px' }} /> : <FiRefreshCw aria-hidden="true" />}
+                      {resettingRouting ? t('Đang khôi phục...') : t('Khôi phục ngay')}
+                    </button>
+                  )}
+                </div>
+                <p className="ai-model-routing__fallback-alert-text">
+                  {t('Model ưu tiên {{preferred}} tạm thời gián đoạn ({{reason}}). Hệ thống đã tự động chuyển hướng toàn bộ request sang model dự phòng {{effective}} để đảm bảo ứng dụng hoạt động thông suốt (0 downtime).', {
+                    preferred: routing.preferredModel,
+                    effective: routing.effectiveModel || activeFallbackModel || t('model dự phòng'),
+                    reason: fallbackReason || t('Lỗi 503 Service Unavailable / Cooldown')
+                  })}
+                </p>
+              </div>
+            )}
+
             <div className="ai-model-routing__lane" aria-label={t('Thứ tự fallback')}>
               {(routing.fallbackOrder || []).map((model, index) => {
                 const cooldown = routing.coolingDown?.find((item) => item.model === model);
@@ -623,12 +718,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                 const isEffective = model === routing.effectiveModel;
                 const isPreferred = model === routing.preferredModel;
                 const isClickable = canManageCaps && !isPreferred && !settingPreferredModel && !lockingModel && !isLocked;
+                const isActiveFallback = Boolean(isFallbackActive && isEffective && !isPreferred);
+                const isFailingPreferred = Boolean(isFallbackActive && isPreferred && (cooldown || isLocked));
 
                 return (
                   <React.Fragment key={model}>
                     {index > 0 && <span className="ai-model-routing__arrow" aria-hidden="true">→</span>}
                     <div
-                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isLocked ? ' is-manually-locked' : ''}${isRpdExhausted ? ' is-rpd-locked' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}`}
+                      className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isLocked ? ' is-manually-locked' : ''}${isRpdExhausted ? ' is-rpd-locked' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}${isActiveFallback ? ' is-active-fallback' : ''}${isFailingPreferred ? ' is-failing-preferred' : ''}`}
                       role={isClickable ? 'button' : undefined}
                       tabIndex={isClickable ? 0 : undefined}
                       onClick={isClickable ? () => handleSelectPreferredModel(model) : undefined}
@@ -651,12 +748,22 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                     >
                       <div className="ai-model-routing__model-header">
                         <span>{index === 0 ? t('Ưu tiên') : t('Dự phòng {{number}}', { number: index })}</span>
-                        {isPreferred && (
+                        {isActiveFallback ? (
+                          <span className="ai-model-routing__fallback-active-badge" title={t('Model này đang tiếp nhận toàn bộ request thay thế')}>
+                            <FiZap aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '3px' }} />
+                            {t('Đang fallback thay thế')}
+                          </span>
+                        ) : isFailingPreferred ? (
+                          <span className="ai-model-routing__failing-badge" title={t('Model ưu tiên đang gặp sự cố')}>
+                            <FiAlertTriangle aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '3px' }} />
+                            {cooldown?.dimension === '503_unavailable' ? t('Lỗi 503 · Tạm dừng') : t('Đang cooldown')}
+                          </span>
+                        ) : isPreferred ? (
                           <span className="ai-model-routing__badge">
                             <FiCheck aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '2px' }} />
                             {t('Đang chọn')}
                           </span>
-                        )}
+                        ) : null}
                         {isLocked ? (
                           <span className="ai-model-routing__admin-lock-badge" title={t('Admin đã chủ động khóa model này')}>
                             <FiLock aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '3px' }} />
@@ -673,14 +780,22 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                         {isLocked
                           ? t('Admin đã khóa · không điều phối')
                           : cooldown
-                            ? cooldown.dimension === 'rpd'
-                              ? t('Google API từ chối · thử lại {{time}}', {
+                            ? cooldown.dimension === '503_unavailable'
+                              ? t('Lỗi 503 (Service Unavailable) · Tự động thử lại {{time}}', {
                                   time: dateTimeFormatter.format(new Date(cooldown.retryAt))
                                 })
-                              : t('Thử lại {{time}}', {
-                                  time: dateTimeFormatter.format(new Date(cooldown.retryAt))
-                                })
-                            : isEffective ? t('Request kế tiếp') : t('Sẵn sàng')}
+                              : cooldown.dimension === 'rpd'
+                                ? t('Google API từ chối · thử lại {{time}}', {
+                                    time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                                  })
+                                : t('Thử lại {{time}}', {
+                                    time: dateTimeFormatter.format(new Date(cooldown.retryAt))
+                                  })
+                            : isActiveFallback
+                              ? t('⚡ Đang xử lý thay thế cho {{preferred}}', { preferred: routing.preferredModel })
+                              : isEffective
+                                ? t('Request kế tiếp')
+                                : t('Sẵn sàng')}
                       </small>
                       {canManageCaps && (
                         <div className="ai-model-routing__model-actions">
@@ -725,7 +840,14 @@ const AIRateLimitsView = ({ canManageCaps }) => {
             <dl className="ai-model-routing__facts">
               <div>
                 <dt>{t('Model cho request kế tiếp')}</dt>
-                <dd><code>{routing.effectiveModel || routing.preferredModel}</code></dd>
+                <dd>
+                  <code>{routing.effectiveModel || routing.preferredModel}</code>
+                  {isFallbackActive && (
+                    <span className="ai-model-routing__fact-fallback-tag">
+                      {t('(Đang Fallback)')}
+                    </span>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>{t('Model thành công gần nhất')}</dt>
