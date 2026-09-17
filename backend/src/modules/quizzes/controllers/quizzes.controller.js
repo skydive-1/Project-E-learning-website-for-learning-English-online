@@ -180,6 +180,19 @@ exports.getLeaderboard = async (req, res, next) => {
   }
 };
 
+exports.getGlobalLeaderboard = async (req, res, next) => {
+  try {
+    const { timeframe = 'all', limit = 20 } = req.query;
+    const leaderboard = await quizzesService.getGlobalLeaderboard({ timeframe, limit });
+    res.status(200).json({
+      success: true,
+      data: leaderboard
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.submitWriting = async (req, res, next) => {
   try {
     const writingText = req.body.writing || req.body.text;

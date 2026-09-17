@@ -202,6 +202,23 @@ export const getQuizLeaderboard = async (quizId) => {
   }
 };
 
+/**
+ * Lấy Bảng xếp hạng toàn hệ thống (Global Leaderboard)
+ * @param {string} timeframe - 'all' | 'month' | 'week'
+ * @param {number} limit - Mặc định 20
+ */
+export const getGlobalQuizLeaderboard = async (timeframe = 'all', limit = 20) => {
+  try {
+    const response = await apiClient.get('/quizzes/leaderboard/global', {
+      params: { timeframe, limit }
+    });
+    return response.data?.data || [];
+  } catch (error) {
+    console.error('⚠️ Lỗi tải Bảng xếp hạng toàn hệ thống:', error.message);
+    throw error;
+  }
+};
+
 const normalizeQuestionPayload = (question) => ({
   questionText: question.questionText || question.question || question.question_text || '',
   options: Array.isArray(question.options) ? question.options : [],
