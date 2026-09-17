@@ -20,6 +20,7 @@ const { notifyAiRateLimitsChanged } = require('../../../utils/aiRateLimitEvents'
 const { getQuestionQuotaSnapshot } = require('../../chatbot/services/aiQuestionQuota.service');
 const { getGeminiUsageTrend } = require('./geminiUsageTrend.service');
 
+
 // Helper lấy ngày hiện tại định dạng YYYY-MM-DD theo múi giờ Việt Nam (UTC+7)
 const getVietnamDateString = (date = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
@@ -167,10 +168,11 @@ const deleteUser = async (userId) => {
 const resetUserToken = async (userId) => {
   const query = `
     INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date)
-    VALUES ($1, 6000, 0, $2)
+    VALUES ($1, 250000, 0, $2)
     ON CONFLICT (user_id) 
     DO UPDATE SET 
       used_tokens = 0,
+      max_tokens = 250000,
       reset_date = EXCLUDED.reset_date,
       updated_at = CURRENT_TIMESTAMP
     RETURNING user_id, max_tokens, used_tokens, reset_date
@@ -196,12 +198,13 @@ const resetTokensByRole = async (roleId) => {
   const todayStr = getVietnamDateString();
   const query = `
     INSERT INTO user_token_limits (user_id, max_tokens, used_tokens, reset_date)
-    SELECT user_id, 6000, 0, $1
+    SELECT user_id, 250000, 0, $1
     FROM users
     WHERE role_id = $2
     ON CONFLICT (user_id)
     DO UPDATE SET
       used_tokens = 0,
+      max_tokens = 250000,
       reset_date = EXCLUDED.reset_date,
       updated_at = CURRENT_TIMESTAMP
     RETURNING user_id, used_tokens, reset_date
@@ -678,23 +681,23 @@ const getAiQuotaDashboard = async (days = 30) => {
       u.role_id,
       COALESCE(r.role_name, CASE WHEN u.role_id = 1 THEN 'Admin' WHEN u.role_id = 2 THEN 'Instructor' ELSE 'Student' END) AS role_name,
       u.created_date,
-      COALESCE(utl.max_tokens, 6000)::int AS max_tokens,
+      COALESCE(utl.max_tokens, 250000)::int AS max_tokens,
       COALESCE(utl.used_tokens, 0)::int AS used_tokens,
-      COALESCE(utl.remaining_tokens, COALESCE(utl.max_tokens, 6000) - COALESCE(utl.used_tokens, 0))::int AS remaining_tokens,
+      COALESCE(utl.remaining_tokens, COALESCE(utl.max_tokens, 250000) - COALESCE(utl.used_tokens, 0))::int AS remaining_tokens,
       utl.reset_date,
       COALESCE(aqq.used_questions, 0)::int AS used_questions_24h,
       aqq.window_started_at AS question_window_started_at,
       COALESCE(chat_agg.total_messages, 0)::int AS ai_messages_count,
       chat_agg.last_chat_at AS last_ai_activity_at,
       CASE 
-        WHEN COALESCE(utl.max_tokens, 6000) = 0 THEN 0
-        ELSE LEAST(100, ROUND((COALESCE(utl.used_tokens, 0)::numeric / NULLIF(COALESCE(utl.max_tokens, 6000), 0)) * 100))::int
+        WHEN COALESCE(utl.max_tokens, 250000) = 0 THEN 0
+        ELSE LEAST(100, ROUND((COALESCE(utl.used_tokens, 0)::numeric / NULLIF(COALESCE(utl.max_tokens, 250000), 0)) * 100))::int
       END AS usage_percentage,
       CASE
         WHEN COALESCE(utl.used_tokens, 0) = 0 THEN 'unused'
-        WHEN COALESCE(utl.used_tokens, 0) >= COALESCE(utl.max_tokens, 6000) THEN 'exhausted'
-        WHEN COALESCE(utl.used_tokens, 0) >= (COALESCE(utl.max_tokens, 6000) * 0.8) THEN 'critical'
-        WHEN COALESCE(utl.used_tokens, 0) >= (COALESCE(utl.max_tokens, 6000) * 0.5) THEN 'warning'
+        WHEN COALESCE(utl.used_tokens, 0) >= COALESCE(utl.max_tokens, 250000) THEN 'exhausted'
+        WHEN COALESCE(utl.used_tokens, 0) >= (COALESCE(utl.max_tokens, 250000) * 0.8) THEN 'critical'
+        WHEN COALESCE(utl.used_tokens, 0) >= (COALESCE(utl.max_tokens, 250000) * 0.5) THEN 'warning'
         ELSE 'normal'
       END AS quota_status
     FROM users u

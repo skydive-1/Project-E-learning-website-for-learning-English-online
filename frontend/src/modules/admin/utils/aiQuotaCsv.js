@@ -52,7 +52,7 @@ export const buildAiQuotaCsv = (users, t = (value) => value) => {
     const remainingQuestions = isUnlimited
       ? null
       : Number(user.questions_remaining_24h ?? Math.max(0, questionLimit - usedQuestions));
-    const tokenLimit = Number(user.max_tokens || 6000);
+    const tokenLimit = Number(user.max_tokens || 250000);
     const usedTokens = Number(user.used_tokens || 0);
     const tokenPercentage = Number(user.usage_percentage ?? Math.min(100, Math.round((usedTokens / tokenLimit) * 100)));
     const role = isAdmin

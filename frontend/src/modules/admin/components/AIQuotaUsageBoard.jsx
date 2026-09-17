@@ -537,7 +537,7 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
               ) : (
                 filteredUsers.map((user) => {
                   // 1. Hạn mức sử dụng Token mô hình (Usage Limit) - hiển thị phần trăm (%)
-                  const tokenLimit = user.max_tokens || 6000;
+                  const tokenLimit = user.max_tokens || 250000;
                   const tokenPct = user.usage_percentage !== undefined && user.usage_percentage !== null
                     ? user.usage_percentage
                     : Math.min(100, Math.round(((user.used_tokens || 0) / tokenLimit) * 100));
