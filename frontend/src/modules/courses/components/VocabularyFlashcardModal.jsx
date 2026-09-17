@@ -217,9 +217,9 @@ const VocabularyFlashcardModal = ({ collection, onClose, onUpdateWordProgress, u
                               e.stopPropagation();
                               speakWord(currentWord.example);
                             }}
-                            title="Nghe câu ví dụ bằng giọng Nam (British)"
+                            title="Nghe câu ví dụ"
                           >
-                            <FiVolume2 className="text-xs" /> <span>Nghe ví dụ (Nam - British)</span>
+                            <FiVolume2 className="text-xs" /> <span>Nghe ví dụ</span>
                           </button>
                         </div>
                         <p className="example-sentence">"{currentWord.example}"</p>
@@ -308,7 +308,7 @@ const VocabularyFlashcardModal = ({ collection, onClose, onUpdateWordProgress, u
                           type="button"
                           className="btn-list-audio-example shrink-0 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 mt-0.5 cursor-pointer"
                           onClick={() => speakWord(item.example)}
-                          title="Nghe ví dụ (Nam - British)"
+                          title="Nghe ví dụ"
                         >
                           <FiVolume2 className="text-xs" />
                         </button>
