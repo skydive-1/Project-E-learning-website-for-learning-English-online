@@ -9,6 +9,7 @@ import {
   RiSearchLine,
   RiRefreshLine,
   RiDownload2Line,
+  RiFileExcel2Line,
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiAlertLine,
@@ -36,6 +37,7 @@ import apiClient from '../../../config/api.config';
 import { useLanguage } from '../../../context/LanguageContext';
 import { useToast } from '../../../context/ToastContext';
 import { getAdminAnalytics } from '../services/adminAnalytics.service';
+import { exportUserAnalyticsToExcel } from '../utils/excelExport';
 
 import { Button } from '@/components/base/buttons/button';
 import { Select, SelectItem } from '@/components/base/select/select';
@@ -296,25 +298,44 @@ const UserAnalyticsDashboard = ({
     }
   };
 
-  // Xuất file CSV báo cáo Analytics
+  // Xuất file Excel (.xlsx) báo cáo Analytics chuẩn thẩm mỹ
+  const handleExportExcel = async () => {
+    if (!learners.length) {
+      showToast?.(t('Không có dữ liệu để xuất.'), 'warning');
+      return;
+    }
+    try {
+      await exportUserAnalyticsToExcel(learners, range, STATUS_META, t);
+      showToast?.(t('Đã xuất báo cáo Excel (.xlsx) thành công.'), 'success');
+    } catch (err) {
+      console.error('Lỗi khi xuất file Excel:', err);
+      showToast?.(t('Có lỗi khi tạo file Excel. Đang tải bản CSV dự phòng...'), 'error');
+      handleExportCSV();
+    }
+  };
+
+  // Xuất file CSV báo cáo Analytics (hỗ trợ chỉ thị sep=, cho Microsoft Excel)
   const handleExportCSV = () => {
-    if (!learners.length) return;
+    if (!learners.length) {
+      showToast?.(t('Không có dữ liệu để xuất.'), 'warning');
+      return;
+    }
     const headers = ['User ID', 'Họ tên', 'Username', 'Email', 'Trạng thái', 'Tiến độ (%)', 'Bài hoàn thành', 'Thời gian học (phút)', 'Điểm Quiz TB', 'Token AI dùng', 'Hoạt động cuối'];
     const rows = learners.map((l) => [
       l.user_id,
-      `"${l.full_name || ''}"`,
-      `"${l.username || ''}"`,
-      `"${l.email || ''}"`,
-      STATUS_META[l.engagement_status]?.label || l.engagement_status,
+      `"${(l.full_name || '').replace(/"/g, '""')}"`,
+      `"${(l.username || '').replace(/"/g, '""')}"`,
+      `"${(l.email || '').replace(/"/g, '""')}"`,
+      `"${STATUS_META[l.engagement_status]?.label || l.engagement_status}"`,
       l.progress_percent,
       l.completed_lessons,
       l.study_minutes,
       l.average_quiz_score,
       l.used_tokens,
-      l.last_activity_at ? dateTimeFormatter.format(new Date(l.last_activity_at)) : 'Chưa có'
+      `"${l.last_activity_at ? dateTimeFormatter.format(new Date(l.last_activity_at)) : 'Chưa có'}"`
     ]);
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const csvContent = '\uFEFFsep=,\r\n' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -323,6 +344,8 @@ const UserAnalyticsDashboard = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast?.(t('Đã xuất báo cáo CSV.'), 'success');
   };
 
   if (loading) return <DashboardSkeleton />;
@@ -402,6 +425,18 @@ const UserAnalyticsDashboard = ({
             {refreshing ? 'Đang cập nhật...' : 'Làm mới'}
           </Button>
 
+          {/* Nút Xuất Excel (.xlsx) */}
+          <Button
+            variant="secondary"
+            size="small"
+            leadingIcon={RiFileExcel2Line}
+            onClick={handleExportExcel}
+            aria-label="Xuất báo cáo Excel (.xlsx)"
+            className="border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+          >
+            {t('Xuất Excel (.xlsx)')}
+          </Button>
+
           {/* Nút Xuất CSV */}
           <Button
             variant="secondary"
@@ -410,7 +445,7 @@ const UserAnalyticsDashboard = ({
             onClick={handleExportCSV}
             aria-label="Xuất báo cáo CSV"
           >
-            Xuất CSV
+            {t('Xuất CSV')}
           </Button>
         </div>
       </header>
