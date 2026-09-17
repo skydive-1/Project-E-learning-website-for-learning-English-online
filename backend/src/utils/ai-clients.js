@@ -147,7 +147,7 @@ async function recordAiUsage({ eventId = null, userId = null, purpose, model, us
     if (userId && total > 0) {
       await db.query(
         `INSERT INTO user_token_limits (user_id, max_tokens, used_tokens)
-         VALUES ($1, 6000, $2)
+         VALUES ($1, 250000, $2)
          ON CONFLICT (user_id) DO UPDATE SET
            used_tokens = user_token_limits.used_tokens + $2,
            updated_at = CURRENT_TIMESTAMP`,
