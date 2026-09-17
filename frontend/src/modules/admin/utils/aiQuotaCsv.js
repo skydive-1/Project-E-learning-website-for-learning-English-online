@@ -81,11 +81,22 @@ export const buildAiQuotaCsv = (users, t = (value) => value) => {
   return `\uFEFF${[headers, ...rows].map((row) => row.map(escapeCsvField).join(',')).join('\r\n')}`;
 };
 
-export const downloadCsvReport = (csvContent, fileName) => {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+export const downloadCsvReport = (csvContent, fileName, { excelCompatible = true } = {}) => {
+  let content = csvContent;
+  if (excelCompatible) {
+    if (content.startsWith('\uFEFF')) {
+      if (!content.startsWith('\uFEFFsep=')) {
+        content = '\uFEFFsep=,\r\n' + content.slice(1);
+      }
+    } else if (!content.startsWith('sep=')) {
+      content = 'sep=,\r\n' + content;
+    }
+  }
+
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
   const link = document.createElement('a');
   const objectUrl = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(blob) : null;
-  link.href = objectUrl || `data:text/csv;charset=utf-8,${encodeURIComponent(csvContent)}`;
+  link.href = objectUrl || `data:text/csv;charset=utf-8,${encodeURIComponent(content)}`;
   link.download = fileName;
   document.body.appendChild(link);
   link.click();

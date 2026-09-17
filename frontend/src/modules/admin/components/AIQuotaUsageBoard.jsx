@@ -23,6 +23,8 @@ import AnimatedStatNumber from '../../../components/common/AnimatedStatNumber';
 import RagIncidentAlertModal from './RagIncidentAlertModal';
 import GeminiUsageTrendChart from './GeminiUsageTrendChart';
 import { buildAiQuotaCsv, downloadCsvReport } from '../utils/aiQuotaCsv';
+import { exportAiQuotaToExcel } from '../utils/excelExport';
+import { RiFileExcel2Line } from '@remixicon/react';
 import '../styles/ai-quota-board.scss';
 
 const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
@@ -132,6 +134,23 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
   const handleOpenHistoryModal = (user) => {
     setTargetUserHistory(user);
     setHistoryModalOpen(true);
+  };
+
+  // Xuất file Excel (.xlsx) báo cáo với định dạng chuẩn, có viền và màu sắc chuyên nghiệp
+  const handleExportExcel = async () => {
+    if (!dashboardData?.users || dashboardData.users.length === 0) {
+      showToast(t('Không có dữ liệu để xuất.'), 'warning');
+      return;
+    }
+
+    try {
+      await exportAiQuotaToExcel(dashboardData.users, t);
+      showToast(t('Đã xuất báo cáo Excel (.xlsx) thành công.'), 'success');
+    } catch (err) {
+      console.error('Lỗi khi xuất file Excel:', err);
+      showToast(t('Có lỗi khi tạo file Excel. Đang tải bản CSV dự phòng...'), 'error');
+      handleExportCsv();
+    }
   };
 
   // Xuất file CSV báo cáo
@@ -479,10 +498,21 @@ const AIQuotaUsageBoard = ({ onOpenRateLimits }) => {
         </button>
         <button 
           type="button"
+          className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+          onClick={handleExportExcel}
+          title={t('Xuất file Excel (.xlsx) với định dạng bảng biểu, viền và màu sắc chuyên nghiệp')}
+        >
+          <RiFileExcel2Line className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+          <span>{t('Xuất Excel (.xlsx)')}</span>
+        </button>
+        <button 
+          type="button"
           className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
           onClick={handleExportCsv}
+          title={t('Xuất file CSV dữ liệu thô')}
         >
-          <FiDownload className="text-xs" /> {t('Xuất báo cáo CSV')}
+          <FiDownload className="text-xs" />
+          <span>{t('Xuất CSV')}</span>
         </button>
         <button 
           type="button"
