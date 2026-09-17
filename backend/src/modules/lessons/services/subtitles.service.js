@@ -70,18 +70,21 @@ function formatVttTimestamp(seconds) {
  */
 function buildVttFromCues(cues, type = 'bilingual') {
   let vtt = 'WEBVTT\n\n';
-  cues.forEach((cue, index) => {
+  (cues || []).forEach((cue, index) => {
     const startStr = cue.startFormatted || formatVttTimestamp(cue.start);
     const endStr = cue.endFormatted || formatVttTimestamp(cue.end);
     vtt += `${index + 1}\n`;
     vtt += `${startStr} --> ${endStr}\n`;
+    const enText = String(cue.en || '').trim();
+    const viText = String(cue.vi || '').trim();
     if (type === 'en') {
-      vtt += `${cue.en}\n\n`;
+      vtt += `${enText || viText}\n\n`;
     } else if (type === 'vi') {
-      vtt += `${cue.vi}\n\n`;
+      vtt += `${viText || enText}\n\n`;
     } else {
       // Bilingual: Dòng trên tiếng Anh, dòng dưới tiếng Việt
-      vtt += `${cue.en}\n${cue.vi}\n\n`;
+      const lines = [enText, viText].filter(Boolean);
+      vtt += `${lines.join('\n')}\n\n`;
     }
   });
   return vtt;
@@ -1105,11 +1108,18 @@ class SubtitlesService {
 
     const prompt = `
 Bạn là hệ thống bóc băng âm thanh và biên dịch phụ đề video học tiếng Anh tự động (AI Audio Transcription & Bilingual Subtitle Engine).
-Hãy lắng nghe kỹ luồng âm thanh bài giảng tiếng Anh đính kèm và tạo danh sách phụ đề song ngữ chính xác theo giọng người nói thật.
+Hãy lắng nghe kỹ luồng âm thanh bài giảng đính kèm và tạo danh sách phụ đề song ngữ chính xác theo giọng người nói thật.
+
+QUY TẮC NGÔN NGỮ QUAN TRỌNG:
+- Giảng viên có thể nói tiếng Anh, tiếng Việt, hoặc đan xen cả tiếng Việt và tiếng Anh (ví dụ giảng viên giải thích ngữ pháp, từ vựng bằng tiếng Việt).
+- "en": BẮT BUỘC là tiếng Anh. Nếu người nói nói tiếng Anh, phiên âm chính xác. Nếu người nói nói tiếng Việt, dịch chính xác sang tiếng Anh chuẩn, tự nhiên.
+- "vi": BẮT BUỘC là tiếng Việt. Nếu người nói nói tiếng Việt, phiên âm chính xác. Nếu người nói nói tiếng Anh, dịch chính xác sang tiếng Việt chuẩn, tự nhiên.
+- TUYỆT ĐỐI KHÔNG ĐƯỢC ĐẢO LỘN: Trường "en" không bao giờ được chứa tiếng Việt, trường "vi" không bao giờ được chứa tiếng Anh.
+- Mốc thời gian (start, end) tính bằng giây. Chia thành các câu ngắn 2 đến 7 giây theo nhịp nói tự nhiên. TUYỆT ĐỐI KHÔNG tạo cue dài quá 10 giây.
+- QUAN TRỌNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 
 Yêu cầu định dạng đầu ra:
-1. Trả về DUY NHẤT một JSON hợp lệ (không chứa markdown thừa).
-2. JSON phải có cấu trúc như sau:
+Trả về DUY NHẤT một JSON hợp lệ (không chứa markdown thừa):
 {
   "cues": [
     {
@@ -1123,13 +1133,6 @@ Yêu cầu định dạng đầu ra:
     }
   ]
 }
-
-Quy tắc:
-- Mốc thời gian (start, end) tính bằng giây, khớp chính xác theo từng câu giọng nói của giảng viên trong audio.
-- en: Phiên âm chính xác từng từ tiếng Anh của người nói (không tóm tắt, không lược bớt).
-- vi: Bản dịch tiếng Việt tự nhiên, chuẩn nghĩa sư phạm cho người học.
-- Bắt buộc ghi nhận mọi âm thanh người nói: Ngay cả khi audio ngắn, câu chào hỏi, câu luyện phát âm hoặc thán từ (ví dụ "Hello", "Mm-hmm", "Yes", "OK"), vẫn phải tạo ít nhất một cue tương ứng, không được trả về mảng cues rỗng nếu có giọng nói trong tệp.
-- QUAN TRọNG: Đảm bảo JSON luôn đóng hoàn chỉnh — mảng cues phải kết thúc bằng ] và object gốc bằng }.
 `;
 
     const subtitleModel = GEMINI_MODELS.subtitle;
@@ -1180,16 +1183,18 @@ Quy tắc:
     }
 
     return cues.map((c, idx) => {
-      const realStart = Number(c.start || 0) + timeOffset;
-      const realEnd = Number(c.end || (Number(c.start || 0) + 4)) + timeOffset;
+      const realStart = Math.max(0, Number(c.start || 0) + timeOffset);
+      let realEnd = Number(c.end || (Number(c.start || 0) + 4)) + timeOffset;
+      if (realEnd <= realStart) realEnd = realStart + 3;
+      if (realEnd - realStart > 10) realEnd = realStart + 8;
       return {
         id: c.id || idx + 1,
-        start: realStart,
-        end: realEnd,
+        start: Number(realStart.toFixed(3)),
+        end: Number(realEnd.toFixed(3)),
         startFormatted: formatVttTimestamp(realStart),
         endFormatted: formatVttTimestamp(realEnd),
-        en: c.en || '',
-        vi: c.vi || ''
+        en: c.en ? String(c.en).trim() : '',
+        vi: c.vi ? String(c.vi).trim() : ''
       };
     });
   }
@@ -1683,8 +1688,8 @@ ${JSON.stringify(translationInput)}
 
           console.log(`[FFmpeg Audio Pipeline] Thời lượng video: ${totalDuration > 0 ? `${totalDuration.toFixed(1)}s` : 'Toàn bộ file'}`);
 
-          if (totalDuration <= 600) {
-            // Video <= 10 phút: Trích xuất và bóc băng toàn bộ một lần
+          if (totalDuration <= 180) {
+            // Video ngắn <= 3 phút: Trích xuất và bóc băng toàn bộ một lần
             const tempAudioPath = path.join(tempAudioDir, `audio_lesson_${lessonId}_${Date.now()}.mp3`);
             try {
               await this.extractAudio(videoFilePath, tempAudioPath, {
@@ -1701,8 +1706,8 @@ ${JSON.stringify(translationInput)}
               }
             }
           } else {
-            // Video > 10 phút: Chia chunk 8-10 phút (500s mỗi chunk)
-            const chunkSize = 500;
+            // Video > 3 phút: Chia chunk nhỏ 120s (2 phút mỗi chunk) để tránh Gemini bỏ sót câu giữa chừng
+            const chunkSize = 120;
             const numChunks = Math.ceil(totalDuration / chunkSize);
             console.log(`[Gemini Multimodal Audio] Video dài (${totalDuration.toFixed(1)}s), chia thành ${numChunks} chunks ${chunkSize}s...`);
 
@@ -1714,11 +1719,11 @@ ${JSON.stringify(translationInput)}
 
               try {
                 console.log(`[FFmpeg Audio Pipeline] Đang trích xuất chunk ${i + 1}/${numChunks} (từ ${seek}s đến ${seek + duration}s)...`);
-              await this.extractAudio(videoFilePath, tempChunkPath, {
-                seek,
-                duration,
-                decryptionKey: mediaDecryptionKey
-              });
+                await this.extractAudio(videoFilePath, tempChunkPath, {
+                  seek,
+                  duration,
+                  decryptionKey: mediaDecryptionKey
+                });
                 const chunkCues = await this.transcribeAudioWithGemini(tempChunkPath, seek);
                 if (chunkCues && chunkCues.length > 0) {
                   allCues = allCues.concat(chunkCues);
@@ -1747,16 +1752,24 @@ ${JSON.stringify(translationInput)}
         throw new Error(`Không thể tự động sinh phụ đề từ audio video bài học ${lessonId}. Vui lòng thử lại hoặc tải lên phụ đề thủ công.`);
       }
 
-      // Chuẩn hóa định dạng mốc thời gian
-      generatedCues = generatedCues.map((c, idx) => ({
-        id: c.id || idx + 1,
-        start: Number(c.start || idx * 4.5),
-        end: Number(c.end || (idx + 1) * 4.5),
-        startFormatted: c.startFormatted || formatVttTimestamp(Number(c.start || idx * 4.5)),
-        endFormatted: c.endFormatted || formatVttTimestamp(Number(c.end || (idx + 1) * 4.5)),
-        en: c.en || `Lesson practice line ${idx + 1}`,
-        vi: c.vi || `Nội dung bài học ${idx + 1}`
-      }));
+      // Chuẩn hóa định dạng mốc thời gian và làm sạch cues (không điền chuỗi rác giả lập)
+      generatedCues = generatedCues
+        .filter(c => (c.en && c.en.trim()) || (c.vi && c.vi.trim()))
+        .map((c, idx) => {
+          const start = Math.max(0, Number(c.start || 0));
+          let end = Number(c.end || start + 4);
+          if (end <= start) end = start + 3;
+          if (end - start > 10) end = start + 8; // Chốt chặn an toàn không cho cue vượt quá 8-10s
+          return {
+            id: idx + 1,
+            start: Number(start.toFixed(3)),
+            end: Number(end.toFixed(3)),
+            startFormatted: formatVttTimestamp(start),
+            endFormatted: formatVttTimestamp(end),
+            en: c.en ? String(c.en).trim() : (c.vi ? String(c.vi).trim() : ''),
+            vi: c.vi ? String(c.vi).trim() : (c.en ? String(c.en).trim() : '')
+          };
+        });
 
       const enVtt = buildVttFromCues(generatedCues, 'en');
       const viVtt = buildVttFromCues(generatedCues, 'vi');

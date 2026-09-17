@@ -79,16 +79,19 @@ const formatWebVttTime = (value) => {
     .join(':') + `.${String(milliseconds).padStart(3, '0')}`;
 };
 
-const normalizeWebVttText = (value) => String(value || '')
-  .replace(/-->/g, '→')
-  .replace(/\r?\n+/g, ' ')
-  .trim();
+const normalizeWebVttText = (value, allowNewlines = false) => {
+  const str = String(value || '').replace(/-->/g, '→');
+  if (allowNewlines) {
+    return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean).join('\n');
+  }
+  return str.replace(/\r?\n+/g, ' ').trim();
+};
 
-const createWebVttUrl = (cues, selectText) => {
+const createWebVttUrl = (cues, selectText, allowNewlines = false) => {
   const entries = cues.map((cue, index) => {
     const start = Number(cue.start);
     const end = Number(cue.end);
-    const text = normalizeWebVttText(selectText(cue));
+    const text = normalizeWebVttText(selectText(cue), allowNewlines);
     if (!Number.isFinite(start) || !Number.isFinite(end) || !text) return null;
 
     return `${index + 1}\n${formatWebVttTime(start)} --> ${formatWebVttTime(Math.max(end, start + 0.1))}\n${text}`;
@@ -223,17 +226,17 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         srcLang: 'en-x-bilingual',
         label: 'Song ngữ (EN – VI)',
         default: true,
-        src: createWebVttUrl(cues, (cue) => [cue.en, cue.vi].filter(Boolean).join('\n'))
+        src: createWebVttUrl(cues, (cue) => [cue.en, cue.vi].filter(Boolean).join('\n'), true)
       },
       {
         srcLang: 'en',
         label: 'English',
-        src: createWebVttUrl(cues, (cue) => cue.en)
+        src: createWebVttUrl(cues, (cue) => cue.en, false)
       },
       {
         srcLang: 'vi',
         label: 'Tiếng Việt',
-        src: createWebVttUrl(cues, (cue) => cue.vi)
+        src: createWebVttUrl(cues, (cue) => cue.vi, false)
       }
     ];
 
