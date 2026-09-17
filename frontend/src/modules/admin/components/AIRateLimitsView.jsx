@@ -701,11 +701,16 @@ const AIRateLimitsView = ({ canManageCaps }) => {
                   )}
                 </div>
                 <p className="ai-model-routing__fallback-alert-text">
-                  {t('Model ưu tiên {{preferred}} tạm thời gián đoạn ({{reason}}). Hệ thống đã tự động chuyển hướng toàn bộ request sang model dự phòng {{effective}} để đảm bảo ứng dụng hoạt động thông suốt (0 downtime).', {
-                    preferred: routing.preferredModel,
-                    effective: routing.effectiveModel || activeFallbackModel || t('model dự phòng'),
-                    reason: fallbackReason || t('Lỗi 503 Service Unavailable / Cooldown')
-                  })}
+                  {fallbackReason && fallbackReason.includes(routing.preferredModel)
+                    ? `${fallbackReason}. ${t('Hệ thống đã tự động chuyển hướng toàn bộ request sang model dự phòng {{effective}} để đảm bảo ứng dụng hoạt động thông suốt (0 downtime).', {
+                        effective: routing.effectiveModel || activeFallbackModel || t('model dự phòng')
+                      })}`
+                    : t('Model ưu tiên {{preferred}} tạm thời gián đoạn ({{reason}}). Hệ thống đã tự động chuyển hướng toàn bộ request sang model dự phòng {{effective}} để đảm bảo ứng dụng hoạt động thông suốt (0 downtime).', {
+                        preferred: routing.preferredModel,
+                        effective: routing.effectiveModel || activeFallbackModel || t('model dự phòng'),
+                        reason: fallbackReason || t('Lỗi 503 Service Unavailable / Cooldown')
+                      })
+                  }
                 </p>
               </div>
             )}
@@ -723,7 +728,15 @@ const AIRateLimitsView = ({ canManageCaps }) => {
 
                 return (
                   <React.Fragment key={model}>
-                    {index > 0 && <span className="ai-model-routing__arrow" aria-hidden="true">→</span>}
+                    {index > 0 && (
+                      <div
+                        className={`ai-model-routing__arrow${isFallbackActive && index === 1 ? ' is-diverting' : ''}`}
+                        aria-hidden="true"
+                        title={isFallbackActive && index === 1 ? t('Traffic đang tự động chuyển hướng sang model này') : t('Thứ tự dự phòng')}
+                      >
+                        <span>→</span>
+                      </div>
+                    )}
                     <div
                       className={`ai-model-routing__model${cooldown ? ' is-cooling' : ''}${isLocked ? ' is-manually-locked' : ''}${isRpdExhausted ? ' is-rpd-locked' : ''}${isEffective ? ' is-effective' : ''}${isPreferred ? ' is-preferred' : ''}${isClickable ? ' is-clickable' : ''}${isActiveFallback ? ' is-active-fallback' : ''}${isFailingPreferred ? ' is-failing-preferred' : ''}`}
                       role={isClickable ? 'button' : undefined}
