@@ -75,7 +75,7 @@ describe('PostgreSQL durable job queue integration (@integration-postgres)', () 
       jobType: 'subtitle_generation',
       dedupeKey,
       payload: { lessonId: 999901 },
-      priority: 10,
+      priority: 99999,
       replaceActive: true
     });
     assert.ok(enqueued?.job_id);
@@ -90,7 +90,7 @@ describe('PostgreSQL durable job queue integration (@integration-postgres)', () 
       Object.assign(new Error('YouTube temporarily blocked this egress'), {
         code: 'YOUTUBE_TRANSCRIPT_ACCESS_BLOCKED'
       }),
-      { retryable: true, retryBaseMs: 1_000, retryMaxMs: 10_000 }
+      { retryable: true, retryDelayMs: 60_000 }
     );
 
     assert.ok(failedRetry);
@@ -108,7 +108,7 @@ describe('PostgreSQL durable job queue integration (@integration-postgres)', () 
       jobType: 'subtitle_generation',
       dedupeKey,
       payload: { lessonId: 999902 },
-      priority: 20,
+      priority: 99999,
       replaceActive: true
     });
 

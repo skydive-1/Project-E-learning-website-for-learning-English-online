@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import re
@@ -83,22 +84,72 @@ def positive_env_int(name: str, default: int) -> int:
     return parsed
 
 
+MAX_SEGMENT_DURATION_MS = 8000  # 8 giây tối đa cho mỗi cue phụ đề
+
+
+def calculate_adaptive_silence_thresh(audio: AudioSegment, default_thresh: float = -40.0) -> float:
+    """
+    Tính toán ngưỡng khoảng lặng thích ứng dựa trên mức âm lượng thực tế của audio.
+    Tránh trường hợp nhạc nền hoặc tiếng rè mic làm âm lượng luôn lớn hơn -40 dBFS.
+    """
+    audio_dbfs = audio.dBFS
+    if not math.isfinite(audio_dbfs) or audio_dbfs <= -60.0:
+        return default_thresh
+    adaptive = audio_dbfs - 12.0
+    return max(-45.0, min(-26.0, adaptive))
+
+
+def split_long_intervals(
+    intervals: list[tuple[int, int]],
+    max_duration_ms: int = MAX_SEGMENT_DURATION_MS,
+) -> list[tuple[int, int]]:
+    """
+    Safety Guard: Đảm bảo không có đoạn thoại nào kéo dài quá max_duration_ms.
+    Nếu đoạn thoại quá dài (do nhạc nền hoặc nói liên tục), tự động chia nhỏ thành các mẩu 4 - 7s.
+    """
+    split_intervals: list[tuple[int, int]] = []
+    for start, end in intervals:
+        duration = end - start
+        if duration <= max_duration_ms:
+            if duration >= 500:
+                split_intervals.append((start, end))
+            continue
+
+        num_pieces = math.ceil(duration / 6000.0)
+        piece_len = duration // num_pieces
+        current_start = start
+        for i in range(num_pieces):
+            current_end = current_start + piece_len if i < num_pieces - 1 else end
+            if current_end > current_start + 500:
+                split_intervals.append((current_start, current_end))
+            current_start = current_end
+
+    return split_intervals
+
+
 def batch_transcription_prompt(segment_numbers: list[int]) -> str:
     return f"""
-You will receive {len(segment_numbers)} separate English speech audio parts.
+You are an expert bilingual subtitle transcription and translation engine for an English learning platform.
+You will receive {len(segment_numbers)} separate audio speech segment(s).
 The text immediately before each audio part gives its segment number.
+
+Important Language & Accuracy Rules:
+- The speaker in the audio may speak English, Vietnamese, or a mixture of both languages (e.g. Vietnamese teacher explaining English words/grammar).
+- 'en': English version. If the speech is English, transcribe it verbatim. If the speech is Vietnamese, translate it accurately to natural English.
+- 'vi': Vietnamese version. If the speech is Vietnamese, transcribe it verbatim. If the speech is English, translate it accurately to natural Vietnamese.
+- STRICT RULE: 'en' MUST ALWAYS BE IN ENGLISH. 'vi' MUST ALWAYS BE IN VIETNAMESE. NEVER SWAP OR INVERT THE TWO LANGUAGES.
+- If an audio part has no intelligible speech (only silence, background noise, or pure music), return empty strings for that item.
 
 Return only one valid JSON object in this exact shape:
 {{
   "segments": [
-    {{"index": {segment_numbers[0]}, "en": "exact English transcript", "vi": "natural Vietnamese translation"}}
+    {{"index": {segment_numbers[0]}, "en": "exact English speech or translation", "vi": "lời nói tiếng Việt hoặc bản dịch"}}
   ]
 }}
 
 Return exactly one item for every segment number in this list, in the same
 order: {segment_numbers}. Do not summarize, omit, correct, merge, or invent
 speech. Do not include timestamps, speaker labels, Markdown, or extra fields.
-If an audio part has no intelligible speech, return empty strings for that item.
 """.strip()
 
 
@@ -504,10 +555,22 @@ def main() -> int:
         extract_audio(source_path, audio_path)
 
         audio = AudioSegment.from_wav(audio_path)
-        intervals = detect_speech_intervals(
-            audio, args.min_silence, args.silence_thresh
-        )
-        print(f"🧩 Phát hiện {len(intervals)} đoạn có tiếng nói từ waveform thật.")
+        actual_thresh = calculate_adaptive_silence_thresh(audio, args.silence_thresh)
+        print(f"[VAD Audio] Audio dBFS = {audio.dBFS:.1f} dBFS, ngưỡng khoảng lặng thích ứng = {actual_thresh:.1f} dBFS")
+
+        raw_intervals = detect_speech_intervals(audio, args.min_silence, actual_thresh)
+        intervals = split_long_intervals(raw_intervals, max_duration_ms=MAX_SEGMENT_DURATION_MS)
+
+        if not intervals and len(audio) > 1000:
+            print("[Cảnh báo VAD] Không phát hiện khoảng lặng bằng threshold. Phân đoạn an toàn 6 giây...")
+            chunk_len = 6000
+            intervals = [
+                (t, min(t + chunk_len, len(audio)))
+                for t in range(0, len(audio), chunk_len)
+                if (min(t + chunk_len, len(audio)) - t) > 1000
+            ]
+
+        print(f"🧩 Phát hiện và phân đoạn thành {len(intervals)} đoạn lời nói (tối đa {MAX_SEGMENT_DURATION_MS/1000}s/đoạn).")
 
         if not intervals:
             write_output(
