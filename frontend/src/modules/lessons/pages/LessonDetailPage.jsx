@@ -22,6 +22,7 @@ import {
   sendStudentMessage
 } from '../../discussions/services/discussions.service';
 import ErrorBoundary from '../../../components/common/ErrorBoundary';
+import LessonCommentsSection from '../../comments/components/LessonCommentsSection';
 import QuizContent from '../components/QuizContent';
 import SpeakingExercise from '../components/SpeakingExercise';
 import LessonVideoPlayer from '../components/LessonVideoPlayer';
@@ -154,6 +155,8 @@ const LessonDetailPage = () => {
   // States
   const [activeRightTab, setActiveRightTab] = useState(getInitialActiveRightTab);
   const [activeLeftTab, setActiveLeftTab] = useState("syllabus");
+  const [lessonCommentsCount, setLessonCommentsCount] = useState(0);
+  const [showEmbeddedPdfReader, setShowEmbeddedPdfReader] = useState(true);
   const [expandedSections, setExpandedSections] = useState(getInitialExpandedSections);
   const [optimisticLessonId, setOptimisticLessonId] = useState(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -2101,8 +2104,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                         <button
                           onClick={() => setActiveLeftTab("syllabus")}
                           style={{ color: activeLeftTab === "syllabus" ? "#3b82f6" : "var(--text-light)" }}
-                          className="pb-3.5 font-semibold transition-all relative"
+                          className="pb-3.5 font-semibold transition-all relative flex items-center gap-2"
                         >
+                          <FiFileText className="text-sm" />
                           <span>Giáo trình văn bản</span>
                           {activeLeftTab === "syllabus" && (
                             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
@@ -2110,75 +2114,168 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                         </button>
 
                         <button
-                          onClick={() => setActiveLeftTab("resources")}
-                          style={{ color: activeLeftTab === "resources" ? "#3b82f6" : "var(--text-light)" }}
-                          className="pb-3.5 font-semibold transition-all relative"
+                          onClick={() => setActiveLeftTab("comments")}
+                          style={{ color: activeLeftTab === "comments" ? "#3b82f6" : "var(--text-light)" }}
+                          className="pb-3.5 font-semibold transition-all relative flex items-center gap-2"
                         >
-                          <span>Tài liệu đính kèm ({currentLesson?.resources?.length || 0})</span>
-                          {activeLeftTab === "resources" && (
+                          <FiMessageSquare className="text-sm" />
+                          <span>Bình luận bài học {lessonCommentsCount > 0 ? `(${lessonCommentsCount})` : ''}</span>
+                          {activeLeftTab === "comments" && (
                             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-full"></span>
                           )}
                         </button>
-
-
                       </div>
 
                       {/* Left Tabs Content */}
                       <div className="min-h-[180px]">
-                        {activeLeftTab === "syllabus" && (
-                          <div className="text-sm leading-relaxed whitespace-pre-wrap animate-fade" style={{ color: 'var(--text-color)' }}>
-                            <p className="font-semibold text-[14.5px] mb-3" style={{ color: 'var(--text-color)' }}>Tóm tắt nội dung bài học:</p>
-                            <p className="mb-4 italic px-4 py-3 rounded-xl border" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-light)' }}>
-                              {currentLesson?.description}
-                            </p>
-                            <div className="border p-4 rounded-xl shadow-inner text-[14px]" style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}>
-                              {currentLesson?.content}
-                            </div>
-                          </div>
-                        )}
+                        {activeLeftTab === "syllabus" && (() => {
+                          const isPdfLessonType = currentLesson?.type === 'pdf';
+                          // Với bài học video: tìm file PDF bài giảng đính kèm
+                          const attachedPdf = !isPdfLessonType
+                            ? (currentLesson?.lecturePdf ||
+                              (currentLesson?.resources && currentLesson.resources.find(r =>
+                                r.fileType?.includes('pdf') ||
+                                r.name?.toLowerCase().includes('.pdf') ||
+                                r.url?.toLowerCase().includes('.pdf')
+                              )) || null)
+                            : null;
+                          const rawPdfUrl = attachedPdf?.url || (!isPdfLessonType ? currentLesson?.lecturePdfUrl : null);
+                          const attachedPdfUrl = (typeof rawPdfUrl === 'string' && rawPdfUrl.trim().length > 5) ? rawPdfUrl.trim() : null;
 
-                        {activeLeftTab === "resources" && (
-                          <div className="space-y-3 animate-fade text-sm">
-                            {currentLesson?.resources && currentLesson.resources.length > 0 ? (
-                              currentLesson.resources.map((res, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-center justify-between p-3.5 border rounded-xl hover:opacity-90 transition-colors shadow-sm"
-                                  style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
-                                >
-                                  <div className="flex items-center space-x-3 overflow-hidden pr-3">
-                                    <FiFileText className="text-smart-indigo text-lg shrink-0" />
-                                    <div className="flex flex-col min-w-0">
-                                      <span className="font-medium truncate" style={{ color: 'var(--text-color)' }}>{res.name}</span>
-                                      {res.sizeKb > 0 && (
-                                        <span className="text-[11px] opacity-60">
-                                          {res.sizeKb >= 1024 ? `${(res.sizeKb / 1024).toFixed(1)} MB` : `${res.sizeKb} KB`}
-                                        </span>
-                                      )}
+                          return (
+                            <div className="space-y-5 animate-fade text-sm" style={{ color: 'var(--text-color)' }}>
+                              {/* 1. Nếu có tệp PDF bài giảng được tải lên cho bài học video */}
+                              {attachedPdfUrl && attachedPdf ? (
+                                <div className="space-y-3.5">
+                                  {/* Card Header tài liệu PDF */}
+                                  <div
+                                    className="p-4 sm:p-4.5 rounded-2xl border shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3.5"
+                                    style={{ backgroundColor: 'var(--card-bg)', borderColor: 'var(--border-color)' }}
+                                  >
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 to-rose-600 flex items-center justify-center text-white text-xs font-black shadow-md shrink-0">
+                                        PDF
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[11px] font-bold text-rose-500 uppercase tracking-wider">
+                                            Giáo trình & Slide bài giảng
+                                          </span>
+                                          {attachedPdf?.sizeKb > 0 && (
+                                            <span className="text-[11px] opacity-60 font-medium">
+                                              • {attachedPdf.sizeKb >= 1024 ? `${(attachedPdf.sizeKb / 1024).toFixed(1)} MB` : `${attachedPdf.sizeKb} KB`}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <h4 className="font-semibold text-sm truncate mt-0.5" style={{ color: 'var(--text-color)' }} title={attachedPdf.name}>
+                                          {attachedPdf.name || currentLesson?.title || 'Tài liệu bài giảng PDF'}
+                                        </h4>
+                                      </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                      <a
+                                        href={withPdfAuthToken(attachedPdfUrl)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download={attachedPdf.name || true}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors shadow-sm"
+                                      >
+                                        <FiDownload className="text-xs" />
+                                        <span>Tải PDF</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowEmbeddedPdfReader(!showEmbeddedPdfReader)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border hover:bg-slate-800 transition-colors cursor-pointer"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-color)' }}
+                                      >
+                                        <FiBookOpen className="text-xs" />
+                                        <span>{showEmbeddedPdfReader ? 'Thu gọn' : 'Đọc trực tiếp'}</span>
+                                      </button>
                                     </div>
                                   </div>
-                                  <a
-                                    href={withPdfAuthToken(res.url)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    download={res.name || true}
-                                    className="flex items-center space-x-1 text-xs font-semibold text-smart-indigo hover:text-smart-indigo-hover bg-smart-indigo/5 hover:bg-smart-indigo/10 px-3 py-1.5 rounded-lg transition-colors shrink-0"
-                                  >
-                                    <FiDownload />
-                                    <span>Tải xuống</span>
-                                  </a>
+
+                                  {/* Trình xem PDF nhúng trực tiếp */}
+                                  {showEmbeddedPdfReader && (
+                                    <div className="rounded-2xl overflow-hidden border border-slate-700/60 shadow-lg bg-slate-900 h-[600px] w-full relative">
+                                      <React.Suspense
+                                        fallback={
+                                          <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center gap-4 bg-slate-900 text-slate-300">
+                                            <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin"></div>
+                                            <span className="text-xs font-semibold">Đang chuẩn bị giáo trình bài giảng PDF...</span>
+                                          </div>
+                                        }
+                                      >
+                                        <PdfStudyViewer
+                                          key={`embedded-pdf-${currentLesson?.id}`}
+                                          pdfUrl={attachedPdfUrl}
+                                          title={attachedPdf.name || currentLesson?.title}
+                                          user={user}
+                                          notes={pdfNotes}
+                                          selectedNoteId={selectedPdfNoteId}
+                                          activeGlowNoteId={activeGlowNoteId}
+                                          activePage={activePdfPage}
+                                          isAreaSelectionMode={isAreaSelectionMode}
+                                          onToggleAreaSelection={(val) => setIsAreaSelectionMode(val)}
+                                          onPageChange={(p) => setActivePdfPage(p)}
+                                          onCreateNote={handleCreatePdfNote}
+                                          onSelectNote={handleNavigateToPdfNote}
+                                        />
+                                      </React.Suspense>
+                                    </div>
+                                  )}
                                 </div>
-                              ))
-                            ) : (
-                              <div className="text-center py-8 text-slate-400">
-                                <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
-                                <p>Bài học này không đính kèm tài liệu bên ngoài.</p>
-                              </div>
-                            )}
+                              ) : null}
+
+                              {/* 2. Tóm tắt nội dung văn bản & Ghi chú bài giảng */}
+                              {(currentLesson?.description || currentLesson?.content) && (
+                                <div className="space-y-3 pt-2">
+                                  {currentLesson?.description && (
+                                    <div>
+                                      <p className="font-semibold text-xs uppercase tracking-wider mb-2 opacity-70">
+                                        Tóm tắt nội dung bài học:
+                                      </p>
+                                      <p
+                                        className="italic px-4 py-3 rounded-xl border leading-relaxed text-sm"
+                                        style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-light)' }}
+                                      >
+                                        {currentLesson?.description}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {currentLesson?.content && (
+                                    <div
+                                      className="border p-4 rounded-xl shadow-inner text-[14px] leading-relaxed whitespace-pre-wrap"
+                                      style={{ backgroundColor: 'var(--bg-color)', borderColor: 'var(--border-color)', color: 'var(--text-color)' }}
+                                    >
+                                      {currentLesson?.content}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 3. Trường hợp bài giảng chưa có cả PDF lẫn văn bản */}
+                              {!attachedPdfUrl && !currentLesson?.description && !currentLesson?.content && (
+                                <div className="text-center py-12 text-slate-400">
+                                  <FiBookOpen className="mx-auto text-3xl mb-2 text-slate-300" />
+                                  <p>Bài học này hiện chưa có giáo trình văn bản hoặc slide PDF đính kèm.</p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {activeLeftTab === "comments" && (
+                          <div className="animate-fade">
+                            <LessonCommentsSection
+                              lessonId={targetLessonId}
+                              user={user}
+                              onCommentsCountChange={(cnt) => setLessonCommentsCount(cnt)}
+                            />
                           </div>
                         )}
-
-
                       </div>
                     </div>
                   </div>

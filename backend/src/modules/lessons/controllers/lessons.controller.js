@@ -804,30 +804,28 @@ exports.previewMaterial = async (req, res, next) => {
       return res.redirect(storageKey);
     }
 
-    // 4. Nếu là R2 private object:
+    // 4. Nếu là R2 private object: Stream trực tiếp qua proxy để giữ cùng origin (tránh lỗi CORS và IDM bắt link)
     if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
-      // Khi In-App PDF Viewer yêu cầu stream trực tiếp qua proxy để tránh IDM bắt link download từ R2
-      if (req.query?.stream === 'true') {
-        try {
-          return await proxyPrivateStoragePdf(
-            req,
-            res,
-            {
-              title: mat.file_name?.replace(/\.pdf$/i, '') || 'material',
-              storage_bucket: storageBucket,
-              storage_provider: mat.storage_provider || 'r2'
-            },
-            storageKey
-          );
-        } catch (streamErr) {
-          console.warn('Cảnh báo proxy tài liệu từ R2:', streamErr.message);
+      const cleanKey = storageKey.replace(/^\/+/, '');
+      try {
+        return await proxyPrivateStoragePdf(
+          req,
+          res,
+          {
+            title: mat.file_name?.replace(/\.pdf$/i, '') || 'material',
+            storage_bucket: storageBucket,
+            storage_provider: mat.storage_provider || 'r2'
+          },
+          cleanKey,
+          'inline'
+        );
+      } catch (streamErr) {
+        console.warn('Cảnh báo proxy tài liệu từ R2:', streamErr.message);
+        // Fallback sang Signed URL nếu proxy gặp lỗi
+        const signedUrl = await supabaseStorage.generateSignedUrl(cleanKey, storageBucket, 3600, mat.storage_provider || 'r2');
+        if (signedUrl) {
+          return res.redirect(signedUrl);
         }
-      }
-
-      // Mặc định hoặc fallback: Chuyển hướng tới Signed URL (có response-content-disposition=inline)
-      const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600, mat.storage_provider || 'r2');
-      if (signedUrl) {
-        return res.redirect(signedUrl);
       }
     }
 
@@ -885,6 +883,7 @@ exports.downloadMaterial = async (req, res, next) => {
 
     // R2 private object: Stream với attachment disposition
     if (storageKey && !storageKey.startsWith('/uploads/') && !storageKey.startsWith('uploads/')) {
+      const cleanKey = storageKey.replace(/^\/+/, '');
       try {
         return await proxyPrivateStoragePdf(
           req,
@@ -894,12 +893,12 @@ exports.downloadMaterial = async (req, res, next) => {
             storage_bucket: storageBucket,
             storage_provider: mat.storage_provider || 'r2'
           },
-          storageKey,
+          cleanKey,
           'attachment'
         );
       } catch (streamErr) {
         console.warn('Cảnh báo proxy tải tài liệu từ R2:', streamErr.message);
-        const signedUrl = await supabaseStorage.generateSignedUrl(storageKey, storageBucket, 3600, mat.storage_provider || 'r2');
+        const signedUrl = await supabaseStorage.generateSignedUrl(cleanKey, storageBucket, 3600, mat.storage_provider || 'r2');
         if (signedUrl) {
           return res.redirect(signedUrl);
         }

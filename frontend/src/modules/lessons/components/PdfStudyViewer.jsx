@@ -59,16 +59,25 @@ export default function PdfStudyViewer({
   onSelectNote
 }) {
   const pdfFile = useMemo(() => {
-    if (!pdfUrl || typeof pdfUrl !== 'string') return pdfUrl;
+    if (!pdfUrl) return null;
+
+    let targetUrl = '';
+    if (typeof pdfUrl === 'string') {
+      targetUrl = pdfUrl.trim();
+    } else if (typeof pdfUrl === 'object' && pdfUrl !== null && typeof pdfUrl.url === 'string') {
+      targetUrl = pdfUrl.url.trim();
+    }
+
+    if (!targetUrl || targetUrl.length < 5) return null;
 
     try {
+      const documentUrl = new URL(targetUrl, window.location.origin);
       const apiBase = new URL(
         import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
         window.location.origin
       );
-      const documentUrl = new URL(pdfUrl, window.location.origin);
-      // 1. Nhận diện PDF cần bảo vệ bằng pathname (độc lập với domain/origin giữa frontend và backend)
-      const isProtectedLessonPdf = /\/lessons\/[^/]+\/pdf$/i.test(documentUrl.pathname);
+      // 1. Nhận diện PDF cần bảo vệ bằng pathname (bao gồm cả lesson pdf và material preview)
+      const isProtectedLessonPdf = /\/lessons\/[^/]+\/(pdf|materials\/[^/]+\/preview)$/i.test(documentUrl.pathname);
       const token = isProtectedLessonPdf ? localStorage.getItem('token') : null;
 
       if (token) {
@@ -83,12 +92,10 @@ export default function PdfStudyViewer({
           withCredentials: true
         };
       }
+      return documentUrl.toString();
     } catch (_) {
-      // URL ngoài hoặc URL tương đối không hợp lệ sẽ được react-pdf xử lý như trước.
+      return null;
     }
-
-    // 4. Nếu không có token trong localStorage: giữ nguyên hành vi cũ (trả về pdfUrl thô)
-    return pdfUrl;
   }, [pdfUrl]);
 
   const showToast = useToast();
@@ -619,19 +626,19 @@ export default function PdfStudyViewer({
           </div>
         )}
 
-        {/* Trạng thái không có PDF URL */}
-        {!pdfUrl && (
+        {/* Trạng thái không có PDF URL hoặc URL không hợp lệ */}
+        {(!pdfUrl || !pdfFile) && !loading && !error && (
           <div className="my-auto flex flex-col items-center justify-center p-8 bg-slate-950/80 border border-slate-800 rounded-2xl max-w-md text-center">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl mb-3 shadow-lg">
               <FiInfo />
             </div>
-            <h4 className="text-sm font-bold text-white mb-1">Tài liệu bài học chưa được tải lên</h4>
-            <p className="text-xs text-slate-400">Giảng viên chưa cập nhật tệp tài liệu PDF cho bài học này.</p>
+            <h4 className="text-sm font-bold text-white mb-1">Tài liệu bài học chưa sẵn sàng</h4>
+            <p className="text-xs text-slate-400">Đường dẫn tệp PDF không hợp lệ hoặc giảng viên chưa cập nhật tài liệu cho bài học này.</p>
           </div>
         )}
 
         {/* Loading State */}
-        {pdfUrl && loading && (
+        {pdfUrl && pdfFile && loading && (
           <div className="my-auto flex flex-col items-center justify-center p-8 text-center gap-4">
             <div className="w-10 h-10 border-4 border-slate-700 border-t-rose-500 rounded-full animate-spin"></div>
             <span className="text-xs font-semibold text-slate-300">Đang chuẩn bị hiển thị tài liệu PDF...</span>
@@ -658,9 +665,9 @@ export default function PdfStudyViewer({
         )}
 
         {/* PDF Pages Rendering */}
-        {pdfUrl && (
+        {pdfFile && !error && (
           <Document
-            key={`doc_retry_${documentRetryKey}_${pdfUrl}`}
+            key={`doc_retry_${documentRetryKey}_${typeof pdfUrl === 'string' ? pdfUrl : (pdfUrl?.url || 'doc')}`}
             file={pdfFile}
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={onDocumentLoadError}
