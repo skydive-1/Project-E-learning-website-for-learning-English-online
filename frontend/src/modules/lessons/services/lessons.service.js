@@ -25,6 +25,21 @@ export const getLessonPdfUrl = (lessonId) => {
   return `${getApiBaseUrl()}/lessons/${encodeURIComponent(cleanId)}/pdf`;
 };
 
+export const fixUtf8Mojibake = (str) => {
+  if (!str || typeof str !== 'string') return str || '';
+  try {
+    if (/[ÃÂáÁàÀảẢãÃạẠéÉèÈẻẺẽẼẹẸíÍìÌỉỈĩĨịỊóÓòÒỏỎõÕọỌúÚùÙủỦũŨụỤýÝỳỲỷỶỹỸỵỴ]/.test(str)) {
+      const bytes = new Uint8Array([...str].map(c => c.charCodeAt(0) & 0xff));
+      const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      if (decoded && !decoded.includes('\ufffd')) {
+        return decoded;
+      }
+    }
+  } catch (_) {}
+  return str;
+};
+
+
 export const resolveMaterialPdfUrl = (m, lessonId) => {
   if (!m) return '';
   const lid = m.lesson_id || lessonId;
@@ -443,7 +458,7 @@ export const getLessonById = async (lessonId) => {
     if (l.materials && Array.isArray(l.materials)) {
       resolvedResources = l.materials.map(m => ({
         id: m.material_id || m.id,
-        name: m.file_name || m.name,
+        name: fixUtf8Mojibake(m.file_name || m.name),
         url: resolveMaterialPdfUrl(m, l.lesson_id),
         fileType: m.file_type || m.fileType || 'application/pdf',
         sizeKb: m.file_size_kb || m.sizeKb || 0,

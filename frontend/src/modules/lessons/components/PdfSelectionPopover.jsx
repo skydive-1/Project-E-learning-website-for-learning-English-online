@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { FiCheck, FiX, FiTag, FiEdit3, FiCrop, FiAlertCircle } from 'react-icons/fi';
+import { FiCheck, FiX, FiTag, FiEdit3, FiCrop, FiAlertCircle, FiMove } from 'react-icons/fi';
 
 const CATEGORIES = [
   { id: 'important', label: 'Quan trọng', badgeColor: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300' },
@@ -30,6 +30,10 @@ export default function PdfSelectionPopover({
   const [noteText, setNoteText] = useState(initialDraft);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [customPos, setCustomPos] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef(null);
+  const justDraggedRef = useRef(false);
   const popoverRef = useRef(null);
 
   // Tính toán vị trí fixed thông minh bám theo viewport
@@ -66,7 +70,7 @@ export default function PdfSelectionPopover({
 
   const [coords, setCoords] = useState(calculatePosition);
 
-  // Cập nhật vị trí khi resize / scroll
+  // Cập nhật vị trí khi resize / scroll nếu người dùng chưa tự kéo thủ công
   useEffect(() => {
     setCoords(calculatePosition());
     const handleUpdate = () => {
@@ -81,6 +85,70 @@ export default function PdfSelectionPopover({
     };
   }, [calculatePosition]);
 
+  // Reset custom position khi vùng chọn thay đổi
+  useEffect(() => {
+    setCustomPos(null);
+  }, [clientRect]);
+
+  // Xử lý kéo thả di chuyển modal tự do quanh màn hình
+  const handleHeaderMouseDown = (e) => {
+    if (e.button !== 0) return; // Chỉ cho phép chuột trái
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) return;
+
+    e.preventDefault();
+    const popoverEl = popoverRef.current;
+    if (!popoverEl) return;
+
+    const rect = popoverEl.getBoundingClientRect();
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      popoverTop: rect.top,
+      popoverLeft: rect.left,
+      width: rect.width,
+      height: rect.height
+    };
+
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e) => {
+      if (!dragStartRef.current) return;
+      const { mouseX, mouseY, popoverTop, popoverLeft, width, height } = dragStartRef.current;
+      const deltaX = e.clientX - mouseX;
+      const deltaY = e.clientY - mouseY;
+
+      const POPOVER_W = width || 320;
+      const POPOVER_H = height || 320;
+
+      const clampedLeft = Math.max(8, Math.min(window.innerWidth - POPOVER_W - 8, popoverLeft + deltaX));
+      const clampedTop = Math.max(8, Math.min(window.innerHeight - POPOVER_H - 8, popoverTop + deltaY));
+
+      setCustomPos({
+        top: Math.round(clampedTop),
+        left: Math.round(clampedLeft)
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      justDraggedRef.current = true;
+      setTimeout(() => {
+        justDraggedRef.current = false;
+      }, 150);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
   // Đóng khi ấn Escape
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -92,9 +160,10 @@ export default function PdfSelectionPopover({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onCancel]);
 
-  // Click outside to cancel
+  // Click outside to cancel (bỏ qua khi đang hoặc vừa kéo thả xong)
   useEffect(() => {
     const handleClickOutside = (e) => {
+      if (isDragging || justDraggedRef.current) return;
       if (popoverRef.current && !popoverRef.current.contains(e.target)) {
         onCancel();
       }
@@ -106,7 +175,7 @@ export default function PdfSelectionPopover({
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [onCancel]);
+  }, [onCancel, isDragging]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -134,27 +203,61 @@ export default function PdfSelectionPopover({
     }
   };
 
+  const effectiveStyle = customPos
+    ? {
+        position: 'fixed',
+        top: `${customPos.top}px`,
+        left: `${customPos.left}px`,
+        zIndex: 99999,
+        boxShadow: isDragging ? '0 25px 50px -12px rgba(0, 0, 0, 0.5)' : undefined,
+        cursor: isDragging ? 'grabbing' : undefined,
+        transition: isDragging ? 'none' : undefined
+      }
+    : {
+        ...coords,
+        zIndex: 99999
+      };
+
   const content = (
     <div
       ref={popoverRef}
-      style={coords}
-      className="pdf-selection-popover w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 text-xs font-sans text-slate-800 dark:text-slate-100 select-none animate-fade"
+      style={effectiveStyle}
+      className={`pdf-selection-popover w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 text-xs font-sans text-slate-800 dark:text-slate-100 select-none ${
+        isDragging ? '' : 'animate-fade'
+      }`}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100 dark:border-slate-800">
-        <div className="flex items-center gap-1.5 font-bold text-smart-indigo dark:text-indigo-400">
-          {selectionType === 'area' ? <FiCrop className="text-sm" /> : <FiEdit3 className="text-sm" />}
-          <span>{selectionType === 'area' ? 'Tạo ghi chú vùng' : 'Tạo ghi chú PDF'}</span>
+      {/* Header - Kéo thả di chuyển linh hoạt */}
+      <div
+        onMouseDown={handleHeaderMouseDown}
+        className={`flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100 dark:border-slate-800 select-none ${
+          isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+        title="Nhấn giữ chuột và kéo để di chuyển bảng ghi chú linh hoạt khắp màn hình"
+      >
+        <div className="flex items-center gap-2 font-bold text-smart-indigo dark:text-indigo-400 pointer-events-none">
+          <div className="p-1 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500">
+            <FiMove className="text-xs" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {selectionType === 'area' ? <FiCrop className="text-sm" /> : <FiEdit3 className="text-sm" />}
+            <span>{selectionType === 'area' ? 'Tạo ghi chú vùng' : 'Tạo ghi chú PDF'}</span>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
-          title="Hủy bỏ (Esc)"
-        >
-          <FiX />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-slate-400 font-normal hidden sm:inline select-none pointer-events-none">
+            (Kéo di chuyển)
+          </span>
+          <button
+            type="button"
+            onClick={onCancel}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+            title="Hủy bỏ (Esc)"
+          >
+            <FiX />
+          </button>
+        </div>
       </div>
 
       {/* Selected Preview */}

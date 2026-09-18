@@ -18,6 +18,18 @@ const SUBJECT_ROADMAP_DEFAULTS = new Map([
   [5, 'basic']
 ]);
 
+function fixFilenameEncoding(name) {
+  if (!name || typeof name !== 'string') return name || 'document.pdf';
+  try {
+    const fixed = Buffer.from(name, 'latin1').toString('utf8');
+    if (fixed && !fixed.includes('\ufffd')) {
+      return fixed;
+    }
+  } catch (_) {}
+  return name;
+}
+
+
 class CoursesService {
   _resolveAcademyRoadmap(requestedRoadmap, { subjectId, courseName, description } = {}) {
     if (requestedRoadmap !== undefined) {
@@ -758,12 +770,13 @@ class CoursesService {
         const isDirect = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
         const effectiveLessonId = m.lesson_id || lid;
         const previewUrl = isDirect ? rawUrl : `/api/lessons/${effectiveLessonId}/materials/${m.material_id}/preview`;
+        const cleanName = fixFilenameEncoding(m.file_name);
         return {
           id: m.material_id,
           material_id: m.material_id,
           lesson_id: effectiveLessonId,
-          name: m.file_name,
-          file_name: m.file_name,
+          name: cleanName,
+          file_name: cleanName,
           file_url: previewUrl,
           url: previewUrl,
           file_type: m.file_type || 'application/pdf',
@@ -872,12 +885,13 @@ class CoursesService {
           const rawUrl = m.file_url || m.storage_key || '';
           const isDirect = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
           const previewUrl = isDirect ? rawUrl : `/api/lessons/${m.lesson_id}/materials/${m.material_id}/preview`;
+          const cleanName = fixFilenameEncoding(m.file_name);
           return {
             id: m.material_id,
             material_id: m.material_id,
             lesson_id: m.lesson_id,
-            name: m.file_name,
-            file_name: m.file_name,
+            name: cleanName,
+            file_name: cleanName,
             file_url: previewUrl,
             url: previewUrl,
             file_type: m.file_type || 'application/pdf',
