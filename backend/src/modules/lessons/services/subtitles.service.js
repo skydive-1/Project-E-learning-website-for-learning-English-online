@@ -982,6 +982,8 @@ class SubtitlesService {
     }
 
     return new Promise((resolve, reject) => {
+      let isSettled = false;
+      const timeoutMs = Number(process.env.SUBTITLE_VAD_TIMEOUT_MS) || 8 * 60 * 1000;
       const args = [
         pythonScript,
         videoPath,
@@ -1006,6 +1008,29 @@ class SubtitlesService {
         }
       });
 
+      const timer = setTimeout(() => {
+        if (isSettled) return;
+        isSettled = true;
+        try { pyProcess.kill('SIGTERM'); } catch (_) {}
+        reject(new Error(`Python VAD pipeline vượt quá thời gian tối đa (${Math.round(timeoutMs / 60000)} phút), tự động chuyển sang phương thức dự phòng Gemini Direct Audio`));
+      }, timeoutMs);
+
+      const safeResolve = (val) => {
+        if (!isSettled) {
+          isSettled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      };
+
+      const safeReject = (err) => {
+        if (!isSettled) {
+          isSettled = true;
+          clearTimeout(timer);
+          reject(err);
+        }
+      };
+
       let stdoutData = '';
       let stderrData = '';
 
@@ -1024,7 +1049,7 @@ class SubtitlesService {
       });
 
       pyProcess.on('error', (error) => {
-        reject(new Error(`Không thể khởi chạy Python VAD pipeline: ${error.message}`));
+        safeReject(new Error(`Không thể khởi chạy Python VAD pipeline: ${error.message}`));
       });
 
       pyProcess.on('close', (code) => {
@@ -1034,14 +1059,14 @@ class SubtitlesService {
             const parsed = JSON.parse(fileContent);
             if (Array.isArray(parsed.cues)) {
               try { fs.unlinkSync(outputJsonPath); } catch (_) {}
-              return resolve(parsed.cues);
+              return safeResolve(parsed.cues);
             }
           } catch (err) {
-            return reject(new Error(`Không đọc được kết quả JSON của VAD pipeline: ${err.message}`));
+            return safeReject(new Error(`Không đọc được kết quả JSON của VAD pipeline: ${err.message}`));
           }
-          reject(new Error('VAD pipeline không trả về trường cues hợp lệ.'));
+          safeReject(new Error('VAD pipeline không trả về trường cues hợp lệ.'));
         } else {
-          reject(new Error(`VAD pipeline thoát với mã ${code}: ${stderrData || stdoutData}`));
+          safeReject(new Error(`VAD pipeline thoát với mã ${code}: ${stderrData || stdoutData}`));
         }
       });
     });

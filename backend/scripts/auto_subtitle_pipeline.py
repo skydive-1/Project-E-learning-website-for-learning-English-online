@@ -42,6 +42,9 @@ DEFAULT_BATCH_SIZE = 12
 DEFAULT_REQUESTS_PER_MINUTE = 4
 DEFAULT_MAX_RETRIES = 5
 
+SHARED_EXHAUSTED_MODELS: set[str] = set()
+SHARED_EXHAUSTED_LOCK = threading.Lock()
+
 
 class RequestRateLimiter:
     """Thread-safe fixed-interval limiter shared by every batch in this process."""
@@ -386,6 +389,10 @@ def transcribe_batch(
     models = configured_models()
 
     for model_index, model in enumerate(models):
+        with SHARED_EXHAUSTED_LOCK:
+            if model in SHARED_EXHAUSTED_MODELS:
+                continue
+
         for attempt in range(1, max_retries + 1):
             try:
                 rate_limiters[model].wait_for_slot()
@@ -401,7 +408,21 @@ def transcribe_batch(
                 return parse_batch_transcription(response.text or "", segment_numbers)
             except Exception as exc:  # SDK raises multiple transport/API error types.
                 last_error = exc
+                msg = str(exc).lower()
+                is_daily_limit = ("per day" in msg or "daily" in msg or "rpd" in msg)
+                if is_daily_limit:
+                    print(
+                        f"[Giới hạn Gemini] Model {model} đã hết hạn mức ngày (RPD). "
+                        "Đánh dấu kiệt sức và chuyển ngay sang model dự phòng.",
+                        file=sys.stderr,
+                    )
+                    with SHARED_EXHAUSTED_LOCK:
+                        SHARED_EXHAUSTED_MODELS.add(model)
+                    break
+
                 if attempt >= max_retries:
+                    with SHARED_EXHAUSTED_LOCK:
+                        SHARED_EXHAUSTED_MODELS.add(model)
                     break
 
                 if is_rate_limit_error(exc):
@@ -433,9 +454,13 @@ def transcribe_batch(
                 file=sys.stderr,
             )
 
+    if last_error is not None:
+        raise RuntimeError(
+            f"Gemini không thể xử lý lô {batch_number} (đoạn {segment_numbers}): {last_error}"
+        ) from last_error
     raise RuntimeError(
-        f"Gemini không thể xử lý lô {batch_number} (đoạn {segment_numbers}): {last_error}"
-    ) from last_error
+        f"Gemini không thể xử lý lô {batch_number} (đoạn {segment_numbers}): Tất cả các model cấu hình ({models}) đều đã cạn kiệt quota hoặc bị khóa."
+    )
 
 
 def detect_speech_intervals(
