@@ -839,15 +839,15 @@ export default function PdfStudyViewer({
 
         {/* 3. Notes Management Side Panel (Quản lý ghi chú trực tiếp cạnh PDF) */}
         {isNotesPanelOpen && (
-          <div className="absolute sm:relative right-0 top-0 bottom-0 w-full sm:w-80 md:w-96 border-l border-slate-800 bg-slate-950 flex flex-col h-full z-25 shadow-2xl shrink-0 transition-all">
-            <div className="px-3.5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
-              <span className="font-bold flex items-center gap-1.5 text-amber-400">
+          <div className="absolute sm:relative right-0 top-0 bottom-0 w-full sm:w-80 md:w-96 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full z-25 shadow-2xl shrink-0 transition-all">
+            <div className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-xs text-slate-800 dark:text-slate-100">
+              <span className="font-bold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                 <FiFileText /> Quản lý ghi chú ({notes.length})
               </span>
               <button
                 type="button"
                 onClick={() => setIsNotesPanelOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                 title="Đóng bảng quản lý ghi chú"
               >
                 <FiX />
