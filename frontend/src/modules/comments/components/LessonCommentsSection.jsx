@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FiMessageSquare,
   FiHeart,
@@ -64,6 +64,11 @@ export default function LessonCommentsSection({ lessonId, user, onCommentsCountC
   const userRoleId = parseInt(user?.roleId || user?.role, 10);
   const isInstructorOrAdmin = userRoleId === 1 || userRoleId === 2;
 
+  const onCommentsCountChangeRef = useRef(onCommentsCountChange);
+  useEffect(() => {
+    onCommentsCountChangeRef.current = onCommentsCountChange;
+  }, [onCommentsCountChange]);
+
   // Tính tổng số bình luận (bao gồm cả replies)
   const calculateTotalComments = (list) => {
     let count = 0;
@@ -84,8 +89,8 @@ export default function LessonCommentsSection({ lessonId, user, onCommentsCountC
     try {
       const data = await getLessonComments(lessonId);
       setComments(data);
-      if (onCommentsCountChange) {
-        onCommentsCountChange(calculateTotalComments(data));
+      if (onCommentsCountChangeRef.current) {
+        onCommentsCountChangeRef.current(calculateTotalComments(data));
       }
     } catch (err) {
       console.error('Lỗi khi tải bình luận:', err);
@@ -93,10 +98,10 @@ export default function LessonCommentsSection({ lessonId, user, onCommentsCountC
     } finally {
       if (showIndicator) setLoading(false);
     }
-  }, [lessonId, onCommentsCountChange]);
+  }, [lessonId]);
 
   useEffect(() => {
-    fetchComments();
+    fetchComments(true);
   }, [fetchComments]);
 
   // Gửi bình luận gốc mới
