@@ -56,9 +56,9 @@ import {
   getCourseDetails,
   getLessonById,
   toggleLessonCompletion,
-  getVideoTicket,
-  fixUtf8Mojibake
+  getVideoTicket
 } from '../services/lessons.service';
+import { fixUtf8Mojibake } from '../utils/textEncoding';
 
 const WATERMARK_POSITIONS = [
   'top-3.5 left-3.5',
@@ -2143,7 +2143,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                           const rawPdfUrl = attachedPdf?.url || (!isPdfLessonType ? currentLesson?.lecturePdfUrl : null);
                           const attachedPdfUrl = (typeof rawPdfUrl === 'string' && rawPdfUrl.trim().length > 5) ? rawPdfUrl.trim() : null;
 
-                          const cleanPdfTitle = fixUtf8Mojibake(attachedPdf.name) || currentLesson?.title || 'Tài liệu bài giảng PDF';
+                          const cleanPdfTitle = fixUtf8Mojibake(attachedPdf?.name) || currentLesson?.title || 'Tài liệu bài giảng PDF';
 
                           return (
                             <div className="space-y-5 animate-fade text-sm" style={{ color: 'var(--text-color)' }}>

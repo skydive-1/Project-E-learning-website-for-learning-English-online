@@ -23,7 +23,7 @@ import PdfHighlightOverlay from './PdfHighlightOverlay';
 import PdfSelectionPopover from './PdfSelectionPopover';
 import { mergePdfSelectionRects } from '../utils/pdfSelectionRects';
 import { useToast } from '../../../context/ToastContext';
-import { fixUtf8Mojibake } from '../services/lessons.service';
+import { fixUtf8Mojibake } from '../utils/textEncoding';
 
 // Cấu hình Bundled Worker cục bộ tương thích hoàn toàn với Vite và không phụ thuộc CDN bên ngoài
 if (typeof window !== 'undefined') {
