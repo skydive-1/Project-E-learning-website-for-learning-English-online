@@ -11,9 +11,35 @@ const getApiBaseUrl = () => {
 };
 const getBackendHost = () => getApiBaseUrl().replace(/\/api$/, '');
 
+export const toBackendUrl = (path) => {
+  if (!path || typeof path !== 'string') return '';
+  const trimmed = path.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `${getBackendHost()}${cleanPath}`;
+};
+
 export const getLessonPdfUrl = (lessonId) => {
   const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
   return `${getApiBaseUrl()}/lessons/${encodeURIComponent(cleanId)}/pdf`;
+};
+
+export const resolveMaterialPdfUrl = (m, lessonId) => {
+  if (!m) return '';
+  const lid = m.lesson_id || lessonId;
+  const mid = m.material_id || m.id;
+  const rawUrl = (typeof m === 'string') ? m : (m.file_url || m.url || '');
+  if (rawUrl && (rawUrl.startsWith('http://') || rawUrl.startsWith('https://'))) {
+    return rawUrl;
+  }
+  if (lid && mid) {
+    return `${getApiBaseUrl()}/lessons/${lid}/materials/${mid}/preview`;
+  }
+  if (rawUrl) {
+    return toBackendUrl(rawUrl);
+  }
+  return '';
 };
 
 /**
@@ -156,7 +182,7 @@ export const getCourseDetails = async (courseId = 1) => {
                 // Video nội bộ: Không gắn session JWT vào URL; Active lesson player sẽ xin ticket 60s riêng
                 resolvedUrl = l.content_url;
               } else {
-                resolvedUrl = `${getBackendHost()}${l.content_url}`;
+                resolvedUrl = toBackendUrl(l.content_url);
               }
             }
           }
@@ -178,7 +204,16 @@ export const getCourseDetails = async (courseId = 1) => {
             pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
             description: description,
             content: content,
-            resources: l.content_type === 'pdf' ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : [],
+            resources: (l.materials && Array.isArray(l.materials) && l.materials.length > 0)
+              ? l.materials.map(m => ({
+                  id: m.material_id || m.id,
+                  name: m.file_name || m.name,
+                  url: resolveMaterialPdfUrl(m, l.lesson_id),
+                  fileType: m.file_type || m.fileType || 'application/pdf',
+                  sizeKb: m.file_size_kb || m.sizeKb || 0,
+                  createdAt: m.created_at || m.createdAt
+                }))
+              : (l.content_type === 'pdf' && resolvedUrl ? [{ name: l.title + ' (PDF)', url: resolvedUrl }] : []),
             completed: completedLessonIds.includes(l.lesson_id),
             speakingSentences: l.speaking_sentences || l.speakingSentences || '',
             speakingQuestions: l.speaking_questions || l.speakingQuestions || ''
@@ -354,7 +389,7 @@ export const getLessonById = async (lessonId) => {
           // Video nội bộ: Không gắn session JWT vào URL; Active lesson player sẽ xin ticket 60s riêng
           resolvedUrl = l.content_url;
         } else {
-          resolvedUrl = `${getBackendHost()}${l.content_url}`;
+          resolvedUrl = toBackendUrl(l.content_url);
         }
       }
     }
@@ -409,7 +444,7 @@ export const getLessonById = async (lessonId) => {
       resolvedResources = l.materials.map(m => ({
         id: m.material_id || m.id,
         name: m.file_name || m.name,
-        url: m.file_url ? (m.file_url.startsWith('http') ? m.file_url : `${getBackendHost()}${m.file_url}`) : (m.url || ''),
+        url: resolveMaterialPdfUrl(m, l.lesson_id),
         fileType: m.file_type || m.fileType || 'application/pdf',
         sizeKb: m.file_size_kb || m.sizeKb || 0,
         createdAt: m.created_at || m.createdAt
@@ -419,6 +454,9 @@ export const getLessonById = async (lessonId) => {
     if (resolvedResources.length === 0 && l.content_type === 'pdf' && resolvedUrl) {
       resolvedResources = [{ name: l.title + ' (PDF)', url: resolvedUrl, sizeKb: 0 }];
     }
+
+    const lecturePdf = resolvedResources.find(r => r.fileType?.includes('pdf') || r.name?.toLowerCase().includes('.pdf') || r.url?.toLowerCase().includes('.pdf')) || (resolvedResources.length > 0 ? resolvedResources[0] : null);
+    const lecturePdfUrl = lecturePdf?.url || (l.content_type === 'pdf' ? resolvedUrl : null);
 
     return {
       id: String(l.lesson_id),
@@ -432,6 +470,8 @@ export const getLessonById = async (lessonId) => {
       contentUrl: l.content_url,
       isDrmProtected: false,
       pdfUrl: l.content_type === 'pdf' ? resolvedUrl : null,
+      lecturePdf: lecturePdf,
+      lecturePdfUrl: lecturePdfUrl,
       description: description,
       content: content,
       resources: resolvedResources,

@@ -541,11 +541,27 @@ class LessonsService {
 
       // Lấy danh sách tài liệu đính kèm từ bảng lesson_materials
       const materialsRes = await db.query(
-        'SELECT material_id, file_name, file_url, file_type, file_size_kb, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',
+        'SELECT material_id, lesson_id, file_name, file_url, storage_key, file_type, file_size_kb, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',
         [cleanLessonId]
       );
 
-      lesson.materials = materialsRes.rows || [];
+      lesson.materials = (materialsRes.rows || []).map((m) => {
+        const rawUrl = m.file_url || m.storage_key || '';
+        const isDirect = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
+        const previewUrl = isDirect ? rawUrl : `/api/lessons/${m.lesson_id || cleanLessonId}/materials/${m.material_id}/preview`;
+        return {
+          id: m.material_id,
+          material_id: m.material_id,
+          lesson_id: m.lesson_id || cleanLessonId,
+          name: m.file_name,
+          file_name: m.file_name,
+          file_url: previewUrl,
+          url: previewUrl,
+          file_type: m.file_type || 'application/pdf',
+          file_size_kb: m.file_size_kb || 0,
+          created_at: m.created_at
+        };
+      });
       return lesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy thông tin bài giảng');

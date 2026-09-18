@@ -742,14 +742,43 @@ class CoursesService {
 
   async getLessonById(lessonId) {
     try {
+      const cleanLessonId = parseInt(lessonId, 10);
       const queryText = `
         SELECT l.*, s.course_id 
         FROM lessons l
         JOIN sections s ON l.section_id = s.section_id
         WHERE l.lesson_id = $1
       `;
-      const result = await db.query(queryText, [lessonId]);
-      return result.rows[0];
+      const result = await db.query(queryText, [cleanLessonId]);
+      const lesson = result.rows[0];
+      if (!lesson) return null;
+
+      const formatMaterialRow = (m, lid) => {
+        const rawUrl = m.file_url || m.storage_key || '';
+        const isDirect = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
+        const effectiveLessonId = m.lesson_id || lid;
+        const previewUrl = isDirect ? rawUrl : `/api/lessons/${effectiveLessonId}/materials/${m.material_id}/preview`;
+        return {
+          id: m.material_id,
+          material_id: m.material_id,
+          lesson_id: effectiveLessonId,
+          name: m.file_name,
+          file_name: m.file_name,
+          file_url: previewUrl,
+          url: previewUrl,
+          file_type: m.file_type || 'application/pdf',
+          file_size_kb: m.file_size_kb || Math.round((m.size_bytes || 0) / 1024) || 0,
+          created_at: m.created_at
+        };
+      };
+
+      const materialsRes = await db.query(
+        'SELECT material_id, lesson_id, file_name, file_url, storage_key, file_type, file_size_kb, created_at FROM lesson_materials WHERE lesson_id = $1 ORDER BY material_id ASC',
+        [cleanLessonId]
+      );
+      lesson.materials = (materialsRes.rows || []).map(m => formatMaterialRow(m, cleanLessonId));
+
+      return lesson;
     } catch (error) {
       handleServiceError(error, 'Lỗi lấy chi tiết bài học');
     }
@@ -826,6 +855,53 @@ class CoursesService {
           });
         }
       });
+
+      // Tải danh sách tài liệu đính kèm (PDF) cho các bài học của khóa học
+      try {
+        const materialsRes = await db.query(
+          `SELECT lm.material_id, lm.lesson_id, lm.file_name, lm.file_url, lm.storage_key, lm.file_type, lm.file_size_kb, lm.created_at
+           FROM lesson_materials lm
+           JOIN lessons l ON lm.lesson_id = l.lesson_id
+           JOIN sections s ON l.section_id = s.section_id
+           WHERE s.course_id = $1
+           ORDER BY lm.material_id ASC`,
+          [courseId]
+        );
+
+        const formatMaterial = (m) => {
+          const rawUrl = m.file_url || m.storage_key || '';
+          const isDirect = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
+          const previewUrl = isDirect ? rawUrl : `/api/lessons/${m.lesson_id}/materials/${m.material_id}/preview`;
+          return {
+            id: m.material_id,
+            material_id: m.material_id,
+            lesson_id: m.lesson_id,
+            name: m.file_name,
+            file_name: m.file_name,
+            file_url: previewUrl,
+            url: previewUrl,
+            file_type: m.file_type || 'application/pdf',
+            file_size_kb: m.file_size_kb || 0,
+            created_at: m.created_at
+          };
+        };
+
+        const materialsByLesson = new Map();
+        (materialsRes.rows || []).forEach(mat => {
+          if (!materialsByLesson.has(mat.lesson_id)) {
+            materialsByLesson.set(mat.lesson_id, []);
+          }
+          materialsByLesson.get(mat.lesson_id).push(formatMaterial(mat));
+        });
+
+        course.sections.forEach(sec => {
+          sec.lessons.forEach(les => {
+            les.materials = materialsByLesson.get(les.lesson_id) || [];
+          });
+        });
+      } catch (matErr) {
+        console.warn('Cảnh báo tải materials cho khóa học:', matErr.message);
+      }
 
       return course;
     } catch (error) {
