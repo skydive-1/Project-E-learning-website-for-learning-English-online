@@ -58,6 +58,7 @@ import {
   toggleLessonCompletion,
   getVideoTicket
 } from '../services/lessons.service';
+import { fixUtf8Mojibake } from '../utils/textEncoding';
 
 const WATERMARK_POSITIONS = [
   'top-3.5 left-3.5',
@@ -2142,6 +2143,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                           const rawPdfUrl = attachedPdf?.url || (!isPdfLessonType ? currentLesson?.lecturePdfUrl : null);
                           const attachedPdfUrl = (typeof rawPdfUrl === 'string' && rawPdfUrl.trim().length > 5) ? rawPdfUrl.trim() : null;
 
+                          const cleanPdfTitle = fixUtf8Mojibake(attachedPdf?.name) || currentLesson?.title || 'Tài liệu bài giảng PDF';
+
                           return (
                             <div className="space-y-5 animate-fade text-sm" style={{ color: 'var(--text-color)' }}>
                               {/* 1. Nếu có tệp PDF bài giảng được tải lên cho bài học video */}
@@ -2167,8 +2170,8 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                             </span>
                                           )}
                                         </div>
-                                        <h4 className="font-semibold text-sm truncate mt-0.5" style={{ color: 'var(--text-color)' }} title={attachedPdf.name}>
-                                          {attachedPdf.name || currentLesson?.title || 'Tài liệu bài giảng PDF'}
+                                        <h4 className="font-semibold text-sm truncate mt-0.5" style={{ color: 'var(--text-color)' }} title={cleanPdfTitle}>
+                                          {cleanPdfTitle}
                                         </h4>
                                       </div>
                                     </div>
@@ -2179,7 +2182,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                         href={withPdfAuthToken(attachedPdfUrl)}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        download={attachedPdf.name || true}
+                                        download={cleanPdfTitle}
                                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors shadow-sm"
                                       >
                                         <FiDownload className="text-xs" />
@@ -2211,7 +2214,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                         <PdfStudyViewer
                                           key={`embedded-pdf-${currentLesson?.id}`}
                                           pdfUrl={attachedPdfUrl}
-                                          title={attachedPdf.name || currentLesson?.title}
+                                          title={cleanPdfTitle}
                                           user={user}
                                           notes={pdfNotes}
                                           selectedNoteId={selectedPdfNoteId}

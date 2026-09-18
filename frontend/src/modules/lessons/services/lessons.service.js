@@ -25,6 +25,10 @@ export const getLessonPdfUrl = (lessonId) => {
   return `${getApiBaseUrl()}/lessons/${encodeURIComponent(cleanId)}/pdf`;
 };
 
+import { fixUtf8Mojibake } from '../utils/textEncoding';
+export { fixUtf8Mojibake };
+
+
 export const resolveMaterialPdfUrl = (m, lessonId) => {
   if (!m) return '';
   const lid = m.lesson_id || lessonId;
@@ -443,7 +447,7 @@ export const getLessonById = async (lessonId) => {
     if (l.materials && Array.isArray(l.materials)) {
       resolvedResources = l.materials.map(m => ({
         id: m.material_id || m.id,
-        name: m.file_name || m.name,
+        name: fixUtf8Mojibake(m.file_name || m.name),
         url: resolveMaterialPdfUrl(m, l.lesson_id),
         fileType: m.file_type || m.fileType || 'application/pdf',
         sizeKb: m.file_size_kb || m.sizeKb || 0,

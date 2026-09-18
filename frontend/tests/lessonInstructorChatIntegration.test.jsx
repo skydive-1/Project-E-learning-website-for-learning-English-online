@@ -43,7 +43,8 @@ vi.mock('../src/modules/lessons/services/lessons.service', () => ({
   getCourseDetails: vi.fn(),
   getLessonById: vi.fn(),
   toggleLessonCompletion: vi.fn(),
-  getVideoTicket: vi.fn()
+  getVideoTicket: vi.fn(),
+  fixUtf8Mojibake: vi.fn((str) => str)
 }));
 
 vi.mock('../src/modules/discussions/services/discussions.service', () => ({

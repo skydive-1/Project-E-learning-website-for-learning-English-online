@@ -14,10 +14,10 @@ const COLOR_MAP = {
     selectedBg: 'rgba(74, 222, 128, 0.65)'
   },
   blue: {
-    bg: 'rgba(96, 165, 250, 0.35)',
-    border: '#2563eb',
-    areaBorder: 'rgba(37, 99, 235, 0.9)',
-    selectedBg: 'rgba(96, 165, 250, 0.65)'
+    bg: 'rgba(30, 64, 175, 0.42)',
+    border: '#1d4ed8',
+    areaBorder: 'rgba(29, 78, 216, 0.95)',
+    selectedBg: 'rgba(30, 64, 175, 0.72)'
   },
   pink: {
     bg: 'rgba(244, 114, 182, 0.35)',

@@ -23,6 +23,7 @@ import PdfHighlightOverlay from './PdfHighlightOverlay';
 import PdfSelectionPopover from './PdfSelectionPopover';
 import { mergePdfSelectionRects } from '../utils/pdfSelectionRects';
 import { useToast } from '../../../context/ToastContext';
+import { fixUtf8Mojibake } from '../utils/textEncoding';
 
 // Cấu hình Bundled Worker cục bộ tương thích hoàn toàn với Vite và không phụ thuộc CDN bên ngoài
 if (typeof window !== 'undefined') {
@@ -487,8 +488,8 @@ export default function PdfStudyViewer({
           <div className="w-7 h-7 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold shrink-0">
             <FiFileText />
           </div>
-          <span className="font-semibold text-slate-200 truncate max-w-[130px] sm:max-w-xs" title={title}>
-            {title}
+          <span className="font-semibold text-slate-200 truncate max-w-[130px] sm:max-w-xs" title={fixUtf8Mojibake(title)}>
+            {fixUtf8Mojibake(title)}
           </span>
 
           {/* Primary Action Button: "＋ Thêm ghi chú" */}
@@ -717,7 +718,7 @@ export default function PdfStudyViewer({
                     {/* Live Dragging Rectangle */}
                     {dragBox && dragBox.w > 2 && dragBox.h > 2 && (
                       <div
-                        className="absolute pointer-events-none z-30 bg-indigo-500/25 border-2 border-indigo-500 rounded-md shadow-md"
+                        className="absolute pointer-events-none z-30 bg-blue-700/35 border-2 border-blue-700 rounded-md shadow-md"
                         style={{
                           left: `${dragBox.minX}px`,
                           top: `${dragBox.minY}px`,
@@ -765,7 +766,7 @@ export default function PdfStudyViewer({
                     if (w < 2 || h < 2) return null;
                     return (
                       <div
-                        className="absolute pointer-events-none z-30 bg-indigo-500/25 border-2 border-indigo-500 rounded-md shadow-md"
+                        className="absolute pointer-events-none z-30 bg-blue-700/35 border-2 border-blue-700 rounded-md shadow-md"
                         style={{
                           left: `${minX}px`,
                           top: `${minY}px`,
@@ -794,20 +795,25 @@ export default function PdfStudyViewer({
         )}
       </div>
 
-      {/* 4. Global CSS styling for Text Layer selection accessibility */}
+      {/* 4. Global CSS styling for Text Layer selection accessibility (Màu xanh đậm truyền thống) */}
       <style>{`
-        .pdf-study-viewer .react-pdf__Page__textContent {
+        .pdf-study-viewer .react-pdf__Page__textContent,
+        .pdf-study-viewer .textLayer {
           user-select: ${isAreaModeActive ? 'none !important' : 'text !important'};
           cursor: ${isAreaModeActive ? 'crosshair !important' : 'text !important'};
-          opacity: 0.25;
-          mix-blend-mode: multiply;
+          opacity: 1 !important;
           pointer-events: ${isAreaModeActive ? 'none !important' : 'auto'};
         }
-        .pdf-study-viewer .react-pdf__Page__textContent span {
+        .pdf-study-viewer .react-pdf__Page__textContent span,
+        .pdf-study-viewer .textLayer span {
           user-select: ${isAreaModeActive ? 'none !important' : 'text !important'};
         }
-        .pdf-study-viewer .react-pdf__Page__textContent span::selection {
-          background: rgba(59, 130, 246, 0.4) !important;
+        .pdf-study-viewer .react-pdf__Page__textContent ::selection,
+        .pdf-study-viewer .react-pdf__Page__textContent span::selection,
+        .pdf-study-viewer .textLayer ::selection,
+        .pdf-study-viewer .textLayer span::selection {
+          background: rgba(0, 71, 187, 0.72) !important;
+          background-color: rgba(0, 71, 187, 0.72) !important;
         }
       `}</style>
     </div>

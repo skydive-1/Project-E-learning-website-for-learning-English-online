@@ -549,10 +549,7 @@ export default function LessonCommentsSection({ lessonId, user, onCommentsCountC
                 color: 'var(--text-color)'
               }}
             />
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-[11px] opacity-60">
-                💡 Bình luận lịch sự, văn minh và đúng chủ đề bài học.
-              </span>
+            <div className="flex items-center justify-end gap-2 flex-wrap">
               <button
                 type="submit"
                 disabled={submitting || !newCommentText.trim()}
