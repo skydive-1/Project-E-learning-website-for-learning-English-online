@@ -18,12 +18,49 @@ const OFFLINE_QUEUE_KEY = 'pdf_notes_offline_queue';
 const CONFLICT_RESOLUTION_KEY = 'pdf_notes_conflicts';
 
 /**
- * Lấy danh sách ghi chú theo bài học và tài liệu PDF
+ * Lấy ID người dùng hiện tại từ cache xác thực để cô lập dữ liệu bộ nhớ đệm
+ */
+const getCurrentUserId = () => {
+  try {
+    const cached = localStorage.getItem('auth_user_cache');
+    if (cached) {
+      const user = JSON.parse(cached);
+      return user?.id || user?.userId || user?.user_id || null;
+    }
+  } catch (_) {}
+  return null;
+};
+
+/**
+ * Tạo key lưu cache cô lập nghiêm ngặt theo userId, bài học và tài liệu
+ */
+const getCacheKey = (lessonId, documentRef, userId = null) => {
+  const effectiveUserId = userId || getCurrentUserId() || 'guest';
+  return `pdf_notes_cache_${effectiveUserId}_${lessonId}_${documentRef || 'primary'}`;
+};
+
+/**
+ * Xóa sạch toàn bộ bộ nhớ đệm ghi chú PDF cục bộ (gọi khi đăng xuất)
+ */
+export const clearAllPdfNotesLocalCache = () => {
+  try {
+    const keys = Object.keys(localStorage).filter(
+      (k) => k.startsWith('pdf_notes_cache_') || k.startsWith('pdf_draft_') || k.startsWith('pdf_notes_offline_queue')
+    );
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('Không thể dọn sạch bộ nhớ cache ghi chú PDF:', e);
+  }
+};
+
+/**
+ * Lấy danh sách ghi chú theo bài học và tài liệu PDF (cô lập theo User)
  * @param {string|number} lessonId 
  * @param {string} documentRef 
  * @param {number} [page] 
+ * @param {string|number} [userId]
  */
-export const fetchPdfNotes = async (lessonId, documentRef, page) => {
+export const fetchPdfNotes = async (lessonId, documentRef, page, userId = null) => {
   const cleanId = String(lessonId).replace(/^(quiz|speaking)-/, '');
   const params = {};
   if (documentRef) params.documentRef = documentRef;
@@ -33,15 +70,15 @@ export const fetchPdfNotes = async (lessonId, documentRef, page) => {
     const response = await apiClient.get(`/lessons/${cleanId}/pdf-notes`, { params });
     const notes = response.data?.data || [];
     
-    // Cache successful response for offline use
-    cacheNotes(lessonId, documentRef || 'primary', response.data?.data || []);
+    // Cache successful response for offline use with user isolation
+    cacheNotes(lessonId, documentRef || 'primary', notes, userId);
     
     return notes;
   } catch (error) {
-    // Offline fallback - return cached data
-    const cached = getCachedNotes(lessonId, documentRef || 'primary');
+    // Offline fallback - return cached data strictly for this user
+    const cached = getCachedNotes(lessonId, documentRef || 'primary', userId);
     if (cached.length > 0) {
-      console.warn('Offline mode: returning cached PDF notes');
+      console.warn('Offline mode: returning cached PDF notes for user');
       return cached;
     }
     throw error;
@@ -49,25 +86,26 @@ export const fetchPdfNotes = async (lessonId, documentRef, page) => {
 };
 
 /**
- * Cache notes locally for offline access
+ * Cache notes locally for offline access (User-Isolated)
  */
-const cacheNotes = (lessonId, documentRef, notes) => {
+const cacheNotes = (lessonId, documentRef, notes, userId = null) => {
   try {
-    const key = `pdf_notes_cache_${lessonId}_${documentRef || 'primary'}`;
+    const key = getCacheKey(lessonId, documentRef, userId);
     localStorage.setItem(key, JSON.stringify({
       notes,
       timestamp: Date.now(),
       lessonId,
-      documentRef
+      documentRef,
+      userId: userId || getCurrentUserId()
     }));
   } catch (e) {
     console.warn('Failed to cache PDF notes:', e);
   }
 };
 
-const getCachedNotes = (lessonId, documentRef) => {
+const getCachedNotes = (lessonId, documentRef, userId = null) => {
   try {
-    const key = `pdf_notes_cache_${lessonId}_${documentRef || 'primary'}`;
+    const key = getCacheKey(lessonId, documentRef, userId);
     const cached = localStorage.getItem(key);
     if (cached) {
       const data = JSON.parse(cached);
@@ -168,13 +206,15 @@ export const deletePdfNote = async (lessonId, noteId) => {
 };
 
 /**
- * Queue offline operation for later sync
+ * Queue offline operation for later sync (User-Isolated)
  */
-const queueOfflineOperation = (operation, lessonId, data) => {
+const queueOfflineOperation = (operation, lessonId, data, userId = null) => {
   try {
+    const effectiveUserId = userId || getCurrentUserId();
     const queue = JSON.parse(localStorage.getItem('pdf_notes_offline_queue') || '[]');
     queue.push({
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      userId: effectiveUserId,
       operation,
       lessonId,
       data,
@@ -187,10 +227,12 @@ const queueOfflineOperation = (operation, lessonId, data) => {
 };
 
 /**
- * Process offline queue when online
+ * Process offline queue when online (only for current logged-in user)
  */
 export const syncOfflineQueue = async () => {
   if (!navigator.onLine) return { synced: 0, failed: 0 };
+  const currentUserId = getCurrentUserId();
+  if (!currentUserId) return { synced: 0, failed: 0 };
   
   try {
     const queue = JSON.parse(localStorage.getItem('pdf_notes_offline_queue') || '[]');
@@ -201,6 +243,12 @@ export const syncOfflineQueue = async () => {
     const remaining = [];
     
     for (const item of queue) {
+      // Chỉ đồng bộ các tác vụ thuộc đúng người dùng đang đăng nhập
+      if (item.userId && String(item.userId) !== String(currentUserId)) {
+        remaining.push(item);
+        continue;
+      }
+
       try {
         switch (item.operation) {
           case 'create':

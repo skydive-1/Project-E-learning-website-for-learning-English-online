@@ -489,5 +489,67 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       expect(apiClient.delete).toHaveBeenCalledWith('/lessons/1/pdf-notes/10');
       expect(res.success).toBe(true);
     });
+
+    it('5.5 should isolate local cache between user A and user B', async () => {
+      // User 10 caches notes
+      apiClient.get.mockResolvedValueOnce({ data: { data: [mockNotes[0]] } });
+      const notesUser10 = await pdfNotesService.fetchPdfNotes(1, 'primary', null, 10);
+      expect(notesUser10).toHaveLength(1);
+
+      // Offline fetch for User 20 must NOT return User 10's notes
+      apiClient.get.mockRejectedValueOnce(new Error('Network error'));
+      await expect(pdfNotesService.fetchPdfNotes(1, 'primary', null, 20)).rejects.toThrow('Network error');
+
+      // Offline fetch for User 10 returns cached notes
+      apiClient.get.mockRejectedValueOnce(new Error('Network error'));
+      const cachedNotesUser10 = await pdfNotesService.fetchPdfNotes(1, 'primary', null, 10);
+      expect(cachedNotesUser10).toHaveLength(1);
+      expect(cachedNotesUser10[0].selectedText).toBe(mockNotes[0].selectedText);
+    });
+
+    it('5.6 clearAllPdfNotesLocalCache should clear all pdf note keys on logout', () => {
+      localStorage.setItem('pdf_notes_cache_10_1_primary', JSON.stringify({ notes: [] }));
+      localStorage.setItem('pdf_draft_10_1_primary', 'some draft');
+      localStorage.setItem('pdf_notes_offline_queue', JSON.stringify([{ id: '1' }]));
+
+      pdfNotesService.clearAllPdfNotesLocalCache();
+
+      expect(localStorage.getItem('pdf_notes_cache_10_1_primary')).toBeNull();
+      expect(localStorage.getItem('pdf_draft_10_1_primary')).toBeNull();
+      expect(localStorage.getItem('pdf_notes_offline_queue')).toBeNull();
+    });
+  });
+
+  describe('6. Quản lý ghi chú in PdfStudyViewer', () => {
+    it('6.1 renders "Quản lý ghi chú" button next to "＋ Thêm ghi chú" and toggles side panel', async () => {
+      render(
+        <PdfStudyViewer
+          pdfUrl="https://example.com/test.pdf"
+          title="Bài học ngữ pháp"
+          notes={mockNotes}
+        />
+      );
+
+      // Both buttons must be rendered
+      expect(screen.getByRole('button', { name: /Thêm ghi chú vùng/i })).toBeInTheDocument();
+      const manageNotesBtn = screen.getByRole('button', { name: /Quản lý ghi chú/i });
+      expect(manageNotesBtn).toBeInTheDocument();
+      expect(manageNotesBtn).toHaveTextContent('Quản lý ghi chú');
+      expect(manageNotesBtn).toHaveTextContent('3'); // 3 notes in mockNotes
+
+      // Panel is initially closed
+      expect(screen.queryByTitle('Đóng bảng quản lý ghi chú')).not.toBeInTheDocument();
+
+      // Click to open side panel
+      fireEvent.click(manageNotesBtn);
+
+      // Now the close button and panel header are present
+      expect(screen.getByTitle('Đóng bảng quản lý ghi chú')).toBeInTheDocument();
+      expect(screen.getByText(/Quản lý ghi chú \(3\)/i)).toBeInTheDocument();
+
+      // Click close button
+      fireEvent.click(screen.getByTitle('Đóng bảng quản lý ghi chú'));
+      expect(screen.queryByTitle('Đóng bảng quản lý ghi chú')).not.toBeInTheDocument();
+    });
   });
 });

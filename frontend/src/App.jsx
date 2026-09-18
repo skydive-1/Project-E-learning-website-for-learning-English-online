@@ -30,7 +30,8 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './config/queryClient';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import GlobalChatbot from './components/common/GlobalChatbot';
 import OfflineIndicator from './components/common/OfflineIndicator';
@@ -53,22 +54,6 @@ const RouteLoadingFallback = () => (
     <div className="size-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-500 dark:border-slate-700 dark:border-t-blue-400" />
   </div>
 );
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5, // Dữ liệu cache có hiệu lực trong 5 phút
-      refetchOnWindowFocus: false, // Không gọi lại API khi chuyển đổi cửa sổ
-      retry: (failureCount, error) => {
-        const status = error?.response?.status;
-        // 4xx cần người dùng hoặc server thay đổi trạng thái. Retry ngay lập tức
-        // (đặc biệt với 429) chỉ làm tăng thêm tải và kéo dài màn hình skeleton.
-        if (status >= 400 && status < 500) return false;
-        return failureCount < 2;
-      }
-    }
-  }
-});
 
 // SecureAuthRedirectHandler: parse callback, exchange with backend, remove URL tokens safely
 const SecureAuthRedirectHandler = () => {
