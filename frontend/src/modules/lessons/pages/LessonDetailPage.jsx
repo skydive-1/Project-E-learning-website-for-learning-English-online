@@ -157,6 +157,9 @@ const LessonDetailPage = () => {
   const [activeRightTab, setActiveRightTab] = useState(getInitialActiveRightTab);
   const [activeLeftTab, setActiveLeftTab] = useState("syllabus");
   const [lessonCommentsCount, setLessonCommentsCount] = useState(0);
+  const handleCommentsCountChange = useCallback((cnt) => {
+    setLessonCommentsCount(prev => prev !== cnt ? cnt : prev);
+  }, []);
   const [showEmbeddedPdfReader, setShowEmbeddedPdfReader] = useState(true);
   const [expandedSections, setExpandedSections] = useState(getInitialExpandedSections);
   const [optimisticLessonId, setOptimisticLessonId] = useState(null);
@@ -2275,7 +2278,7 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                             <LessonCommentsSection
                               lessonId={targetLessonId}
                               user={user}
-                              onCommentsCountChange={(cnt) => setLessonCommentsCount(cnt)}
+                              onCommentsCountChange={handleCommentsCountChange}
                             />
                           </div>
                         )}
