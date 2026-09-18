@@ -2,6 +2,8 @@ import React, { createContext, useState, useEffect, useContext, useCallback } fr
 import { useNavigate } from 'react-router-dom';
 import { getProfile } from '../modules/auth/services/auth.service';
 import { resetAuthLogoutGuard } from '../config/api.config';
+import { queryClient } from '../config/queryClient';
+import { clearAllPdfNotesLocalCache } from '../modules/lessons/services/pdfNotes.service';
 
 const AuthContext = createContext(null);
 const AUTH_USER_CACHE_KEY = 'auth_user_cache';
@@ -70,6 +72,12 @@ const cacheUser = (userData) => {
 const clearStoredAuth = () => {
   localStorage.removeItem('token');
   localStorage.removeItem(AUTH_USER_CACHE_KEY);
+  try {
+    clearAllPdfNotesLocalCache();
+  } catch (_) {}
+  try {
+    queryClient.clear();
+  } catch (_) {}
 };
 
 const CRITICAL_AUTH_CODES = [

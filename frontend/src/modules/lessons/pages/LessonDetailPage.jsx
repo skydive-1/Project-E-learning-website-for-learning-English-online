@@ -886,7 +886,30 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
   useStudyTimeTracker(targetLessonId, isVideoPlaying, activeActivityType);
 
   // PDF Notes States & TanStack Query Integration (TASK-PDF-SMART-NOTES-01 & 02)
-  const pdfDocumentRef = currentLesson?.documentRef || (currentLesson ? `lesson:${currentLesson.id}:primary:v${currentLesson.pdfVersion || 1}` : '');
+  const isPdfLessonType = currentLesson?.type === 'pdf';
+  const attachedPdf = !isPdfLessonType
+    ? (currentLesson?.lecturePdf ||
+      (currentLesson?.materials && currentLesson.materials.find(r =>
+        r.fileType?.includes('pdf') ||
+        r.file_type?.includes('pdf') ||
+        r.name?.toLowerCase().includes('.pdf') ||
+        r.url?.toLowerCase().includes('.pdf')
+      )) ||
+      (currentLesson?.resources && currentLesson.resources.find(r =>
+        r.fileType?.includes('pdf') ||
+        r.name?.toLowerCase().includes('.pdf') ||
+        r.url?.toLowerCase().includes('.pdf')
+      )) || null)
+    : null;
+  const rawAttachedPdfUrl = attachedPdf?.url || (!isPdfLessonType ? currentLesson?.lecturePdfUrl : null);
+  const attachedPdfUrl = (typeof rawAttachedPdfUrl === 'string' && rawAttachedPdfUrl.trim().length > 5) ? rawAttachedPdfUrl.trim() : null;
+
+  const pdfDocumentRef = isPdfLesson
+    ? (currentLesson?.documentRef || (currentLesson ? `lesson:${currentLesson.id}:primary:v${currentLesson.pdfVersion || 1}` : ''))
+    : (attachedPdf?.id || attachedPdf?.material_id
+      ? `lesson:${currentLesson?.id}:material:${attachedPdf.id || attachedPdf.material_id}:v1`
+      : (currentLesson ? `lesson:${currentLesson.id}:primary:v1` : ''));
+
   const [activePdfPage, setActivePdfPage] = useState(1);
   const [selectedPdfNoteId, setSelectedPdfNoteId] = useState(null);
   const [activeGlowNoteId, setActiveGlowNoteId] = useState(null);
@@ -920,23 +943,23 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
     }
   }, [currentLesson?.id, currentLesson?.type, isPdfLesson, activeRightTab]);
 
-  // TanStack Query for PDF Notes
+  // TanStack Query for PDF Notes (Cô lập tuyệt đối theo currentUserId)
   const {
     data: pdfNotes = [],
     isLoading: isPdfNotesLoading
   } = useQuery({
-    queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef],
-    queryFn: () => fetchPdfNotes(currentLesson?.id, pdfDocumentRef),
-    enabled: !!currentLesson?.id && isPdfLesson && !!currentUserId,
+    queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef],
+    queryFn: () => fetchPdfNotes(currentLesson?.id, pdfDocumentRef, null, currentUserId),
+    enabled: !!currentLesson?.id && (isPdfLesson || !!attachedPdfUrl) && !!currentUserId,
     staleTime: 1000 * 60 * 5
   });
 
-  // Create note mutation with Optimistic Update
+  // Create note mutation with Optimistic Update (Cô lập theo currentUserId)
   const createPdfNoteMutation = useMutation({
     mutationFn: (newNote) => createPdfNote(currentLesson?.id, { ...newNote, documentRef: pdfDocumentRef }),
     onMutate: async (newNote) => {
-      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
-      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef]) || [];
       const tempId = 'temp-' + Date.now();
       const optimisticNote = {
         id: tempId,
@@ -953,61 +976,61 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], [...previousNotes, optimisticNote]);
+      queryClient.setQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef], [...previousNotes, optimisticNote]);
       return { previousNotes };
     },
     onError: (err, newNote, context) => {
       if (context?.previousNotes) {
-        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
+        queryClient.setQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef], context.previousNotes);
       }
       showToast('Không thể tạo ghi chú: ' + (err?.response?.data?.message || err.message), 'error');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef] });
     }
   });
 
-  // Update note mutation
+  // Update note mutation (Cô lập theo currentUserId)
   const updatePdfNoteMutation = useMutation({
     mutationFn: ({ noteId, updateData }) => updatePdfNote(currentLesson?.id, noteId, updateData),
     onMutate: async ({ noteId, updateData }) => {
-      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
-      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef]) || [];
       queryClient.setQueryData(
-        ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+        ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef],
         previousNotes.map((n) => (String(n.id || n.noteId) === String(noteId) ? { ...n, ...updateData } : n))
       );
       return { previousNotes };
     },
     onError: (err, variables, context) => {
       if (context?.previousNotes) {
-        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
+        queryClient.setQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef], context.previousNotes);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef] });
     }
   });
 
-  // Delete note mutation
+  // Delete note mutation (Cô lập theo currentUserId)
   const deletePdfNoteMutation = useMutation({
     mutationFn: (noteId) => deletePdfNote(currentLesson?.id, noteId),
     onMutate: async (noteId) => {
-      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
-      const previousNotes = queryClient.getQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef]) || [];
+      await queryClient.cancelQueries({ queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef] });
+      const previousNotes = queryClient.getQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef]) || [];
       queryClient.setQueryData(
-        ['pdf-notes', currentLesson?.id, pdfDocumentRef],
+        ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef],
         previousNotes.filter((n) => String(n.id || n.noteId) !== String(noteId))
       );
       return { previousNotes };
     },
     onError: (err, noteId, context) => {
       if (context?.previousNotes) {
-        queryClient.setQueryData(['pdf-notes', currentLesson?.id, pdfDocumentRef], context.previousNotes);
+        queryClient.setQueryData(['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef], context.previousNotes);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentLesson?.id, pdfDocumentRef] });
+      queryClient.invalidateQueries({ queryKey: ['pdf-notes', currentUserId, currentLesson?.id, pdfDocumentRef] });
     }
   });
 
@@ -1931,6 +1954,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                               onPageChange={(p) => setActivePdfPage(p)}
                               onCreateNote={handleCreatePdfNote}
                               onSelectNote={handleNavigateToPdfNote}
+                              onUpdateNote={handleUpdatePdfNote}
+                              onDeleteNote={handleDeletePdfNote}
+                              isLoadingNotes={isPdfNotesLoading}
                             />
                           </React.Suspense>
                         ) : (currentLesson?.type === 'youtube' || (typeof currentLesson?.youtubeUrl === 'string' && currentLesson.youtubeUrl.length > 0) || (typeof currentLesson?.contentUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.contentUrl)) || (typeof currentLesson?.videoUrl === 'string' && /youtube\.com|youtu\.be/.test(currentLesson.videoUrl))) ? (
@@ -2181,6 +2207,20 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
 
                                     {/* Action Buttons */}
                                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowEmbeddedPdfReader(true)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-colors cursor-pointer"
+                                        title="Xem và quản lý toàn bộ ghi chú trên giáo trình PDF"
+                                      >
+                                        <FiFileText className="text-xs" />
+                                        <span>Quản lý ghi chú</span>
+                                        {pdfNotes.length > 0 && (
+                                          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold">
+                                            {pdfNotes.length}
+                                          </span>
+                                        )}
+                                      </button>
                                       <a
                                         href={withPdfAuthToken(attachedPdfUrl)}
                                         target="_blank"
@@ -2228,6 +2268,9 @@ const [askInstructorContext, setAskInstructorContext] = useState(null);
                                           onPageChange={(p) => setActivePdfPage(p)}
                                           onCreateNote={handleCreatePdfNote}
                                           onSelectNote={handleNavigateToPdfNote}
+                                          onUpdateNote={handleUpdatePdfNote}
+                                          onDeleteNote={handleDeletePdfNote}
+                                          isLoadingNotes={isPdfNotesLoading}
                                         />
                                       </React.Suspense>
                                     </div>

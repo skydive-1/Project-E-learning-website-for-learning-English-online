@@ -16,11 +16,13 @@ import {
   FiInfo,
   FiCrop,
   FiPlusCircle,
-  FiX
+  FiX,
+  FiList
 } from 'react-icons/fi';
 
 import PdfHighlightOverlay from './PdfHighlightOverlay';
 import PdfSelectionPopover from './PdfSelectionPopover';
+import PdfNotesPanel from './PdfNotesPanel';
 import { mergePdfSelectionRects } from '../utils/pdfSelectionRects';
 import { useToast } from '../../../context/ToastContext';
 import { fixUtf8Mojibake } from '../utils/textEncoding';
@@ -57,7 +59,11 @@ export default function PdfStudyViewer({
   onToggleAreaSelection,
   onPageChange,
   onCreateNote,
-  onSelectNote
+  onSelectNote,
+  onUpdateNote,
+  onDeleteNote,
+  isLoadingNotes = false,
+  initialOpenNotesPanel = false
 }) {
   const pdfFile = useMemo(() => {
     if (!pdfUrl) return null;
@@ -108,6 +114,15 @@ export default function PdfStudyViewer({
   const [error, setError] = useState(null);
   const [documentRetryKey, setDocumentRetryKey] = useState(0);
   const [watermarkPosIndex, setWatermarkPosIndex] = useState(0);
+
+  // Trạng thái mở/đóng bảng Quản lý ghi chú ngay tại trình đọc PDF
+  const [isNotesPanelOpen, setIsNotesPanelOpen] = useState(Boolean(initialOpenNotesPanel));
+
+  useEffect(() => {
+    if (initialOpenNotesPanel) {
+      setIsNotesPanelOpen(true);
+    }
+  }, [initialOpenNotesPanel]);
 
   // Local Area Selection Mode state if not controlled from parent
   const [localAreaMode, setLocalAreaMode] = useState(false);
@@ -510,6 +525,32 @@ export default function PdfStudyViewer({
               <span className="hidden sm:inline">{isAreaModeActive ? 'Hủy chọn vùng' : '＋ Thêm ghi chú'}</span>
             </button>
           )}
+
+          {/* Note Management Button: "Quản lý ghi chú" đặt kế bên nút "＋ Thêm ghi chú" */}
+          {pdfUrl && (
+            <button
+              type="button"
+              onClick={() => setIsNotesPanelOpen((prev) => !prev)}
+              aria-label="Quản lý ghi chú"
+              aria-pressed={isNotesPanelOpen}
+              title="Xem và quản lý danh sách ghi chú trên tài liệu này"
+              className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer border ${
+                isNotesPanelOpen
+                  ? 'bg-amber-500 text-white border-amber-400 shadow-amber-500/20 shadow-md ring-2 ring-amber-400/40'
+                  : 'bg-slate-800/90 hover:bg-slate-700/90 text-amber-300 border-amber-500/30 hover:border-amber-400/50'
+              }`}
+            >
+              <FiList className="text-sm" />
+              <span className="hidden sm:inline">Quản lý ghi chú</span>
+              {notes.length > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  isNotesPanelOpen ? 'bg-black/25 text-white' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {notes.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Center: Pagination controls */}
@@ -611,11 +652,12 @@ export default function PdfStudyViewer({
         </div>
       )}
 
-      {/* 2. PDF Document Canvas & Scrollable Area */}
-      <div
-        className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col items-center relative bg-slate-900/90 scroll-smooth"
-        style={{ userSelect: isAreaModeActive ? 'none' : 'text' }}
-      >
+      {/* 2. PDF Document Canvas & Scrollable Area + Notes Panel Drawer */}
+      <div className="flex-1 flex flex-row overflow-hidden relative">
+        <div
+          className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col items-center relative bg-slate-900/90 scroll-smooth"
+          style={{ userSelect: isAreaModeActive ? 'none' : 'text' }}
+        >
         {/* PDF Security Watermark Badge */}
         {pdfUrl && (
           <div
@@ -782,16 +824,54 @@ export default function PdfStudyViewer({
           </Document>
         )}
 
-        {/* 3. Floating Selection Popover (Text & Area Modes) */}
-        {selectionState && (
-          <PdfSelectionPopover
-            clientRect={selectionState.clientRect}
-            selectionType={selectionState.selectionType || 'text'}
-            pageNumber={selectionState.pageNumber || currentPage}
-            selectedText={selectionState.selectedText || ''}
-            onSave={handleSaveNote}
-            onCancel={handleCancelSelection}
-          />
+          {/* 3. Floating Selection Popover (Text & Area Modes) */}
+          {selectionState && (
+            <PdfSelectionPopover
+              clientRect={selectionState.clientRect}
+              selectionType={selectionState.selectionType || 'text'}
+              pageNumber={selectionState.pageNumber || currentPage}
+              selectedText={selectionState.selectedText || ''}
+              onSave={handleSaveNote}
+              onCancel={handleCancelSelection}
+            />
+          )}
+        </div>
+
+        {/* 3. Notes Management Side Panel (Quản lý ghi chú trực tiếp cạnh PDF) */}
+        {isNotesPanelOpen && (
+          <div className="absolute sm:relative right-0 top-0 bottom-0 w-full sm:w-80 md:w-96 border-l border-slate-800 bg-slate-950 flex flex-col h-full z-25 shadow-2xl shrink-0 transition-all">
+            <div className="px-3.5 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
+              <span className="font-bold flex items-center gap-1.5 text-amber-400">
+                <FiFileText /> Quản lý ghi chú ({notes.length})
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsNotesPanelOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Đóng bảng quản lý ghi chú"
+              >
+                <FiX />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <PdfNotesPanel
+                notes={notes}
+                isLoading={isLoadingNotes}
+                selectedNoteId={selectedNoteId}
+                isAreaSelectionMode={isAreaModeActive}
+                onTriggerAreaSelection={toggleAreaMode}
+                onNavigateToNote={(note) => {
+                  if (onSelectNote) onSelectNote(note);
+                  if (note?.pageNumber) {
+                    setCurrentPage(note.pageNumber);
+                    if (onPageChange) onPageChange(note.pageNumber);
+                  }
+                }}
+                onUpdateNote={onUpdateNote}
+                onDeleteNote={onDeleteNote}
+              />
+            </div>
+          </div>
         )}
       </div>
 
