@@ -155,7 +155,7 @@ class InstructorService {
       GROUP BY TO_CHAR(min_date, 'YYYY-MM')
       ORDER BY month ASC;
     `;
-    const monthlyStatsRes = await db.query(monthlyStatsQuery, [instructorId]);
+    const monthlyStatsRes = await db.query(monthlyStatsQuery, params);
 
     return {
       overview: {

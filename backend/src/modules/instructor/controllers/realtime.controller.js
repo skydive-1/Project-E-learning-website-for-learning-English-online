@@ -171,7 +171,11 @@ exports.stream = async (req, res, next) => {
       if (connectedClients.get(userId) === clientData) {
         connectedClients.delete(userId);
       }
-      console.error(`[SSE] Error for instructor ${userId}:`, err);
+      if (err?.code === 'ECONNRESET' || err?.message === 'aborted') {
+        console.log(`[SSE] Instructor ${userId} closed connection (${err.code || err.message}).`);
+      } else {
+        console.error(`[SSE] Error for instructor ${userId}:`, err);
+      }
     });
 
   } catch (error) {
