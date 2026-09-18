@@ -551,5 +551,37 @@ describe('=== TASK-PDF-SMART-NOTES-02 FRONTEND TEST SUITE ===', () => {
       fireEvent.click(screen.getByTitle('Đóng bảng quản lý ghi chú'));
       expect(screen.queryByTitle('Đóng bảng quản lý ghi chú')).not.toBeInTheDocument();
     });
+
+    it('6.2 PdfNotesPanel empty state and note cards contain dark mode classes and no invalid slate-850', () => {
+      const { container, rerender } = render(
+        <PdfNotesPanel
+          notes={[]}
+          isLoading={false}
+          onTriggerAreaSelection={vi.fn()}
+        />
+      );
+
+      // Verify empty state has valid dark classes and no invalid slate-850
+      const emptyStateCard = container.querySelector('.rounded-2xl.text-center');
+      expect(emptyStateCard).toBeInTheDocument();
+      expect(emptyStateCard.className).toContain('dark:bg-slate-800');
+      expect(emptyStateCard.className).not.toContain('slate-850');
+
+      // Rerender with mockNotes to test note cards
+      rerender(
+        <PdfNotesPanel
+          notes={mockNotes}
+          isLoading={false}
+          onTriggerAreaSelection={vi.fn()}
+        />
+      );
+
+      const noteCards = container.querySelectorAll('.p-3.rounded-2xl');
+      expect(noteCards.length).toBe(3);
+      noteCards.forEach((card) => {
+        expect(card.className).toContain('dark:bg-slate-800');
+        expect(card.className).not.toContain('slate-850');
+      });
+    });
   });
 });

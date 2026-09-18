@@ -15,10 +15,10 @@ import {
 } from 'react-icons/fi';
 
 const CATEGORY_META = {
-  important: { label: 'Quan trọng', badge: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300' },
-  not_understood: { label: 'Chưa hiểu', badge: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-900/40 dark:text-rose-300' },
-  review: { label: 'Cần xem lại', badge: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300' },
-  vocabulary: { label: 'Từ vựng', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-300' }
+  important: { label: 'Quan trọng', badge: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700/50' },
+  not_understood: { label: 'Chưa hiểu', badge: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700/50' },
+  review: { label: 'Cần xem lại', badge: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-700/50' },
+  vocabulary: { label: 'Từ vựng', badge: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700/50' }
 };
 
 const COLOR_DOTS = {
@@ -36,7 +36,8 @@ export default function PdfNotesPanel({
   onTriggerAreaSelection,
   onNavigateToNote,
   onUpdateNote,
-  onDeleteNote
+  onDeleteNote,
+  onClose
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -139,38 +140,52 @@ export default function PdfNotesPanel({
       {/* 1. Header with Stats & "＋ Thêm ghi chú" Action */}
       <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-20">
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-smart-indigo/10 border border-smart-indigo/30 flex items-center justify-center text-smart-indigo dark:text-indigo-400 font-bold">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-smart-indigo/10 border border-smart-indigo/30 flex items-center justify-center text-smart-indigo dark:text-indigo-400 font-bold shrink-0">
               <FiBookOpen />
             </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2 truncate">
                 <span>Ghi chú cá nhân</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-smart-indigo text-white shadow-xs">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-smart-indigo text-white shadow-xs shrink-0">
                   {notes.length}
                 </span>
               </h3>
             </div>
           </div>
 
-          {/* Quick Action Button: "＋ Thêm ghi chú" */}
-          {onTriggerAreaSelection && (
-            <button
-              type="button"
-              onClick={onTriggerAreaSelection}
-              aria-label="Thêm ghi chú vùng"
-              aria-pressed={isAreaSelectionMode}
-              title="Khoanh vùng trên PDF để tạo ghi chú"
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
-                isAreaSelectionMode
-                  ? 'bg-rose-500 text-white ring-2 ring-rose-400 scale-105 animate-pulse'
-                  : 'bg-smart-indigo hover:bg-indigo-600 active:scale-95 text-white'
-              }`}
-            >
-              <FiPlusCircle className="text-sm" />
-              <span>{isAreaSelectionMode ? 'Đang chọn vùng...' : '＋ Thêm ghi chú'}</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Quick Action Button: "＋ Thêm ghi chú" */}
+            {onTriggerAreaSelection && (
+              <button
+                type="button"
+                onClick={onTriggerAreaSelection}
+                aria-label="Thêm ghi chú vùng"
+                aria-pressed={isAreaSelectionMode}
+                title="Khoanh vùng trên PDF để tạo ghi chú"
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer ${
+                  isAreaSelectionMode
+                    ? 'bg-rose-500 text-white ring-2 ring-rose-400 scale-105 animate-pulse'
+                    : 'bg-smart-indigo hover:bg-indigo-600 active:scale-95 text-white'
+                }`}
+              >
+                <FiPlusCircle className="text-sm" />
+                <span>{isAreaSelectionMode ? 'Đang chọn vùng...' : '＋ Thêm ghi chú'}</span>
+              </button>
+            )}
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Đóng bảng quản lý ghi chú"
+                title="Đóng bảng quản lý ghi chú"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <FiX className="text-base" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -181,13 +196,13 @@ export default function PdfNotesPanel({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Tìm kiếm nội dung hoặc trích dẫn..."
-            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-smart-indigo/30 text-slate-900 dark:text-slate-100 placeholder-slate-400"
+            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-smart-indigo/30 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 cursor-pointer"
             >
               <FiX className="text-xs" />
             </button>
@@ -200,7 +215,7 @@ export default function PdfNotesPanel({
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
           >
             <option value="all">Tất cả loại</option>
             <option value="important">Quan trọng</option>
@@ -213,7 +228,7 @@ export default function PdfNotesPanel({
           <select
             value={selectedColor}
             onChange={(e) => setSelectedColor(e.target.value)}
-            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
           >
             <option value="all">Tất cả màu</option>
             <option value="yellow">Vàng</option>
@@ -226,7 +241,7 @@ export default function PdfNotesPanel({
           <select
             value={selectedPageFilter}
             onChange={(e) => setSelectedPageFilter(e.target.value)}
-            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+            className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer"
           >
             <option value="all">Tất cả trang</option>
             {availablePages.map((p) => (
@@ -247,7 +262,7 @@ export default function PdfNotesPanel({
           </div>
         ) : filteredNotes.length === 0 ? (
           /* Empty State */
-          <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl text-center space-y-3 shadow-sm my-auto">
+          <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-2xl text-center space-y-3 shadow-sm my-auto">
             <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-smart-indigo dark:text-indigo-400 text-2xl shadow-inner">
               <FiBookOpen />
             </div>
@@ -305,22 +320,21 @@ export default function PdfNotesPanel({
                         onClick={() => onNavigateToNote && onNavigateToNote(note)}
                         className={`p-3 rounded-2xl border transition-all cursor-pointer shadow-sm relative group ${
                           isSelected
-                            ? 'border-smart-indigo ring-2 ring-smart-indigo/20 bg-smart-indigo/5'
-                            : 'hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-850'
+                            ? 'border-smart-indigo ring-2 ring-smart-indigo/30 bg-smart-indigo/5 dark:bg-indigo-950/40'
+                            : 'border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-slate-800/80'
                         }`}
-                        style={{ borderColor: isSelected ? '#3b82f6' : 'var(--border-color)' }}
                       >
                         {isEditing ? (
                           /* Edit Mode */
                           <div className="space-y-2.5" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-bold text-smart-indigo">Chỉnh sửa ghi chú:</span>
+                              <span className="text-[11px] font-bold text-smart-indigo dark:text-indigo-400">Chỉnh sửa ghi chú:</span>
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
                                   onClick={(e) => handleSaveEdit(noteId, e)}
                                   disabled={isSaving}
-                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-md cursor-pointer"
+                                  className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-md cursor-pointer"
                                   title="Lưu"
                                 >
                                   <FiCheck />
@@ -328,7 +342,7 @@ export default function PdfNotesPanel({
                                 <button
                                   type="button"
                                   onClick={cancelEdit}
-                                  className="p-1 text-slate-400 hover:bg-slate-100 rounded-md cursor-pointer"
+                                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md cursor-pointer"
                                   title="Hủy"
                                 >
                                   <FiX />
@@ -340,7 +354,7 @@ export default function PdfNotesPanel({
                               rows={2}
                               value={editNoteText}
                               onChange={(e) => setEditNoteText(e.target.value)}
-                              className="w-full p-2 text-xs bg-slate-50 dark:bg-slate-800 border rounded-xl focus:outline-none resize-none"
+                              className="w-full p-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-smart-indigo/30 resize-none text-slate-900 dark:text-slate-100"
                               autoFocus
                             />
 
@@ -348,7 +362,7 @@ export default function PdfNotesPanel({
                               <select
                                 value={editCategory}
                                 onChange={(e) => setEditCategory(e.target.value)}
-                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-800 border rounded-lg cursor-pointer"
+                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-lg cursor-pointer focus:outline-none"
                               >
                                 <option value="important">Quan trọng</option>
                                 <option value="not_understood">Chưa hiểu</option>
@@ -359,7 +373,7 @@ export default function PdfNotesPanel({
                               <select
                                 value={editColor}
                                 onChange={(e) => setEditColor(e.target.value)}
-                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-800 border rounded-lg cursor-pointer"
+                                className="text-[10px] p-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-lg cursor-pointer focus:outline-none"
                               >
                                 <option value="yellow">Vàng</option>
                                 <option value="green">Xanh lá</option>
@@ -384,7 +398,7 @@ export default function PdfNotesPanel({
                                 <button
                                   type="button"
                                   onClick={(e) => startEdit(note, e)}
-                                  className="p-1 text-slate-400 hover:text-smart-indigo hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1 text-slate-400 hover:text-smart-indigo dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-lg transition-colors cursor-pointer"
                                   title="Chỉnh sửa"
                                 >
                                   <FiEdit2 className="text-xs" />
@@ -392,7 +406,7 @@ export default function PdfNotesPanel({
                                 <button
                                   type="button"
                                   onClick={(e) => handleDelete(noteId, e)}
-                                  className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1 text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
                                   title="Xóa ghi chú"
                                 >
                                   <FiTrash2 className="text-xs" />
@@ -407,7 +421,7 @@ export default function PdfNotesPanel({
                                 <span>Ghi chú vùng • Trang {note.pageNumber || pageNum}</span>
                               </div>
                             ) : (
-                              <div className="p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-[11px] italic text-slate-700 dark:text-slate-300 line-clamp-3 mb-2">
+                              <div className="p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-[11px] italic text-slate-700 dark:text-slate-300 line-clamp-3 mb-2">
                                 "{note.selectedText}"
                               </div>
                             )}
@@ -415,7 +429,7 @@ export default function PdfNotesPanel({
                             {/* Personal Explanation Note */}
                             {note.noteText && (
                               <div className="flex items-start gap-1.5 text-xs text-slate-800 dark:text-slate-200 mt-1 font-medium">
-                                <FiCornerDownRight className="text-slate-400 shrink-0 mt-0.5 text-xs" />
+                                <FiCornerDownRight className="text-slate-400 dark:text-slate-500 shrink-0 mt-0.5 text-xs" />
                                 <p className="leading-snug">{note.noteText}</p>
                               </div>
                             )}

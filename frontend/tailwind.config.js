@@ -19,6 +19,7 @@ export default {
         'friendly-orange-hover': '#ea580c',
         'light-bg': '#f8fafc',
         'ink-dark': '#0f172a',
+        'slate-850': '#151f32',
         border: 'var(--border)',
         input: 'var(--input)',
         ring: 'var(--ring)',
