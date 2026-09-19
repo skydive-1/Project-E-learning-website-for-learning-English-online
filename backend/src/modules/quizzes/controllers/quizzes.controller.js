@@ -428,6 +428,7 @@ function calculateQuestionDistribution(totalCount, questionTypes) {
 
 const TYPE_SPECIFICATIONS = {
   multiple_choice: `- "multiple_choice":
+  questionType: MUST be "multiple_choice".
   A standard multiple-choice question testing vocabulary or grammar.
   CRITICAL: NEVER refer to an unseen image, picture, diagram, or chart (e.g. "Look at the picture..."). The question must be 100% self-contained text.
   options: exactly 4 items starting with "A. ", "B. ", "C. ", "D. ".
@@ -435,6 +436,7 @@ const TYPE_SPECIFICATIONS = {
   explanation: in Vietnamese explaining the grammatical/lexical reason.`,
 
   writing: `- "writing":
+  questionType: MUST be "writing".
   A self-contained English writing prompt. It can be an essay prompt (e.g. opinion, discussion, problem-solution, advantages/disadvantages) OR a sentence transformation/rewriting prompt.
   CRITICAL REQUIREMENT (STRICT): NEVER write "The chart below shows...", "The graph below...", "Look at the image below...", or refer to any unseen charts, maps, or diagrams.
   All writing prompts MUST be 100% complete and self-contained so that a student can read the prompt and write their response immediately without needing any external visual material.
@@ -444,6 +446,7 @@ const TYPE_SPECIFICATIONS = {
   explanation: in Vietnamese providing a clear model answer/outline and key scoring criteria for AI grading.`,
 
   pronunciation: `- "pronunciation":
+  questionType: MUST be "pronunciation".
   A direct read-aloud sentence prompt or phonetics exercise (stress/vowel difference).
   NEVER include Speaker A, Speaker B, a dialogue, role labels, or an [Audio Script] block.
   options: empty array ([]).
@@ -452,12 +455,14 @@ const TYPE_SPECIFICATIONS = {
   explanation: in Vietnamese with IPA phonetic transcription, word stress, and intonation guide.`,
 
   open_cloze: `- "open_cloze":
+  questionType: MUST be "open_cloze".
   A coherent passage of 2-4 sentences with 2 to 4 unique gap markers {{1}}, {{2}}, etc. replacing target words.
   options: array of gap objects: [{ "id": "1", "answer": "target_word", "acceptedAnswers": ["alt1"], "hint": "part of speech" }].
   correctAnswer: empty string ("").
   explanation: in Vietnamese explaining each gap's vocabulary, grammar rule, and collocation.`,
 
   listening: `- "listening":
+  questionType: MUST be "listening".
   A single, self-contained English question intended to be heard aloud through an uploaded audio file or browser TTS.
   questionText MUST contain ONLY the direct question (for example: "Which statement best describes the main cause of the Industrial Revolution?").
   NEVER include Speaker A, Speaker B, a dialogue, role labels, [Question], [Audio Script], or transcript scaffolding.
@@ -466,6 +471,7 @@ const TYPE_SPECIFICATIONS = {
   explanation: in Vietnamese explaining why the answer is correct without referring to any speaker or dialogue.`,
 
   reading: `- "reading":
+  questionType: MUST be "reading".
   A reading comprehension passage and question.
   passageText: a coherent English passage of 1-3 paragraphs.
   questionText: comprehension question testing main idea, detail, inference, or vocabulary in context.
@@ -473,6 +479,19 @@ const TYPE_SPECIFICATIONS = {
   correctAnswer: only the capital letter ("A", "B", "C", or "D").
   explanation: in Vietnamese citing supporting sentences from the passage.`
 };
+
+function repairMalformedGeminiQuizJson(text) {
+  let cleaned = String(text || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // 1. Khắc phục lỗi LLM quên property name: {"open_cloze", "questionText": ...} -> {"questionType": "open_cloze", "questionText": ...}
+  cleaned = cleaned.replace(/\{\s*"(multiple_choice|open_cloze|writing|pronunciation|listening|reading)"\s*,\s*/gi, '{\n    "questionType": "$1",\n    ');
+  cleaned = cleaned.replace(/\{\s*"([a-z_]+)"\s*,\s*"questionText"/gi, '{\n    "questionType": "$1",\n    "questionText"');
+
+  // 2. Loại bỏ dấu phẩy thừa ở cuối object hoặc array (trailing comma)
+  cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+
+  return cleaned;
+}
 
 function sanitizePhantomVisuals(text, topic = '', type = '') {
   let cleaned = String(text || '').trim();
@@ -970,22 +989,27 @@ Return ONLY a valid JSON array of objects conforming to:
   }
 ]`;
 
-    console.log(`[Gemini Admin Quiz Generator] Generating ${totalQuestions} questions for topic: ${topic} (Distribution: ${JSON.stringify(distribution)})`);
-    const result = await geminiModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    const responseText = result.response.text();
     let questions = [];
     try {
-      questions = JSON.parse(responseText);
-    } catch (jsonErr) {
-      console.error('[Gemini Admin Quiz Generator] JSON parse error:', jsonErr, responseText);
-      const cleanJson = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-      questions = JSON.parse(cleanJson);
+      console.log(`[Gemini Admin Quiz Generator] Generating ${totalQuestions} questions for topic: ${topic} (Distribution: ${JSON.stringify(distribution)})`);
+      const result = await geminiModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      const responseText = result.response.text();
+      try {
+        questions = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.warn('[Gemini Admin Quiz Generator] JSON parse error, attempting regex repair:', jsonErr.message);
+        const cleanJson = repairMalformedGeminiQuizJson(responseText);
+        questions = JSON.parse(cleanJson);
+      }
+    } catch (geminiError) {
+      console.warn('[Gemini Admin Quiz Generator] Gemini call failed or quota reached, activating fallback questions:', geminiError.message);
+      questions = [];
     }
 
     const normalizedQuestions = enforceAndNormalizeQuestions(questions, distribution, types, totalQuestions, topic);
@@ -1122,26 +1146,27 @@ Return ONLY a valid JSON array of objects with the following schema (no markdown
   }
 ]`;
 
-    console.log(`[Gemini Multi-PDF Quiz Generator] Ingesting ${extractedDocs.length} exam PDFs (${fileNamesList}), Total chars: ${combinedExamText.length}, Target Level: ${levelDescription}, Distribution: ${JSON.stringify(distribution)}`);
-    const result = await geminiModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    const responseText = result.response.text();
     let questions = [];
     try {
-      questions = JSON.parse(responseText);
-    } catch (jsonErr) {
-      console.error('[Gemini Multi-PDF Quiz Generator] JSON parse error:', jsonErr, responseText);
-      const cleanJson = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-      questions = JSON.parse(cleanJson);
-    }
+      console.log(`[Gemini Multi-PDF Quiz Generator] Ingesting ${extractedDocs.length} exam PDFs (${fileNamesList}), Total chars: ${combinedExamText.length}, Target Level: ${levelDescription}, Distribution: ${JSON.stringify(distribution)}`);
+      const result = await geminiModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+        }
+      });
 
-    if (!Array.isArray(questions) || questions.length === 0) {
-      throw new Error('AI không thể tạo danh sách câu hỏi từ các tệp PDF này. Vui lòng thử lại.');
+      const responseText = result.response.text();
+      try {
+        questions = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.warn('[Gemini Multi-PDF Quiz Generator] JSON parse error, attempting regex repair:', jsonErr.message);
+        const cleanJson = repairMalformedGeminiQuizJson(responseText);
+        questions = JSON.parse(cleanJson);
+      }
+    } catch (geminiError) {
+      console.warn('[Gemini Multi-PDF Quiz Generator] Gemini call failed, activating fallback questions:', geminiError.message);
+      questions = [];
     }
 
     const normalizedQuestions = enforceAndNormalizeQuestions(questions, distribution, types, totalQuestions, 'PDF Exam Review');
