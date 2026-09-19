@@ -74,4 +74,73 @@ export const getEffectiveQuestionType = (question) => {
   return 'writing';
 };
 
+/**
+ * Trích xuất câu mẫu tiếng Anh mục tiêu cần đọc từ câu hỏi phát âm (pronunciation).
+ * Xử lý tất cả các trường hợp: câu nằm trong correctAnswer, câu nằm trong dấu ngoặc kép,
+ * câu nằm sau dấu hai chấm / xuống dòng, loại bỏ tiền tố hiệu lệnh như "Read the following sentence aloud:".
+ */
+export const getSpeakingTargetSentence = (question) => {
+  if (!question) return '';
+
+  const explicitAnswer = String(question.correctAnswer || question.correct_answer || '').trim();
+  if (explicitAnswer && !/^(?:read|pronounce|say|repeat)\s+(?:the\s+following|this)\b/i.test(explicitAnswer)) {
+    return explicitAnswer;
+  }
+
+  const promptText = String(question.question || question.question_text || question.questionText || '').trim();
+
+  // 1. Trích xuất câu trong dấu ngoặc kép (ví dụ: ...:\n"Artificial intelligence is transforming...")
+  const quoteMatch = promptText.match(/["“]([^"”]+)["”]/);
+  if (quoteMatch && quoteMatch[1].trim()) {
+    return quoteMatch[1].trim();
+  }
+
+  // 2. Nếu có xuống dòng và dòng đầu là hiệu lệnh, lấy từ dòng 2 trở đi
+  const lines = promptText.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1 && /^(?:read|pronounce|say|repeat)\b/i.test(lines[0])) {
+    return lines.slice(1).join(' ').replace(/^["'“”]|["'“”]$/g, '').trim();
+  }
+
+  // 3. Nếu có dấu hai chấm sau câu hiệu lệnh (ví dụ: "Read the following sentence aloud: Cloud computing...")
+  const colonMatch = promptText.match(/^(?:read|pronounce|say|repeat)\b[^:]*:\s*(.+)$/i);
+  if (colonMatch && colonMatch[1].trim()) {
+    return colonMatch[1].replace(/^["'“”]|["'“”]$/g, '').trim();
+  }
+
+  return explicitAnswer || promptText;
+};
+
+/**
+ * Trích xuất câu hiệu lệnh mở đầu của bài thi phát âm (ví dụ: "Read the following sentence aloud with correct pronunciation and intonation:").
+ * Dùng để giọng British tự động đọc hướng dẫn khi học viên vừa bắt đầu chuyển tới câu hỏi speaking.
+ */
+export const getSpeakingInstruction = (question) => {
+  if (!question) return 'Read the following sentence aloud with clear pronunciation and natural intonation.';
+
+  const promptText = String(question.question || question.question_text || question.questionText || '').trim();
+
+  // 1. Nếu có ngoặc kép: lấy phần trước dấu ngoặc kép
+  const quoteIndex = promptText.search(/["“]/);
+  if (quoteIndex > 0) {
+    const prefix = promptText.substring(0, quoteIndex).trim().replace(/:\s*$/, '');
+    if (prefix && /^(?:read|pronounce|say|repeat)\b/i.test(prefix)) {
+      return `${prefix}.`;
+    }
+  }
+
+  // 2. Nếu có xuống dòng: lấy dòng đầu tiên nếu dòng đầu là hiệu lệnh
+  const lines = promptText.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length > 1 && /^(?:read|pronounce|say|repeat)\b/i.test(lines[0])) {
+    return lines[0].replace(/:\s*$/, '') + '.';
+  }
+
+  // 3. Nếu có dấu hai chấm: lấy phần trước dấu hai chấm nếu là hiệu lệnh
+  const colonMatch = promptText.match(/^((?:read|pronounce|say|repeat)\b[^:]*):/i);
+  if (colonMatch && colonMatch[1].trim()) {
+    return colonMatch[1].trim() + '.';
+  }
+
+  return 'Read the following sentence aloud with clear pronunciation and natural intonation.';
+};
+
 export default getEffectiveQuestionType;

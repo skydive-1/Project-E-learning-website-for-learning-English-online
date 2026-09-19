@@ -196,5 +196,40 @@ describe('Tests & Quizzes Panel and PlayQuizPage British Male TTS', () => {
     expect(utterance.voice?.name).toBe('Microsoft Ryan Online (Natural)');
     expect(utterance.text).toBe('keep in touch');
   });
+
+  it('renders speaking topic cleanly with only target sentence and auto-reads instruction with British voice', async () => {
+    const { getFreeQuizById } = await import('../src/modules/quizzes/services/quizzes.service');
+    getFreeQuizById.mockResolvedValueOnce({
+      id: 'test-speaking-quiz',
+      title: 'Đề thi phát âm tiếng Anh',
+      timeLimit: 10,
+      questions: [
+        {
+          id: 'sq1',
+          question: 'Read the following sentence aloud with correct pronunciation and intonation:\n"Artificial intelligence is transforming modern industries."',
+          questionType: 'pronunciation',
+          options: [],
+          correctAnswer: ''
+        }
+      ]
+    });
+
+    render(<PlayQuizPage />);
+
+    const startQuizBtn = await screen.findByRole('button', { name: /Bắt đầu chơi/i });
+    fireEvent.click(startQuizBtn);
+
+    expect(await screen.findByText(/Chủ đề bài nói:/i)).toBeInTheDocument();
+    expect(screen.getByText(/"Artificial intelligence is transforming modern industries\."/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Read the following sentence aloud with correct pronunciation and intonation:/i)).not.toBeInTheDocument();
+
+    await vi.waitFor(() => {
+      expect(speakMock).toHaveBeenCalled();
+    }, { timeout: 1500 });
+
+    const spokenUtterance = speakMock.mock.calls[0][0];
+    expect(spokenUtterance.lang).toBe('en-GB');
+    expect(spokenUtterance.text).toContain('Read the following sentence aloud with correct pronunciation and intonation.');
+  });
 });
 
