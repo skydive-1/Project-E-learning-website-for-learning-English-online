@@ -52,6 +52,8 @@ describe('Quiz Global Leaderboard (Fair Scoring & Multi-Role)', () => {
       assert.equal(capturedParams[0], 20);
       assert.ok(!capturedSql.includes("INTERVAL '7 days'"));
       assert.ok(!capturedSql.includes("INTERVAL '30 days'"));
+      assert.ok(capturedSql.includes('u.profile_picture_url AS avatar'), 'Must select u.profile_picture_url AS avatar');
+      assert.ok(!capturedSql.includes('u.avatar,'), 'Must not use nonexistent u.avatar column');
 
       // Test 2: timeframe = 'week'
       await quizzesService.getGlobalLeaderboard({ timeframe: 'week', limit: 10 });
