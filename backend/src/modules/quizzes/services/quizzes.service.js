@@ -396,7 +396,7 @@ class QuizzesService {
           SELECT 
             qa.user_id,
             COALESCE(u.full_name, u.username, qa.nickname, 'Học viên') AS user_name,
-            u.avatar,
+            u.profile_picture_url AS avatar,
             COALESCE(u.role_id, 3) AS role_id,
             qa.quiz_id,
             MAX(qa.score) AS best_score,
@@ -404,7 +404,7 @@ class QuizzesService {
           FROM quiz_attempts qa
           LEFT JOIN users u ON qa.user_id = u.user_id
           ${timeCondition}
-          GROUP BY qa.user_id, u.full_name, u.username, qa.nickname, u.avatar, u.role_id, qa.quiz_id
+          GROUP BY qa.user_id, u.full_name, u.username, qa.nickname, u.profile_picture_url, u.role_id, qa.quiz_id
         )
         SELECT 
           ROW_NUMBER() OVER(ORDER BY SUM(best_score) DESC, ROUND(AVG(best_score), 1) DESC, MAX(last_completed_at) ASC)::int AS rank,
