@@ -591,10 +591,44 @@ const CourseEditor = () => {
           setEndDate(snapshot.endDate || getNextYearCivilDate());
           setCourseStatus(snapshot.courseStatus ?? 'draft');
           if (Array.isArray(snapshot.sections) && snapshot.sections.length > 0) {
-            setSections(snapshot.sections.map(section => ({
+            const hydratedSections = snapshot.sections.map(section => ({
               ...section,
               lessons: (section.lessons || []).map(lesson => ({ ...lesson, uploading: false }))
-            })));
+            }));
+            setSections(hydratedSections);
+
+            // Kiểm tra tính hợp lệ của các pendingUploadId nếu là bản nháp chưa lưu server
+            if (!snapshot.persistedCourseId && !courseId) {
+              const checkExpiredUploads = async () => {
+                let hasExpired = false;
+                const updatedSections = await Promise.all(hydratedSections.map(async (sec) => {
+                  const verifiedLessons = await Promise.all(sec.lessons.map(async (les) => {
+                    if (les.pendingUploadId && !les.isPersisted && les.type === 'video') {
+                      try {
+                        const res = await apiClient.get(`/courses/uploads/${les.pendingUploadId}/status`);
+                        if (res.data?.data?.status === 'failed') {
+                          hasExpired = true;
+                          return { ...les, uploadVerified: false, contentUrl: '', storageKey: '', pendingUploadId: null };
+                        }
+                      } catch (err) {
+                        if (err?.response?.status === 410 || err?.response?.status === 404) {
+                          hasExpired = true;
+                          return { ...les, uploadVerified: false, contentUrl: '', storageKey: '', pendingUploadId: null };
+                        }
+                      }
+                    }
+                    return les;
+                  }));
+                  return { ...sec, lessons: verifiedLessons };
+                }));
+
+                if (hasExpired && !cancelled) {
+                  setSections(updatedSections);
+                  setErrorMsg('Phiên tải lên tạm thời của video đã hết hạn trong thời gian chờ. Vui lòng bấm "Thay đổi nguồn" để chọn lại video cho bài học.');
+                }
+              };
+              checkExpiredUploads().catch(() => {});
+            }
           }
           setStagedMaterials(draft.stagedMaterials || {});
           setActiveHubTab(snapshot.activeHubTab || 'basic');
@@ -1890,9 +1924,17 @@ const CourseEditor = () => {
     } catch (err) {
       console.error('Lỗi lưu khóa học:', err);
       const serverMessage = err.response?.data?.message || err.message;
-      const message = serverDraftSaved
-        ? (serverMessage || 'Khóa học đã được lưu nháp trên máy chủ nhưng bước tiếp theo chưa hoàn tất.')
-        : `${serverMessage || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.'} Bản nháp trên thiết bị vẫn được giữ an toàn để bạn thử lại.`;
+      const errorCode = err.response?.data?.code;
+      const isUploadExpired = errorCode === 'PENDING_UPLOAD_EXPIRED'
+        || errorCode === 'PENDING_UPLOAD_NOT_FOUND'
+        || errorCode === 'UPLOAD_EXPIRED'
+        || (serverMessage && (serverMessage.includes('hết hạn') || serverMessage.includes('phiên tải lên')));
+
+      const message = isUploadExpired
+        ? (serverMessage || 'Phiên tải lên của tệp video đã hết hạn trên máy chủ (do quá thời gian chờ lưu bản nháp). Vui lòng bấm "Thay đổi nguồn" để chọn và tải lại video cho bài học này.')
+        : (serverDraftSaved
+          ? (serverMessage || 'Khóa học đã được lưu nháp trên máy chủ nhưng bước tiếp theo chưa hoàn tất.')
+          : `${serverMessage || 'Có lỗi xảy ra khi lưu khóa học trên máy chủ.'} Bản nháp trên thiết bị vẫn được giữ an toàn để bạn thử lại.`);
       setErrorMsg(message);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {

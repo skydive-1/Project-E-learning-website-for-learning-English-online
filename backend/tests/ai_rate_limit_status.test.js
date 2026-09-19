@@ -758,6 +758,9 @@ describe('Best-effort Gemini 429 calibration', () => {
       return { rows: [] };
     };
 
+    const was36Locked = isAiModelManuallyLocked('gemini-3.6-flash');
+    if (was36Locked) await setAiModelManualLock('gemini-3.6-flash', false);
+
     try {
       // 1. Lock model
       const lockedRouting = await setAiModelManualLock('gemini-3.7-flash', true, {
@@ -792,6 +795,7 @@ describe('Best-effort Gemini 429 calibration', () => {
     } finally {
       db.query = originalQuery;
       await setAiModelManualLock('gemini-3.7-flash', false);
+      if (was36Locked) await setAiModelManualLock('gemini-3.6-flash', true);
     }
   });
 
