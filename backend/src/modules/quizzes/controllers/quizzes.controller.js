@@ -3,16 +3,26 @@ const { geminiModel } = require('../../../utils/ai-clients');
 const { sanitizeOpenClozeGaps } = require('../utils/openCloze.util');
 
 const sanitizeQuestionForPlayer = (question) => {
-  const questionType = question.question_type || null;
-  const isOpenCloze = String(questionType || '').toLowerCase() === 'open_cloze';
+  const questionType = String(question.question_type || '').toLowerCase();
+  const isOpenCloze = questionType === 'open_cloze';
+  const isPronunciation = questionType === 'pronunciation';
+
+  let questionText = question.question_text || '';
+  if (isPronunciation && question.correct_answer) {
+    const rawAnswer = String(question.correct_answer).trim();
+    if (rawAnswer && !questionText.toLowerCase().includes(rawAnswer.toLowerCase())) {
+      const cleanInstruction = questionText.replace(/:\s*$/, '').trim() || 'Read the following sentence aloud with clear pronunciation and natural intonation';
+      questionText = `${cleanInstruction}:\n"${rawAnswer}"`;
+    }
+  }
 
   return {
     question_id: question.question_id,
-    question_text: question.question_text,
+    question_text: questionText,
     options: isOpenCloze ? sanitizeOpenClozeGaps(question.options) : question.options,
     correct_answer: '',
     explanation: question.explanation,
-    question_type: questionType,
+    question_type: question.question_type || null,
     audio_url: question.audio_url || null,
     passage_text: question.passage_text || null
   };
@@ -437,7 +447,8 @@ const TYPE_SPECIFICATIONS = {
   A direct read-aloud sentence prompt or phonetics exercise (stress/vowel difference).
   NEVER include Speaker A, Speaker B, a dialogue, role labels, or an [Audio Script] block.
   options: empty array ([]).
-  If read-aloud, questionText instructs the user to read clearly; correctAnswer is the exact English sentence to be read aloud (e.g. "English proficiency opens doors to global opportunities.").
+  questionText: An instruction followed by the target sentence in quotes (for example: 'Read the following sentence aloud with clear pronunciation and natural intonation:\n"English proficiency opens doors to global opportunities."').
+  correctAnswer: The exact English sentence to be read aloud without quotes (for example: "English proficiency opens doors to global opportunities.").
   explanation: in Vietnamese with IPA phonetic transcription, word stress, and intonation guide.`,
 
   open_cloze: `- "open_cloze":
@@ -779,9 +790,10 @@ function adaptQuestionToType(q, targetType, topic) {
       .replace(/^['"]|['"]$/g, '')
       .trim();
     const finalAnswer = rawAnswer || `Learning about ${cleanTopic} builds confidence.`;
-    const questionText = /^(?:Read|Pronounce|Say|Repeat)\b/i.test(directPrompt)
+    const hasSentenceInPrompt = directPrompt.toLowerCase().includes(finalAnswer.toLowerCase());
+    const questionText = hasSentenceInPrompt
       ? directPrompt
-      : `Read the following sentence aloud:\n"${finalAnswer}"`;
+      : `Read the following sentence aloud with clear pronunciation and natural intonation:\n"${finalAnswer}"`;
     return {
       questionType: 'pronunciation',
       question_type: 'pronunciation',

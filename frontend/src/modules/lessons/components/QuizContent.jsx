@@ -40,7 +40,7 @@ import {
   submitAudioAnswer
 } from '../../quizzes/services/quizzes.service';
 import OpenClozeQuestion from '../../quizzes/components/OpenClozeQuestion';
-import getEffectiveQuestionType from '../../quizzes/utils/questionType';
+import getEffectiveQuestionType, { getSpeakingTargetSentence, getSpeakingInstruction } from '../../quizzes/utils/questionType';
 import { useGamification } from '../../../context/GamificationContext';
 import { useToast } from '../../../context/ToastContext';
 import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
@@ -150,12 +150,33 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   };
 
   useEffect(() => {
+    let speakTimer = null;
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
     setPlayingListeningTtsGender(null);
     setShowListeningTranscript(false);
-  }, [activeQuestionIdx]);
+
+    if (questions && questions[activeQuestionIdx]) {
+      const q = questions[activeQuestionIdx];
+      const type = getEffectiveQuestionType(q);
+      if (type === 'pronunciation') {
+        const instruction = getSpeakingInstruction(q);
+        if (instruction) {
+          speakTimer = setTimeout(() => {
+            handleToggleListeningTts(instruction, 'female');
+          }, 400);
+        }
+      }
+    }
+
+    return () => {
+      if (speakTimer) clearTimeout(speakTimer);
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [activeQuestionIdx, questions]);
 
   // Load questions
   useEffect(() => {
@@ -434,6 +455,11 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
   };
 
   const handleAudioStart = async (questionId) => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setPlayingListeningTtsGender(null);
+      setIsPlayingReference(false);
+    }
     try {
       if (!navigator.mediaDevices || !window.MediaRecorder) {
         showToast("Trình duyệt không hỗ trợ thu âm MediaRecorder.", "error");
@@ -510,7 +536,7 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
 
     setSubmittingAudioId(question.id);
     try {
-      const expectedSentence = question.correctAnswer || question.question || '';
+      const expectedSentence = getSpeakingTargetSentence(question);
       const res = await submitAudioAnswer(targetQuizId, question.id, blob, expectedSentence);
       if (res?.success && res?.data) {
         const evalData = res.data;
@@ -811,6 +837,8 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               <p className="text-base sm:text-lg font-bold text-foreground leading-relaxed mt-1">
                 {currentQuestionType === 'open_cloze'
                   ? 'Hoàn thành đoạn văn bằng cách điền từ hoặc cụm từ phù hợp vào các ô trống:'
+                  : currentQuestionType === 'pronunciation'
+                  ? 'Luyện phát âm câu sau:'
                   : (currentQuestion.question || currentQuestion.question_text || currentQuestion.questionText)}
               </p>
             )}
@@ -985,17 +1013,17 @@ const QuizContent = ({ lessonId, quizId, isFreeQuiz = false, onComplete }) => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-border bg-muted/30 gap-3">
                 <div className="space-y-1 flex-1">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-primary block">
-                    {currentQuestion.correctAnswer ? 'Mẫu câu luyện đọc phát âm:' : 'Chủ đề luyện nói:'}
+                    Chủ đề bài nói:
                   </span>
                   <p className="text-base sm:text-lg font-extrabold text-foreground italic">
-                    "{currentQuestion.correctAnswer || currentQuestion.question}"
+                    "{getSpeakingTargetSentence(currentQuestion)}"
                   </p>
                 </div>
 
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePlayReferenceAudio(currentQuestion.correctAnswer || currentQuestion.question)}
+                  onClick={() => handlePlayReferenceAudio(getSpeakingTargetSentence(currentQuestion))}
                   disabled={isPlayingReference}
                   className="shrink-0 gap-1.5 text-xs font-bold rounded-xl border-primary/30 text-primary hover:bg-primary/10"
                 >

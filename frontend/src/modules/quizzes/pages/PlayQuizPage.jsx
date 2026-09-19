@@ -45,7 +45,7 @@ import {
 } from '../services/quizzes.service';
 import { getAiQuotaStatus } from '../../chatbot/services/quota.service';
 import useStudyTimeTracker from '../../lessons/hooks/useStudyTimeTracker';
-import getEffectiveQuestionType from '../utils/questionType';
+import getEffectiveQuestionType, { getSpeakingTargetSentence, getSpeakingInstruction } from '../utils/questionType';
 import OpenClozeQuestion from '../components/OpenClozeQuestion';
 import QuotaIndicator from '../../chatbot/components/QuotaIndicator';
 import { configureBritishEnglishUtterance } from '../../../utils/britishEnglishTts';
@@ -136,12 +136,33 @@ const PlayQuizPage = () => {
   };
 
   useEffect(() => {
+    let speakTimer = null;
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
     setPlayingTtsGender(null);
     setShowListeningTranscript(false);
-  }, [currentIdx, gameState]);
+
+    if (gameState === 'playing' && soundEnabled && quiz?.questions?.[currentIdx]) {
+      const currentQ = quiz.questions[currentIdx];
+      const effType = getEffectiveQuestionType(currentQ);
+      if (effType === 'pronunciation') {
+        const instruction = getSpeakingInstruction(currentQ);
+        if (instruction) {
+          speakTimer = setTimeout(() => {
+            handleToggleBritishTts(instruction, 'female');
+          }, 400);
+        }
+      }
+    }
+
+    return () => {
+      if (speakTimer) clearTimeout(speakTimer);
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [currentIdx, gameState, soundEnabled, quiz]);
 
   useEffect(() => {
     const fetchQuiz = async () => {
@@ -487,6 +508,10 @@ const PlayQuizPage = () => {
   };
 
   const handleAudioStart = async () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setPlayingTtsGender(null);
+    }
     try {
       if (!navigator.mediaDevices || !window.MediaRecorder) {
         showToast("Trình duyệt của bạn không hỗ trợ tính năng thu âm HTML5 MediaRecorder.", 'error');
@@ -557,7 +582,7 @@ const PlayQuizPage = () => {
     }
     setAiLoading(true);
     try {
-      const expectedSentence = currentQuestion.correctAnswer || currentQuestion.question || '';
+      const expectedSentence = getSpeakingTargetSentence(currentQuestion);
       const res = await submitAudioAnswer(quiz.id, currentQuestion.id, audioBlob, expectedSentence);
       if (res.success) {
         setAiFeedback(res.data);
@@ -753,6 +778,12 @@ const PlayQuizPage = () => {
             {(() => {
                 const effectiveQuestionType = getEffectiveQuestionType(currentQuestion);
                 const rawQuestionText = currentQuestion?.question || currentQuestion?.question_text || currentQuestion?.questionText || '';
+                const speakingTargetSentence = effectiveQuestionType === 'pronunciation'
+                  ? getSpeakingTargetSentence(currentQuestion)
+                  : '';
+                const speakingInstruction = effectiveQuestionType === 'pronunciation'
+                  ? getSpeakingInstruction(currentQuestion)
+                  : '';
 
                 // Tách riêng đoạn hội thoại (Dialogue) và câu hỏi (Prompt) nếu là dạng bài listening
                 let listeningDialogue = '';
@@ -809,21 +840,35 @@ const PlayQuizPage = () => {
                             ? 'Hoàn thành đoạn văn bằng từ phù hợp'
                             : effectiveQuestionType === 'listening'
                             ? 'Lắng nghe câu hỏi và chọn đáp án chính xác bên dưới:'
+                            : effectiveQuestionType === 'pronunciation'
+                            ? (t('Luyện phát âm câu sau:') || 'Luyện phát âm câu sau:')
                             : rawQuestionText}
                         </h2>
-                        {effectiveQuestionType !== 'listening' && rawQuestionText && (
+                        {effectiveQuestionType !== 'listening' && (rawQuestionText || speakingTargetSentence) && (
                           <button
                             type="button"
-                            onClick={() => handleToggleBritishTts(rawQuestionText, 'male')}
-                            title="Đọc câu hỏi bằng giọng Nam (British)"
+                            onClick={() => {
+                              if (effectiveQuestionType === 'pronunciation') {
+                                handleToggleBritishTts(speakingInstruction, 'female');
+                              } else {
+                                handleToggleBritishTts(rawQuestionText, 'male');
+                              }
+                            }}
+                            title={effectiveQuestionType === 'pronunciation' ? "Đọc lại hướng dẫn bằng giọng British" : "Đọc câu hỏi bằng giọng Nam (British)"}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 ${
-                              playingTtsGender === 'male'
+                              playingTtsGender
                                 ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
                                 : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
                             }`}
                           >
-                            {playingTtsGender === 'male' ? <FiSquare className="text-xs" /> : <FiVolume2 className="text-xs" />}
-                            <span>{playingTtsGender === 'male' ? 'Dừng đọc' : 'Đọc câu hỏi (Nam - British)'}</span>
+                            {playingTtsGender ? <FiSquare className="text-xs" /> : <FiVolume2 className="text-xs" />}
+                            <span>
+                              {playingTtsGender
+                                ? 'Dừng đọc'
+                                : effectiveQuestionType === 'pronunciation'
+                                ? 'Đọc hướng dẫn (British)'
+                                : 'Đọc câu hỏi (Nam - British)'}
+                            </span>
                           </button>
                         )}
                       </div>
@@ -1115,15 +1160,15 @@ const PlayQuizPage = () => {
 
                         <div className="text-center w-full max-w-lg bg-indigo-50/20 dark:bg-indigo-950/10 border border-indigo-100/50 dark:border-indigo-900/30 rounded-xl p-5 shadow-inner">
                           <span className="text-[10px] font-black text-smart-indigo dark:text-indigo-400 tracking-widest uppercase block mb-2">
-                            {currentQuestion.correctAnswer ? t('Mẫu câu luyện đọc phát âm:') : 'Chủ đề bài nói:'}
+                            {t('Chủ đề bài nói:') || 'Chủ đề bài nói:'}
                           </span>
                           <p className="text-lg md:text-xl font-extrabold text-slate-800 dark:text-slate-100 italic">
-                            "{currentQuestion.correctAnswer || currentQuestion.question}"
+                            "{speakingTargetSentence}"
                           </p>
                           <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
                             <button
                               type="button"
-                              onClick={() => handleToggleBritishTts(currentQuestion.correctAnswer || currentQuestion.question, 'male')}
+                              onClick={() => handleToggleBritishTts(speakingTargetSentence, 'male')}
                               className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
                                 playingTtsGender === 'male'
                                   ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
@@ -1135,7 +1180,7 @@ const PlayQuizPage = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleToggleBritishTts(currentQuestion.correctAnswer || currentQuestion.question, 'female')}
+                              onClick={() => handleToggleBritishTts(speakingTargetSentence, 'female')}
                               className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer ${
                                 playingTtsGender === 'female'
                                   ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
