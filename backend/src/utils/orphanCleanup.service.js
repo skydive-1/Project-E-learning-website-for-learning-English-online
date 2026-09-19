@@ -58,7 +58,7 @@ class OrphanCleanupService {
       throw new Error('courseId không hợp lệ khi đăng ký pending upload');
     }
 
-    const ttlMinutes = Math.max(Number(process.env.PENDING_UPLOAD_TTL_MINUTES || 30), 5);
+    const ttlMinutes = Math.max(Number(process.env.PENDING_UPLOAD_TTL_MINUTES || 240), 5);
 
     const query = `
       WITH new_asset AS (
@@ -150,7 +150,7 @@ class OrphanCleanupService {
           uploadResult.mimeType,
           uploadResult.sizeBytes,
           uploadResult.checksumSha256,
-          Math.max(Number(process.env.PENDING_UPLOAD_TTL_MINUTES || 30), 5)
+          Math.max(Number(process.env.PENDING_UPLOAD_TTL_MINUTES || 240), 5)
         ]
       );
       const pending = result.rows[0];
@@ -267,44 +267,79 @@ class OrphanCleanupService {
 
     const res = await runner.query(query, [uploadId]);
     if (res.rows.length === 0) {
-      throw new Error(`Không tìm thấy phiên tải lên tạm thời pendingUploadId=${uploadId}`);
+      const error = new Error(`Không tìm thấy phiên tải lên tạm thời pendingUploadId=${uploadId}. Tệp có thể đã hết hạn hoặc bị xóa; vui lòng tải lại tệp.`);
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_NOT_FOUND';
+      throw error;
     }
 
     const pending = res.rows[0];
 
     // 1. Kiểm tra trạng thái và hạn sử dụng TTL
     if (pending.status !== 'PENDING') {
-      throw new Error(`Tài nguyên upload (${uploadId}) không ở trạng thái sẵn sàng để liên kết (status=${pending.status})`);
+      const isExpired = pending.status === 'EXPIRED' || pending.status === 'CLEANING';
+      const error = new Error(
+        isExpired
+          ? 'Phiên tải lên của tệp video đã hết hạn trên máy chủ (sau thời gian chờ lưu bản nháp). Vui lòng bấm "Thay đổi nguồn" để chọn và tải lại video cho bài học này.'
+          : `Tài nguyên upload (${uploadId}) không ở trạng thái sẵn sàng để liên kết (status=${pending.status}). Vui lòng tải lại tệp.`
+      );
+      error.status = 400;
+      error.code = isExpired ? 'PENDING_UPLOAD_EXPIRED' : 'PENDING_UPLOAD_NOT_READY';
+      throw error;
     }
 
     if (new Date(pending.expires_at) <= new Date()) {
-      throw new Error(`Phiên tải lên uploadId=${uploadId} đã hết hạn TTL.`);
+      const error = new Error('Phiên tải lên uploadId=' + uploadId + ' đã hết hạn TTL. Vui lòng bấm "Thay đổi nguồn" để tải lại video cho bài học này.');
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_EXPIRED';
+      throw error;
     }
 
     // 2. Kiểm tra quyền sở hữu (Chỉ chủ sở hữu hoặc Admin mới được liên kết)
     const isAdmin = userRole === 1 || userRole === '1';
     if (!isAdmin && String(pending.instructor_id) !== String(instructorId)) {
-      throw new Error('Bạn không có quyền liên kết tài nguyên do giảng viên khác tải lên.');
+      const error = new Error('Bạn không có quyền liên kết tài nguyên do giảng viên khác tải lên.');
+      error.status = 403;
+      error.code = 'PENDING_UPLOAD_FORBIDDEN';
+      throw error;
     }
 
     // 3. So khớp chặt chẽ toàn bộ metadata
     if (pending.storage_key !== storageKey) {
-      throw new Error(`Storage key không khớp với phiên upload (${pending.storage_key} vs ${storageKey})`);
+      const error = new Error(`Storage key không khớp với phiên upload (${pending.storage_key} vs ${storageKey})`);
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_METADATA_MISMATCH';
+      throw error;
     }
     if (!['r2', 'supabase'].includes(pending.storage_provider)) {
-      throw new Error('Storage provider không khớp với pending upload');
+      const error = new Error('Storage provider không khớp với pending upload');
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_METADATA_MISMATCH';
+      throw error;
     }
     if (pending.storage_bucket !== storageBucket) {
-      throw new Error(`Storage bucket không khớp (${pending.storage_bucket} vs ${storageBucket})`);
+      const error = new Error(`Storage bucket không khớp (${pending.storage_bucket} vs ${storageBucket})`);
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_METADATA_MISMATCH';
+      throw error;
     }
     if (pending.mime_type !== mimeType) {
-      throw new Error('MIME type không khớp với tệp đã upload.');
+      const error = new Error('MIME type không khớp với tệp đã upload.');
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_METADATA_MISMATCH';
+      throw error;
     }
     if (String(pending.size_bytes) !== String(sizeBytes)) {
-      throw new Error('Kích thước tệp không khớp với pending upload.');
+      const error = new Error('Kích thước tệp không khớp với pending upload.');
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_METADATA_MISMATCH';
+      throw error;
     }
     if (pending.checksum_sha256 !== checksumSha256) {
-      throw new Error('Mã băm SHA-256 không khớp với tệp đã upload.');
+      const error = new Error('Mã băm SHA-256 không khớp với tệp đã upload.');
+      error.status = 400;
+      error.code = 'PENDING_UPLOAD_METADATA_MISMATCH';
+      throw error;
     }
 
     // 4. Kiểm tra sự tồn tại thực tế trên object storage
@@ -749,10 +784,7 @@ class OrphanCleanupService {
         WHERE (
           (
             status = 'PENDING'
-            AND (
-              expires_at < CURRENT_TIMESTAMP
-              OR created_at < CURRENT_TIMESTAMP - INTERVAL '30 minutes'
-            )
+            AND expires_at < CURRENT_TIMESTAMP
           )
           OR (
             status IN ('CLAIMING', 'CLEANING')
